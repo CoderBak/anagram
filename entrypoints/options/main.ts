@@ -1,16 +1,15 @@
-// entrypoints/options/main.ts — the settings surface.
+// entrypoints/options/main.ts — the settings surface, one list of rows.
 // Global toggles bind straight to storage-backed settings (content scripts watch
-// them live); the per-site section manages siteOverrides (add form + Remove
-// buttons). All rendering is DOM construction — never innerHTML with stored
+// them live); the sites row manages siteOverrides (add form + Remove
+// buttons). All rendering is DOM construction, never innerHTML with stored
 // strings (hostnames are user data).
 import { browser } from "#imports";
-import type { PublicPath } from "wxt/browser";
-import { READER_PAGE } from "../../lib/pdf/source";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
+import "../../lib/ui/rows.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
-import { t, tn } from "../../lib/i18n";
+import { t } from "../../lib/i18n";
 import {
   settings,
   cacheModeStorage,
@@ -19,14 +18,13 @@ import {
   effectiveRule,
   normalizeRuleHost,
 } from "../../lib/settings/settings";
-import { ALL_SITES } from "../../lib/access/patterns";
-import { accessSummary, hasAccess, requestAccess, withdrawAccess } from "../../lib/access/grant";
+import { hasAccess, requestAccess } from "../../lib/access/grant";
 import { commentOriginOfHost } from "../../lib/access/commentFrames";
 import { ACTIONS } from "../../lib/messaging/protocol";
-import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../../lib/pdf/fileAccess";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
-import { engineLabel, mountEngineCard } from "../../lib/ui/engineCard";
-import { bindConfirmedToggle } from "../../lib/ui/confirmedToggle";
+import { mountEngineCard } from "../../lib/ui/engineCard";
+import { mountSiteAccess } from "../../lib/ui/siteAccess";
+import { mountPdfRows } from "../../lib/ui/pdfRows";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
 import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
@@ -36,10 +34,7 @@ const log = createLogger("options");
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const underlineEl = document.getElementById("underline") as HTMLSelectElement;
 const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
-const analysisScopeEl = document.getElementById("analysisScope") as HTMLSelectElement;
 const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
-const autoOpenPdfsEl = document.getElementById("autoOpenPdfs") as HTMLInputElement;
-const debugEl = document.getElementById("debug") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
 const addRuleEl = document.getElementById("addRule") as HTMLFormElement;
@@ -48,9 +43,6 @@ const addModeEl = document.getElementById("addMode") as HTMLSelectElement;
 const addErrorEl = document.getElementById("addError") as HTMLElement;
 const addNoteEl = document.getElementById("addNote") as HTMLElement;
 const clearCacheEl = document.getElementById("clearCache") as HTMLButtonElement;
-const accessStateEl = document.getElementById("accessState") as HTMLElement;
-const accessAllEl = document.getElementById("accessAll") as HTMLButtonElement;
-const accessWithdrawEl = document.getElementById("accessWithdraw") as HTMLButtonElement;
 const cacheCountEl = document.getElementById("cacheCount") as HTMLElement;
 
 async function renderSites(): Promise<void> {
@@ -174,77 +166,19 @@ localizePage();
 followSystemTheme();
 linkSourceCode();
 bindToggle(enabledEl, settings.enabled);
-bindToggle(debugEl, settings.debug);
 bindToggle(mergeShortsEl, settings.mergeShorts);
-for (const key of ["reportIncludeText", "reportIncludeUrl"] as const) {
-  const input = document.getElementById(key) as HTMLInputElement;
-  const failure = document.createElement("p");
-  failure.id = `${key}Error`;
-  failure.setAttribute("role", "alert");
-  failure.hidden = true;
-  input.setAttribute("aria-describedby", failure.id);
-  input.parentElement!.after(failure);
-  bindConfirmedToggle(input, settings[key], (failed) => {
-    failure.textContent = failed ? t("optSaveFailed") : "";
-    failure.hidden = !failed;
-  });
+// The site rows first (they come before the toggle in the list), then the PDF rows.
+{
+  const holder = document.createElement("div");
+  mountSiteAccess(holder);
+  document.getElementById("siteRows")!.prepend(...holder.children);
 }
-const pdfSettingsError = document.getElementById("pdfSettingsError") as HTMLElement;
-const fileAccessState = document.getElementById("fileAccessState") as HTMLElement;
-const fileAccessEnable = document.getElementById("fileAccessEnable") as HTMLButtonElement;
-const fileAccessManage = document.getElementById("fileAccessManage") as HTMLButtonElement;
-const fileAccessInstructions = document.getElementById("fileAccessInstructions") as HTMLElement;
-async function showFileSettings(): Promise<void> {
-  if (!await openFileAccessSettings()) {
-    fileAccessInstructions.textContent = t("optFileAccessFirefoxInstructions");
-    fileAccessInstructions.hidden = false;
-    fileAccessInstructions.focus();
-  }
-}
-function pdfError(failed: boolean): void {
-  pdfSettingsError.textContent = failed ? t("optSaveFailed") : "";
-  pdfSettingsError.hidden = !failed;
-}
-bindConfirmedToggle(autoOpenPdfsEl, settings.autoOpenPdfs, pdfError);
-let fileRefresh = 0;
-async function refreshFileAccess(): Promise<void> {
-  const generation = ++fileRefresh;
-  const { granted, allowed } = await getFileAccess();
-  if (generation !== fileRefresh) return;
-  fileAccessState.textContent = t(granted && allowed ? "optFileAccessReady" : granted ? "optFileAccessBrowserRequired" : "optFileAccessNotGranted");
-  fileAccessEnable.hidden = granted && allowed;
-  fileAccessEnable.textContent = t(granted ? "optFileAccessManage" : "optFileAccessEnable");
-}
-fileAccessEnable.addEventListener("click", () => {
-  // Permission requests must retain the user's activation.
-  const granted = requestFileAccess();
-  fileAccessEnable.disabled = true;
-  void granted.then(async (accepted) => {
-    if (!accepted) { pdfError(true); return; }
-    pdfError(false);
-    const access = await getFileAccess();
-    if (!access.allowed) await showFileSettings();
-  }).catch(() => pdfError(true)).finally(() => {
-    fileAccessEnable.disabled = false;
-    void refreshFileAccess();
-  });
-});
-fileAccessManage.addEventListener("click", () => {
-  void showFileSettings().catch(() => pdfError(true));
-});
-window.addEventListener("focus", () => void refreshFileAccess());
-browser.permissions.onAdded.addListener(() => void refreshFileAccess());
-browser.permissions.onRemoved.addListener(() => void refreshFileAccess());
-void refreshFileAccess();
-(document.getElementById("openReader") as HTMLButtonElement).addEventListener("click", () => {
-  void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
-});
+mountPdfRows(document.getElementById("pdfRows")!);
 bindSelect(displayModeEl, settings.displayMode);
 bindSelect<"all" | "off">(underlineEl, {
   getValue: async () => (await settings.showHighlights.getValue()) ? "all" : "off",
   setValue: (v) => settings.showHighlights.setValue(v === "all"),
 });
-bindSelect(analysisScopeEl, settings.analysisScope);
 
 // --- minimum length ----------------------------------------------------------------------
 // What is read at all, and what short paragraphs are grouped up to. Open pages re-read
@@ -260,34 +194,7 @@ bindSelect(analysisScopeEl, settings.analysisScope);
 
 showSites();
 settings.siteOverrides.watch(showSites);
-const version = browser.runtime.getManifest().version;
-versionEl.textContent = `v${version}`;
-
-// --- site access -----------------------------------------------------------------------
-// Anagram installs able to read no site at all; this row says how much has been granted
-// since and is the one place to take it back. Withdrawing leaves the per-site rules below
-// alone — they are settings, not access, and they are what a later grant comes back to.
-async function renderAccess(): Promise<void> {
-  const { all, sites } = await accessSummary();
-  accessStateEl.textContent = all
-    ? t("accessAll")
-    : sites.length > 0
-      ? tn("accessSites", sites.length)
-      : t("accessNone");
-  accessAllEl.hidden = all;
-  accessWithdrawEl.hidden = !all && sites.length === 0;
-}
-// The request has to be the first thing the click does: the browsers honour it only as
-// part of the user's gesture. Taking access back needs no gesture.
-accessAllEl.addEventListener("click", () => {
-  void requestAccess(ALL_SITES).then(renderAccess);
-});
-accessWithdrawEl.addEventListener("click", () => {
-  void withdrawAccess().then(renderAccess);
-});
-browser.permissions.onAdded.addListener(() => void renderAccess());
-browser.permissions.onRemoved.addListener(() => void renderAccess());
-void renderAccess();
+versionEl.textContent = `v${browser.runtime.getManifest().version}`;
 
 // --- a comment thread from another site ----------------------------------------------------
 // The panel on a page that shows its comments in a frame of a site nobody granted (Disqus,
@@ -323,10 +230,8 @@ void renderComments().then(() => {
 });
 
 mountEngineCard({
-  title: document.getElementById("engineTitle")!,
   panelHost: document.getElementById("componentSettings")!,
   settings: true,
-  onUpdate: (engine, reply) => { versionEl.textContent = `v${version} · ${engineLabel(engine, reply)}`; },
 });
 
 const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");

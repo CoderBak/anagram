@@ -9,53 +9,39 @@
     <meta name="manifest.open_in_tab" content="true" />
     <title data-i18n="optionsTitle">Anagram settings</title>
     <style>
-      /* Layout only — colours, type and controls come from Basecoat (Vega). */
+      /* Layout only; colours, type and controls come from Basecoat (Vega). */
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
-      .page { max-width: 720px; margin: 0 auto; padding: 32px 24px 56px; }
-      header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
-      header.hdr img { width: 44px; height: 44px; border-radius: 11px; }
+      .page { max-width: 720px; margin: 0 auto; padding: 24px 20px 32px; }
+      header.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+      header.hdr img { width: 40px; height: 40px; border-radius: 10px; }
       header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
-      header.hdr .ver { margin-top: 3px; font-size: 12px; color: var(--muted-foreground); }
-      .stack { display: flex; flex-direction: column; gap: 16px; }
-      .card > section { display: flex; flex-direction: column; gap: 14px; }
-      .field > section > p { margin: 0; }
-      .field > select { width: 220px; }
-      .field > .btn { flex: none; }
-      .row-actions { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
-      .field > .field-actions { display: flex; flex: none; align-items: center; gap: 10px; }
-      .field-actions .count { color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
-      .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      header.hdr .ver { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); }
+      /* One list: a short label on the left, its controls on the right. */
+      .groups { display: flex; flex-direction: column; }
+      .group { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 2px 16px; padding: 8px 0; border-top: 1px solid var(--border); }
+      .groups > .group:first-child { border-top: 0; padding-top: 0; }
+      .group > .group-label { padding-top: 10px; font-size: 13.5px; font-weight: 600; }
+      .group-body { min-width: 0; }
+      .group-body.rows > .row:first-child { padding-top: 6px; }
+      .row > .row-body { justify-content: flex-end; }
+      .field-count { color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
+      .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0 2px; }
       .form-row .input { flex: 1 1 200px; }
       .form-row .select { width: 150px; }
-      .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); }
-      .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+      .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); flex: 1 0 100%; }
+      .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); flex: 1 0 100%; }
       .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
       .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
       html.dark .mode-on { color: oklch(0.76 0.15 150); }
       .mode-off { color: var(--muted-foreground); }
-      .tools { display: flex; gap: 8px; flex-wrap: wrap; }
-      .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; align-items: center; font-size: 13px; }
-      .shortcuts .keys { display: inline-flex; align-items: center; gap: 3px; }
-      .shortcuts .plus { color: var(--muted-foreground); font-size: 11px; }
-      .note { margin: 0; color: var(--muted-foreground); font-size: 13px; }
-      .note a, .link { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; font-size: 13px; }
-      /* A 24px hit area (WCAG 2.5.8), inline so the box is the link's own. */
-      .link { display: inline-block; align-self: flex-start; min-height: 24px; line-height: 24px; }
-      footer.foot { margin-top: 24px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
-      footer.foot a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; background: var(--muted); padding: 1px 5px; border-radius: 5px; }
-      code, .kbd { color: var(--foreground); }
+      .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
+      .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+      .links span { line-height: 24px; }
       /* Out of the page, still in the accessibility tree. */
       .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-      /* Hit areas, not paint: an invisible 24x24 box centred on each switch. */
-      input[type="checkbox"][role="switch"] { position: relative; }
-      input[type="checkbox"][role="switch"]::after {
-        content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        width: 100%; height: 100%; min-width: 24px; min-height: 24px;
-      }
       @media (max-width: 520px) {
-        .field[data-orientation="horizontal"] { flex-wrap: wrap; }
-        .row-actions { justify-content: flex-start; }
+        .group { grid-template-columns: minmax(0, 1fr); }
+        .group > .group-label { padding-top: 6px; }
       }
     </style>
   </head>
@@ -63,181 +49,113 @@
     <main class="page">
       <header class="hdr">
         <img src="/icons/icon-128.png" alt="" />
-        <div>
-          <h1 data-i18n="optionsTitle">Anagram settings</h1>
-          <div class="ver" id="version"></div>
-        </div>
+        <h1 data-i18n="optionsTitle">Anagram settings</h1>
+        <span class="ver" id="version"></span>
       </header>
 
-      <div class="stack">
-        <section class="card" data-size="sm" id="componentCard">
-          <header><h2 id="engineTitle" data-i18n="engineChooseTitle">Choose how Anagram runs</h2></header>
-          <section>
-            <div id="componentSettings"></div>
-          </section>
-        </section>
+      <section class="card" data-size="sm">
+        <section class="groups">
+          <div class="group" id="engineGroup">
+            <span class="group-label" id="engineLabel" data-i18n="optEngine">Engine</span>
+            <div class="group-body" role="group" aria-labelledby="engineLabel"><div id="componentSettings"></div></div>
+          </div>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="optMarks">Marks</h2></header>
-          <section>
-            <div class="field" data-orientation="horizontal">
-              <label for="displayMode" data-i18n="optChips">Chips</label>
-              <select id="displayMode">
-                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
-              </select>
+          <div class="group">
+            <span class="group-label" id="sitesLabel" data-i18n="optSites">Sites</span>
+            <div class="group-body rows" id="siteRows" role="group" aria-labelledby="sitesLabel">
+              <div class="row" id="comments" hidden>
+                <p id="commentsState" role="status" aria-live="polite"></p>
+                <span class="row-body">
+                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
+                </span>
+              </div>
+              <div class="row">
+                <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
+                <span class="row-body"><input id="enabled" class="input" type="checkbox" role="switch" /></span>
+              </div>
+              <div id="sites"></div>
+              <form class="form-row" id="addRule">
+                <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
+                  data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
+                <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
+                  <option value="on" data-i18n="optAlwaysOn">Always on</option>
+                  <option value="off" data-i18n="optAlwaysOff">Always off</option>
+                </select>
+                <button type="submit" class="btn" data-size="sm" data-i18n="optAdd">Add</button>
+                <p class="form-error" id="addError" hidden></p>
+                <p class="form-note" id="addNote" hidden></p>
+              </form>
             </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="underline" data-i18n="optUnderline">Underline</label>
-              <select id="underline">
-                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                <option value="off" data-i18n="optUnderlineOff">Off</option>
-              </select>
-            </div>
-          </section>
-        </section>
+          </div>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="optReading">Reading</h2></header>
-          <section>
-            <div class="field" data-orientation="horizontal">
-              <label for="analysisScope" data-i18n="optScope">Scope</label>
-              <select id="analysisScope">
-                <option value="page" data-i18n="optScopeWholePage">Whole page</option>
-                <option value="main" data-i18n="optScopeMain">Main content only</option>
-              </select>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="mergeShorts" data-i18n="optMerge">Group short paragraphs</label>
-              <input id="mergeShorts" type="checkbox" role="switch" />
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="minWords" data-i18n="optMinWords">Minimum length</label>
-              <select id="minWords" aria-describedby="minWordsNote"></select>
-            </div>
-            <p id="minWordsNote" class="form-note" data-i18n="optMinWordsNote">The model was trained on texts of 75 words or more; shorter ones are less reliable and say so.</p>
-            <div class="field" data-orientation="horizontal">
-              <label for="autoOpenPdfs" data-i18n="optAutoOpenPdfs">Open PDFs in Anagram</label>
-              <input id="autoOpenPdfs" type="checkbox" role="switch" />
-            </div>
-            <p id="pdfSettingsError" class="form-error" role="alert" hidden></p>
-            <div class="field" data-orientation="horizontal" id="local-pdfs">
-              <section>
-                <label id="fileAccessLabel" data-i18n="optFileAccess">Local PDF access</label>
-                <p id="fileAccessState" role="status" aria-live="polite">…</p>
-              </section>
-              <span class="row-actions">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="fileAccessEnable"
-                  data-i18n="optFileAccessEnable" aria-describedby="fileAccessLabel">Allow</button>
-                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="fileAccessManage"
-                  data-i18n="optFileAccessManage" aria-describedby="fileAccessLabel">Browser settings</button>
-              </span>
-            </div>
-            <p id="fileAccessInstructions" class="form-note" tabindex="-1" role="status" hidden></p>
-            <div class="tools">
-              <button type="button" class="btn" data-variant="outline" data-size="sm" id="openReader" data-i18n="optOpenReader">Open PDF reader</button>
-              <a href="/paste.html" target="_blank" rel="noopener" class="btn" data-variant="outline" data-size="sm" data-i18n="pasteTitle">Analyze text</a>
-            </div>
-          </section>
-        </section>
+          <div class="group">
+            <span class="group-label" id="pdfsLabel" data-i18n="optPdfs">PDFs</span>
+            <div class="group-body rows" id="pdfRows" role="group" aria-labelledby="pdfsLabel"></div>
+          </div>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="optSites">Sites</h2></header>
-          <section>
-            <div class="field" data-orientation="horizontal">
-              <section>
-                <label id="accessLabel" data-i18n="accessLabel">Site access</label>
-                <p id="accessState">…</p>
-              </section>
-              <span class="row-actions">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="accessAll"
-                  data-i18n="accessAllowAll" aria-describedby="accessLabel">Allow all sites</button>
-                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="accessWithdraw" hidden
-                  data-i18n="accessWithdraw" aria-describedby="accessLabel">Withdraw</button>
-              </span>
-            </div>
-            <div class="field" data-orientation="horizontal" id="comments" hidden>
-              <p id="commentsState" role="status" aria-live="polite"></p>
-              <span class="row-actions">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
-              </span>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
-              <input id="enabled" type="checkbox" role="switch" />
-            </div>
-            <div id="sites"></div>
-            <form class="form-row" id="addRule">
-              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
-                data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
-              <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
-                <option value="on" data-i18n="optAlwaysOn">Always on</option>
-                <option value="off" data-i18n="optAlwaysOff">Always off</option>
-              </select>
-              <button type="submit" class="btn" data-i18n="optAdd">Add</button>
-              <p class="form-error" id="addError" hidden></p>
-              <p class="form-note" id="addNote" hidden></p>
-            </form>
-          </section>
-        </section>
-
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="optPrivacy">Privacy</h2></header>
-          <section>
-            <div class="field" data-orientation="horizontal">
-              <label for="cacheMode" data-i18n="optCacheMode">Verdict cache</label>
-              <select id="cacheMode">
-                <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
-                <option value="session" data-i18n="optCacheSession">Memory only</option>
-              </select>
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="clearCache" data-i18n="optClearCache">Clear cached verdicts</label>
-              <div class="field-actions">
-                <span id="cacheCount" class="count"></span>
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear cached verdicts</button>
+          <div class="group">
+            <span class="group-label" id="marksLabel" data-i18n="optMarks">Marks</span>
+            <div class="group-body rows" role="group" aria-labelledby="marksLabel">
+              <div class="row">
+                <label for="displayMode" data-i18n="optChips">Chips</label>
+                <span class="row-body">
+                  <select id="displayMode" class="select">
+                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                    <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
+                  </select>
+                </span>
+              </div>
+              <div class="row">
+                <label for="underline" data-i18n="optUnderline">Underlines</label>
+                <span class="row-body">
+                  <select id="underline" class="select">
+                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                    <option value="off" data-i18n="optUnderlineOff">Off</option>
+                  </select>
+                </span>
               </div>
             </div>
-            <p id="cacheStatus" class="note" role="status"></p>
-            <div class="field" data-orientation="horizontal">
-              <label for="reportIncludeText" data-i18n="optReportText">Include passage text in copied reports</label>
-              <input id="reportIncludeText" type="checkbox" role="switch" />
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="reportIncludeUrl" data-i18n="optReportUrl">Include page title and URL in copied reports</label>
-              <input id="reportIncludeUrl" type="checkbox" role="switch" />
-            </div>
-            <div class="field" data-orientation="horizontal">
-              <label for="debug" data-i18n="optDebug">Debug logging</label>
-              <input id="debug" type="checkbox" role="switch" />
-            </div>
-            <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
-          </section>
-        </section>
+          </div>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="optShortcuts">Shortcuts</h2></header>
-          <section>
-            <div class="shortcuts">
-              <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">P</kbd></span>
-              <span data-i18n="cmdToggleOverlay">Show or hide marks on this page</span>
-              <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">L</kbd></span>
-              <span data-i18n="cmdOpenPanel">Open the flagged-paragraphs list</span>
-              <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">J</kbd></span>
-              <span data-i18n="cmdNextFlagged">Go to the next flagged paragraph</span>
-              <span class="keys"><kbd class="kbd">Alt</kbd><span class="plus">+</span><kbd class="kbd">Shift</kbd><span class="plus">+</span><kbd class="kbd">K</kbd></span>
-              <span data-i18n="cmdPrevFlagged">Go to the previous flagged paragraph</span>
-              <span class="keys"><kbd class="kbd" data-i18n="optRightClick">Right-click</kbd></span>
-              <span data-i18n="menuAnalyzeSelection">Analyze selection with Anagram</span>
-              <span class="keys"><kbd class="kbd" data-i18n="optRightClick">Right-click</kbd></span>
-              <span data-i18n="menuAnalyzePage">Analyze this page with Anagram</span>
+          <div class="group">
+            <span class="group-label" id="lengthLabel" data-i18n="optLength">Length</span>
+            <div class="group-body rows" role="group" aria-labelledby="lengthLabel">
+              <div class="row">
+                <label for="minWords" data-i18n="optMinWords">Minimum words</label>
+                <span class="row-body"><select id="minWords" class="select" aria-describedby="minWordsNote"></select></span>
+                <p id="minWordsNote" class="row-note" data-i18n="optMinWordsHint">Under 75 words is less reliable.</p>
+              </div>
+              <div class="row">
+                <label for="mergeShorts" data-i18n="optMerge">Group short paragraphs</label>
+                <span class="row-body"><input id="mergeShorts" class="input" type="checkbox" role="switch" /></span>
+              </div>
             </div>
-            <p class="note" data-i18n-html="optRebind">Change these at <code>chrome://extensions/shortcuts</code>.</p>
-          </section>
-        </section>
-      </div>
+          </div>
 
-      <footer class="foot"><span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span> · <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a></footer>
+          <div class="group">
+            <span class="group-label" id="cacheLabel" data-i18n="optCache">Cache</span>
+            <div class="group-body rows" role="group" aria-labelledby="cacheLabel">
+              <div class="row">
+                <select id="cacheMode" class="select" aria-label="Verdict cache" data-i18n-aria-label="optCacheMode">
+                  <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
+                  <option value="session" data-i18n="optCacheSession">Memory only</option>
+                </select>
+                <span class="row-body">
+                  <span id="cacheCount" class="field-count"></span>
+                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear</button>
+                </span>
+                <p id="cacheStatus" class="row-note" role="status"></p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <footer class="links">
+        <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
+        <span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span>
+        <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a>
+      </footer>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

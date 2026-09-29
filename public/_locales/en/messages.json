@@ -72,7 +72,7 @@
     "description": "Chip card while the batch is in flight."
   },
   "cardScaleTitle": {
-    "message": "Extent of AI editing, 0 to 1 (EditLens scale)",
+    "message": "Extent of AI editing, 0 to 1",
     "description": "Tooltip on the big number in a card."
   },
   "cardPartsTogether": {
@@ -124,12 +124,8 @@
     "description": "Chip card footnote when the local engine is down."
   },
   "cardFootUnsupported": {
-    "message": "EditLens is trained on English text only, so this paragraph was not scored.",
+    "message": "Only English text is scored.",
     "description": "Chip card footnote for a non-English paragraph."
-  },
-  "cardFootEstimate": {
-    "message": "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
-    "description": "Chip card footnote: what the percentage means. The same claim appears in the report and the options footer."
   },
   "coverageLookalikes": {
     "message": "Look-alike letters were replaced before scoring. ",
@@ -204,7 +200,7 @@
     "description": "Selection card footnote on a degraded verdict."
   },
   "selFootUnsupported": {
-    "message": "EditLens is trained on English text only, so this selection was not scored.",
+    "message": "Only English text is scored.",
     "description": "Selection card footnote for non-English text."
   },
   "fabHide": {
@@ -232,7 +228,7 @@
     "description": "Tooltip on the counter bubble while the local engine is down."
   },
   "countDownAria": {
-    "message": "Local engine not ready — details",
+    "message": "Local engine not ready, details",
     "description": "Accessible name of the counter bubble while the local engine is down."
   },
   "countAria_one": {
@@ -360,7 +356,7 @@
     "description": "Reading overlay title for a document with no title of its own."
   },
   "docsSubtitle": {
-    "message": "Anagram reading mode — every paragraph analyzed · editor untouched behind",
+    "message": "Anagram reading mode, every paragraph analyzed, editor untouched behind",
     "description": "Subtitle in the Docs reading overlay's bar."
   },
   "docsRefresh": {
@@ -380,7 +376,7 @@
     "description": "Tooltip on the Docs overlay's Open as page."
   },
   "docsBack": {
-    "message": "Back to editor · Esc",
+    "message": "Back to editor (Esc)",
     "description": "Docs overlay button: close the overlay. Esc is the key, untranslated."
   },
   "docsSnapshotNotice": {
@@ -508,7 +504,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportDevice": {
-    "message": "Device: $1 · precision: $2",
+    "message": "Device: $1, precision: $2",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "readerOpenOriginal": {
@@ -600,7 +596,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "$1 of $2 passes analyzed · $3 unsupported · $4 unavailable · $5 truncated",
+    "message": "$1 of $2 passes analyzed, $3 unsupported, $4 unavailable, $5 truncated",
     "description": "Coverage line on the text analysis page. Every count is of passes (stretches of text read in one pass), not paragraphs."
   },
   "pasteFileFailed": {
@@ -627,14 +623,6 @@
     "message": "Paste English text or open a text file to analyze it on this computer.",
     "description": "One-line intro of the Analyze text page."
   },
-  "onbTitle": {
-    "message": "Set up Anagram",
-    "description": "Title of the setup page."
-  },
-  "onbHowItReads": {
-    "message": "How it reads",
-    "description": "Heading of the chip demo on the setup page."
-  },
   "onbOpenSettings": {
     "message": "Open Settings",
     "description": "Link or button that opens the settings page."
@@ -643,16 +631,8 @@
     "message": "User guide",
     "description": "Link to the online user guide."
   },
-  "onbAccessOnce": {
-    "message": "or use Analyze this page from the toolbar icon",
-    "description": "Alternative to granting site access, shown beside the Allow all sites button."
-  },
-  "onbGo": {
-    "message": "Open any article and a chip appears after each paragraph.",
-    "description": "Shown on the setup page once the engine is ready and sites are allowed."
-  },
   "onbArxivTip": {
-    "message": "Tip: most arXiv papers also have an HTML version at arxiv.org/html/. Its paragraphs and formulas are marked up, so Anagram reads it most precisely. PDFs are read too.",
+    "message": "Tip: arXiv papers read most precisely in their HTML version, at arxiv.org/html/.",
     "description": "A tip on the setup page's How it reads card."
   },
   "componentTitle": {
@@ -667,10 +647,6 @@
     "message": "Choose how Anagram runs",
     "description": "Setup page and Settings: the engine card's title while no engine is chosen yet, above the two ways to run the model."
   },
-  "engineChooseIntro": {
-    "message": "Either way the model runs on this computer, and nothing you read is sent anywhere.",
-    "description": "Setup page: the line above the two engine cards."
-  },
   "engineOneClick": {
     "message": "One click",
     "description": "Setup page: title of the card for the in-browser engine, the recommended choice."
@@ -683,10 +659,6 @@
     "message": "Runs inside the browser. Nothing else to install.",
     "description": "Setup page, in-browser engine card: what it is."
   },
-  "engineOneClickCost": {
-    "message": "About $1 ms a paragraph · up to $2 GB of memory",
-    "description": "Setup page, in-browser engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."
-  },
   "engineOneClickButton": {
     "message": "Set up ($1 download)",
     "description": "Setup page, in-browser engine card: its button. $1 is the size of the one-time download."
@@ -696,11 +668,11 @@
     "description": "Setup page: title of the card for the local engine, installed with one command in a terminal."
   },
   "engineTerminalWhat": {
-    "message": "Installs the local engine with one command in Terminal. Faster, and lighter on memory.",
+    "message": "Installs the local engine with one command in Terminal.",
     "description": "Setup page, local engine card on macOS and Linux: what it is."
   },
   "engineTerminalWhatWindows": {
-    "message": "Installs the local engine with one command in PowerShell. Faster, and lighter on memory.",
+    "message": "Installs the local engine with one command in PowerShell.",
     "description": "Setup page, local engine card on Windows: what it is."
   },
   "engineTerminalWhatNvidia": {
@@ -711,24 +683,16 @@
     "message": "Installs the local engine with one command in PowerShell. It runs on your NVIDIA graphics card.",
     "description": "The terminal card on Windows beside an NVIDIA GPU."
   },
-  "engineTerminalCost": {
-    "message": "About $1 ms a paragraph · about $2 GB of memory",
-    "description": "Setup page, local engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."
-  },
   "engineTerminalButton": {
     "message": "Use the local engine",
     "description": "Setup page, local engine card: its button. It asks the browser to let Anagram talk to the engine, then shows the install command."
-  },
-  "engineMeasured": {
-    "message": "Speed and memory measured on an M4 Mac.",
-    "description": "Setup page: under the engine cards, where the numbers on them come from."
   },
   "engineTight": {
     "message": "This computer may slow down while Anagram scores.",
     "description": "Setup page: under the in-browser engine on a computer with 4 GB of memory, just enough for the model."
   },
   "engineLighter": {
-    "message": "This device has little memory, so Anagram runs a lighter version of its model. Its verdicts match the full model's on 99.8% of texts.",
+    "message": "Low memory here, so Anagram runs a lighter model. Its verdicts match the full one on 99.8% of texts.",
     "description": "Setup page and Settings: the in-browser engine runs the FP16 model, because the full one does not fit this device. Half the download."
   },
   "engineNativeRefused": {
@@ -755,21 +719,13 @@
     "message": "The engine couldn't be switched. Try again.",
     "description": "Settings: switching engines failed."
   },
-  "engineLeftover": {
-    "message": "The in-browser engine's model files still take $1.",
-    "description": "Settings, with the local engine in use: what the in-browser engine left on disk. $1 is a size."
-  },
   "engineLeftoverDelete": {
-    "message": "Delete them",
-    "description": "Settings: button beside engineLeftover."
+    "message": "Delete in-browser model files ($1)",
+    "description": "Settings: the local engine is in use and the in-browser engine left its model on disk; $1 is its size."
   },
   "componentNotInstalled": {
     "message": "Not installed",
     "description": "Engine state: the local engine has never connected."
-  },
-  "engineSetUpIntro": {
-    "message": "Anagram's model runs right here in your browser, with nothing else to install. It needs a one-time download of $1.",
-    "description": "In-browser edition, setup page before setup: what setting up means. $1 is the download's size, e.g. 1.4 GB."
   },
   "engineSaveData": {
     "message": "Data Saver is on in your browser, so the download waits until you start it.",
@@ -800,8 +756,8 @@
     "description": "In-browser edition: engine status while the downloaded model is loaded into memory."
   },
   "engineProgress": {
-    "message": "$1% · $2 of $3",
-    "description": "In-browser edition: download progress. $1 is the percentage, $2 the bytes downloaded, $3 the total, e.g. 45% · 620 MB of 1.4 GB."
+    "message": "$1 of $2",
+    "description": "Download progress in bytes, e.g. 880 MB of 1.4 GB."
   },
   "engineSpeed": {
     "message": "$1/s",
@@ -848,7 +804,7 @@
     "description": "In-browser edition, engine ready: where the model runs, in plain words."
   },
   "engineOnCpu": {
-    "message": "Runs on your processor, which is much slower than a graphics card. If hardware acceleration is off in your browser's settings, turning it on may let Anagram use the graphics card.",
+    "message": "Runs on your processor. Turning on hardware acceleration in your browser's settings may let Anagram use the graphics card.",
     "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
   },
   "engineNetworkLost": {
@@ -896,7 +852,7 @@
     "description": "In-browser edition, popup: the engine is not set up yet."
   },
   "popupSetupDownloading": {
-    "message": "Downloading the model · $1%",
+    "message": "Downloading the model, $1%",
     "description": "In-browser edition, popup: setup is downloading; $1 is the percentage."
   },
   "popupSetupPaused": {
@@ -1023,10 +979,6 @@
     "message": "The last action failed.",
     "description": "Error line above the Details fold."
   },
-  "componentDetails": {
-    "message": "Details",
-    "description": "Fold that holds the raw error text."
-  },
   "componentDownloadModels": {
     "message": "Download models",
     "description": "Button that starts the model download."
@@ -1059,14 +1011,6 @@
     "message": "Uninstall Anagram",
     "description": "Button and dialog title for uninstalling."
   },
-  "componentManage": {
-    "message": "Manage",
-    "description": "Fold that holds update, stop, delete and uninstall."
-  },
-  "componentAdvanced": {
-    "message": "Advanced",
-    "description": "Fold that holds the idle setting and the configuration list."
-  },
   "componentDeleteConfirm": {
     "message": "This deletes $1 of model files from $2; you can download them again later.",
     "description": "Confirmation text; $1 is the size, $2 the folder."
@@ -1079,12 +1023,8 @@
     "message": "Cancel",
     "description": "Cancel button in dialogs and for a running benchmark."
   },
-  "componentStorage": {
-    "message": "Model files on disk: $1",
-    "description": "Size of the model files; $1 is formatted."
-  },
   "componentIdleSetting": {
-    "message": "Unload model after",
+    "message": "Unload after",
     "description": "Label of the idle-unload select."
   },
   "componentIdleMinutes_one": {
@@ -1106,54 +1046,6 @@
   "componentReloadExtension": {
     "message": "Reload extension",
     "description": "Button that installs the pending extension update."
-  },
-  "runtimeTitle": {
-    "message": "Configuration",
-    "description": "Heading of the configuration list under Advanced."
-  },
-  "runtimeActive": {
-    "message": "Active",
-    "description": "Tag on the configuration in use."
-  },
-  "runtimeRecommended": {
-    "message": "Recommended",
-    "description": "Tag on the automatically chosen configuration."
-  },
-  "runtimeFastest": {
-    "message": "Fastest",
-    "description": "Tag on the fastest measured configuration."
-  },
-  "runtimeExperimental": {
-    "message": "Experimental",
-    "description": "Tag on an experimental configuration."
-  },
-  "runtimeUnavailable": {
-    "message": "Unavailable",
-    "description": "Fallback reason for a configuration that cannot run here."
-  },
-  "runtimeMeasured": {
-    "message": "$1 ms · $2 texts/s · $3",
-    "description": "Benchmark line: latency, throughput and memory (formatted)."
-  },
-  "runtimeApply": {
-    "message": "Use selected",
-    "description": "Button that switches to the selected configuration."
-  },
-  "runtimeBenchmark": {
-    "message": "Run benchmark",
-    "description": "Button that measures every configuration."
-  },
-  "runtimeProgress": {
-    "message": "Benchmarking · $1 of $2 done",
-    "description": "Progress line while benchmarking; $1 finished, $2 total."
-  },
-  "runtimeBenchmarking": {
-    "message": "Benchmarking…",
-    "description": "Engine state while a benchmark runs."
-  },
-  "runtimeFailed": {
-    "message": "The benchmark did not finish.",
-    "description": "Error after a failed benchmark or failed configuration test."
   },
   "popupTitle": {
     "message": "Anagram",
@@ -1204,19 +1096,19 @@
     "description": "Count of flagged paragraphs."
   },
   "popupAnalyzed_one": {
-    "message": "$1 paragraph analyzed · ",
+    "message": "$1 paragraph analyzed",
     "description": "Count of analyzed paragraphs (singular)."
   },
   "popupAnalyzed_other": {
-    "message": "$1 paragraphs analyzed · ",
+    "message": "$1 paragraphs analyzed",
     "description": "Count of analyzed paragraphs (plural)."
   },
   "popupNotEnglish": {
-    "message": " · $1 not English",
+    "message": "$1 not English",
     "description": "Count of paragraphs skipped as non-English."
   },
   "popupUnavailable": {
-    "message": " · $1 unavailable",
+    "message": "$1 unavailable",
     "description": "Count of paragraphs the engine did not answer."
   },
   "popupOff": {
@@ -1284,92 +1176,36 @@
     "description": "Option: every analyzed paragraph."
   },
   "optUnderline": {
-    "message": "Underline",
+    "message": "Underlines",
     "description": "Select label: whether every read paragraph is underlined, or none."
   },
   "optUnderlineOff": {
     "message": "Off",
     "description": "Option: no underline."
   },
-  "optReading": {
-    "message": "Reading",
-    "description": "Card heading: scope, grouping and PDFs."
-  },
-  "optScope": {
-    "message": "Scope",
-    "description": "Select label: what part of the page is analyzed."
-  },
-  "optScopeWholePage": {
-    "message": "Whole page",
-    "description": "Scope option."
-  },
-  "optScopeMain": {
-    "message": "Main content only",
-    "description": "Scope option."
-  },
   "optMerge": {
     "message": "Group short paragraphs",
     "description": "Switch: analyze short neighbouring paragraphs together."
   },
   "optMinWords": {
-    "message": "Minimum length",
+    "message": "Minimum words",
     "description": "Settings, Reading: label of the select that sets how many words a paragraph (or a group of short ones) needs to be analyzed."
   },
   "optMinWordsValue": {
     "message": "$1 words",
     "description": "Settings, Reading: one choice of the minimum length. $1 = a number of words (25, 50, 75, 100 or 150)."
   },
-  "optMinWordsNote": {
-    "message": "The model was trained on texts of 75 words or more; shorter ones are less reliable and say so.",
-    "description": "Settings, Reading: the note under the minimum length."
-  },
   "optAutoOpenPdfs": {
-    "message": "Open PDFs in Anagram",
+    "message": "Open PDFs in Anagram automatically",
     "description": "Switch: open PDFs in the reader automatically."
-  },
-  "optFileAccess": {
-    "message": "Local PDF access",
-    "description": "Row label: access to PDFs on this computer."
-  },
-  "optFileAccessReady": {
-    "message": "Allowed",
-    "description": "Local PDF access state."
-  },
-  "optFileAccessBrowserRequired": {
-    "message": "Turn on file URL access in the browser's extension settings.",
-    "description": "Local PDF access state: the browser still needs a switch turned on."
-  },
-  "optFileAccessNotGranted": {
-    "message": "Not allowed",
-    "description": "Local PDF access state."
-  },
-  "optFileAccessEnable": {
-    "message": "Allow",
-    "description": "Button that requests local PDF access."
-  },
-  "optFileAccessManage": {
-    "message": "Browser settings",
-    "description": "Button that opens the extension's page in the browser."
   },
   "optFileAccessFirefoxInstructions": {
     "message": "In Firefox, open about:addons, choose Anagram → Permissions and data, and allow access to local files.",
     "description": "Instructions where the browser has no settings page to open."
   },
-  "optOpenReader": {
-    "message": "Open PDF reader",
-    "description": "Button that opens the empty reader."
-  },
   "optSites": {
     "message": "Sites",
     "description": "Card heading: site access and rules."
-  },
-  "accessLabel": {
-    "message": "Site access",
-    "description": "Row label for granted sites."
-  },
-  "accessAll": {
-    "message": "All sites",
-    "description": "Site access state."
   },
   "accessNone": {
     "message": "No sites",
@@ -1443,10 +1279,6 @@
     "message": "Already covered by $1.",
     "description": "Note when a parent domain's rule already says the same; $1 is that host."
   },
-  "optPrivacy": {
-    "message": "Privacy",
-    "description": "Card heading."
-  },
   "optCacheMode": {
     "message": "Verdict cache",
     "description": "Select label: where scores are kept."
@@ -1460,8 +1292,8 @@
     "description": "Cache option."
   },
   "optClearCache": {
-    "message": "Clear cached verdicts",
-    "description": "Button that empties the cache."
+    "message": "Clear",
+    "description": "Settings: button that clears the cached verdicts."
   },
   "optCacheEntries_one": {
     "message": "$1 entry",
@@ -1479,32 +1311,88 @@
     "message": "The change could not be saved.",
     "description": "Error when a setting could not be written."
   },
-  "optReportText": {
-    "message": "Include passage text in copied reports",
-    "description": "Switch."
-  },
-  "optReportUrl": {
-    "message": "Include page title and URL in copied reports",
-    "description": "Switch."
-  },
-  "optDebug": {
-    "message": "Debug logging",
-    "description": "Switch."
-  },
   "optPrivacyPolicy": {
     "message": "Privacy policy",
     "description": "Link to PRIVACY.md."
   },
-  "optShortcuts": {
-    "message": "Shortcuts",
-    "description": "Card heading."
+  "listSeparator": {
+    "message": ", ",
+    "description": "Between the parts of a status line built in code, such as the popup's counts."
   },
-  "optRightClick": {
-    "message": "Right-click",
-    "description": "Key hint for the context-menu entries."
+  "onbTagline": {
+    "message": "Marks AI-written paragraphs as you read. Everything runs on this computer.",
+    "description": "Setup page: the one line under the name."
   },
-  "optRebind": {
-    "message": "Change these at $1.",
-    "description": "Line under the shortcuts; $1 is the browser's shortcuts address."
+  "onbWhere": {
+    "message": "Where it reads",
+    "description": "Setup page: heading of the permissions block, first on the page."
+  },
+  "onbVerdictTitle": {
+    "message": "Reading a verdict",
+    "description": "Setup page: heading of the block that explains the words, the colours and the dot."
+  },
+  "onbConfidence": {
+    "message": "A full dot means the word is likely right; a thin ring means Anagram is unsure.",
+    "description": "Setup page: what the dot in a verdict's colour shows."
+  },
+  "onbModelNotice": {
+    "message": "Anagram uses Pangram's open EditLens model (CC BY-NC-SA 4.0). Commercial use is not permitted. It should not be used to enforce any AI-usage policy in an educational or professional setting.",
+    "description": "Setup page: the licence and fair-use notice for the model, in the spirit of Pangram's own."
+  },
+  "accessHint": {
+    "message": "or switch it on per site from the toolbar icon",
+    "description": "Setup page: beside Allow all sites."
+  },
+  "accessAllowed": {
+    "message": "All sites allowed",
+    "description": "Setup page and Settings: all-sites access is granted."
+  },
+  "optLocalPdfs": {
+    "message": "PDFs on this computer",
+    "description": "Row label: reading PDF files opened from this computer."
+  },
+  "optFileAccessTurnOn": {
+    "message": "Turn it on",
+    "description": "Button that takes the person to the browser's page where file access is switched on."
+  },
+  "engineKeepOpen": {
+    "message": "Keep this browser open until the download finishes.",
+    "description": "Shown only while the in-browser engine's model downloads."
+  },
+  "engineWordsBrowser": {
+    "message": "In the browser",
+    "description": "Settings engine row: where the engine runs, first words of its status."
+  },
+  "engineWordsGpu": {
+    "message": "on the graphics card",
+    "description": "Settings engine row: the model runs on the GPU."
+  },
+  "engineWordsCpu": {
+    "message": "on the processor",
+    "description": "Settings engine row: the model runs on the CPU."
+  },
+  "optMinWordsHint": {
+    "message": "Under 75 words is less reliable.",
+    "description": "Settings: tiny hint under the minimum length."
+  },
+  "optEngine": {
+    "message": "Engine",
+    "description": "Settings: row label."
+  },
+  "optPdfs": {
+    "message": "PDFs",
+    "description": "Settings: row label."
+  },
+  "optLength": {
+    "message": "Length",
+    "description": "Settings: row label."
+  },
+  "optCache": {
+    "message": "Cache",
+    "description": "Settings: row label."
+  },
+  "popupPdfReader": {
+    "message": "PDF reader",
+    "description": "Popup: secondary button that opens the PDF reader."
   }
 }

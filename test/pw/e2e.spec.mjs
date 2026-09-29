@@ -130,7 +130,7 @@ test("a paragraph longer than the model reads in one pass is counted, read whole
   const formatScore = (score) => (Math.round(score * 100) >= 100 ? "1.0" : `.${String(Math.round(score * 100)).padStart(2, "0")}`);
   const card = await cardOf(page, "windowed");
   const passes = "WINDOWED paragraph: the card reads 'Read in N passes' with each pass's number, and claims no prefix";
-  expect.soft(card, passes).toContain(`Read in ${blocks.length} passes${verdicts.map((v) => formatScore(v.score)).join(" · ")}`);
+  expect.soft(card, passes).toContain(`Read in ${blocks.length} passes${verdicts.map((v) => formatScore(v.score)).join(", ")}`);
   expect.soft(card, passes).not.toMatch(/Only the opening|first \d+/);
 });
 

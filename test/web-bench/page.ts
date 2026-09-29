@@ -1,26 +1,17 @@
 // test/web-bench/page.ts — the content script's first collection, run inside a saved page.
 //
 // bench.mjs bundles this with esbuild into an IIFE (`WB`) and evaluates it in each page.
-// Nothing here re-implements the reader: the scope is lib/dom/mainContent.ts'
-// findMainContent() with the same extractor the orchestrator hands it (the library the
-// vendor chunk is built from, imported the same way scripts/vendor.mjs imports it), and the
-// units are lib/dom/walker.ts' collectUnits() under that scope with the orchestrator's
-// options for a first scan — merge short paragraphs on (the shipped default), no claimed
+// Nothing here re-implements the reader: the units are lib/dom/walker.ts' collectUnits()
+// over the whole page with the orchestrator's options for a first scan — merge short paragraphs on (the shipped default), no claimed
 // nodes, the shipped minimum length unless the run names another. What this adds is only
 // what a benchmark needs to see: which units read as comments, where each unit sits, the text of the scope,
 // the truth an HTML subtree stands for, and — through the product's own diagnostics
 // (lib/diagnostics/silence.ts) — why a block of prose got no unit.
-import Defuddle from "defuddle";
 import { collectUnits, inPageOrder } from "../../lib/dom/walker";
-import { findMainContent, useDefuddle } from "../../lib/dom/mainContent";
 import { surveyPage } from "../../lib/diagnostics/silence";
 import type { Unit } from "../../lib/dom/text";
 
 export interface MeasureOptions {
-  /** The setting "Scope": the whole page (the shipped default) or its main content. */
-  scope: "page" | "main";
-  /** Which main-content extractor findMainContent() is given under "main". */
-  extractor: "defuddle" | "none";
   /** The truth as an HTML subtree (WebMainBench) or document (Readability's expected output). */
   truthHtml?: string | null;
   /** Report each scored text node's XPath (Webis-WebSeg-20 names nodes that way). */
@@ -29,10 +20,6 @@ export interface MeasureOptions {
   minWords?: number;
   /** Run the page diagnostics' survey of prose that got no unit, and why. */
   explain?: boolean;
-}
-
-function setExtractor(name: MeasureOptions["extractor"]): void {
-  useDefuddle(name === "defuddle" ? { Defuddle } : null);
 }
 
 /** Id and class tokens a comment thread or a list of reviews is built from (WordPress,
@@ -134,32 +121,19 @@ function describe(el: Element | null): string | null {
 
 export function measure(opts: MeasureOptions) {
   const began = performance.now();
-  let root: Element | null = null;
-  let textMassRoot: Element | null = null;
-  let scopeMs = 0;
-  let mutated = false;
-  if (opts.scope === "main") {
-    // The text-mass probe alone first, to tell afterwards whether the extractor answered.
-    setExtractor("none");
-    textMassRoot = findMainContent(document);
-    setExtractor(opts.extractor);
-    const snapshot = (): string => `${document.getElementsByTagName("*").length}:${document.documentElement.outerHTML.length}`;
-    const before = snapshot();
-    const t = performance.now();
-    root = findMainContent(document);
-    scopeMs = performance.now() - t;
-    // The extractor must leave the live page as it found it.
-    mutated = snapshot() !== before;
-  }
-  const base = root ?? document.body;
+  const root = null as Element | null;
+  const textMassRoot = null as Element | null;
+  const scopeMs = 0;
+  const mutated = false;
+  const base = document.body;
   const t = performance.now();
   const units: Unit[] = base ? inPageOrder(collectUnits(base, { mergeShorts: true, minWords: opts.minWords })) : [];
   const collectMs = performance.now() - t;
 
   const out = {
     scope: {
-      mode: opts.scope,
-      extractor: opts.scope === "main" ? opts.extractor : null,
+      mode: "page",
+      extractor: null,
       found: !!root,
       byExtractor: !!root && root !== textMassRoot,
       mutated,

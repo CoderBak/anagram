@@ -46,7 +46,7 @@ export { isBoilerplate, isNoTranslate, findConsentBanners, isConsentBanner } fro
 export { isConsentFrame } from "../lib/dom/consentBanners";
 export { clipsOwnText } from "../lib/dom/style";
 export { WATCHED_ATTRS, createObservers } from "../lib/capture/observers";
-export { findMainContent, useDefuddle } from "../lib/dom/mainContent";
+export { findMainContent } from "../lib/dom/mainContent";
 export { detectDocsPage, readingViewUrl, editorUrl } from "../lib/docs";
 export { band, isFlagged } from "../lib/render/band";
 export { formatScore, spokenScore } from "../lib/render/score";

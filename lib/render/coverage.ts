@@ -41,10 +41,9 @@ export function windowReadout(v: UnitVerdict): WindowReadout | null {
   };
 }
 
-/** A card's "Read in N passes" value: ".41 · .72 · .18". Up to eight numbers may wrap,
- *  and the no-break space keeps each separator with the number in front of it. */
+/** A card's "Read in N passes" value: ".41, .72, .18". Up to eight numbers may wrap. */
 export function windowScores(read: WindowReadout): string {
-  return read.scores.join("\u00a0· ");
+  return read.scores.join(", ");
 }
 
 /**

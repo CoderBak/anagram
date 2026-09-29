@@ -124,13 +124,6 @@ describe("the network inventory in docs/footprint.md", () => {
     expect(read("lib/ui/deviceInputs.ts")).toMatch(/if \(import\.meta\.env\.ANAGRAM_TEST_BUILD === "1"\) Object\.assign\(inputs, await testDevice\(\)\);/);
   });
 
-  it("asks the vendored Defuddle for its offline extraction only", () => {
-    // Its parseAsync() can call third-party APIs; parse() on a clone cannot.
-    expect(SOURCES.filter((rel) => /\bDefuddle\(/.test(read(rel)))).toEqual(["lib/dom/mainContent.ts"]);
-    expect(read("lib/dom/mainContent.ts")).toMatch(/new D\.Defuddle\(doc\.cloneNode\(true\) as Document, \{ useAsync: false \}\)\.parse\(\)/);
-    expect(SOURCES.filter((rel) => /\.parseAsync\s*\(/.test(read(rel)))).toEqual([]);
-    expect(DOC).toContain("Defuddle");
-  });
 
 });
 
@@ -255,11 +248,10 @@ describe.each(["chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
     expect(existsSync(join(OUT, "pdf-loader.html"))).toBe(true);
   });
 
-  it.skipIf(!ready)("makes only the five content-script chunks web accessible", () => {
+  it.skipIf(!ready)("makes only the four content-script chunks web accessible", () => {
     expect(manifest().web_accessible_resources).toEqual([
       {
         resources: [
-          "vendor/defuddle.min.mjs",
           "vendor/purify.min.mjs",
           "vendor/diagnostics.min.mjs",
           "vendor/surfaces.min.mjs",

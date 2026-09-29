@@ -89,8 +89,8 @@ export const BADGE_CSS: string = `
 }
 
 .dot {
-  width: 0.56em;
-  height: 0.56em;
+  width: 0.7em;
+  height: 0.7em;
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--dot, #9aa3ad);
@@ -104,8 +104,9 @@ export const BADGE_CSS: string = `
 
 /* The score's colour, read from --s, as a ring that thins as the doubt in --u grows (both
    set per chip in badge.ts). */
-.pill.scored { --dot: ${scaleColorCss(false)}; --ring: color-mix(in oklab, var(--dot) 20%, transparent); }
-.pill.scored .dot { background: transparent; box-shadow: inset 0 0 0 ${ringCss("0.28em")} var(--dot), 0 0 0 0.18em var(--ring); }
+.pill.scored { --dot: ${scaleColorCss(false)}; --ring: color-mix(in oklab, var(--dot) 20%, transparent); background: color-mix(in oklab, var(--dot) 13%, #ffffff); border-color: color-mix(in oklab, var(--dot) 26%, #e5e5e5); }
+:host(:hover) .pill.scored { background: color-mix(in oklab, var(--dot) 20%, #ffffff); border-color: color-mix(in oklab, var(--dot) 40%, #d4d4d4); }
+.pill.scored .dot { background: transparent; box-shadow: inset 0 0 0 ${ringCss("0.35em")} var(--dot), 0 0 0 0.18em var(--ring); }
 .pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); }
 .pill.band-unsupported { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #737373; font-weight: 500; }
 
@@ -271,7 +272,8 @@ export const BADGE_CSS: string = `
   color: #a3a3a3;
 }
 :host(.pg-dark:hover) .pill { background: #262626; border-color: rgba(255, 255, 255, 0.2); }
-:host(.pg-dark) .pill.scored { --dot: ${scaleColorCss(true)}; color: #d4d4d4; }
+:host(.pg-dark) .pill.scored { --dot: ${scaleColorCss(true)}; color: #d4d4d4; background: color-mix(in oklab, var(--dot) 18%, #171717); border-color: color-mix(in oklab, var(--dot) 34%, #262626); }
+:host(.pg-dark:hover) .pill.scored { background: color-mix(in oklab, var(--dot) 26%, #171717); }
 :host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
 :host(.pg-dark) .pill.band-unsupported { color: #a3a3a3; }
 :host(.pg-dark) .card .verdict.band-unsupported { color: #a3a3a3; }

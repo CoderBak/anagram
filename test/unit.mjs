@@ -28,11 +28,6 @@ const browser = await launchPlain({ headless: true });
 const page = await browser.newPage();
 await page.setContent("<!doctype html><html><body></body></html>");
 await page.addScriptTag({ path: BUNDLE });
-// Defuddle is an on-demand vendor chunk in the extension; here the library's own browser
-// build (it sets a `Defuddle` global) stands in for it so the Defuddle-guided path is
-// exercised too.
-await page.addScriptTag({ path: join(ROOT, "node_modules", "defuddle", "dist", "index.js") });
-await page.evaluate(() => PW.useDefuddle({ Defuddle: window.Defuddle }));
 
 const results = await page.evaluate(() => {
   const out = [];
@@ -1571,23 +1566,6 @@ const results = await page.evaluate(() => {
     const mc = PW.findMainContent(document);
     check("findMainContent honest null on tiny pages", mc === null, mc && mc.tagName);
   }
-  {
-    // Defuddle-guided: distinct paragraphs (so the sampled sentences are unique on
-    // the page), chrome around them, and a teaser that echoes an opening sentence.
-    const wordsFrom = (off, n) => Array.from({ length: n }, (_, i) => VOCAB[(off + i * 5) % VOCAB.length]).join(" ") + ".";
-    const paras = [0, 7, 13, 19, 3].map((o) => `<p>${wordsFrom(o, 70)}</p>`).join("");
-    sandbox.innerHTML =
-      `<header><nav><a href="#">Home</a> <a href="#">About</a></nav></header>` +
-      `<div class="teaser">${wordsFrom(0, 12)}</div>` +
-      `<div><div><div id="art">${paras}</div></div></div>` +
-      `<footer>${words(12)}</footer>`;
-    const mc = PW.findMainContent(document);
-    check("findMainContent (Defuddle) maps the article to its live container", mc && mc.id === "art", mc && (mc.id || mc.tagName));
-    PW.useDefuddle(null);
-    const mc2 = PW.findMainContent(document);
-    check("findMainContent falls back to text mass without Defuddle", mc2 && (mc2.id === "art" || mc2.contains(document.getElementById("art"))), mc2 && (mc2.id || mc2.tagName));
-  }
-
   // ---- math, markers, hidden copies: never split the sentence ------------------------------
   {
     sandbox.innerHTML = `<p>${words(40)} <math><mi>x</mi><mo>=</mo><mn>1</mn></math> ${words(40)}</p>`;
@@ -2032,7 +2010,7 @@ const results = await page.evaluate(() => {
     layer.render(unit, verdict);
     const cardText = () => sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".card").textContent;
     const chips = sandbox.querySelectorAll('[data-anagram="host"]').length;
-    const passNumbers = verdict.windows.map((w) => PW.formatScore(w.result.score).replace(".", "\\.")).join("\\s*·\\s*");
+    const passNumbers = verdict.windows.map((w) => PW.formatScore(w.result.score).replace(".", "\\.")).join(",\\s*");
     check(`the card says how it was read: 'Read in ${spans.length} passes' with each pass's number; ONE chip with the aggregate`,
       chips === 1 && new RegExp(`Read in ${spans.length} passes\\s*${passNumbers}`).test(cardText()) && /judged by the passes that read it/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
       sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === PW.formatScore(verdict.result.score) &&
@@ -3093,7 +3071,6 @@ for (const file of fixtureFiles) {
       manifestVersion: 3,
       uiLanguage: "en",
       messageLocale: "en",
-      analysisScope: "page",
       mergeShorts: true,
       displayMode: "all",
       siteRule: null,
@@ -3198,7 +3175,7 @@ for (const file of fixtureFiles) {
       `<iframe sandbox srcdoc="<p>Sandboxed.</p>" width="640" height="300"></iframe>` +
       `<iframe src="data:text/html,x" width="640" height="300"></iframe>`;
     const report = () => PW.buildDiagnostics({
-      version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en", analysisScope: "page",
+      version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en",
       mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
       running: true, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
       frameGate: { minWidth: 200, minArea: 40000 }, clickedFrameId: 0,
@@ -3250,7 +3227,7 @@ for (const file of fixtureFiles) {
       const box = document.body.lastElementChild;
       const walked = PW.collectUnits(document.body).filter((u) => u.parts.some((p) => box.contains(p.container))).length;
       const report = await PW.buildDiagnostics({
-        version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en", analysisScope: "page",
+        version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en",
         mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
         running: false, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
         frameGate: { minWidth: 200, minArea: 40000 }, clickedFrameId: 0, target: null, detectLanguage: async () => null,

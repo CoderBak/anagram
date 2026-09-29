@@ -89,9 +89,6 @@ export type Tier = typeof TIERS[number];
 /** Room on disk beyond the model's own bytes: the engine's state, and slack for the browser. */
 export const DISK_MARGIN = 200e6;
 
-/** The measured speed and memory each engine is described by (on an M4 Mac). */
-export const MEASURED = { inbrowser: { ms: 92, gb: 2.5 }, native: { ms: 43, gb: 1.8 } } as const;
-
 export type Os = "mac" | "windows" | "linux" | "other";
 
 function osOf(i: DeviceInputs): Os {

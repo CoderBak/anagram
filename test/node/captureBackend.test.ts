@@ -36,13 +36,11 @@ vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {}, refreshHighlightTheme() {},
 }));
 vi.mock("../../lib/dom/walker", () => ({collectUnits: () => [], inPageOrder: (units: Unit[]) => [...units]}));
-vi.mock("../../lib/dom/mainContent", () => ({findMainContent: () => null, useDefuddle() {}}));
-vi.mock("../../lib/lazy", () => ({loadDefuddle: async () => ({})}));
 vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {
     debug: setting(false), showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true),
-    analysisScope: setting("page"), reportIncludeText: setting(false), reportIncludeUrl: setting(false),
+    reportIncludeText: setting(false), reportIncludeUrl: setting(false),
   }};
 });
 

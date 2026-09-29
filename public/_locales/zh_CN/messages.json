@@ -54,7 +54,7 @@
     "message": "正在分析该段落…"
   },
   "cardScaleTitle": {
-    "message": "AI 编辑程度，0 到 1（EditLens 标度）"
+    "message": "AI 编辑程度，0 到 1"
   },
   "cardPartsTogether": {
     "message": "合并分析的段落"
@@ -93,10 +93,7 @@
     "message": "本地引擎没有响应。引擎启动后会自动重试。"
   },
   "cardFootUnsupported": {
-    "message": "EditLens 只在英文文本上训练，因此没有为该段落评分。"
-  },
-  "cardFootEstimate": {
-    "message": "这个数字是 EditLens 的估计，衡量文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
+    "message": "仅对英文文本评分。"
   },
   "coverageLookalikes": {
     "message": "评分前已将形近字母替换回拉丁字母。"
@@ -153,7 +150,7 @@
     "message": "本地引擎没有响应，请重试。"
   },
   "selFootUnsupported": {
-    "message": "EditLens 只在英文文本上训练，因此没有为所选文本评分。"
+    "message": "仅对英文文本评分。"
   },
   "fabHide": {
     "message": "隐藏 AI 检测"
@@ -174,7 +171,7 @@
     "message": "本地引擎未就绪，点击查看详情"
   },
   "countDownAria": {
-    "message": "本地引擎未就绪 · 详情"
+    "message": "本地引擎未就绪，详情"
   },
   "countAria_one": {
     "message": "$1 个存疑段落，查看列表"
@@ -270,7 +267,7 @@
     "message": "Google 文档"
   },
   "docsSubtitle": {
-    "message": "Anagram 阅读模式 · 逐段分析 · 编辑器原封不动"
+    "message": "Anagram 阅读模式，逐段分析，编辑器原封不动"
   },
   "docsRefresh": {
     "message": "刷新"
@@ -285,7 +282,7 @@
     "message": "把分析后的阅读视图作为独立页面打开"
   },
   "docsBack": {
-    "message": "返回编辑器 · Esc"
+    "message": "返回编辑器（Esc）"
   },
   "docsSnapshotNotice": {
     "message": "文档的静态快照，点“刷新”可重新读取。"
@@ -386,8 +383,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportDevice": {
-    "message": "计算设备：$1 · 精度：$2",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+    "message": "计算设备：$1，精度：$2"
   },
   "readerOpenOriginal": {
     "message": "打开原文件"
@@ -468,8 +464,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "已分析 $1/$2 次读取 · 不支持的语言 $3 次 · 不可用 $4 次 · 截断 $5 次",
-    "description": "Text analysis page action, status, or limit."
+    "message": "已分析 $1/$2 次读取，不支持的语言 $3 次，不可用 $4 次，截断 $5 次"
   },
   "pasteFileFailed": {
     "message": "无法以 UTF-8 文本读取该文件。",
@@ -491,26 +486,14 @@
   "pasteIntro": {
     "message": "粘贴英文文本或打开文本文件，在本机进行分析。"
   },
-  "onbTitle": {
-    "message": "设置 Anagram"
-  },
-  "onbHowItReads": {
-    "message": "效果预览"
-  },
   "onbOpenSettings": {
     "message": "打开设置"
   },
   "onbUserGuide": {
     "message": "使用指南"
   },
-  "onbAccessOnce": {
-    "message": "或在工具栏图标中使用「分析此页」"
-  },
-  "onbGo": {
-    "message": "打开任意文章，每段之后都会出现一枚标签。"
-  },
   "onbArxivTip": {
-    "message": "提示：大多数 arXiv 论文另有 HTML 版本（arxiv.org/html/），段落和公式都有标记，Anagram 读取最准确。PDF 同样可以读取。"
+    "message": "提示：arXiv 论文在 HTML 版本（arxiv.org/html/）中读取最准确。"
   },
   "componentTitle": {
     "message": "本地引擎"
@@ -521,9 +504,6 @@
   "engineChooseTitle": {
     "message": "选择 Anagram 的运行方式"
   },
-  "engineChooseIntro": {
-    "message": "两种方式下，模型都在这台电脑上运行，你读的内容不会发往任何地方。"
-  },
   "engineOneClick": {
     "message": "一键"
   },
@@ -533,9 +513,6 @@
   "engineOneClickWhat": {
     "message": "在浏览器内运行，无需安装其他程序。"
   },
-  "engineOneClickCost": {
-    "message": "每段约 $1 毫秒 · 内存最多 $2 GB"
-  },
   "engineOneClickButton": {
     "message": "设置（下载 $1）"
   },
@@ -543,10 +520,10 @@
     "message": "终端"
   },
   "engineTerminalWhat": {
-    "message": "在终端中运行一条命令安装本地引擎。更快，也更省内存。"
+    "message": "在终端中运行一条命令安装本地引擎。"
   },
   "engineTerminalWhatWindows": {
-    "message": "在 PowerShell 中运行一条命令安装本地引擎。更快，也更省内存。"
+    "message": "在 PowerShell 中运行一条命令安装本地引擎。"
   },
   "engineTerminalWhatNvidia": {
     "message": "在终端中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
@@ -554,20 +531,14 @@
   "engineTerminalWhatNvidiaWindows": {
     "message": "在 PowerShell 中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
   },
-  "engineTerminalCost": {
-    "message": "每段约 $1 毫秒 · 内存约 $2 GB"
-  },
   "engineTerminalButton": {
     "message": "使用本地引擎"
-  },
-  "engineMeasured": {
-    "message": "速度和内存在 M4 Mac 上测得。"
   },
   "engineTight": {
     "message": "Anagram 评分时，这台电脑可能会变慢。"
   },
   "engineLighter": {
-    "message": "这台设备的内存较小，因此 Anagram 运行的是其模型的轻量版本。它给出的判断与完整模型在 99.8% 的文本上一致。"
+    "message": "这里内存较小，因此 Anagram 运行较轻的模型，其结论与完整模型在 99.8% 的文本上一致。"
   },
   "engineNativeRefused": {
     "message": "Anagram 未获准与本地引擎通信，因此没有任何改动。准备好后请重新选择。"
@@ -587,17 +558,11 @@
   "engineSwitchFailed": {
     "message": "无法切换引擎，请重试。"
   },
-  "engineLeftover": {
-    "message": "浏览器内引擎的模型文件仍占用 $1。"
-  },
   "engineLeftoverDelete": {
-    "message": "删除这些文件"
+    "message": "删除浏览器内的模型文件（$1）"
   },
   "componentNotInstalled": {
     "message": "未安装"
-  },
-  "engineSetUpIntro": {
-    "message": "Anagram 的模型直接在你的浏览器里运行，无需安装其他软件，只需一次性下载 $1。"
   },
   "engineSaveData": {
     "message": "浏览器开启了省流量模式，下载会等你手动开始。"
@@ -621,7 +586,7 @@
     "message": "正在启动模型…"
   },
   "engineProgress": {
-    "message": "$1% · $2 / $3"
+    "message": "$1 / $2"
   },
   "engineSpeed": {
     "message": "$1/秒"
@@ -657,7 +622,7 @@
     "message": "在你的显卡上运行（WebGPU）。"
   },
   "engineOnCpu": {
-    "message": "在处理器上运行，比显卡慢得多。如果浏览器设置中关闭了硬件加速，开启后 Anagram 可能就能使用显卡。"
+    "message": "在处理器上运行。在浏览器设置中开启硬件加速，Anagram 或许就能使用显卡。"
   },
   "engineNetworkLost": {
     "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
@@ -693,7 +658,7 @@
     "message": "Anagram 尚未设置：需要一次性下载模型。"
   },
   "popupSetupDownloading": {
-    "message": "正在下载模型 · $1%"
+    "message": "正在下载模型，$1%"
   },
   "popupSetupPaused": {
     "message": "下载已暂停（$1%）"
@@ -788,9 +753,6 @@
   "componentFailed": {
     "message": "上一步操作失败。"
   },
-  "componentDetails": {
-    "message": "详情"
-  },
   "componentDownloadModels": {
     "message": "下载模型"
   },
@@ -815,12 +777,6 @@
   "componentUninstall": {
     "message": "卸载 Anagram"
   },
-  "componentManage": {
-    "message": "管理"
-  },
-  "componentAdvanced": {
-    "message": "高级"
-  },
   "componentDeleteConfirm": {
     "message": "这将从 $2 删除 $1 的模型文件，之后可以重新下载。"
   },
@@ -830,11 +786,8 @@
   "buttonCancel": {
     "message": "取消"
   },
-  "componentStorage": {
-    "message": "磁盘上的模型文件：$1"
-  },
   "componentIdleSetting": {
-    "message": "空闲多久后卸载模型"
+    "message": "空闲后卸载"
   },
   "componentIdleMinutes_one": {
     "message": "$1 分钟"
@@ -850,42 +803,6 @@
   },
   "componentReloadExtension": {
     "message": "重新加载扩展"
-  },
-  "runtimeTitle": {
-    "message": "运行配置"
-  },
-  "runtimeActive": {
-    "message": "使用中"
-  },
-  "runtimeRecommended": {
-    "message": "推荐"
-  },
-  "runtimeFastest": {
-    "message": "最快"
-  },
-  "runtimeExperimental": {
-    "message": "实验性"
-  },
-  "runtimeUnavailable": {
-    "message": "不可用"
-  },
-  "runtimeMeasured": {
-    "message": "$1 ms · $2 段/秒 · $3"
-  },
-  "runtimeApply": {
-    "message": "使用所选"
-  },
-  "runtimeBenchmark": {
-    "message": "运行基准测试"
-  },
-  "runtimeProgress": {
-    "message": "基准测试中 · 已完成 $1 / $2"
-  },
-  "runtimeBenchmarking": {
-    "message": "正在进行基准测试…"
-  },
-  "runtimeFailed": {
-    "message": "基准测试未能完成。"
   },
   "popupTitle": {
     "message": "Anagram"
@@ -924,16 +841,16 @@
     "message": "$1 段存疑"
   },
   "popupAnalyzed_one": {
-    "message": "已分析 $1 段 · "
+    "message": "已分析 $1 段"
   },
   "popupAnalyzed_other": {
-    "message": "已分析 $1 段 · "
+    "message": "已分析 $1 段"
   },
   "popupNotEnglish": {
-    "message": " · $1 段非英文"
+    "message": "$1 段非英文"
   },
   "popupUnavailable": {
-    "message": " · $1 段不可用"
+    "message": "$1 段不可用"
   },
   "popupOff": {
     "message": "Anagram 已在此页关闭。"
@@ -989,65 +906,23 @@
   "optUnderlineOff": {
     "message": "关闭"
   },
-  "optReading": {
-    "message": "阅读"
-  },
-  "optScope": {
-    "message": "范围"
-  },
-  "optScopeWholePage": {
-    "message": "整个页面"
-  },
-  "optScopeMain": {
-    "message": "仅正文"
-  },
   "optMerge": {
     "message": "合并短段落"
   },
   "optMinWords": {
-    "message": "最短长度"
+    "message": "最少词数"
   },
   "optMinWordsValue": {
     "message": "$1 个词"
   },
-  "optMinWordsNote": {
-    "message": "模型的训练文本都在 75 个词以上；更短的文本可靠性较低，结果中会注明。"
-  },
   "optAutoOpenPdfs": {
-    "message": "在 Anagram 中打开 PDF"
-  },
-  "optFileAccess": {
-    "message": "本地 PDF 访问"
-  },
-  "optFileAccessReady": {
-    "message": "已允许"
-  },
-  "optFileAccessBrowserRequired": {
-    "message": "请在浏览器的扩展设置中开启文件网址访问权限。"
-  },
-  "optFileAccessNotGranted": {
-    "message": "未允许"
-  },
-  "optFileAccessEnable": {
-    "message": "允许"
-  },
-  "optFileAccessManage": {
-    "message": "浏览器设置"
+    "message": "自动在 Anagram 中打开 PDF"
   },
   "optFileAccessFirefoxInstructions": {
     "message": "在 Firefox 中打开 about:addons，选择 Anagram → 权限与数据，然后允许访问本地文件。"
   },
-  "optOpenReader": {
-    "message": "打开 PDF 阅读器"
-  },
   "optSites": {
     "message": "网站"
-  },
-  "accessLabel": {
-    "message": "网站访问权限"
-  },
-  "accessAll": {
-    "message": "所有网站"
   },
   "accessNone": {
     "message": "无"
@@ -1103,9 +978,6 @@
   "optAlreadyCovered": {
     "message": "已被 $1 的规则覆盖。"
   },
-  "optPrivacy": {
-    "message": "隐私"
-  },
   "optCacheMode": {
     "message": "结果缓存"
   },
@@ -1116,7 +988,7 @@
     "message": "仅内存"
   },
   "optClearCache": {
-    "message": "清除缓存的结果"
+    "message": "清除"
   },
   "optCacheEntries_one": {
     "message": "$1 条"
@@ -1130,25 +1002,67 @@
   "optSaveFailed": {
     "message": "更改未能保存。"
   },
-  "optReportText": {
-    "message": "复制的报告包含段落原文"
-  },
-  "optReportUrl": {
-    "message": "复制的报告包含页面标题和网址"
-  },
-  "optDebug": {
-    "message": "调试日志"
-  },
   "optPrivacyPolicy": {
     "message": "隐私政策"
   },
-  "optShortcuts": {
-    "message": "快捷键"
+  "listSeparator": {
+    "message": "，"
   },
-  "optRightClick": {
-    "message": "右键"
+  "onbTagline": {
+    "message": "阅读时标出 AI 写的段落。一切都在这台电脑上运行。"
   },
-  "optRebind": {
-    "message": "可在 $1 修改。"
+  "onbWhere": {
+    "message": "阅读范围"
+  },
+  "onbVerdictTitle": {
+    "message": "怎么看结果"
+  },
+  "onbConfidence": {
+    "message": "圆点饱满表示这个结论大概率正确；细环表示 Anagram 拿不准。"
+  },
+  "onbModelNotice": {
+    "message": "Anagram 使用 Pangram 开源的 EditLens 模型（CC BY-NC-SA 4.0）。不得用于商业用途，也不应据此在教育或职业场景中执行任何 AI 使用政策。"
+  },
+  "accessHint": {
+    "message": "或点工具栏图标，按网站单独开启"
+  },
+  "accessAllowed": {
+    "message": "已允许所有网站"
+  },
+  "optLocalPdfs": {
+    "message": "本机上的 PDF"
+  },
+  "optFileAccessTurnOn": {
+    "message": "去开启"
+  },
+  "engineKeepOpen": {
+    "message": "下载完成前请保持浏览器开启。"
+  },
+  "engineWordsBrowser": {
+    "message": "在浏览器中"
+  },
+  "engineWordsGpu": {
+    "message": "使用显卡"
+  },
+  "engineWordsCpu": {
+    "message": "使用处理器"
+  },
+  "optMinWordsHint": {
+    "message": "少于 75 个词可靠性较低。"
+  },
+  "optEngine": {
+    "message": "引擎"
+  },
+  "optPdfs": {
+    "message": "PDF"
+  },
+  "optLength": {
+    "message": "长度"
+  },
+  "optCache": {
+    "message": "缓存"
+  },
+  "popupPdfReader": {
+    "message": "PDF 阅读器"
   }
 }

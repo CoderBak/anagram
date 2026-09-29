@@ -10,12 +10,13 @@
 // the local engine asks the browser for Native Messaging first, in the click; a refusal
 // comes back to the choice with a line saying so.
 //
-// In Settings a row under the panel switches engines both ways, and offers to delete what the
-// in-browser engine left on disk once the local engine is in use. On the setup page, while
-// the local engine keeps crashing, the panel offers the in-browser engine beside Retry.
+// In Settings the panel's own line of controls carries the switch between engines, both ways,
+// and offers to delete what the in-browser engine left on disk once the local engine is in
+// use. On the setup page, while the local engine keeps crashing, the panel offers the
+// in-browser engine beside Retry.
 import { browser } from "#imports";
 import { t, type MessageKey } from "../i18n";
-import { MEASURED, TIERS, decide, type Decision } from "../device";
+import { TIERS, decide, type Decision } from "../device";
 import { chooseEngine, readEngine, requestNative, type Engine } from "../backend/engineChoice";
 import { ACTIONS } from "../messaging/protocol";
 import { storedModelBytes } from "../webengine/autoSetup";
@@ -23,15 +24,15 @@ import type { ComponentReply } from "../backend/nativeClient";
 import { readDeviceInputs } from "./deviceInputs";
 import * as nativePanel from "./componentSettings";
 import * as inBrowserPanel from "./inBrowserEngine";
-import { formatSize } from "./inBrowserEngine";
+import { formatSize } from "./size";
 import "./engineCard.css";
 
 export interface EngineCardOptions {
-  /** The card's title, renamed for what it shows. */
-  title: HTMLElement;
+  /** The card's title, renamed for what it shows; Settings has none. */
+  title?: HTMLElement;
   /** Where the engine's panel goes (#componentSettings). */
   panelHost: HTMLElement;
-  /** Settings: the switch row. The setup page: the crash fallback beside Retry. */
+  /** Settings: the switch beside the panel's controls. The setup page: the crash fallback beside Retry. */
   settings: boolean;
   /** Every status the panel reads, with the engine it belongs to; null while there is none. */
   onUpdate?: (engine: Engine | null, reply: ComponentReply | null) => void;
@@ -69,7 +70,6 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
 
   // ---- the choice -----------------------------------------------------------------------
   const choice = element("div", undefined, "engine-choice"); choice.hidden = true;
-  const intro = element("p", t("engineChooseIntro"), "engine-choice-intro");
   const cards = element("div", undefined, "engine-choice-cards");
   const oneClick = element("section", undefined, "engine-choice-card"); oneClick.dataset.engine = "inbrowser"; oneClick.dataset.recommended = "";
   const oneClickTitle = element("h3", t("engineOneClick"));
@@ -81,8 +81,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   oneClickButton.id = "engine-pick-inbrowser";
   oneClickButton.setAttribute("aria-describedby", "engine-choice-inbrowser");
   oneClick.setAttribute("aria-labelledby", oneClickTitle.id);
-  const oneClickCost = element("p", t("engineOneClickCost", String(MEASURED.inbrowser.ms), String(MEASURED.inbrowser.gb)), "engine-cost");
-  oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")), oneClickCost, oneClickTight, oneClickButton);
+  oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")), oneClickTight, oneClickButton);
   const terminal = element("section", undefined, "engine-choice-card"); terminal.dataset.engine = "native";
   const terminalTitle = element("h3", t("engineTerminal")); terminalTitle.id = "engine-choice-native";
   const terminalWhat = element("p", t("engineTerminalWhat"));
@@ -90,30 +89,25 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   terminalButton.id = "engine-pick-native";
   terminalButton.setAttribute("aria-describedby", "engine-choice-native");
   terminal.setAttribute("aria-labelledby", terminalTitle.id);
-  const terminalCost = element("p", t("engineTerminalCost", String(MEASURED.native.ms), String(MEASURED.native.gb)), "engine-cost");
-  terminal.append(terminalTitle, terminalWhat, terminalCost, terminalButton);
+  terminal.append(terminalTitle, terminalWhat, terminalButton);
   cards.append(oneClick, terminal);
-  const measured = element("p", t("engineMeasured"), "engine-note");
   const refused = element("p", "", "engine-error"); refused.setAttribute("role", "alert"); refused.hidden = true;
-  choice.append(intro, cards, measured, refused);
+  choice.append(cards, refused);
 
   const cannot = element("p", "", "engine-cannot"); cannot.hidden = true;
   const tight = element("p", t("engineTight"), "engine-note engine-tight"); tight.hidden = true;
 
   // ---- Settings: switching, and what the in-browser engine left behind ------------------------
-  const switchRow = element("div", undefined, "engine-switch"); switchRow.hidden = true;
-  const leftover = element("p", "", "engine-leftover"); leftover.hidden = true;
-  const deleteLeftover = button("engineLeftoverDelete", "outline"); deleteLeftover.id = "engine-delete-leftover"; deleteLeftover.dataset.size = "sm"; deleteLeftover.hidden = true;
+  // Both go into the panel's line of controls (`extra`), so they sit beside its own.
+  const deleteLeftover = button("engineLeftoverDelete", "outline", ""); deleteLeftover.id = "engine-delete-leftover"; deleteLeftover.dataset.size = "sm"; deleteLeftover.hidden = true;
   const switchButton = button("engineSwitchToInBrowser", "outline"); switchButton.id = "engine-switch"; switchButton.dataset.size = "sm"; switchButton.hidden = true;
-  const switchActions = element("div", undefined, "component-actions"); switchActions.append(switchButton, deleteLeftover);
   const switchError = element("p", "", "engine-error"); switchError.setAttribute("role", "alert"); switchError.hidden = true;
-  switchRow.append(leftover, switchActions, switchError);
 
   // The setup page's crash fallback, handed to the local engine's panel to show beside Retry.
   const fallback = button("engineSwitchToInBrowser", "outline"); fallback.id = "engine-crash-switch"; fallback.dataset.size = "sm";
 
   panelHost.before(choice, cannot);
-  panelHost.after(tight, switchRow);
+  panelHost.after(tight, switchError);
 
   let engine: Engine | null = null;
   let decision: Decision | null = null;
@@ -122,7 +116,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   let panel: { refresh(): void; destroy(): void } | undefined;
   let busy = false;
 
-  const setTitle = (key: MessageKey): void => { title.textContent = t(key); title.dataset.i18n = key; };
+  const setTitle = (key: MessageKey): void => { if (title) { title.textContent = t(key); title.dataset.i18n = key; } };
 
   /** What this device can run, read once. */
   let deciding: Promise<Decision> | null = null;
@@ -140,7 +134,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply) => {
       if (reply.kind === "ok" && next === "inbrowser") { const before = engineTier; engineTier = reply.snapshot.tier ?? null; if (engineTier !== before) paintTight(); }
       options.onUpdate?.(next, reply);
-    }, { crashAction });
+    }, { crashAction, settings, extra: settings ? [switchButton, deleteLeftover] : [] });
     paintTight();
     void paintSwitch();
   }
@@ -158,7 +152,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     engine = null;
     panel?.destroy(); panel = undefined;
     panelHost.replaceChildren(); panelHost.hidden = true;
-    switchRow.hidden = tight.hidden = true;
+    tight.hidden = switchError.hidden = true;
     if (d.offer === "cannot-run") {
       setTitle("engineCannotTitle");
       cannot.textContent = t("engineCannotRun");
@@ -166,14 +160,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     } else {
       // Where the model does not fit but the local engine installs: one way to run it.
       setTitle(d.offer === "terminal-only" ? "componentTitle" : "engineChooseTitle");
-      intro.hidden = d.offer !== "choice";
       cannot.hidden = true; choice.hidden = false;
       oneClick.hidden = d.offer === "terminal-only";
       terminal.hidden = d.offer === "auto-inbrowser";
-      // The figures are the M4's: shown on Apple Silicon only, never as a promise elsewhere.
-      const measuredHere = d.machine === "apple-silicon";
-      oneClickCost.hidden = terminalCost.hidden = !measuredHere;
-      measured.hidden = d.offer === "terminal-only" || !measuredHere;
       // The lighter model says so where it is offered; FP32 on 4 GB says the computer may slow down.
       const bytes = TIERS.find((tier) => tier.id === d.tier)?.bytes ?? TIERS[0].bytes;
       oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
@@ -217,7 +206,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   }
 
   async function paintSwitch(): Promise<void> {
-    if (!settings || !engine) { switchRow.hidden = true; return; }
+    if (!settings || !engine) { switchButton.hidden = deleteLeftover.hidden = true; return; }
     const d = await device();
     const current = engine;
     // To the in-browser engine where the device runs it; to the local one where it installs.
@@ -226,9 +215,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     switchButton.hidden = !offered;
     const bytes = current === "native" ? await storedModelBytes() : 0;
     if (engine !== current) return;
-    leftover.hidden = deleteLeftover.hidden = bytes <= 0;
-    leftover.textContent = bytes > 0 ? t("engineLeftover", formatSize(bytes)) : "";
-    switchRow.hidden = switchButton.hidden && leftover.hidden;
+    deleteLeftover.hidden = bytes <= 0;
+    deleteLeftover.textContent = bytes > 0 ? t("engineLeftoverDelete", formatSize(bytes)) : "";
   }
 
   oneClickButton.addEventListener("click", () => void pickInBrowser("now"));

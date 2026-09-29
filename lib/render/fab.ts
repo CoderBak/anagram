@@ -1099,7 +1099,7 @@ export function createFab(opts: {
       ];
       const cov = document.createElement("div");
       cov.className = "pcov";
-      cov.textContent = parts.join(" · ");
+      cov.textContent = parts.join(", ");
       panelEl.appendChild(cov);
     }
 

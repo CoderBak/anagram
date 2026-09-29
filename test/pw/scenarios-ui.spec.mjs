@@ -2,7 +2,7 @@
 // the screen and out of an overflow:hidden box, the chip in RTL, small, large, tight and
 // vertical text, shadow DOM and slots, copying, a trailing link, dark sections, duplicates,
 // KaTeX, the top layer (a modal dialog, a site overlay), the ball and its panel; the
-// main-content scope's Defuddle chunk; the copied report's legend; and the host going away
+// copied report's legend; and the host going away
 // and coming back. Every test fails on an error the extension writes to the page's console.
 //
 //   npx playwright test scenarios-ui
@@ -348,24 +348,14 @@ test("the ball: dragged, it snaps to the left edge; left alone, it tucks half aw
   await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover" }).toBe(false);
 });
 
-test("the main-content scope loads the Defuddle chunk on demand, and the page is still read", async ({ page, fixturesUrl, storage }) => {
-  await storage.set({ debug: true, analysisScope: "main" });
-  const logs = [];
-  page.on("console", (m) => logs.push(m.text()));
-  await page.goto(fixturesUrl, { waitUntil: "load" });
-  const chunk = "main-content scope loads the Defuddle vendor chunk on demand";
-  await expect.poll(() => logs.find((l) => /Defuddle chunk (loaded|failed)/.test(l)) ?? null, { message: chunk }).toMatch(/Defuddle chunk loaded$/);
-  await expect(settledChips(page).first(), chunk).toBeAttached();
-});
-
 test("the copied report gives bare 0-1 scores, the legend that explains them and the caveat that travels with them", async ({ fixtures: page, report }) => {
   const text = await report(page);
   const legend = "copied report: bare 0-1 scores plus the legend that explains them and the caveat that travels with them";
   expect.soft(text, legend).toMatch(/^# Anagram analysis report/);
   expect.soft(text, legend).not.toContain("% AI");
-  // Every flagged entry opens "1. **AI-generated · .96** (…", never with a percentage.
+  // Every flagged entry opens "1. **AI-generated, .96** (…", never with a percentage.
   const entries = text.split("\n").filter((l) => /^\d+\. \*\*/.test(l));
-  expect.soft(entries.filter((l) => !/^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.test(l)), legend).toEqual([]);
+  expect.soft(entries.filter((l) => !/^\d+\. \*\*[^*]+, (\.\d\d|1\.0)\*\*/.test(l)), legend).toEqual([]);
   expect.soft(text, legend).toContain("not the fraction of AI-written words");
   expect.soft(text, legend).toContain("Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.");
 });

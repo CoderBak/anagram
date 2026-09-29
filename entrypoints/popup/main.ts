@@ -41,6 +41,9 @@ const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
 const switchEngineEl = document.getElementById("switchEngine") as HTMLButtonElement;
+const keepOpenEl = document.getElementById("keepOpen") as HTMLElement;
+const openReaderEl = document.getElementById("openReader") as HTMLButtonElement;
+const analyzeTextEl = document.getElementById("analyzeText") as HTMLButtonElement;
 // The one segmented control left is a Basecoat tab list (buttons with aria-selected).
 const displayModeEls = segButtons("displayMode");
 
@@ -129,12 +132,11 @@ function countsLine(state: TabState): Node[] {
   // the language gate refused — both are counted apart from the analyzed number.
   const unavailable = state.unavailable ?? 0;
   const analyzed = state.scored - (state.unsupported ?? 0) - unavailable;
-  return [
-    document.createTextNode(tn("popupAnalyzed", analyzed)),
-    flaggedEl,
-    document.createTextNode(state.unsupported ? t("popupNotEnglish", state.unsupported) : ""),
-    document.createTextNode(unavailable ? t("popupUnavailable", unavailable) : ""),
-  ];
+  const sep = (): Text => document.createTextNode(t("listSeparator"));
+  const out: Node[] = [document.createTextNode(tn("popupAnalyzed", analyzed)), sep(), flaggedEl];
+  if (state.unsupported) out.push(sep(), document.createTextNode(t("popupNotEnglish", state.unsupported)));
+  if (unavailable) out.push(sep(), document.createTextNode(t("popupUnavailable", unavailable)));
+  return out;
 }
 
 /** The status line and the button, from the facts as they stand. */
@@ -186,6 +188,10 @@ function paint(): void {
   // On a PDF tab the button says the whole of it; an empty line above it would only be a
   // gap where a sentence used to be.
   statusEl.hidden = lead.status === "none";
+  // While the in-browser engine's model downloads, the browser has to stay open.
+  keepOpenEl.hidden = !(lead.status === "setup" && facts.setup?.state === "downloading");
+  // The main button already opens the reader empty on these tabs.
+  openReaderEl.hidden = lead.action === "openReader";
 
   actionEl.textContent = t(lead.action === "setup" ? setupLabel(facts.setup!) : ACTION_LABEL[lead.action]);
   actionEl.disabled = false;
@@ -209,7 +215,7 @@ function paintModel(s: BackendStatus | undefined): void {
   backendEl.hidden = !up;
   if (!up || !s) { backendEl.textContent = ""; return; }
   backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
-    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
+    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (s.server.device ? ", " + s.server.device : ""));
 }
 
 /** Is the local engine ready? If not, the action opens setup and Settings. */
@@ -442,6 +448,15 @@ async function init(): Promise<void> {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
       window.close();
     });
+  });
+
+  openReaderEl.addEventListener("click", () => {
+    openEmptyReader();
+    window.close();
+  });
+  analyzeTextEl.addEventListener("click", () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/paste.html" as PublicPath) });
+    window.close();
   });
 
   gearEl.addEventListener("click", () => {

@@ -4,49 +4,37 @@
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title data-i18n="onbTitle">Set up Anagram</title>
+    <title>Anagram</title>
     <style>
-      /* Layout + the in-page chip demo; colours, type and controls come from Basecoat (Vega). */
+      /* Layout only; colours, type and controls come from Basecoat (Vega). */
       :root { --d-none: #a3a3a3; }
       html.dark { --d-none: #9aa3ad; }
       /* .sc takes its colour from --s on the one scale; main.ts installs the rule. */
-      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 15px; line-height: 1.55; }
-      .page { max-width: 720px; margin: 0 auto; padding: 22px 24px 32px; }
-      header.hdr { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
-      header.hdr img { width: 48px; height: 48px; border-radius: 12px; }
-      header.hdr h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
-      header.hdr .ver { margin-top: 4px; font-size: 13px; color: var(--muted-foreground); }
-      .stack { display: flex; flex-direction: column; gap: 12px; }
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+      .page { max-width: 680px; margin: 0 auto; padding: 20px 20px 24px; }
+      header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+      header.hdr img { width: 44px; height: 44px; border-radius: 11px; }
+      header.hdr h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+      header.hdr .tag { margin: 3px 0 0; font-size: 14px; color: var(--muted-foreground); }
+      header.hdr .ver { margin-inline-start: auto; align-self: flex-start; font-size: 12px; color: var(--muted-foreground); }
+      .stack { display: flex; flex-direction: column; gap: 10px; }
       .card > section { display: flex; flex-direction: column; gap: 10px; }
-      .ready { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 4px; }
-      .ready p { margin: 0; color: var(--muted-foreground); font-size: 14px; }
-      .ready .once { color: var(--muted-foreground); font-size: 13.5px; }
 
-      /* The demo: four fragments underlined and chipped exactly like the in-page overlay. */
-      .demo { padding: 2px 0 0; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 16.5px; line-height: 1.62; }
-      .demo-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; }
-      .frag { padding: 0 2px; }
-      .u { text-decoration: underline solid 1.5px var(--c); text-decoration-skip-ink: none; text-underline-offset: 3px; }
-      .chip {
-        display: inline-flex; align-items: center; gap: 0.42em; padding: 0.3em 0.6em 0.3em 0.5em;
-        border-radius: 6px; border: 1px solid var(--border); background: var(--card);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-        font: 600 11px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-        letter-spacing: 0.01em; white-space: nowrap; vertical-align: middle;
-      }
-      .chip { color: var(--foreground); }
-      .chip .cdot { width: 0.56em; height: 0.56em; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in oklab, var(--c) 20%, transparent); }
-
-      .bands { display: flex; flex-wrap: wrap; gap: 7px; }
-      .bands .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-      .bands .sc .dot { background: var(--c); } .b-none .dot { background: var(--d-none); }
-      .b-lang .dot { background: var(--d-none); box-shadow: inset 0 0 0 2px var(--card); }
-
-      .tip { margin: 0; font-size: 13.5px; color: var(--muted-foreground); }
-      .links { margin: 4px 0 0; font-size: 14px; color: var(--muted-foreground); }
+      /* Reading a verdict: the four words with their dots, the scale, what the dot says. */
+      .words { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+      .words .dot, .conf .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+      .sc .dot { background: var(--c); }
+      .grad { height: 10px; border-radius: 999px; }
+      .conf { display: flex; align-items: center; gap: 8px; margin: 0; }
+      .conf .dots { display: inline-flex; gap: 4px; flex: none; }
+      .conf .dot { width: 12px; height: 12px; }
+      .conf .full { background: var(--c); }
+      .conf .thin { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c); }
+      .conf .sc { --s: .667; }
+      .note, .tip, .conf { font-size: 13px; color: var(--muted-foreground); }
+      .note, .tip { margin: 0; }
+      .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 2px 0 0; font-size: 13px; }
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
-      footer.foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
-      footer.foot a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
     </style>
   </head>
   <body>
@@ -54,64 +42,49 @@
       <header class="hdr">
         <img src="/icons/icon-128.png" alt="" />
         <div>
-          <h1 data-i18n="onbTitle">Set up Anagram</h1>
-          <div class="ver" id="version"></div>
+          <h1>Anagram</h1>
+          <p class="tag" data-i18n="onbTagline">Marks AI-written paragraphs as you read. Everything runs on this computer.</p>
         </div>
+        <span class="ver" id="version"></span>
       </header>
 
       <div class="stack">
-        <section class="card" data-size="sm">
-          <header><h2 id="engineTitle" data-i18n="engineChooseTitle">Choose how Anagram runs</h2></header>
+        <section class="card" data-size="sm" id="whereCard" aria-labelledby="whereTitle">
+          <header><h2 id="whereTitle" data-i18n="onbWhere">Where it reads</h2></header>
           <section>
-            <div id="componentSettings"></div>
-            <div class="ready" id="ready" hidden>
-              <button type="button" class="btn" data-size="sm" id="access-grant" data-i18n="accessAllowAll">Allow all sites</button>
-              <span class="once" id="access-once" data-i18n="onbAccessOnce">or use Analyze this page from the toolbar icon</span>
-              <p id="go" hidden data-i18n="onbGo">Open any article and a chip appears after each paragraph.</p>
-            </div>
+            <div class="rows" id="where"></div>
           </section>
         </section>
 
-        <section class="card" data-size="sm">
-          <header><h2 data-i18n="onbHowItReads">How it reads</h2></header>
+        <section class="card" data-size="sm" id="engineCard" aria-labelledby="engineTitle">
+          <header><h2 id="engineTitle" data-i18n="engineChooseTitle">Choose how Anagram runs</h2></header>
           <section>
-            <div class="demo">
-              <div class="demo-line">
-                <span class="frag u sc" style="--s: .04">The quick brown fox jumps over the lazy dog.</span>
-                <span class="chip sc" style="--s: .04"><span class="cdot"></span>.04</span>
-              </div>
-              <div class="demo-line">
-                <span class="frag u sc" style="--s: .38">moreover, this underscores a broader point&hellip;</span>
-                <span class="chip sc" style="--s: .38"><span class="cdot"></span>.38 &times;2</span>
-              </div>
-              <div class="demo-line">
-                <span class="frag u sc" style="--s: .71">The kitchen window faced a brick wall six feet away&hellip;</span>
-                <span class="chip sc" style="--s: .71"><span class="cdot"></span>.71</span>
-              </div>
-              <div class="demo-line">
-                <span class="frag u sc" style="--s: .96">Delving into the rich tapestry of interconnected factors&hellip;</span>
-                <span class="chip sc" style="--s: .96"><span class="cdot"></span>.96</span>
-              </div>
-            </div>
-            <div class="bands">
+            <div id="componentSettings"></div>
+          </section>
+        </section>
+
+        <section class="card" data-size="sm" id="verdictCard" aria-labelledby="verdictTitle">
+          <header><h2 id="verdictTitle" data-i18n="onbVerdictTitle">Reading a verdict</h2></header>
+          <section>
+            <div class="words">
               <span class="badge sc" style="--s: 0" data-variant="outline"><span class="dot"></span><span data-i18n="bandHuman">Human</span></span>
               <span class="badge sc" style="--s: .333" data-variant="outline"><span class="dot"></span><span data-i18n="bandLight">Lightly edited</span></span>
               <span class="badge sc" style="--s: .667" data-variant="outline"><span class="dot"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
               <span class="badge sc" style="--s: 1" data-variant="outline"><span class="dot"></span><span data-i18n="bandAi">AI-generated</span></span>
-              <span class="badge b-none" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnavailable">Unavailable</span></span>
-              <span class="badge b-lang" data-variant="outline"><span class="dot"></span><span data-i18n="bandUnsupported">Unsupported language</span></span>
             </div>
-            <p class="tip" data-i18n="onbArxivTip">Tip: most arXiv papers also have an HTML version at arxiv.org/html/. Its paragraphs and formulas are marked up, so Anagram reads it most precisely. PDFs are read too.</p>
+            <div class="grad" aria-hidden="true"></div>
+            <p class="conf"><span class="dots sc" aria-hidden="true"><span class="dot full"></span><span class="dot thin"></span></span><span data-i18n="onbConfidence">A full dot means the word is likely right; a thin ring means Anagram is unsure.</span></p>
+            <p class="note" data-i18n="onbModelNotice">Anagram uses Pangram's open EditLens model (CC BY-NC-SA 4.0). Commercial use is not permitted. It should not be used to enforce any AI-usage policy in an educational or professional setting.</p>
+            <p class="tip" data-i18n="onbArxivTip">Tip: arXiv papers read most precisely in their HTML version, at arxiv.org/html/.</p>
           </section>
         </section>
 
-        <p class="links">
-          <a href="/options.html" data-i18n="onbOpenSettings">Open Settings</a> ·
+        <nav class="links">
+          <a href="/options.html" data-i18n="onbOpenSettings">Open Settings</a>
           <a id="guide" href="https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md" target="_blank" rel="noopener noreferrer" data-i18n="onbUserGuide">User guide</a>
-        </p>
+          <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a>
+        </nav>
       </div>
-
-      <footer class="foot"><span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span> · <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a></footer>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

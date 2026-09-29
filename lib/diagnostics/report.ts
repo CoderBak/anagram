@@ -48,7 +48,6 @@ export interface DiagnosticsEnv {
    *  they differ on a zh-TW browser, and that difference has been a bug report before. */
   uiLanguage: string;
   messageLocale: string;
-  analysisScope: string;
   mergeShorts: boolean;
   /** The minimum length in words (Settings). */
   minWords: number;
@@ -180,8 +179,7 @@ function frameLines(env: DiagnosticsEnv): string[] {
 /**
  * The smallest ancestor of the click that still holds a body of text — a post, a card, an
  * article — so the fixture is of the thing that went wrong rather than of the whole page.
- * With no click to go on, the page's own main region answers; Defuddle is not loaded
- * here, so that is the text-mass probe's answer rather than the precision scope's.
+ * With no click to go on, the page's own main region answers, by the text-mass probe.
  */
 function regionFor(target: Element | null): { el: Element; why: string } {
   if (target && target.isConnected) {
@@ -221,7 +219,7 @@ export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
       `${document.getElementsByTagName("*").length} elements · hydration marker: ${hydrationMarker()}`,
   );
   lines.push(
-    `- scope \`${env.analysisScope}\` · merge short paragraphs ${env.mergeShorts ? "on" : "off"} · minimum ${env.minWords} words · show \`${env.displayMode}\``,
+    `- merge short paragraphs ${env.mergeShorts ? "on" : "off"} · minimum ${env.minWords} words · show \`${env.displayMode}\``,
   );
   lines.push(`- ${stateLine(env)}`);
   lines.push(`- ${daemonLine(env.daemon)}`);

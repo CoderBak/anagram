@@ -153,7 +153,7 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
     const items = await page.locator("#anagram-fab .panel.open .pitem").count();
     const text = await report(page);
     expect(text).toMatch(/^# Anagram analysis report/);
-    expect(items).toBe(Number(text.match(/· Flagged: (\d+)/)?.[1]));
+    expect(items).toBe(Number(text.match(/, Flagged: (\d+)/)?.[1]));
     // Reports omit titles and URLs unless the user opts in: the PDF is named by its scope note.
     expect(text).toContain("not a complete document assessment");
   }, panel).toPass({ timeout: 30_000 });

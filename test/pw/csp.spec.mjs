@@ -220,9 +220,9 @@ test("WebSocket, sendBeacon, EventSource and XHR are refused the same way fetch 
 // to that content script, so not even those answer a page that guesses the extension id.
 //
 // That they still load for the content script is not measured here but next door:
-// test/pw/diagnostics.spec.mjs loads the diagnostics chunk, the main-content scenarios
-// load Defuddle, the surface scenarios the surfaces chunk (test/pw/scenarios-surfaces.spec.mjs),
-// and DOMPurify goes through the same lib/lazy.ts call as all of them.
+// test/pw/diagnostics.spec.mjs loads the diagnostics chunk, the surface scenarios the
+// surfaces chunk (test/pw/scenarios-surfaces.spec.mjs), and DOMPurify goes through the same
+// lib/lazy.ts call as all of them.
 test("a web page can load nothing of this extension, the lazy chunks included", async ({ context, extension, files }) => {
   const declared = manifest().web_accessible_resources;
   const web = await context.newPage();

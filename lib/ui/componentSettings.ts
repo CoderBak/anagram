@@ -1,11 +1,14 @@
 // The local-engine panel shared by the setup page and Settings: one status line, a
-// progress bar while models download, one contextual button, and two folds (Manage,
-// Advanced). Mounting only reads status; downloads and benchmarks belong to the engine.
+// progress bar while models download, one contextual button, and in Settings the engine's
+// controls in one line (update, stop, delete model files, uninstall, idle unload). Mounting
+// only reads status; downloads belong to the engine. Its configuration list and benchmark
+// have no place here: setup never asks for one and the engine picks its own.
 import { browser } from "#imports";
 import { t, tn, messageLocale, type MessageKey } from "../i18n";
 import { requestComponent, finishNativeUninstall, type ComponentSnapshot } from "../backend/nativeClient";
 import { runtimeReady } from "../backend/runtimeClient";
-import { mountRuntimeSettings, formatBytes } from "./runtimeSettings";
+import { formatSize } from "./size";
+import { progressBar } from "./progressBar";
 import { installationCommand } from "./installationCommand";
 import { ACTIONS, type BackendStatus } from "../messaging/protocol";
 import "./componentSettings.css";
@@ -14,7 +17,7 @@ export type ComponentReply = Awaited<ReturnType<typeof requestComponent>>;
 type Operation = "models.download" | "models.pause" | "models.delete" | "engine.stop" | "engine.resume" | "engine.settings" | "component.update" | "component.uninstall";
 const stateKeys: Record<ComponentSnapshot["state"], MessageKey> = {
   starting: "componentStarting", needs_models: "componentNeedsModels", downloading: "componentDownloading",
-  paused: "componentPaused", loading: "componentStarting", benchmarking: "runtimeBenchmarking",
+  paused: "componentPaused", loading: "componentStarting", benchmarking: "componentStarting",
   ready: "componentReady", idle: "componentReady", stopped: "componentStopped",
   updating: "componentUpdating", uninstalling: "componentRemoving", error: "componentNeedsAttention",
 };
@@ -54,7 +57,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
 
 /** `crashAction`: a button shown beside Retry while the engine keeps crashing (the setup
  *  page's switch to the in-browser engine, lib/ui/engineCard.ts). */
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, { crashAction }: { crashAction?: HTMLButtonElement } = {}): { refresh(): void; destroy(): void } {
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, { crashAction, settings: inSettings = false, extra = [] }: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
   host.classList.add("component-settings");
   delete host.dataset.engine;
   const makeButton = (key: MessageKey, handler: () => void, variant = "outline"): HTMLButtonElement => {
@@ -86,12 +89,13 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const installActions = element("div", undefined, "component-actions"); installActions.append(copy, script);
   install.append(intro, releaseNotice, commandBox, installActions, copied);
 
-  const progress = element("progress"); progress.hidden = true; progress.setAttribute("aria-label", t("componentDownloading"));
+  const bar = progressBar(); bar.el.hidden = true;
+  const percent = element("span", "", "engine-percent"); percent.hidden = true;
+  const progressText = element("p", undefined, "engine-progress"); progressText.hidden = true;
   const error = element("p", undefined, "component-error"); error.setAttribute("role", "alert"); error.hidden = true;
-  const details = element("details", undefined, "component-details"); details.hidden = true;
-  const detailsText = element("pre"); details.append(element("summary", t("componentDetails")), detailsText);
+  const details = element("p", undefined, "component-details"); details.hidden = true;
 
-  // The one contextual button, and the receipt-flow button after an uninstall.
+  // The one contextual button, and the receipt-flow button after an uninstall, beside the bar.
   const actions = element("div", undefined, "component-actions");
   let primaryOp: Operation | "status" | "retry" | undefined;
   const primary = makeButton("panelRetry", () => {
@@ -102,29 +106,23 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   primary.id = "component-primary"; primary.hidden = true;
   const finishRemoval = makeButton("componentRemoveExtension", () => void finishUninstall()); finishRemoval.hidden = true;
   actions.append(primary, ...(crashAction ? [crashAction] : []), finishRemoval);
+  const barRow = element("div", undefined, "engine-bar-row"); barRow.append(bar.el, percent, actions);
 
-  const manage = element("details", undefined, "component-fold"); manage.id = "manage"; manage.hidden = true;
-  const storage = element("p");
-  const manageActions = element("div", undefined, "component-actions");
+  // Settings: the engine's controls in one line.
+  const controls = element("div", undefined, "component-inline"); controls.hidden = true;
   const update = makeButton("componentUpdate", () => run("component.update"));
   const stop = makeButton("componentStop", () => run("engine.stop"));
   const removeModels = makeButton("componentDeleteModels", () => confirm("models.delete"));
   const uninstall = makeButton("componentUninstall", () => confirm("component.uninstall"));
-  manageActions.append(update, stop, removeModels, uninstall);
-  manage.append(element("summary", t("componentManage")), storage, manageActions);
-
-  const advanced = element("details", undefined, "component-fold"); advanced.id = "advanced"; advanced.hidden = true;
-  const idleField = element("div", undefined, "field"); idleField.dataset.orientation = "horizontal"; idleField.hidden = true;
   const idleLabel = element("label", t("componentIdleSetting")); idleLabel.htmlFor = "idleUnload";
-  const idleSelect = element("select"); idleSelect.id = "idleUnload";
+  const idleSelect = element("select", undefined, "select"); idleSelect.id = "idleUnload";
   for (const seconds of [300, 60, 900, 0]) {
     const option = element("option", idleUnloadLabel(seconds));
     option.value = String(seconds); idleSelect.append(option);
   }
   idleSelect.addEventListener("change", () => run("engine.settings"));
-  idleField.append(idleLabel, idleSelect);
-  const runtimeHost = element("div"); runtimeHost.id = "runtimeSettings"; runtimeHost.hidden = true;
-  advanced.append(element("summary", t("componentAdvanced")), idleField, runtimeHost);
+  const idleField = element("span", undefined, "inline-field"); idleField.hidden = true; idleField.append(idleLabel, idleSelect);
+  controls.append(...extra, update, stop, removeModels, uninstall, idleField);
 
   const dialog = element("dialog", undefined, "component-dialog");
   const dialogTitle = element("h3"); dialogTitle.id = "component-confirm-title";
@@ -137,12 +135,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (op && snapshot && !pending && !componentBusy(snapshot)) run(op);
   });
   dialogActions.append(cancelConfirm, acceptConfirm); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, extensionUpdate, install, progress, error, details, actions, manage, advanced, dialog);
+  host.replaceChildren(summary, extensionUpdate, install, barRow, progressText, error, details, controls, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
-  let runtimePanel: ReturnType<typeof mountRuntimeSettings> | undefined;
   let destroyed = false, pending = false, everConnected = false, pausing = false, retryable = false;
   /** The worker gave up on an engine that kept dying while it scored (lib/backend/nativeTransport.ts):
    *  the component may say it is ready, and that is not the whole story. */
@@ -182,7 +179,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     confirming = op;
     const deleting = op === "models.delete";
     dialogTitle.textContent = t(deleting ? "componentDeleteModels" : "componentUninstall");
-    dialogText.textContent = t(deleting ? "componentDeleteConfirm" : "componentUninstallConfirm", formatBytes(snapshot.storage.models_bytes), snapshot.home);
+    dialogText.textContent = t(deleting ? "componentDeleteConfirm" : "componentUninstallConfirm", formatSize(snapshot.storage.models_bytes), snapshot.home);
     acceptConfirm.textContent = t(deleting ? "componentDeleteModels" : "componentUninstall");
     dialog.showModal(); cancelConfirm.focus();
   }
@@ -209,20 +206,17 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (action) { primary.textContent = t(action[0]); primaryOp = action[1]; }
     primary.disabled = pending || (primaryOp === "models.pause" && pausing);
     idleSelect.disabled = pending || busy || !s;
-    manage.hidden = advanced.hidden = !s || terminal;
     stop.hidden = !s || !["loading", "benchmarking", "ready", "idle"].includes(s.state);
+    update.hidden = removeModels.hidden = uninstall.hidden = !s;
     update.disabled = uninstall.disabled = pending || busy;
     removeModels.disabled = pending || busy || !s || s.storage.models_bytes === 0;
     stop.disabled = pending || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
     finishRemoval.hidden = !terminal; finishRemoval.disabled = removingExtension;
     if (crashAction) crashAction.hidden = !crashed || terminal;
-  }
-
-  function showRuntime(s?: ComponentSnapshot): void {
-    const show = !!s?.runtime && ["loading", "benchmarking", "ready", "idle", "error"].includes(s.state) && !completedUninstallReceipt;
-    runtimeHost.hidden = !show;
-    if (show && !runtimePanel) runtimePanel = mountRuntimeSettings(runtimeHost);
-    else if (!show && runtimePanel) { runtimePanel.destroy(); runtimePanel = undefined; runtimeHost.replaceChildren(); }
+    // Settings only: the controls in one line, with the engine switch beside them.
+    idleField.hidden = idleField.hidden || !s;
+    controls.hidden = !inSettings || terminal;
+    barRow.hidden = bar.el.hidden && primary.hidden && finishRemoval.hidden && !(crashAction && !crashAction.hidden);
   }
 
   function paint(reply: ComponentReply): void {
@@ -230,14 +224,15 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       snapshot = undefined;
       const inUse = reply.code === "busy";
       retryable = !inUse && (everConnected || reply.kind === "invalid" || !!actionError);
-      summary.textContent = t(scheduledCleanup || scheduledUpdate ? "componentSystemWindow" : awaitingUninstall ? "componentRemoving" : awaitingUpdate ? "componentUpdating" : inUse ? "componentInUse" : reply.kind === "invalid" || everConnected ? "componentNeedsAttention" : "componentNotInstalled");
+      const said = t(scheduledCleanup || scheduledUpdate ? "componentSystemWindow" : awaitingUninstall ? "componentRemoving" : awaitingUpdate ? "componentUpdating" : inUse ? "componentInUse" : reply.kind === "invalid" || everConnected ? "componentNeedsAttention" : "componentNotInstalled");
+      summary.textContent = inSettings ? [t("componentTitle"), said].join(t("listSeparator")) : said;
       install.hidden = everConnected || awaitingUninstall || inUse;
-      progress.hidden = idleField.hidden = true;
+      bar.el.hidden = percent.hidden = progressText.hidden = idleField.hidden = true;
       error.textContent = actionError; error.hidden = !actionError;
       // A host that was never reached is simply not installed; its transport message is noise.
-      detailsText.textContent = actionDetail || (everConnected || reply.kind === "invalid" ? reply.message ?? "" : "");
-      details.hidden = !detailsText.textContent;
-      showRuntime(); buttons(); onUpdate?.(reply); return;
+      details.textContent = actionDetail || (everConnected || reply.kind === "invalid" ? reply.message ?? "" : "");
+      details.hidden = !details.textContent;
+      buttons(); onUpdate?.(reply); return;
     }
     const s = reply.snapshot; snapshot = s; everConnected = true;
     if (s.download.status !== "running") pausing = false;
@@ -247,11 +242,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.operation?.status === "failed") awaitingUninstall = awaitingUpdate = scheduledCleanup = scheduledUpdate = false;
     if (awaitingUpdate && s.operation?.name !== "update" && !["updating", "stopped"].includes(s.state)) awaitingUpdate = false;
     const downloading = ["running", "paused", "failed"].includes(s.download.status);
-    let label = completedUninstallReceipt ? t("componentCleanupDone") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
-    if (downloading && s.download.total_bytes > 0 && !completedUninstallReceipt) label += ` · ${t("componentDownloadBytes", formatBytes(s.download.bytes_received), formatBytes(s.download.total_bytes))}`;
-    summary.textContent = label;
+    const label = completedUninstallReceipt ? t("componentCleanupDone") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
+    summary.textContent = inSettings && !completedUninstallReceipt ? [t("componentTitle"), label].join(t("listSeparator")) : label;
     install.hidden = true;
-    storage.textContent = t("componentStorage", formatBytes(s.storage.models_bytes));
     idleField.hidden = !s.settings;
     if (s.settings) {
       const value = String(s.settings.idle_unload_s);
@@ -260,13 +253,21 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       }
       idleSelect.value = value;
     }
-    progress.hidden = !downloading || !!completedUninstallReceipt;
-    if (s.download.total_bytes > 0) { progress.max = s.download.total_bytes; progress.value = Math.min(s.download.bytes_received, s.download.total_bytes); }
-    else progress.removeAttribute("value");
+    const counting = downloading && !completedUninstallReceipt;
+    bar.el.hidden = !counting;
+    percent.hidden = progressText.hidden = !counting || s.download.total_bytes <= 0;
+    if (counting) {
+      const total = s.download.total_bytes;
+      bar.set(total > 0 ? Math.min(s.download.bytes_received, total) / total : null, s.download.status === "paused" ? "paused" : s.download.status === "failed" ? "failed" : "running", t("componentDownloading"));
+      if (total > 0) {
+        percent.textContent = `${Math.min(100, Math.floor((s.download.bytes_received * 100) / total))}%`;
+        progressText.textContent = t("componentDownloadBytes", formatSize(s.download.bytes_received), formatSize(total));
+      }
+    }
     error.textContent = actionError || (crashed ? t("componentEngineCrashed") : s.error || s.download.error ? t("componentFailed") : "");
     error.hidden = !error.textContent;
-    detailsText.textContent = actionDetail || s.error?.message || s.download.error || ""; details.hidden = !detailsText.textContent;
-    showRuntime(s); buttons(); onUpdate?.(reply);
+    details.textContent = actionDetail || s.error?.message || s.download.error || ""; details.hidden = !details.textContent;
+    buttons(); onUpdate?.(reply);
     if (completedUninstallReceipt && attemptedReceipt !== completedUninstallReceipt) void finishUninstall();
   }
 
@@ -308,7 +309,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       if (reply.kind === "rejected" && op) {
         pausing = false; awaitingUpdate = awaitingUninstall = false;
         actionError = t("componentFailed"); actionDetail = reply.message ?? "";
-        error.textContent = actionError; error.hidden = false; detailsText.textContent = actionDetail; details.hidden = !actionDetail;
+        error.textContent = actionError; error.hidden = false; details.textContent = actionDetail; details.hidden = !actionDetail;
       } else {
         if (op && reply.kind !== "ok") { actionError = t("componentFailed"); pausing = false; }
         paint(reply);
@@ -349,7 +350,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   buttons(); void poll();
   return { refresh: () => run(), destroy() {
     destroyed = true; controller?.abort(); if (timer !== undefined) clearTimeout(timer);
-    runtimePanel?.destroy(); if (dialog.open) dialog.close(); document.removeEventListener("visibilitychange", visibility);
+    if (dialog.open) dialog.close(); document.removeEventListener("visibilitychange", visibility);
     browser.runtime.onUpdateAvailable.removeListener(updateAvailable); browser.storage.onChanged.removeListener(storageChanged);
   } };
 }

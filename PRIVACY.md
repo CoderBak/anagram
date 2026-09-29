@@ -68,8 +68,7 @@ text only: no URL, no cookies, no account data.
   commands from a page. Inference runs from files on disk in Hugging Face offline mode.
 
 Deciding what to read happens inside the browser, with code that ships in the extension.
-**Main content only** runs Defuddle on a copy of the page and uses only its offline
-extraction; nothing it could fetch is called. The PDF reader finds a document's paragraphs
+The PDF reader finds a document's paragraphs
 with Zotero's document-worker, in a worker inside the reader's own tab that loads its
 models and data from the extension; the document is not sent anywhere else. On granted
 sites a tiny second script runs in the page's own context: it reads nothing and only tells

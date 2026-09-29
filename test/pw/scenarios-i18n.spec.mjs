@@ -54,10 +54,9 @@ test.describe("a zh-CN browser", () => {
     await expect
       .poll(() => opts.evaluate(() => ({
         lang: document.documentElement.lang,
-        componentCard: document.querySelector("#componentCard > header h2")?.textContent ?? "",
+        engine: document.getElementById("engineLabel")?.textContent ?? "",
         componentStatus: document.querySelector(".component-status")?.textContent ?? "",
         update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "更新引擎"),
-        runtimeTitle: document.querySelector("#runtimeSettings h3")?.textContent ?? "",
         marks: document.querySelector('label[for="underline"]')?.textContent ?? "",
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
         // The footer's link to this version's source, next to the model credit.
@@ -65,7 +64,7 @@ test.describe("a zh-CN browser", () => {
         sourceHref: document.getElementById("sourceCode")?.getAttribute("href") ?? "",
       })), { message: `${zh} (options)` })
       .toEqual({
-        lang: "zh-CN", componentCard: "本地引擎", componentStatus: "就绪", update: true, runtimeTitle: "运行配置", marks: "下划线",
+        lang: "zh-CN", engine: "引擎", componentStatus: "本地引擎，就绪", update: true, marks: "下划线",
         fabricatedCommand: false, source: "源代码（AGPL-3.0）", sourceHref: `https://github.com/CoderBak/anagram/tree/v${EXTENSION_VERSION}`,
       });
     await opts.close();

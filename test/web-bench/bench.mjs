@@ -1,6 +1,6 @@
 // test/web-bench/bench.mjs — how well the content script reads web pages, measured offline.
 //
-//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none] [--min-words <n>]
+//   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs run [--name <run>] [--min-words <n>]
 //                                    [--only <id,…>] [--datasets wcxb,wmb,…] [--concurrency <n>] [--no-explain] [--css [--js]]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs styles [--only <id,…>] [--datasets wcxb,wmb,…] [--scripts [--sample <n>]]
 //   ANAGRAM_WEB_BENCH=<corpus> node test/web-bench/bench.mjs external <name> <outputs.jsonl> --truth-from <run>
@@ -315,9 +315,8 @@ function record(entry, truth, measured, requests, wallMs, meta) {
 
 async function run() {
   const { chromium } = await import("playwright");
-  const scope = flag("scope", "page");
-  const extractor = scope === "main" ? flag("extractor", "defuddle") : "none";
-  const name = flag("name", `${scope}${scope === "main" ? `-${extractor}` : ""}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}`);
+  const scope = "page", extractor = "none";
+  const name = flag("name", `${scope}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}`);
   const only = flag("only")?.split(",");
   const datasets = flag("datasets")?.split(",");
   const explain = !has("no-explain");
@@ -711,4 +710,4 @@ else if (command === "report") report(rest);
 else if (command === "diff") diff(rest[0]);
 else if (command === "rescore") rescore(rest[0]);
 else if (command === "styles") await fetchStyles();
-else console.log("usage: bench.mjs run [--name <run>] [--scope page|main] [--extractor defuddle|none] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] [--css [--js]] | styles [--only <ids>] [--datasets <names>] [--scripts [--sample <n>]] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");
+else console.log("usage: bench.mjs run [--name <run>] [--only <ids>] [--datasets <names>] [--concurrency <n>] [--no-explain] [--css [--js]] | styles [--only <ids>] [--datasets <names>] [--scripts [--sample <n>]] | external <name> <jsonl> --truth-from <run> | report <run> [<run>…] [--split dev|test] | diff <run> [--worst <n> | --page <id>] | rescore <run>");

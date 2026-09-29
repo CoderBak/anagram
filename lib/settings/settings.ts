@@ -17,7 +17,10 @@ export const settings = {
   // off, the reader's own geometric reflow reads the pages instead. No setting in the UI:
   // a switch for the benchmark and for a machine where the worker misbehaves.
   pdfStructure: storage.defineItem<boolean>("local:pdfStructure", { fallback: true }),
+  // Console logging (lib/log.ts). No setting in the UI: chrome.storage.local.set({ debug: true }) in devtools.
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
+  // Whether a copied report carries the passages and the page title and address. No setting in
+  // the UI: reports leave them out.
   reportIncludeText: storage.defineItem<boolean>("local:reportIncludeText", { fallback: false }),
   reportIncludeUrl: storage.defineItem<boolean>("local:reportIncludeUrl", { fallback: false }),
   // Filters rendering, not analysis: all units or only heavily edited / AI-generated ones.
@@ -30,10 +33,6 @@ export const settings = {
   // up to (lib/dom/text.ts has the choices). Read through minWordsOf, which answers a value
   // that is not one of them with the default.
   minWords: storage.defineItem<number>("local:minWords", { fallback: DEFAULT_MIN_WORDS }),
-  // "main" restricts analysis to the region Defuddle finds, excluding outside comments/sidebars.
-  analysisScope: storage.defineItem<"page" | "main">("local:analysisScope", {
-    fallback: "page",
-  }),
   // FAB position per host: bottom offset + snapped side. Legacy entries carry
   // only {r,b} (pre-snap free positions) — side is derived from r on restore.
   fabPos: storage.defineItem<

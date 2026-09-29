@@ -191,7 +191,7 @@ describe("what the one build carries", () => {
 
   it.skipIf(!chrome)("the pages carry both panels and the choice between them", () => {
     const pages = code(chrome!, "chunks");
-    for (const marker of ["releases/download", "Invoke-RestMethod", "componentInstallIntro", "engineSetUpIntro", "engineOneClickButton", "engineTerminalButton"]) {
+    for (const marker of ["releases/download", "Invoke-RestMethod", "componentInstallIntro", "engineSetUpButton", "engineOneClickButton", "engineTerminalButton"]) {
       expect(pages, marker).toContain(marker);
     }
   });

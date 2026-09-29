@@ -147,7 +147,7 @@ try {
   console.log(`paste: ${seen.summary} (${((Date.now() - scoring) / 1000).toFixed(1)} s, ${seen.items.length} pass${seen.items.length === 1 ? "" : "es"})`);
   if (chosen) {
     const score = chosen.official.reduce((a, p, i) => a + p * i, 0) / 3;
-    const shown = /·\s*(\.\d+|1\.0)/.exec(seen.summary)?.[1];
+    const shown = /,\s*(\.\d+|1\.0)/.exec(seen.summary)?.[1];
     const wanted = score.toFixed(2).replace(/^0/, "");
     check("the verdict's score is the official one to two places", shown !== undefined && Math.abs(Number(shown) - Number(wanted)) <= 0.011, `${shown} vs ${wanted} (${chosen.text_id})`);
   }

@@ -18,7 +18,7 @@
 //     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin;
 //   * what the Chromium scenarios cover and Gecko could do its own way (10d): the MAIN-world
 //     script and closed shadow roots, a really hidden tab, scroll order, Firefox's own
-//     translation marks, consent frames, the surfaces and Defuddle chunks, the licences.
+//     translation marks, consent frames, the surfaces chunk, the licences.
 //
 //   node test/firefox.mjs
 //   node test/firefox.mjs --quick     # skip the fixture down/up cycle (~25 s)
@@ -88,10 +88,10 @@ for (const [label, p] of [["options", optionsPage], ["onboarding", onboarding.pa
 }
 await sleep(1200);
 
-const versionText = await optionsPage.evaluate(() => document.getElementById("version")?.textContent ?? "");
+const versionText = await optionsPage.evaluate(() => `${document.getElementById("version")?.textContent ?? ""}|${document.querySelector("#componentSettings .component-status")?.textContent ?? ""}`);
 check(
-  "options page renders and shows the version (background page reachable)",
-  /^v\d+\.\d+\.\d+ · Ready$/.test(versionText),
+  "options page renders and shows the version and the engine's status (background page reachable)",
+  /^v\d+\.\d+\.\d+\|Local engine, Ready$/.test(versionText),
   versionText,
 );
 
@@ -855,32 +855,6 @@ for (const how of ["lang", "ids"]) {
   await p.close();
 }
 
-// "Main content only" finds the article with Defuddle, an on-demand chunk the content
-// script imports. The comments below the post hold most of the page's text, so the
-// text-mass probe Anagram falls back on without Defuddle would take them for the article;
-// Defuddle leaves comments out. Its phrases are located on the page, so every paragraph
-// here is its own draw of words: para()'s rotations would share them.
-{
-  const OTHER = "readers argued about harbours ferries lighthouses keepers storms gulls nets tides pilots moorings beacons fog horns charts compasses anchors decks masts sails ropes knots cargo crews ports quays".split(" ");
-  const prose = (tag, i, words) => {
-    let s = i * 7919 + 1;
-    return `${tag}-${i} ` + Array.from({ length: 84 }, () => words[(s = (s * 48271) % 2147483647) % words.length]).join(" ") + ".";
-  };
-  PAGES["/scope-defuddle.html"] = html("A post and its comments", `<div id="post" class="entry-content"><h1>A post and its comments</h1>${[9, 10, 11].map((i) => `<p>${prose("POSTBODY", i, VOCAB)}</p>`).join("")}</div>
-<div id="comments" class="comments"><h2>Comments</h2>${[12, 13, 14, 15, 16].map((i) => `<div class="comment"><p>${prose("COMMENTBODY", i, OTHER)}</p></div>`).join("")}</div>`);
-  await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "main" }));
-  const before = fixture.textMark();
-  const p = await browser.newPage();
-  await p.goto(server.url("/scope-defuddle.html"), { waitUntil: "load" });
-  await waitFor(p, (sel) => document.querySelectorAll(sel).length > 0, { timeout: 15000, arg: BADGE_SEL });
-  await sweep(p, 3);
-  await sleep(2000);
-  const r = { post: await chipsIn(p, "#post"), comments: await chipsIn(p, "#comments"), commentsSent: sentSince(before, "COMMENTBODY") };
-  await optionsPage.evaluate(() => browser.storage.local.set({ analysisScope: "page" }));
-  check("main-content scope: Defuddle loads on demand and takes the post, not the comments", r.post === 3 && r.comments === 0 && r.commentsSent === 0, JSON.stringify(r));
-  await p.close();
-}
-
 // The copied report's link to a flagged paragraph: the chunk that writes it loads, and
 // Firefox (text fragments since 131) opens the page at the paragraph. A real click, so the
 // copy has the user activation Firefox asks the clipboard for.
@@ -940,7 +914,6 @@ for (const how of ["lang", "ids"]) {
     ["vendor/wasm/LICENSE_JBIG2", "PDFium Authors"],
     ["vendor/standard_fonts/LICENSE_FOXIT", "PDFium Authors"],
     ["vendor/standard_fonts/LICENSE_LIBERATION", "SIL Open Font License"],
-    ["vendor/defuddle.min.mjs", "MIT License, Copyright (c) 2025 Steph Ango"],
   ].filter(([path, needle]) => !text(path).includes(needle)).map(([path]) => path);
   check("the Firefox build carries its own and every bundled component's licence", missing.length === 0, missing.join(", "));
 }

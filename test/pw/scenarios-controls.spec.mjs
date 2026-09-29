@@ -25,41 +25,34 @@ const stored = async (storage) => {
 const readCard = (page) =>
   page.evaluate(() => {
     const txt = (sel) => document.querySelector(sel)?.textContent ?? null;
-    for (const d of document.querySelectorAll("#manage, #advanced")) d.setAttribute("open", "");
     return {
-      status: txt("#componentSettings .component-status"),
-      active: txt('#runtimeSettings .runtime-row[data-active="true"]'),
-      ready: document.getElementById("ready")?.hidden === false,
-      grant: document.getElementById("access-grant")?.hidden === false,
-      go: document.getElementById("go")?.hidden === false,
+      // Settings puts the engine's name in front of the stage ("Local engine, Ready").
+      status: txt("#componentSettings .component-status")?.replace(/^Local engine, /, "") ?? null,
+      access: txt("#accessState"),
       install: document.getElementById("install")?.hidden === false ? txt("#install-cmd") : null,
       primary: document.getElementById("component-primary")?.hidden === false ? txt("#component-primary") : null,
       update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "Update engine"),
       error: document.querySelector(".component-error")?.textContent ?? null,
     };
   });
-// "Ready" is painted from the component's status; the runtime panel it mounts then asks for
-// the configurations on its own (lib/ui/runtimeSettings.ts), so the active row arrives a round
-// trip later. The card is read once both are there.
 const cardReady = (page, message) =>
-  expect.poll(async () => { const c = await readCard(page); return c.status === "Ready" && !!c.active; }, { message }).toBe(true);
+  expect.poll(async () => (await readCard(page)).status, { message }).toBe("Ready");
 
 test("the setup page says Ready, offers the scoped installer when the engine is gone, and follows it back without a reload", async ({ page, extension, nativeHost }) => {
   await page.goto(extension.url("onboarding.html"), { waitUntil: "load" });
-  const up = "the setup page says Ready with the active configuration, the site grant and no install command";
+  const up = "the setup page says Ready, the site grant and no install command";
   await cardReady(page, up);
   const ready = await readCard(page);
-  expect.soft(ready.active, up).toContain("Test CPU · FP32");
-  // The test build already grants every site, so the grant button gives way to the go line.
-  expect.soft({ ready: ready.ready, grantOrGo: ready.grant || ready.go, install: ready.install, primary: ready.primary, update: ready.update, error: !!ready.error }, up)
-    .toEqual({ ready: true, grantOrGo: true, install: null, primary: null, update: true, error: false });
+  // The test build already grants every site.
+  expect.soft({ access: ready.access, install: ready.install, primary: ready.primary, error: !!ready.error }, up)
+    .toEqual({ access: "All sites allowed", install: null, primary: null, error: false });
 
   await nativeHost.close();
   await page.reload({ waitUntil: "load" });
   const down = "the setup page offers a scoped installer and does not claim Ready when disconnected";
   await expect.poll(async () => (await readCard(page)).status, { message: down }).toBe("Not installed");
   const gone = await readCard(page);
-  expect.soft({ ready: gone.ready, active: gone.active, primary: gone.primary }, down).toEqual({ ready: false, active: null, primary: null });
+  expect.soft({ primary: gone.primary }, down).toEqual({ primary: null });
   expect.soft(gone.install, down).toContain(extension.extId);
   expect.soft(gone.install, down).toContain("/releases/download/v");
 
@@ -67,27 +60,26 @@ test("the setup page says Ready, offers the scoped installer when the engine is 
   const back = "the setup page follows engine recovery without a reload";
   await cardReady(page, back);
   const recovered = await readCard(page);
-  expect.soft(recovered.active, back).toContain("Test CPU · FP32");
-  expect.soft({ ready: recovered.ready, install: recovered.install }, back).toEqual({ ready: true, install: null });
+  expect.soft({ install: recovered.install }, back).toEqual({ install: null });
 });
 
-test("an engine error leaves setup incomplete, shows Retry and the Update engine action", async ({ page, extension, nativeHost }) => {
-  await page.goto(extension.url("onboarding.html"), { waitUntil: "load" });
-  await cardReady(page, "the setup page starts Ready");
+test("an engine error leaves setup incomplete, shows Retry and, in Settings, the Update engine action", async ({ page, extension, nativeHost }) => {
+  await page.goto(extension.url("options.html"), { waitUntil: "load" });
+  await cardReady(page, "Settings starts Ready");
   const healthy = nativeHost.state().component;
   nativeHost.setState({ component: { ...healthy, state: "error", error: { code: "incompatible", message: "Fixture component requires update" } } });
   const broken = "an engine error leaves setup incomplete, shows Retry and the Update engine action";
   // A ready page polls every 15 s, so the change is seen on the next tick.
   await expect.poll(async () => (await readCard(page)).status, { message: broken, timeout: 40_000 }).toBe("Needs attention");
   const card = await readCard(page);
-  expect.soft({ ready: card.ready, update: card.update, primary: card.primary, install: card.install }, broken).toEqual({ ready: false, update: true, primary: "Retry", install: null });
+  expect.soft({ update: card.update, primary: card.primary, install: card.install }, broken).toEqual({ update: true, primary: "Retry", install: null });
   expect.soft(card.error, broken).toBeTruthy();
   nativeHost.setState({ component: healthy });
   await expect.poll(async () => (await readCard(page)).status, { message: `${broken} (and Ready again once mended)`, timeout: 40_000 }).toBe("Ready");
 });
 
 // A rescan of an unchanged page is answered from the worker's cache and the host never hears
-// about it; once "Clear cached verdicts" (options → Advanced) has run, the same rescan has to
+// about it; once "Clear" (Settings, Cache) has run, the same rescan has to
 // reach the host again.
 test("cached verdicts: a rescan is answered from the worker cache, the options page counts them, and once cleared the rescan asks the fixture again", async ({ context, page, pages, extension, nativeHost, tell }) => {
   pages.serve({ "/cached.html": CONTROLS_PAGE("CACHED") });
@@ -238,7 +230,7 @@ test("the popup on a page being read offers Rescan and names the engine", async 
   await page.goto(pages.url("/popup-state.html"), { waitUntil: "load" });
   await chipsSettle(page, 3);
   const popup = await popupOver(context, extension, page);
-  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready · fake" });
+  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready, fake" });
   const seen = await popupSays(popup);
   expect.soft(seen.status, `${ONE_ACTION} (running)`).toMatch(/paragraphs analyzed/);
   expect.soft(seen.filled, `${ONE_ACTION} (running)`).toBeLessThanOrEqual(1);
@@ -289,5 +281,5 @@ test("the popup with the engine gone opens Settings, and offers no terminal comm
   await popup.click("#action");
   const settingsUrl = extension.url("options.html");
   await expect.poll(() => context.pages().some((p) => p.url() === settingsUrl), { message: `${down}: Settings opens` }).toBe(true);
-  await expect(context.pages().find((p) => p.url() === settingsUrl).locator("#componentCard > header h2"), `${down}: Settings opens`).toBeVisible();
+  await expect(context.pages().find((p) => p.url() === settingsUrl).locator("#engineLabel"), `${down}: Settings opens`).toBeVisible();
 });

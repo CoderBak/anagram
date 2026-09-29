@@ -396,14 +396,10 @@ const PAGE_SPECS = [
     viewport: { width: 1100, height: 900 },
     async prepare(page) {
       // The status card is live: scanning it mid-probe would judge "Starting…", not the
-      // state the reader ends up looking at. The Manage and Advanced folds are closed by
-      // default, and a closed one is display:none — open them so they are judged too.
+      // state the reader ends up looking at.
       await page
-        .waitForFunction(() => document.querySelector("#componentSettings .component-status")?.textContent === "Ready", null, { timeout: 15000 })
+        .waitForFunction(() => /Ready$/.test(document.querySelector("#componentSettings .component-status")?.textContent ?? ""), null, { timeout: 15000 })
         .catch(() => {});
-      await page.evaluate(() => {
-        for (const d of document.querySelectorAll("#manage, #advanced")) d.setAttribute("open", "");
-      });
       await page.waitForTimeout(300);
     },
   },

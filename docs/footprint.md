@@ -38,7 +38,7 @@ downloads, into the extension's own storage.
 | `lib/pdf/handoff.ts` | `fetch(` | re-reads, from the content script in a PDF tab, the document that tab is already showing, so the reader can be handed its bytes | the same URL the tab is already showing, same-origin, normally answered from the HTTP cache |
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
-| `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (Defuddle, DOMPurify, the diagnostics chunk, the surfaces chunk, the report's paragraph links, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
+| `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (DOMPurify, the diagnostics chunk, the surfaces chunk, the report's paragraph links, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
 | `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage), and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
 | `lib/ui/deviceInputs.ts` | `fetch(` | the test build only (absent from the shipping bundles): reads the stand-in device a suite put beside the pages | `chrome-extension://<this extension>/test-device.json` |
 | `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` |
@@ -57,10 +57,6 @@ running the vendored Zotero document-worker, `vendor/document-worker/`). The wor
 `fetch` calls read the CMaps, standard fonts, image decoders, ONNX runtime and models that
 ship inside the extension, by the `chrome-extension://<this extension>/vendor/…` URLs the
 reader hands it; the document's bytes are copied into it and nowhere else.
-
-The vendored Defuddle, which finds the region for "Main content only", can reach third-party
-APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchronous
-`parse()`, on a clone of the page, and the test pins that.
 
 ### Every address written in the source
 
@@ -89,7 +85,6 @@ APIs through its `parseAsync()`. `lib/dom/mainContent.ts` calls only its synchro
 | `lib/dom/consentBanners.ts` | `https://github.com/duckduckgo/autoconsent` | where that selector list comes from, in a comment |
 | `lib/dom/boilerplate.ts` | `https://github.com/lindylearn/unclutter` | the attribution of the page-text guard on the chrome filter, in a comment |
 | `lib/dom/boilerplate.ts` | `https://gitlab.wikimedia.org/repos/research/html-dumps` | the attribution of the MediaWiki classes the walk skips, in a comment |
-| `lib/dom/mainContent.ts` | `https://github.com/kepano/defuddle` | the attribution of Defuddle, which finds the main content for the "Main content only" scope, in a comment |
 | `lib/dom/translation.ts` | `https://github.com/mengxi-ream/read-frog` | where Read Frog's attribute name was looked up, in a comment |
 | `lib/dom/shadow.ts` | `https://github.com/mozilla-firefox/firefox` | the attribution of adapted Firefox code in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
@@ -151,7 +146,6 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `mergeShorts` | group short paragraphs to reach the minimum length |
 | `minWords` | the minimum length in words: 25, 50, 75, 100 or 150 |
-| `analysisScope` | the whole page, or its main content |
 | `fabPos` | where the user dragged the ball, per hostname |
 
 ### IndexedDB `anagram-scores`
