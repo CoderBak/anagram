@@ -555,6 +555,30 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0]!, pages);
   });
 
+  it("finds TeX's ℓ, which Zotero reads as an \"l\", in its own run and not in the word before it", () => {
+    // "the areal ℓ in place": the glyph stands left of where pdf.js drew it, inside the box of
+    // "areal", whose own "l" is found already; the "l" was looked for in that word again.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "OHTAKJ+CMMI10" };
+    const a = drawn(1, { text: "With the areal", x: 72, y: 100 });
+    const ell = drawn(1, { text: "ℓ", x: 72 + 15 * CW, y: 100, font: "f_math", drift: -1.5 * CW });
+    const b = drawn(1, { text: "in place of the measured one", x: 72 + 17 * CW, y: 100 });
+    const n = { text: "With the areal l in place of the measured one", anchor: { textMap: JSON.stringify([a.run, ell.run, b.run]) } };
+    const pages = [pageText(1, [a.item, ell.item, b.item], fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0]!.text).toBe("With the areal in place of the measured one");
+    expectRunsToMatch(blocks[0]!, pages);
+
+    // The run before it has no "l" at all, and the glyph took the face of that run: "wherel".
+    const c = drawn(1, { text: "it is seen where", x: 72, y: 200 });
+    const ell2 = drawn(1, { text: "ℓ", x: 72 + 17 * CW, y: 200, font: "f_math", drift: -1.5 * CW });
+    const d = drawn(1, { text: "is largest", x: 72 + 19 * CW, y: 200 });
+    const n2 = { text: "it is seen where l is largest", anchor: { textMap: JSON.stringify([c.run, ell2.run, d.run]) } };
+    const pages2 = [pageText(1, [c.item, ell2.item, d.item], fonts)];
+    const blocks2 = structuredBlocks(structure([paragraph(1, [n2])]), pages2);
+    expect(blocks2[0]!.text).toBe("it is seen where is largest");
+    expectRunsToMatch(blocks2[0]!, pages2);
+  });
+
   it("leaves out what TeX sets of a formula in the text face: operator names, capital Greek, sub- and superscripts", () => {
     // "\sup \Gamma(\Delta)", "\log p", "x_{\mathrm{init}}": TeX takes the operator names,
     // the upright capital Greek and the letters of \mathrm from the text face, so only the
@@ -585,6 +609,50 @@ describe("structuredBlocks — formulas", () => {
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0]!.text).toBe("the bound is finite, and is the score of in the log of the data.");
     expectRunsToMatch(blocks[0]!, pages);
+  });
+
+  it("leaves out a word set in a script's size, and the letter it stands under: T_max, L_inj, T_N", () => {
+    // Times sets the letter in its italic and the subscript in the same text face, small: no
+    // formula token stands beside it, so only its size says it is a script. What closes it stays.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_ital: "NimbusRomNo9L-ReguItal", f_math: "BXJUHM+CMMI10" };
+    const line = setLine(fonts);
+    line.put("the resistance peaks at", "f_text");
+    line.put("T", "f_ital", 1);
+    line.put("max", "f_text", CW, 7);
+    line.put("near 50 K, and the luminosity", "f_text");
+    line.put("L", "f_ital", 1);
+    line.put("inj,", "f_text", CW, 7);
+    line.put("falls above", "f_text");
+    line.put("T", "f_ital", 1);
+    line.put("N", "f_text", CW, 7);
+    line.put("by 3%.", "f_text");
+    expect(line.read()).toBe("the resistance peaks at near 50 K, and the luminosity, falls above by 3%.");
+  });
+
+  it("keeps the text's own small words and single letters: an ordinal, a lone letter, numbers, units, years", () => {
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_ital: "NimbusRomNo9L-ReguItal", f_math: "BXJUHM+CMMI10" };
+    const same = setLine(fonts);
+    same.put("Measured on the 16", "f_text", 0);
+    same.put("th", "f_text", CW, 7);
+    same.put("of May at Tokyo", "f_text");
+    same.put("a", "f_text", CW, 7);
+    same.put("in place B near 50 K, the value of p was 0.05 in 2023 (Smith, 2023) at 20 mS cm", "f_text");
+    expect(same.read()).toBe("Measured on the 16th of May at Tokyo a in place B near 50 K, the value of p was 0.05 in 2023 (Smith, 2023) at 20 mS cm");
+
+    // Small print on the line's own baseline is no script: a glossary's reference after its entry.
+    const parts = [["To pluck a rose is to go to the house of ease", 10], ["(Peele, ii. 235)", 7], ["and hold it for a while, said the glossary of old words.", 10]] as const;
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    for (const [text, size] of parts) {
+      const d = drawn(1, { text, x, y: 100, font: "f_text", size });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + CW;
+    }
+    const entry = { text: parts.map(([t]) => t).join(" "), anchor: { textMap: JSON.stringify(runs) } };
+    const glossary = structuredBlocks(structure([paragraph(1, [entry])]), [pageText(1, items, fonts)]);
+    expect(glossary[0]!.text).toBe(entry.text);
   });
 
   it("keeps a number the text writes beside a formula, as arXiv's HTML does", () => {
@@ -1196,6 +1264,17 @@ describe("structuredBlocks — the document", () => {
       expect(read([title, lead, middle, right, left])).toEqual(["Title", "Lead", "Left", "Middle", "Right"]);
     });
 
+    it("reads a headline set across two columns before both, and does not take it for the top of the right one", () => {
+      // The headline reaches over half of the right column's width, which is enough for the
+      // paragraph under it to look like the headline's column; Zotero read the right column's
+      // paragraphs, then the left one's.
+      const set = placed("KickerOverTwoColumnsOfText", 40, 60);
+      const kicker = { ...set, block: { ...set.block, type: "heading" } };
+      const right1 = placed("Right1", 200, 100, 3), right2 = placed("Right2", 200, 200, 3);
+      const left1 = placed("Left1", 40, 100, 3), left2 = placed("Left2", 40, 200, 3);
+      expect(read([kicker, right1, right2, left1, left2])).toEqual(["KickerOverTwoColumnsOfText", "Left1", "Left2", "Right1", "Right2"]);
+    });
+
     it("keeps Zotero's order of a paper's page: the left column, then the right, around a float", () => {
       const a = placed("A", 60, 80, 10), b = placed("B", 60, 500, 10), c = placed("C", 320, 80, 10), d = placed("D", 320, 500, 10);
       expect(read([a, b, c, d])).toEqual(["A", "B", "C", "D"]);
@@ -1396,6 +1475,52 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     const blocks = structuredBlocks(structure([{ type: "heading", content: [textOf([head])] }, asList(set)]), pages);
     expect(blocks.map((b) => [b.kind, b.text])).toEqual([["heading", "1. Introduction"], ...PARAGRAPHS.map((p) => ["paragraph", p])]);
     for (const b of blocks) expectRunsToMatch(b, pages);
+  });
+
+  it("finds the numbers of lines whose text Zotero drew where the number ends: the tab between them folded out", () => {
+    // pdf.js has the number, a run of white space, then the text at 72; Zotero's fork takes the
+    // space's width out of the text, which starts where the number ends, and its text has no
+    // space there either: "84The …", "85 …". Only the run of the text says it is a run of its own.
+    const folded = (n: number, line: { text: string; x: number }, y: number, page = 1): Line => {
+      const num = String(n);
+      const a = drawn(page, { text: num, x: 54 - num.length * CW, y });
+      const b = drawn(page, { text: line.text, x: line.x, y, drift: 54 - line.x });
+      return { items: [a.item, b.item], run: [a.run, b.run], text: `${num}${line.text}` };
+    };
+    const both = [...LINES.slice(0, 7), ...LINES];
+    const set = both.map((l, i) => folded(84 + i, l, 100 + i * PITCH));
+    const pages = [pageText(1, set.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(set)]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS.slice(0, 2), ...PARAGRAPHS]);
+    for (const b of blocks) expectRunsToMatch(b, pages);
+
+    // A page of fewer lines, a figure's and its caption, joins the column its neighbour found.
+    const short = LINES.slice(0, 4).map((l, i) => folded(100 + i, l, 100 + i * PITCH, 2));
+    const two = structuredBlocks(structure([asList(set), asList(short)], 2), [pageText(1, set.flatMap((l) => l.items)), pageText(2, short.flatMap((l) => l.items))]);
+    expect(two.map((b) => b.text).join(" ")).not.toMatch(/\b10[0-3]\p{L}/u);
+    expect(two.at(-1)!.text).toBe(PARAGRAPHS[0]);
+
+    // Fewer numbers than a page of prose holds are an algorithm's or a list's: they stay.
+    const few = LINES.slice(0, 5).map((l, i) => folded(1 + i, l, 100 + i * PITCH));
+    const listing = structuredBlocks(structure([asList(few)]), [pageText(1, few.flatMap((l) => l.items))]);
+    expect(listing.map((b) => b.text.slice(0, 4))).toEqual(few.map((l) => l.text.slice(0, 4)));
+
+    // A list of numbered questions, its full stop set in a run of its own against the number,
+    // is a list: the numbers stay, and so do the questions.
+    const questions = Array.from({ length: 9 }, (_, i) => {
+      const num = String(i + 1);
+      const a = drawn(1, { text: num, x: 54 - CW, y: 400 + i * 2 * PITCH });
+      const b = drawn(1, { text: `. What is question number ${i + 1} about the patent system?`, x: 60, y: 400 + i * 2 * PITCH, drift: 54 - 60 });
+      return { items: [a.item, b.item], run: [a.run, b.run], text: `${num} . What is question number ${i + 1} about the patent system?` } as Line;
+    });
+    const asked = structuredBlocks(structure([asList(questions)]), [pageText(1, questions.flatMap((l) => l.items))]);
+    expect(asked.map((b) => b.text.slice(0, 12))).toEqual(questions.map((l) => l.text.slice(0, 12)));
+
+    // A number that is a word's own stays: no column of them counting on, nothing to strip.
+    const prose = drawn(1, { text: "2023", x: 72, y: 300 });
+    const text = drawn(1, { text: "was the year the value of p rose to 0.05 in the second trial of the study (Smith, 2023)", x: 72 + 4 * CW, y: 300 });
+    const kept = structuredBlocks(structure([paragraph(1, [{ text: "2023was the year the value of p rose to 0.05 in the second trial of the study (Smith, 2023)", anchor: { textMap: JSON.stringify([prose.run, text.run]) } }])]), [pageText(1, [prose.item, text.item])]);
+    expect(kept[0]!.text).toBe("2023was the year the value of p rose to 0.05 in the second trial of the study (Smith, 2023)");
   });
 
   it("finds the paragraphs of numbered lines set ragged right by their indents", () => {

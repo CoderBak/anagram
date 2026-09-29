@@ -29,6 +29,9 @@ export interface NumberMark {
   first: boolean;
   /** Nothing else on its line stands to its right. */
   last: boolean;
+  /** Too few of its kind stand on its page to found a column: it counts only where it stands
+   *  in line with a column another page's numbers found. */
+  weak?: boolean;
 }
 
 /** Something else set on a page: a run, or a glyph, weighed by how much text it is. `mark`
@@ -172,7 +175,7 @@ export function lineNumberMarks<T extends NumberMark>(marks: readonly T[], conte
           if (!counts(cluster)) continue;
           const column: Column = { side, edge, at: cluster[0]![edge], h: cluster[0]!.h };
           found.push({ cluster, column, page });
-          if (cluster.length >= COLUMN_MIN && clear(cluster, side, contentOf.get(page) ?? [])) columns.push(column);
+          if (cluster.length >= COLUMN_MIN && !cluster.some((m) => m.weak) && clear(cluster, side, contentOf.get(page) ?? [])) columns.push(column);
         }
       }
     }
