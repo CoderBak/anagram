@@ -46,10 +46,12 @@ const ACCEPTED = [
       "extension URL (lib/webengine/session.ts). Nothing remote.",
   },
   {
-    code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort-wasm-simd-threaded\.jspi\.mjs$/, count: 1,
-    why: "ONNX Runtime Web as published: Emscripten embind's method caller builds a function with " +
-      "new Function. The extension's CSP has no 'unsafe-eval', so that path throws rather than runs; " +
-      "the engine never reaches it (test/webengine/engine-browser.mjs runs the worker under that CSP).",
+    code: "DANGEROUS_EVAL", file: /^vendor\/(engine\/ort-wasm-simd-threaded\.jspi\.mjs|document-worker\/worker\.js)$/, count: 2,
+    why: "ONNX Runtime Web as published, its loader in the engine and inside the document worker's " +
+      "bundle: Emscripten embind's method caller builds a function with new Function. The " +
+      "extension's CSP has no 'unsafe-eval', so that path throws rather than runs; neither " +
+      "reaches it (test/webengine/engine-browser.mjs runs the engine's worker under that CSP, " +
+      "and the PDF reader suites run the document worker).",
   },
 ];
 
