@@ -248,7 +248,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (awaitingUpdate && s.operation?.name !== "update" && !["updating", "stopped"].includes(s.state)) awaitingUpdate = false;
     const downloading = ["running", "paused", "failed"].includes(s.download.status);
     let label = completedUninstallReceipt ? t("componentCleanupDone") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
-    if (downloading && s.download.total_bytes > 0 && !completedUninstallReceipt) label += ` · ${t("componentDownloadBytes", formatBytes(s.download.bytes_received), formatBytes(s.download.total_bytes))}`;
+    if (downloading && s.download.total_bytes > 0 && !completedUninstallReceipt) label += `${t("listSeparator")}${t("componentDownloadBytes", formatBytes(s.download.bytes_received), formatBytes(s.download.total_bytes))}`;
     summary.textContent = label;
     install.hidden = true;
     storage.textContent = t("componentStorage", formatBytes(s.storage.models_bytes));

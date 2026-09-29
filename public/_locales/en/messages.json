@@ -72,7 +72,7 @@
     "description": "Chip card while the batch is in flight."
   },
   "cardScaleTitle": {
-    "message": "Extent of AI editing, 0 to 1 (EditLens scale)",
+    "message": "Extent of AI editing, 0 to 1",
     "description": "Tooltip on the big number in a card."
   },
   "cardPartsTogether": {
@@ -124,12 +124,8 @@
     "description": "Chip card footnote when the local engine is down."
   },
   "cardFootUnsupported": {
-    "message": "EditLens is trained on English text only, so this paragraph was not scored.",
+    "message": "Only English text is scored.",
     "description": "Chip card footnote for a non-English paragraph."
-  },
-  "cardFootEstimate": {
-    "message": "The number is EditLens's estimate of how far this text sits from untouched human writing toward fully AI-generated — not a share of words, not proof.",
-    "description": "Chip card footnote: what the percentage means. The same claim appears in the report and the options footer."
   },
   "coverageLookalikes": {
     "message": "Look-alike letters were replaced before scoring. ",
@@ -204,7 +200,7 @@
     "description": "Selection card footnote on a degraded verdict."
   },
   "selFootUnsupported": {
-    "message": "EditLens is trained on English text only, so this selection was not scored.",
+    "message": "Only English text is scored.",
     "description": "Selection card footnote for non-English text."
   },
   "fabHide": {
@@ -232,7 +228,7 @@
     "description": "Tooltip on the counter bubble while the local engine is down."
   },
   "countDownAria": {
-    "message": "Local engine not ready — details",
+    "message": "Local engine not ready, details",
     "description": "Accessible name of the counter bubble while the local engine is down."
   },
   "countAria_one": {
@@ -360,7 +356,7 @@
     "description": "Reading overlay title for a document with no title of its own."
   },
   "docsSubtitle": {
-    "message": "Anagram reading mode — every paragraph analyzed · editor untouched behind",
+    "message": "Anagram reading mode, every paragraph analyzed, editor untouched behind",
     "description": "Subtitle in the Docs reading overlay's bar."
   },
   "docsRefresh": {
@@ -380,7 +376,7 @@
     "description": "Tooltip on the Docs overlay's Open as page."
   },
   "docsBack": {
-    "message": "Back to editor · Esc",
+    "message": "Back to editor (Esc)",
     "description": "Docs overlay button: close the overlay. Esc is the key, untranslated."
   },
   "docsSnapshotNotice": {
@@ -508,7 +504,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportDevice": {
-    "message": "Device: $1 · precision: $2",
+    "message": "Device: $1, precision: $2",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "readerOpenOriginal": {
@@ -600,7 +596,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "$1 of $2 passes analyzed · $3 unsupported · $4 unavailable · $5 truncated",
+    "message": "$1 of $2 passes analyzed, $3 unsupported, $4 unavailable, $5 truncated",
     "description": "Coverage line on the text analysis page. Every count is of passes (stretches of text read in one pass), not paragraphs."
   },
   "pasteFileFailed": {
@@ -788,7 +784,7 @@
     "description": "In-browser edition: engine status while the downloaded model is loaded into memory."
   },
   "engineProgress": {
-    "message": "$1% · $2 of $3",
+    "message": "$1%, $2 of $3",
     "description": "In-browser edition: download progress. $1 is the percentage, $2 the bytes downloaded, $3 the total, e.g. 45% · 620 MB of 1.4 GB."
   },
   "engineSpeed": {
@@ -884,7 +880,7 @@
     "description": "In-browser edition, popup: the engine is not set up yet."
   },
   "popupSetupDownloading": {
-    "message": "Downloading the model · $1%",
+    "message": "Downloading the model, $1%",
     "description": "In-browser edition, popup: setup is downloading; $1 is the percentage."
   },
   "popupSetupPaused": {
@@ -1120,7 +1116,7 @@
     "description": "Fallback reason for a configuration that cannot run here."
   },
   "runtimeMeasured": {
-    "message": "$1 ms · $2 texts/s · $3",
+    "message": "$1 ms, $2 texts/s, $3",
     "description": "Benchmark line: latency, throughput and memory (formatted)."
   },
   "runtimeApply": {
@@ -1132,7 +1128,7 @@
     "description": "Button that measures every configuration."
   },
   "runtimeProgress": {
-    "message": "Benchmarking · $1 of $2 done",
+    "message": "Benchmarking, $1 of $2 done",
     "description": "Progress line while benchmarking; $1 finished, $2 total."
   },
   "runtimeBenchmarking": {
@@ -1192,19 +1188,19 @@
     "description": "Count of flagged paragraphs."
   },
   "popupAnalyzed_one": {
-    "message": "$1 paragraph analyzed · ",
+    "message": "$1 paragraph analyzed",
     "description": "Count of analyzed paragraphs (singular)."
   },
   "popupAnalyzed_other": {
-    "message": "$1 paragraphs analyzed · ",
+    "message": "$1 paragraphs analyzed",
     "description": "Count of analyzed paragraphs (plural)."
   },
   "popupNotEnglish": {
-    "message": " · $1 not English",
+    "message": "$1 not English",
     "description": "Count of paragraphs skipped as non-English."
   },
   "popupUnavailable": {
-    "message": " · $1 unavailable",
+    "message": "$1 unavailable",
     "description": "Count of paragraphs the engine did not answer."
   },
   "popupOff": {
@@ -1494,5 +1490,9 @@
   "optRebind": {
     "message": "Change these at $1.",
     "description": "Line under the shortcuts; $1 is the browser's shortcuts address."
+  },
+  "listSeparator": {
+    "message": ", ",
+    "description": "Between the parts of a status line built in code, such as the popup's counts."
   }
 }

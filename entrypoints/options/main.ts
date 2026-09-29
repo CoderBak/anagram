@@ -326,7 +326,7 @@ mountEngineCard({
   title: document.getElementById("engineTitle")!,
   panelHost: document.getElementById("componentSettings")!,
   settings: true,
-  onUpdate: (engine, reply) => { versionEl.textContent = `v${version} · ${engineLabel(engine, reply)}`; },
+  onUpdate: (engine, reply) => { versionEl.textContent = `v${version}${t("listSeparator")}${engineLabel(engine, reply)}`; },
 });
 
 const CLEAR_LABEL = clearCacheEl.textContent ?? t("optClearCache");

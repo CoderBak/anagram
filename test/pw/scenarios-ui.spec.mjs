@@ -363,9 +363,9 @@ test("the copied report gives bare 0-1 scores, the legend that explains them and
   const legend = "copied report: bare 0-1 scores plus the legend that explains them and the caveat that travels with them";
   expect.soft(text, legend).toMatch(/^# Anagram analysis report/);
   expect.soft(text, legend).not.toContain("% AI");
-  // Every flagged entry opens "1. **AI-generated · .96** (…", never with a percentage.
+  // Every flagged entry opens "1. **AI-generated, .96** (…", never with a percentage.
   const entries = text.split("\n").filter((l) => /^\d+\. \*\*/.test(l));
-  expect.soft(entries.filter((l) => !/^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.test(l)), legend).toEqual([]);
+  expect.soft(entries.filter((l) => !/^\d+\. \*\*[^*]+, (\.\d\d|1\.0)\*\*/.test(l)), legend).toEqual([]);
   expect.soft(text, legend).toContain("not the fraction of AI-written words");
   expect.soft(text, legend).toContain("Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.");
 });

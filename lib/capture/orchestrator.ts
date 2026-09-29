@@ -452,7 +452,7 @@ export function createOrchestrator(
     const scopeNote = opts.reportScopeNote?.();
     if (scopeNote) lines.push(`- ${scopeNote}`);
     lines.push(`- ${t("reportGenerated", new Date().toLocaleString())}`);
-    lines.push(`- Anagram ${browser.runtime.getManifest().version} · contract ${CONTRACT_VERSION}`);
+    lines.push(`- Anagram ${browser.runtime.getManifest().version}, contract ${CONTRACT_VERSION}`);
     // "Analyzed" is real verdicts only. A paragraph the language gate refused and one
     // the daemon never answered for were both counted as analyzed before, which made
     // an outage look like a clean sweep.
@@ -475,7 +475,7 @@ export function createOrchestrator(
           ...(skipped > 0 ? [t("reportSkipped", skipped)] : []),
           t("reportShort", shortTexts.size),
           t("reportPending", pending),
-        ].join(" · "),
+        ].join(", "),
     );
     lines.push("");
     // What the counts add up to, where they would mislead on their own: "Flagged: 0" on a
@@ -497,19 +497,19 @@ export function createOrchestrator(
         const score = formatScore(r.score);
         const dist = r.probs
           .map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`)
-          .join(" · ");
+          .join(", ");
         const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
         const ellipsis = unit.text.length > 220 ? "…" : "";
         // A long paragraph's score combines several passes; whoever reads the
         // report without the page in front of them needs the parts it was made from.
         const read = windowReadout(v);
         const windows = read
-          ? t("reportWindows", read.count, read.scores.join(" · ")) +
+          ? t("reportWindows", read.count, read.scores.join(", ")) +
             (v.unreadChars > 0 ? t("reportUnread") : "")
           : "";
         const close = isCloseCall(v) ? `${t("reportCloseCall")}; ` : "";
         lines.push(
-          `${i + 1}. **${bandLabel(band(r))} · ${score}** ` +
+          `${i + 1}. **${bandLabel(band(r))}, ${score}** ` +
             `(${close}${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
         );
         // Before the quotation: a line after it would be read as part of the quotation.

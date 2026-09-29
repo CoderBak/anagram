@@ -256,7 +256,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
           if (rate) parts.push(t("engineSpeed", formatSize(rate)), timeLeft((total - counting.received) / rate));
         }
       }
-      progressText.textContent = parts.join(" · ");
+      progressText.textContent = parts.join(t("listSeparator"));
     }
     const ready = s?.stage === "ready" && !crashed;
     where.hidden = stored.hidden = !ready;

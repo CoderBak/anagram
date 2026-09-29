@@ -510,7 +510,7 @@ for (const lang of ["en", "zh-CN"]) {
     }, 15000);
     const left = ["engineLeftUnderMinute", "engineLeftMinutes_one", "engineLeftMinutes_other", "engineLeftHours"].map((key) => pattern(lang, key));
     check(`${lang}: the progress line has percent, bytes, speed and time left`,
-      withSpeed && /^\d+% · /.test(withSpeed) && withSpeed.includes(size(DOWNLOAD_BYTES)) && left.some((re) => re.test(withSpeed)), withSpeed);
+      withSpeed && /^\d+%, /.test(withSpeed) && withSpeed.includes(size(DOWNLOAD_BYTES)) && left.some((re) => re.test(withSpeed)), withSpeed);
     check(`${lang}: the progress bar moves`, await setup.evaluate(() => { const p = document.querySelector("#componentSettings progress"); return !p.hidden && p.value > 0 && p.max > p.value; }));
     const popup = await extPage(context, extId, "popup.html", problems);
     const popupLine = await until(async () => {
@@ -578,7 +578,7 @@ for (const lang of ["en", "zh-CN"]) {
     await setup.click("#component-primary");
     const paused = await until(async () => (await statusOf(setup)) === w("enginePaused"), 15000);
     const pausedLine = await textOf(setup, "#engine-progress");
-    check(`${lang}: Pause stops the download and keeps its progress`, paused && /^\d+% · /.test(pausedLine ?? "") && !pausedLine.includes(w("engineSpeed", "").trim()) &&
+    check(`${lang}: Pause stops the download and keeps its progress`, paused && /^\d+%, /.test(pausedLine ?? "") && !pausedLine.includes(w("engineSpeed", "").trim()) &&
       (await textOf(setup, "#component-primary")) === w("componentResumeDownload"), pausedLine);
     const pausedAt = Date.now();
     const panelPaused = await until(async () => pattern(lang, "panelSetupPaused").test((await panelNotice())?.text ?? ""), 5000, 50);

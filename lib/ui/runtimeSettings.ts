@@ -27,7 +27,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
 const number = (value: number | null | undefined, digits: number): string =>
   value == null ? "–" : value.toLocaleString(undefined, { maximumFractionDigits: digits });
 
-/** "42.5 ms · 50 texts/s · 2 GB" for a candidate with at least one finished result. */
+/** "42.5 ms, 50 texts/s, 2 GB" for a candidate with at least one finished result. */
 function measuredLine(s: RuntimeSnapshot, id: string): string | null {
   const good = s.benchmark.results.filter((r) => r.candidate_id === id && r.status === "ok");
   if (good.length === 0) return null;
@@ -89,7 +89,7 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
       const tags = [c.id === s.active_id ? t("runtimeActive") : "", c.id === s.recommended_id ? t("runtimeRecommended") : "",
         c.id === s.fastest_id ? t("runtimeFastest") : "", c.experimental ? t("runtimeExperimental") : ""].filter(Boolean);
       for (const tag of tags) name.append(element("span", tag, "badge"));
-      body.append(name, element("span", `${c.device} · ${c.runtime} · ${c.precision}`, "runtime-detail"));
+      body.append(name, element("span", [c.device, c.runtime, c.precision].join(t("listSeparator")), "runtime-detail"));
       // An available configuration has a reason only when the engine passed it over for
       // taking the process down while it started (anagramd/runtime_controller.py).
       if (!c.available || c.reason) body.append(element("span", c.reason || t("runtimeUnavailable"), "runtime-detail"));
@@ -117,7 +117,7 @@ export function mountRuntimeSettings(host: HTMLElement, onUpdate?: (reply: Runti
     status.hidden = !running;
     if (running) {
       const current = s.candidates.find((c) => c.id === s.benchmark.current_id)?.label;
-      status.textContent = t("runtimeProgress", s.benchmark.completed, s.benchmark.total) + (current ? ` · ${current}` : "");
+      status.textContent = t("runtimeProgress", s.benchmark.completed, s.benchmark.total) + (current ? `${t("listSeparator")}${current}` : "");
     }
     error.textContent = actionError || (s.error || s.benchmark.status === "failed" ? t("runtimeFailed") : "");
     error.hidden = !error.textContent;

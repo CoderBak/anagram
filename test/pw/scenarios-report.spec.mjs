@@ -84,7 +84,7 @@ test("selection card: a long selection is analyzed whole, in overlapping passes 
   expect.soft(Number(rows["Words selected"]), note).toBeGreaterThan(600);
   expect.soft(rows["Words analyzed"], note).toBe(rows["Words selected"]);
   expect.soft(passRow, note).toBe(`Read in ${blocks.length} passes`);
-  expect.soft(rows[passRow], note).toMatch(new RegExp(`^(\\.\\d\\d|1\\.0)(\\s·\\s(\\.\\d\\d|1\\.0)){${blocks.length - 1}}$`));
+  expect.soft(rows[passRow], note).toMatch(new RegExp(`^(\\.\\d\\d|1\\.0)(,\\s(\\.\\d\\d|1\\.0)){${blocks.length - 1}}$`));
   expect.soft(Object.keys(rows), note).not.toContain("Model window");
   expect.soft(blocks.length, note).toBeGreaterThanOrEqual(3);
   expect.soft(readWhole(blocks, WINDOWED_TEXT), note).toBe(true);
@@ -97,7 +97,7 @@ test("copied report: a paragraph read in passes says so, with each pass's own nu
   const passes = "copied report: a paragraph read in passes says so, with each pass's own number";
   await expect(page.locator(`#wp ${BADGE_SEL} .num`), passes).toHaveText(SCORE);
   const line = (await report(page)).split("\n").find((l) => l.startsWith("1. ")) ?? "";
-  expect(line, passes).toMatch(/; \d+ words; read in \d+ passes: (\.\d\d|1\.0)( · (\.\d\d|1\.0))+\)$/);
+  expect(line, passes).toMatch(/; \d+ words; read in \d+ passes: (\.\d\d|1\.0)(, (\.\d\d|1\.0))+\)$/);
   expect(line, passes).not.toContain("not read");
 });
 
@@ -192,7 +192,7 @@ test("look-alike letters: a disguised English paragraph is read with its Latin l
   }
   expect(sent.filter((t) => t.includes("Вечером") || t.includes("πρωί")).every((t) => t === RUSSIAN || t === GREEK), `${look} (sent as written)`).toBe(true);
   const text = await report(page);
-  expect(text, look).toMatch(/^1\. \*\*AI-generated · [^\n]*\n {3}Look-alike letters were replaced before scoring\.$/m);
+  expect(text, look).toMatch(/^1\. \*\*AI-generated, [^\n]*\n {3}Look-alike letters were replaced before scoring\.$/m);
 });
 
 // "Flagged: 0" on a page where nothing reached the floor is not a clean page, it is a page
@@ -211,7 +211,7 @@ test("copied report: a page with nothing long enough to judge says there was too
   let text = "";
   await expect(async () => {
     text = await report(page);
-    expect(text).toMatch(/Analyzed: 0 units · Flagged: 0 · Too short: [1-9]/);
+    expect(text).toMatch(/Analyzed: 0 units, Flagged: 0 · Too short: [1-9]/);
   }, short).toPass({ timeout: 30_000 });
   // The floor is the reader's minimum length, 50 words unless Settings says otherwise.
   expect.soft(text, short).toContain("Too little text to judge: no passage reached the 50 words the model needs for a verdict.");
@@ -234,7 +234,7 @@ test("copied report: a flagged verdict just over the cut is marked a close call,
   await expect(page.locator(`#cc ${BADGE_SEL} .num`), close).toHaveText(SCORE);
   const text = await report(page);
   expect.soft(text, close).toContain("Mixed or uncertain: 1 of 1 verdicts is a close call");
-  expect.soft(text, close).toMatch(/^1\. \*\*AI-generated · \.8\d\*\* \(close call; Human /m);
+  expect.soft(text, close).toMatch(/^1\. \*\*AI-generated, \.8\d\*\* \(close call; Human /m);
 });
 
 // A paragraph short in characters and long in tokens (figures, URLs, names) is not left
@@ -395,7 +395,7 @@ keyboard("a flagged paragraph inserted above the others comes first in the panel
   const listed = await page.evaluate(() =>
     [...document.getElementById("anagram-fab").shadowRoot.querySelectorAll(".panel .pitem")].map((r) => /: (\S+) paragraph/.exec(r.getAttribute("aria-label") ?? "")?.[1] ?? null));
   expect.soft(listed, `${first} (the panel)`).toEqual([LATE_TAG, ...KEY_TAGS]);
-  const reported = (await report(page)).split("\n").map((l) => /^\d+\. \*\*[^*]+ · (\.\d\d|1\.0)\*\*/.exec(l)?.[1]).filter(Boolean);
+  const reported = (await report(page)).split("\n").map((l) => /^\d+\. \*\*[^*]+, (\.\d\d|1\.0)\*\*/.exec(l)?.[1]).filter(Boolean);
   expect.soft(reported, `${first} (the report)`).toEqual(pageScores);
   await page.keyboard.press("Escape");
   const lateAt = await page.evaluate((sel) => Math.round(document.querySelector(`#k0 ${sel}`).getBoundingClientRect().top + scrollY), BADGE_SEL);

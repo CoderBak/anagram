@@ -91,7 +91,7 @@ await sleep(1200);
 const versionText = await optionsPage.evaluate(() => document.getElementById("version")?.textContent ?? "");
 check(
   "options page renders and shows the version (background page reachable)",
-  /^v\d+\.\d+\.\d+ · Ready$/.test(versionText),
+  /^v\d+\.\d+\.\d+, Ready$/.test(versionText),
   versionText,
 );
 

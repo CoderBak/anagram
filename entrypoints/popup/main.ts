@@ -129,12 +129,11 @@ function countsLine(state: TabState): Node[] {
   // the language gate refused — both are counted apart from the analyzed number.
   const unavailable = state.unavailable ?? 0;
   const analyzed = state.scored - (state.unsupported ?? 0) - unavailable;
-  return [
-    document.createTextNode(tn("popupAnalyzed", analyzed)),
-    flaggedEl,
-    document.createTextNode(state.unsupported ? t("popupNotEnglish", state.unsupported) : ""),
-    document.createTextNode(unavailable ? t("popupUnavailable", unavailable) : ""),
-  ];
+  const sep = (): Text => document.createTextNode(t("listSeparator"));
+  const out: Node[] = [document.createTextNode(tn("popupAnalyzed", analyzed)), sep(), flaggedEl];
+  if (state.unsupported) out.push(sep(), document.createTextNode(t("popupNotEnglish", state.unsupported)));
+  if (unavailable) out.push(sep(), document.createTextNode(t("popupUnavailable", unavailable)));
+  return out;
 }
 
 /** The status line and the button, from the facts as they stand. */
@@ -209,7 +208,7 @@ function paintModel(s: BackendStatus | undefined): void {
   backendEl.hidden = !up;
   if (!up || !s) { backendEl.textContent = ""; return; }
   backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
-    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (s.server.device ? " · " + s.server.device : ""));
+    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (s.server.device ? ", " + s.server.device : ""));
 }
 
 /** Is the local engine ready? If not, the action opens setup and Settings. */

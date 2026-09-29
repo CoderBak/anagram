@@ -71,6 +71,11 @@ describe("message files", () => {
     for (const [key, entry] of Object.entries(ZH)) expect(entry.message.trim(), key).not.toBe("");
   });
 
+  it("has no middle dot in any message: parts of a line are joined with commas or set apart", () => {
+    for (const [key, entry] of Object.entries(EN)) expect(entry.message, `en ${key}`).not.toContain("·");
+    for (const [key, entry] of Object.entries(ZH)) expect(entry.message, `zh ${key}`).not.toContain("·");
+  });
+
   it("gives every English message a description for translators", () => {
     for (const [key, entry] of Object.entries(EN)) {
       expect(entry.description?.trim(), key).toBeTruthy();

@@ -2032,7 +2032,7 @@ const results = await page.evaluate(() => {
     layer.render(unit, verdict);
     const cardText = () => sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".card").textContent;
     const chips = sandbox.querySelectorAll('[data-anagram="host"]').length;
-    const passNumbers = verdict.windows.map((w) => PW.formatScore(w.result.score).replace(".", "\\.")).join("\\s*·\\s*");
+    const passNumbers = verdict.windows.map((w) => PW.formatScore(w.result.score).replace(".", "\\.")).join(",\\s*");
     check(`the card says how it was read: 'Read in ${spans.length} passes' with each pass's number; ONE chip with the aggregate`,
       chips === 1 && new RegExp(`Read in ${spans.length} passes\\s*${passNumbers}`).test(cardText()) && /judged by the passes that read it/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
       sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === PW.formatScore(verdict.result.score) &&

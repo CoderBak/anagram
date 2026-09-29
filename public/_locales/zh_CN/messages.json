@@ -54,7 +54,7 @@
     "message": "正在分析该段落…"
   },
   "cardScaleTitle": {
-    "message": "AI 编辑程度，0 到 1（EditLens 标度）"
+    "message": "AI 编辑程度，0 到 1"
   },
   "cardPartsTogether": {
     "message": "合并分析的段落"
@@ -93,10 +93,7 @@
     "message": "本地引擎没有响应。引擎启动后会自动重试。"
   },
   "cardFootUnsupported": {
-    "message": "EditLens 只在英文文本上训练，因此没有为该段落评分。"
-  },
-  "cardFootEstimate": {
-    "message": "这个数字是 EditLens 的估计，衡量文本距离纯人工写作有多远、离完全 AI 生成有多近，既不是 AI 撰写词语的占比，也不是证据。"
+    "message": "仅对英文文本评分。"
   },
   "coverageLookalikes": {
     "message": "评分前已将形近字母替换回拉丁字母。"
@@ -153,7 +150,7 @@
     "message": "本地引擎没有响应，请重试。"
   },
   "selFootUnsupported": {
-    "message": "EditLens 只在英文文本上训练，因此没有为所选文本评分。"
+    "message": "仅对英文文本评分。"
   },
   "fabHide": {
     "message": "隐藏 AI 检测"
@@ -174,7 +171,7 @@
     "message": "本地引擎未就绪，点击查看详情"
   },
   "countDownAria": {
-    "message": "本地引擎未就绪 · 详情"
+    "message": "本地引擎未就绪，详情"
   },
   "countAria_one": {
     "message": "$1 个存疑段落，查看列表"
@@ -270,7 +267,7 @@
     "message": "Google 文档"
   },
   "docsSubtitle": {
-    "message": "Anagram 阅读模式 · 逐段分析 · 编辑器原封不动"
+    "message": "Anagram 阅读模式，逐段分析，编辑器原封不动"
   },
   "docsRefresh": {
     "message": "刷新"
@@ -285,7 +282,7 @@
     "message": "把分析后的阅读视图作为独立页面打开"
   },
   "docsBack": {
-    "message": "返回编辑器 · Esc"
+    "message": "返回编辑器（Esc）"
   },
   "docsSnapshotNotice": {
     "message": "文档的静态快照，点“刷新”可重新读取。"
@@ -386,8 +383,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportDevice": {
-    "message": "计算设备：$1 · 精度：$2",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
+    "message": "计算设备：$1，精度：$2"
   },
   "readerOpenOriginal": {
     "message": "打开原文件"
@@ -468,8 +464,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteCoverage": {
-    "message": "已分析 $1/$2 次读取 · 不支持的语言 $3 次 · 不可用 $4 次 · 截断 $5 次",
-    "description": "Text analysis page action, status, or limit."
+    "message": "已分析 $1/$2 次读取，不支持的语言 $3 次，不可用 $4 次，截断 $5 次"
   },
   "pasteFileFailed": {
     "message": "无法以 UTF-8 文本读取该文件。",
@@ -612,7 +607,7 @@
     "message": "正在启动模型…"
   },
   "engineProgress": {
-    "message": "$1% · $2 / $3"
+    "message": "$1%，$2 / $3"
   },
   "engineSpeed": {
     "message": "$1/秒"
@@ -684,7 +679,7 @@
     "message": "Anagram 尚未设置：需要一次性下载模型。"
   },
   "popupSetupDownloading": {
-    "message": "正在下载模型 · $1%"
+    "message": "正在下载模型，$1%"
   },
   "popupSetupPaused": {
     "message": "下载已暂停（$1%）"
@@ -861,7 +856,7 @@
     "message": "不可用"
   },
   "runtimeMeasured": {
-    "message": "$1 ms · $2 段/秒 · $3"
+    "message": "$1 ms，$2 段/秒，$3"
   },
   "runtimeApply": {
     "message": "使用所选"
@@ -870,7 +865,7 @@
     "message": "运行基准测试"
   },
   "runtimeProgress": {
-    "message": "基准测试中 · 已完成 $1 / $2"
+    "message": "基准测试中，已完成 $1 / $2"
   },
   "runtimeBenchmarking": {
     "message": "正在进行基准测试…"
@@ -915,16 +910,16 @@
     "message": "$1 段存疑"
   },
   "popupAnalyzed_one": {
-    "message": "已分析 $1 段 · "
+    "message": "已分析 $1 段"
   },
   "popupAnalyzed_other": {
-    "message": "已分析 $1 段 · "
+    "message": "已分析 $1 段"
   },
   "popupNotEnglish": {
-    "message": " · $1 段非英文"
+    "message": "$1 段非英文"
   },
   "popupUnavailable": {
-    "message": " · $1 段不可用"
+    "message": "$1 段不可用"
   },
   "popupOff": {
     "message": "Anagram 已在此页关闭。"
@@ -1141,5 +1136,8 @@
   },
   "optRebind": {
     "message": "可在 $1 修改。"
+  },
+  "listSeparator": {
+    "message": "，"
   }
 }

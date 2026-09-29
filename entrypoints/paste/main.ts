@@ -29,7 +29,7 @@ let report: {text: string; windows: WindowVerdict[]; model: ModelInfo | null; co
 function clearResult(): void { report = undefined; results.hidden = true; list.replaceChildren(); }
 function readout(r: ScoreResult): string {
   const label = bandLabel(band(r));
-  return isNoVerdict(band(r)) ? label : `${label} · ${formatScore(r.score)} · ${r.probs.map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`).join(" / ")}`;
+  return isNoVerdict(band(r)) ? label : `${label}, ${formatScore(r.score)}, ${r.probs.map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`).join(" / ")}`;
 }
 function cancel(): void { ++generation; cancelDocumentSession(); analyze.disabled = false; }
 input.addEventListener("input", () => { cancel(); clearResult(); status.textContent = ""; });
@@ -86,8 +86,8 @@ analyze.addEventListener("click", async () => {
     const coverage = t("pasteCoverage", scored.length, read.length,
       read.filter((w) => w.result.unsupported).length, read.filter((w) => w.result.degraded).length,
       read.filter((w) => w.result.truncated).length) +
-      (shortTextNote(words) ? ` · ${shortTextNote(words)}` : "") +
-      (hasLookalikes(text) ? ` · ${t("coverageLookalikes").trim()}` : "");
+      (shortTextNote(words) ? `, ${shortTextNote(words)}` : "") +
+      (hasLookalikes(text) ? `, ${t("coverageLookalikes").trim()}` : "");
     document.getElementById("coverage")!.textContent = coverage;
     document.getElementById("summary")!.textContent = readout(unitVerdict("paste", text.length, read).result);
     for (const window of read) {
@@ -102,10 +102,10 @@ analyze.addEventListener("click", async () => {
 });
 document.getElementById("copy")!.addEventListener("click", async () => {
   if (!report) return;
-  const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version} · contract ${CONTRACT_VERSION}`, report.coverage, t("reportCaveat"), t("reportEstimate")];
+  const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version}, contract ${CONTRACT_VERSION}`, report.coverage, t("reportCaveat"), t("reportEstimate")];
   if (report.model) lines.push(JSON.stringify(report.model));
   report.windows.forEach((w, index) => {
-    lines.push(`${index + 1}. ${readout(w.result)}${w.result.truncated ? ` · ${t("reportUnread")}` : ""}`);
+    lines.push(`${index + 1}. ${readout(w.result)}${w.result.truncated ? `, ${t("reportUnread")}` : ""}`);
     if (includeText.checked) lines.push(report!.text.slice(w.start, w.end));
   });
   try { await navigator.clipboard.writeText(lines.join("\n\n")); status.textContent = t("copied"); }

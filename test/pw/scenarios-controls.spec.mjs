@@ -238,7 +238,7 @@ test("the popup on a page being read offers Rescan and names the engine", async 
   await page.goto(pages.url("/popup-state.html"), { waitUntil: "load" });
   await chipsSettle(page, 3);
   const popup = await popupOver(context, extension, page);
-  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready · fake" });
+  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready, fake" });
   const seen = await popupSays(popup);
   expect.soft(seen.status, `${ONE_ACTION} (running)`).toMatch(/paragraphs analyzed/);
   expect.soft(seen.filled, `${ONE_ACTION} (running)`).toBeLessThanOrEqual(1);

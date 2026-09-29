@@ -275,25 +275,20 @@ export async function analyzeSelection(): Promise<void> {
         ? verdict.windows.filter(isScoredWindow).reduce((n, w) => n + countWords(text.slice(w.start, w.end)), 0)
         : words;
       const short = isNoVerdict(b) ? "" : shortTextNote(words);
+      const foot = b === "unknown" ? t("selFootUnavailable") : b === "unsupported" ? t("selFootUnsupported") : coverageNote(verdict, "selection", text).trim();
       card.innerHTML =
         closeBtn +
         `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
         `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
         (short ? `<div class="short">${short}</div>` : "") +
         (isNoVerdict(b) ? "" : distributionHtml(r)) +
-        (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)} · ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
+        (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)}, ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row(t("selWordsSelected"), String(words)) +
         (readout ? row(t("selWordsAnalyzed"), verdict.unreadChars > 0 ? t("selFirst", analyzed) : String(analyzed)) : "") +
         (readout ? row(t("cardWindows", readout.count), windowScores(readout), " wins") : "") +
         (readout && readout.cutShort > 0 ? row(t("cardWindowsCut"), t("cardOfCount", readout.cutShort, readout.count)) : "") +
         (readout && readout.skipped > 0 ? row(t("cardWindowsSkipped"), t("cardOfCount", readout.skipped, readout.count)) : "") +
-        `<div class="foot">${
-          b === "unknown"
-            ? t("selFootUnavailable")
-            : b === "unsupported"
-              ? t("selFootUnsupported")
-              : coverageNote(verdict, "selection", text) + t("cardFootEstimate")
-        }</div>`;
+        (foot ? `<div class="foot">${foot}</div>` : "");
     }
     place();
   }

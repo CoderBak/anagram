@@ -399,7 +399,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const pill = root.querySelector(".pill") as HTMLElement;
     if (pill.classList.contains("pending")) return;
     pill.className = "pill band-unknown pending";
-    (root.querySelector(".num") as HTMLElement).textContent = "···";
+    (root.querySelector(".num") as HTMLElement).textContent = "…";
     (root.querySelector(".card") as HTMLElement).innerHTML =
       `<div class="foot" style="margin:0;padding:0;border:0">${t("cardPending")}</div>`;
   }
@@ -500,14 +500,14 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const formulaRow = !isNoVerdict(b) && unit.formulas > 0 ? row(t("cardFormulas"), `${unit.formulas}`) : "";
     const langRow =
       b === "unsupported"
-        ? row(t("cardDetectedLang"), `${languageName(result.lang)} · ${Math.round((result.lang_prob ?? 0) * 100)}%`)
+        ? row(t("cardDetectedLang"), `${languageName(result.lang)}, ${Math.round((result.lang_prob ?? 0) * 100)}%`)
         : "";
     const foot =
       b === "unknown"
         ? t("cardFootUnavailable")
         : b === "unsupported"
           ? t("cardFootUnsupported")
-          : coverageNote(verdict, "paragraph", unit.text) + t("cardFootEstimate");
+          : coverageNote(verdict, "paragraph", unit.text).trim();
     const short = isNoVerdict(b) ? "" : shortTextNote(unit.wordCount);
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
@@ -524,7 +524,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       // one per pinned card. This action is a pointer affordance; the keyboard route to
       // the same text is "Copy report" in the triage panel, which is properly exposed.
       `<div class="actions"><button type="button" tabindex="-1" class="act copy">${t("cardCopyText")}</button></div>` +
-      `<div class="foot">${foot}</div>` +
+      (foot ? `<div class="foot">${foot}</div>` : "") +
       `<span class="caret"></span>`;
 
     const copy = card.querySelector(".act.copy") as HTMLButtonElement;
