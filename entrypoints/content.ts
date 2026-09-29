@@ -141,8 +141,6 @@ export default defineContentScript({
     }
     const orchestrator = createOrchestrator(ctx, {
       mountFab: isTop,
-      // A surface's document is not the region the main-content probe would pick.
-      lockScope: docs?.kind === "editor" || surface ? "page" : undefined,
       collect: surface?.collect,
       placeBadge: surface?.placeBadge,
       // The panel's "Turn off on <host>" writes the rule; this page stops here and now.

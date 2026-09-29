@@ -2,7 +2,7 @@
 // the screen and out of an overflow:hidden box, the chip in RTL, small, large, tight and
 // vertical text, shadow DOM and slots, copying, a trailing link, dark sections, duplicates,
 // KaTeX, the top layer (a modal dialog, a site overlay), the ball and its panel; the
-// main-content scope's Defuddle chunk; the copied report's legend; and the host going away
+// copied report's legend; and the host going away
 // and coming back. Every test fails on an error the extension writes to the page's console.
 //
 //   npx playwright test scenarios-ui
@@ -346,16 +346,6 @@ test("the ball: dragged, it snaps to the left edge; left alone, it tucks half aw
   await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover", timeout: 15_000 }).toBe(true);
   await pointAtBall(page);
   await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover" }).toBe(false);
-});
-
-test("the main-content scope loads the Defuddle chunk on demand, and the page is still read", async ({ page, fixturesUrl, storage }) => {
-  await storage.set({ debug: true, analysisScope: "main" });
-  const logs = [];
-  page.on("console", (m) => logs.push(m.text()));
-  await page.goto(fixturesUrl, { waitUntil: "load" });
-  const chunk = "main-content scope loads the Defuddle vendor chunk on demand";
-  await expect.poll(() => logs.find((l) => /Defuddle chunk (loaded|failed)/.test(l)) ?? null, { message: chunk }).toMatch(/Defuddle chunk loaded$/);
-  await expect(settledChips(page).first(), chunk).toBeAttached();
 });
 
 test("the copied report gives bare 0-1 scores, the legend that explains them and the caveat that travels with them", async ({ fixtures: page, report }) => {

@@ -906,65 +906,23 @@
   "optUnderlineOff": {
     "message": "关闭"
   },
-  "optReading": {
-    "message": "阅读"
-  },
-  "optScope": {
-    "message": "范围"
-  },
-  "optScopeWholePage": {
-    "message": "整个页面"
-  },
-  "optScopeMain": {
-    "message": "仅正文"
-  },
   "optMerge": {
     "message": "合并短段落"
   },
   "optMinWords": {
-    "message": "最短长度"
+    "message": "最少词数"
   },
   "optMinWordsValue": {
     "message": "$1 个词"
   },
-  "optMinWordsNote": {
-    "message": "模型的训练文本都在 75 个词以上；更短的文本可靠性较低，结果中会注明。"
-  },
   "optAutoOpenPdfs": {
     "message": "自动在 Anagram 中打开 PDF"
-  },
-  "optFileAccess": {
-    "message": "本地 PDF 访问"
-  },
-  "optFileAccessReady": {
-    "message": "已允许"
-  },
-  "optFileAccessBrowserRequired": {
-    "message": "请在浏览器的扩展设置中开启文件网址访问权限。"
-  },
-  "optFileAccessNotGranted": {
-    "message": "未允许"
-  },
-  "optFileAccessEnable": {
-    "message": "允许"
-  },
-  "optFileAccessManage": {
-    "message": "浏览器设置"
   },
   "optFileAccessFirefoxInstructions": {
     "message": "在 Firefox 中打开 about:addons，选择 Anagram → 权限与数据，然后允许访问本地文件。"
   },
-  "optOpenReader": {
-    "message": "打开 PDF 阅读器"
-  },
   "optSites": {
     "message": "网站"
-  },
-  "accessLabel": {
-    "message": "网站访问权限"
-  },
-  "accessAll": {
-    "message": "所有网站"
   },
   "accessNone": {
     "message": "无"
@@ -1020,9 +978,6 @@
   "optAlreadyCovered": {
     "message": "已被 $1 的规则覆盖。"
   },
-  "optPrivacy": {
-    "message": "隐私"
-  },
   "optCacheMode": {
     "message": "结果缓存"
   },
@@ -1033,7 +988,7 @@
     "message": "仅内存"
   },
   "optClearCache": {
-    "message": "清除缓存的结果"
+    "message": "清除"
   },
   "optCacheEntries_one": {
     "message": "$1 条"
@@ -1047,26 +1002,8 @@
   "optSaveFailed": {
     "message": "更改未能保存。"
   },
-  "optReportText": {
-    "message": "复制的报告包含段落原文"
-  },
-  "optReportUrl": {
-    "message": "复制的报告包含页面标题和网址"
-  },
-  "optDebug": {
-    "message": "调试日志"
-  },
   "optPrivacyPolicy": {
     "message": "隐私政策"
-  },
-  "optShortcuts": {
-    "message": "快捷键"
-  },
-  "optRightClick": {
-    "message": "右键"
-  },
-  "optRebind": {
-    "message": "可在 $1 修改。"
   },
   "listSeparator": {
     "message": "，"
@@ -1109,6 +1046,21 @@
   },
   "engineWordsCpu": {
     "message": "使用处理器"
+  },
+  "optMinWordsHint": {
+    "message": "少于 75 个词可靠性较低。"
+  },
+  "optEngine": {
+    "message": "引擎"
+  },
+  "optPdfs": {
+    "message": "PDF"
+  },
+  "optLength": {
+    "message": "长度"
+  },
+  "optCache": {
+    "message": "缓存"
   },
   "popupPdfReader": {
     "message": "PDF 阅读器"

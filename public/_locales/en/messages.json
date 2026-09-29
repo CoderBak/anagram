@@ -1176,92 +1176,36 @@
     "description": "Option: every analyzed paragraph."
   },
   "optUnderline": {
-    "message": "Underline",
+    "message": "Underlines",
     "description": "Select label: whether every read paragraph is underlined, or none."
   },
   "optUnderlineOff": {
     "message": "Off",
     "description": "Option: no underline."
   },
-  "optReading": {
-    "message": "Reading",
-    "description": "Card heading: scope, grouping and PDFs."
-  },
-  "optScope": {
-    "message": "Scope",
-    "description": "Select label: what part of the page is analyzed."
-  },
-  "optScopeWholePage": {
-    "message": "Whole page",
-    "description": "Scope option."
-  },
-  "optScopeMain": {
-    "message": "Main content only",
-    "description": "Scope option."
-  },
   "optMerge": {
     "message": "Group short paragraphs",
     "description": "Switch: analyze short neighbouring paragraphs together."
   },
   "optMinWords": {
-    "message": "Minimum length",
+    "message": "Minimum words",
     "description": "Settings, Reading: label of the select that sets how many words a paragraph (or a group of short ones) needs to be analyzed."
   },
   "optMinWordsValue": {
     "message": "$1 words",
     "description": "Settings, Reading: one choice of the minimum length. $1 = a number of words (25, 50, 75, 100 or 150)."
   },
-  "optMinWordsNote": {
-    "message": "The model was trained on texts of 75 words or more; shorter ones are less reliable and say so.",
-    "description": "Settings, Reading: the note under the minimum length."
-  },
   "optAutoOpenPdfs": {
     "message": "Open PDFs in Anagram automatically",
     "description": "Switch: open PDFs in the reader automatically."
-  },
-  "optFileAccess": {
-    "message": "Local PDF access",
-    "description": "Row label: access to PDFs on this computer."
-  },
-  "optFileAccessReady": {
-    "message": "Allowed",
-    "description": "Local PDF access state."
-  },
-  "optFileAccessBrowserRequired": {
-    "message": "Turn on file URL access in the browser's extension settings.",
-    "description": "Local PDF access state: the browser still needs a switch turned on."
-  },
-  "optFileAccessNotGranted": {
-    "message": "Not allowed",
-    "description": "Local PDF access state."
-  },
-  "optFileAccessEnable": {
-    "message": "Allow",
-    "description": "Button that requests local PDF access."
-  },
-  "optFileAccessManage": {
-    "message": "Browser settings",
-    "description": "Button that opens the extension's page in the browser."
   },
   "optFileAccessFirefoxInstructions": {
     "message": "In Firefox, open about:addons, choose Anagram → Permissions and data, and allow access to local files.",
     "description": "Instructions where the browser has no settings page to open."
   },
-  "optOpenReader": {
-    "message": "Open PDF reader",
-    "description": "Button that opens the empty reader."
-  },
   "optSites": {
     "message": "Sites",
     "description": "Card heading: site access and rules."
-  },
-  "accessLabel": {
-    "message": "Site access",
-    "description": "Row label for granted sites."
-  },
-  "accessAll": {
-    "message": "All sites",
-    "description": "Site access state."
   },
   "accessNone": {
     "message": "No sites",
@@ -1335,10 +1279,6 @@
     "message": "Already covered by $1.",
     "description": "Note when a parent domain's rule already says the same; $1 is that host."
   },
-  "optPrivacy": {
-    "message": "Privacy",
-    "description": "Card heading."
-  },
   "optCacheMode": {
     "message": "Verdict cache",
     "description": "Select label: where scores are kept."
@@ -1352,8 +1292,8 @@
     "description": "Cache option."
   },
   "optClearCache": {
-    "message": "Clear cached verdicts",
-    "description": "Button that empties the cache."
+    "message": "Clear",
+    "description": "Settings: button that clears the cached verdicts."
   },
   "optCacheEntries_one": {
     "message": "$1 entry",
@@ -1371,33 +1311,9 @@
     "message": "The change could not be saved.",
     "description": "Error when a setting could not be written."
   },
-  "optReportText": {
-    "message": "Include passage text in copied reports",
-    "description": "Switch."
-  },
-  "optReportUrl": {
-    "message": "Include page title and URL in copied reports",
-    "description": "Switch."
-  },
-  "optDebug": {
-    "message": "Debug logging",
-    "description": "Switch."
-  },
   "optPrivacyPolicy": {
     "message": "Privacy policy",
     "description": "Link to PRIVACY.md."
-  },
-  "optShortcuts": {
-    "message": "Shortcuts",
-    "description": "Card heading."
-  },
-  "optRightClick": {
-    "message": "Right-click",
-    "description": "Key hint for the context-menu entries."
-  },
-  "optRebind": {
-    "message": "Change these at $1.",
-    "description": "Line under the shortcuts; $1 is the browser's shortcuts address."
   },
   "listSeparator": {
     "message": ", ",
@@ -1454,6 +1370,26 @@
   "engineWordsCpu": {
     "message": "on the processor",
     "description": "Settings engine row: the model runs on the CPU."
+  },
+  "optMinWordsHint": {
+    "message": "Under 75 words is less reliable.",
+    "description": "Settings: tiny hint under the minimum length."
+  },
+  "optEngine": {
+    "message": "Engine",
+    "description": "Settings: row label."
+  },
+  "optPdfs": {
+    "message": "PDFs",
+    "description": "Settings: row label."
+  },
+  "optLength": {
+    "message": "Length",
+    "description": "Settings: row label."
+  },
+  "optCache": {
+    "message": "Cache",
+    "description": "Settings: row label."
   },
   "popupPdfReader": {
     "message": "PDF reader",

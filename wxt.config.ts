@@ -260,7 +260,6 @@ export default defineConfig({
       web_accessible_resources: [
         {
           resources: [
-            "vendor/defuddle.min.mjs",
             "vendor/purify.min.mjs",
             "vendor/diagnostics.min.mjs",
             "vendor/surfaces.min.mjs",

@@ -187,12 +187,12 @@ test.describe("the engine dies on every batch", () => {
     const settings = "engine dies on every batch: Settings names the repeated stops and offers Retry";
     const status = options.locator("#componentSettings .component-status");
     await expect(options.locator("#componentSettings"), settings).toContainText(/stopp/i);
-    await expect(status, settings).toHaveText("Needs attention");
+    await expect(status, settings).toHaveText("Local engine, Needs attention");
     await expect(options.locator("#componentSettings"), settings).toContainText("Retry");
     expect.soft(nativeHost.crashes(), `${settings} (reading it wakes nothing)`).toBe(later);
     await options.locator("#component-primary").click();
     const again = "engine dies on every batch: Retry in Settings starts it again, and it is given up on again as quickly";
-    await expect(status, again).toHaveText("Ready");
+    await expect(status, again).toHaveText("Local engine, Ready");
     const second = await quiet(later, again);
     expect.soft(second, again).toBeGreaterThanOrEqual(2);
     expect.soft(second, again).toBeLessThanOrEqual(4);

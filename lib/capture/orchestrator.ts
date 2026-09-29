@@ -22,8 +22,7 @@ import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../c
 import { CONTRACT_VERSION } from "../contract";
 import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
-import { findMainContent, useDefuddle } from "../dom/mainContent";
-import { loadDefuddle, loadFragments } from "../lazy";
+import { loadFragments } from "../lazy";
 import { partTextOf, minWordsOf, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, type MinWords } from "../dom/text";
 import { hasLookalikes } from "../dom/lookalikes";
 import { createObservers, type Observers } from "./observers";
@@ -69,8 +68,6 @@ const PREFETCH_PASS = 300;
 const URL_REFRESH_DEBOUNCE_MS = 300;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
-/** How long the first collect waits for the Defuddle chunk under "main" scope. */
-const DEFUDDLE_BOOT_MS = 1500;
 
 /**
  * Pages that are rendered on a server and HYDRATED in the browser check the markup they
@@ -153,7 +150,6 @@ interface SettingsSnapshot {
   displayMode: "all" | "flagged";
   mergeShorts: boolean;
   minWords: MinWords;
-  analysisScope: "page" | "main";
 }
 
 /** Storage answered nothing (dead extension context) — boot with the shipped defaults. */
@@ -162,18 +158,11 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   displayMode: "all",
   mergeShorts: true,
   minWords: DEFAULT_MIN_WORDS,
-  analysisScope: "page",
 };
 
 export interface OrchestratorOptions {
   /** Mount the floating toggle. False in subframes — one FAB per TAB, in the top frame. */
   mountFab?: boolean;
-  /**
-   * Pin the analysis scope regardless of the user setting. Docs editor pages set
-   * "page": the real content lives in our overlay's shadow root, which the
-   * main-region probe cannot see into — "main" would mis-scope to app chrome.
-   */
-  lockScope?: "page";
   /**
    * What the copied report names as the page. The PDF reader is an extension page, so
    * its own address ("chrome-extension://…/reader.html?src=…") says nothing to whoever
@@ -246,21 +235,15 @@ export function createOrchestrator(
   let bootSeq = 0;
   /** Retire page work across awaits too, before it can refill L1 or send old text. */
   let captureGeneration = 0;
-  /** The Defuddle chunk is in the main-content detector's hands. */
-  let defuddleLoaded = false;
   let visible = true;
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
   let mergeShorts = true;
   let minWords: MinWords = DEFAULT_MIN_WORDS;
-  let analysisScope: "page" | "main" = "page";
-  /** Resolved scope root when analysisScope === "main"; null → whole page. */
-  let scopeRoot: Element | null = null;
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
   let unwatchMerge: (() => void) | null = null;
   let unwatchMinWords: (() => void) | null = null;
-  let unwatchScope: (() => void) | null = null;
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
   let l1Dim: string | null = null;
@@ -549,48 +532,6 @@ export function createOrchestrator(
   /** Painted under the current display mode? Everything is analyzed regardless. */
   function visibleUnderMode(v: UnitVerdict): boolean {
     return displayMode === "all" || isFlagged(v.result);
-  }
-
-  // --- analysis scope ----------------------------------------------------------------
-
-  /** Re-detect the main-content region (scope "main"); body-wide otherwise. */
-  function resolveScopeRoot(): void {
-    scopeRoot = analysisScope === "main" ? findMainContent() : null;
-  }
-
-  /**
-   * Fetch the on-demand Defuddle chunk once and hand it to the detector. Resolves
-   * false when it cannot be loaded — the text-mass probe then answers alone, which is
-   * also what happens for as long as the chunk is in flight.
-   */
-  async function loadDefuddleOnce(): Promise<boolean> {
-    if (defuddleLoaded) return true;
-    try {
-      useDefuddle(await loadDefuddle());
-      defuddleLoaded = true;
-      log.log("Defuddle chunk loaded");
-      return true;
-    } catch (e) {
-      log.warn("Defuddle chunk failed to load", e);
-      return false;
-    }
-  }
-
-  /** The element full scans start from under the current scope. */
-  function scanBase(): Element | null {
-    if (scopeRoot && scopeRoot.isConnected) return scopeRoot;
-    if (scopeRoot) resolveScopeRoot(); // SPA replaced the region — re-detect
-    return scopeRoot ?? document.body;
-  }
-
-  /** Under "main" scope, ignore dirty roots outside the region. */
-  function inScope(el: Element): boolean {
-    if (!scopeRoot) return true;
-    if (!scopeRoot.isConnected) {
-      resolveScopeRoot(); // stale region — re-detect before judging
-      if (!scopeRoot) return true;
-    }
-    return scopeRoot.contains(el) || el.contains(scopeRoot);
   }
 
   // --- ownership / invalidation ----------------------------------------------------
@@ -1136,22 +1077,6 @@ export function createOrchestrator(
     if (started) rescan();
   }
 
-  /** Scope is structural too: WHAT gets collected changes. */
-  function applyScope(v: "page" | "main"): void {
-    if (opts.lockScope) return; // pinned (Docs editor) — user scope not applied
-    if (v === analysisScope) return;
-    analysisScope = v;
-    if (v === "main") {
-      // Defuddle is an on-demand chunk: fetch it once, then re-collect under the
-      // new scope (the text-mass probe covers the rare failure to load).
-      void loadDefuddleOnce().then(() => {
-        if (started && analysisScope === "main") rescan();
-      });
-    } else if (started) {
-      rescan();
-    }
-  }
-
   function updateFab(): void {
     if (started && mountFab) fab.mount(); // re-mounts if the page wiped the host
     let flagged = 0;
@@ -1262,16 +1187,8 @@ export function createOrchestrator(
     // 3) Re-scan the dirty roots PLUS every container released by invalidations
     //    above (multi-part units span containers outside the mutation root).
     //    Stale-claim invalidations during scanning queue further rounds.
-    //    Under "main" scope, roots outside the detected region are not scanned.
     const scanned = new Set<Element>();
-    // A root ABOVE the scope region (body-level swap) scans the region, not the whole
-    // subtree — out-of-scope content must not sneak in from above. Applied again after
-    // the bound, because merging roots upward can climb past the region too.
-    const clampToScope = (r: Element): Element =>
-      scopeRoot && r !== scopeRoot && r.contains(scopeRoot) ? scopeRoot : r;
-    let queue: Element[] = boundRoots(
-      dedupeRoots([...roots, ...seedQueue]).filter(inScope).map(clampToScope),
-    ).map(clampToScope);
+    let queue: Element[] = boundRoots(dedupeRoots([...roots, ...seedQueue]));
     // What the burst itself was reduced to, before the rounds that stale claims add.
     const planned = queue.length;
     for (let round = 0; round < 4 && queue.length > 0; round++) {
@@ -1394,10 +1311,8 @@ export function createOrchestrator(
    * the post you are looking at on every scroll step, which answered a 90-second session
    * with 51 whole-document re-walks and 1 058 layouts where the page itself did 725. The
    * page did not change: the MutationObserver is what covers real DOM changes, and it
-   * never missed one in the survey. So a rewrite that left every live unit connected and
-   * the main region in the document is answered by the purge alone. Looking for the
-   * region again is left to the refresh: under "Main content only" that is Defuddle
-   * over a clone of the whole document, which a rewrite on every scroll step cannot pay.
+   * never missed one in the survey. So a rewrite that left every live unit connected is
+   * answered by the purge alone: a fresh walk of the page on every scroll step is not worth it.
    *
    * Anything else — a pushed entry, a traversal, a popstate, a hash change — is a real route change and gets
    * the full refresh, debounced so that a burst of them is one walk.
@@ -1407,7 +1322,7 @@ export function createOrchestrator(
     lastHref = location.href;
     const live = unitsById.size;
     purgeDisconnected();
-    if (kind === "rewrite" && unitsById.size === live && (!scopeRoot || scopeRoot.isConnected)) {
+    if (kind === "rewrite" && unitsById.size === live) {
       updateFab();
       return;
     }
@@ -1422,9 +1337,7 @@ export function createOrchestrator(
       urlRefreshTimer = null;
       if (!started) return;
       purgeDisconnected();
-      resolveScopeRoot(); // the route's main region may be a different element now
-      const base = scanBase();
-      if (base) ingestUnits(collect(base, makeClaimFilter()));
+      ingestUnits(collect(document.body, makeClaimFilter()));
       updateFab();
       log.log("url change refresh", location.href);
     }, URL_REFRESH_DEBOUNCE_MS);
@@ -1477,64 +1390,38 @@ export function createOrchestrator(
   /**
    * The asynchronous half of start(). The first collect has to run under the settings
    * the user chose, not under the defaults: scanning first and correcting afterwards
-   * dispatched paragraphs a "Main content only" reader never agreed to send, chipped
-   * them outside the region, and flashed "analyzing…" chips at a "Flagged only" reader
-   * before tearing the whole page down again. `seq` retires a boot whose start() has
+   * flashed "analyzing…" chips at a "Flagged only" reader and dispatched paragraphs a
+   * reader with marks off never asked for, before tearing the whole page down again. `seq` retires a boot whose start() has
    * since been undone by a stop() or overtaken by a newer start().
    */
   async function boot(seq: number): Promise<void> {
     applySnapshot(await readSettings());
     if (seq !== bootSeq || !started) return; // stopped or restarted while we waited
 
-    // Under "main" scope the region is Defuddle's answer once the chunk is here and
-    // the text-mass probe's until then, and the two can disagree — so give the chunk a
-    // bounded head start instead of scanning the page twice on every load.
-    let lateDefuddle = false;
-    if (analysisScope === "main") {
-      const ready = loadDefuddleOnce();
-      lateDefuddle = await Promise.race([
-        ready.then(() => false),
-        new Promise<boolean>((r) => setTimeout(() => r(true), DEFUDDLE_BOOT_MS)),
-      ]);
-      if (seq !== bootSeq || !started) return;
-    }
-
     watchSettings();
     observers.start();
     booted = true;
-    resolveScopeRoot();
-    const base = scanBase();
-    if (base) ingestUnits(collect(base, makeClaimFilter()));
+    ingestUnits(collect(document.body, makeClaimFilter()));
     refreshCommentOffer();
 
     watchUrl();
     log.log("started", { session, domain });
-
-    // The chunk was still in flight when the wait ran out, so this page was scoped by
-    // the text-mass probe alone: re-derive it once if Defuddle does turn up.
-    if (lateDefuddle) {
-      void loadDefuddleOnce().then((ok) => {
-        if (ok && started && seq === bootSeq && analysisScope === "main") rescan();
-      });
-    }
   }
 
   /** One awaited read of every setting the first collect depends on. */
   async function readSettings(): Promise<SettingsSnapshot> {
     try {
-      const [showHighlights, mode, merge, floor, scope] = await Promise.all([
+      const [showHighlights, mode, merge, floor] = await Promise.all([
         settings.showHighlights.getValue(),
         settings.displayMode.getValue(),
         settings.mergeShorts.getValue(),
         settings.minWords.getValue(),
-        settings.analysisScope.getValue(),
       ]);
       return {
         showHighlights,
         displayMode: mode,
         mergeShorts: merge,
         minWords: minWordsOf(floor),
-        analysisScope: scope,
       };
     } catch (e) {
       // Storage throws once the extension context is invalidated (reload/update).
@@ -1552,7 +1439,6 @@ export function createOrchestrator(
     displayMode = s.displayMode;
     mergeShorts = s.mergeShorts;
     minWords = s.minWords;
-    if (!opts.lockScope) analysisScope = s.analysisScope;
     setHighlightsVisible(visible && highlightsEnabled);
   }
 
@@ -1567,8 +1453,6 @@ export function createOrchestrator(
       unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
       unwatchMinWords?.();
       unwatchMinWords = settings.minWords.watch(applyMinWords);
-      unwatchScope?.();
-      unwatchScope = settings.analysisScope.watch(applyScope);
     } catch (e) {
       // Dead extension context: the page keeps the settings it booted with.
       log.warn("settings watchers unavailable", e);
@@ -1660,8 +1544,6 @@ export function createOrchestrator(
     unwatchMerge = null;
     unwatchMinWords?.();
     unwatchMinWords = null;
-    unwatchScope?.();
-    unwatchScope = null;
     // The worker is still at this run's batches, and a new document session is what makes
     // it drop them. Only once the toolbar count is cleared, and only if nothing has started
     // again or replaced the session meanwhile: a page analyzed on a one-off grant is
@@ -1695,9 +1577,7 @@ export function createOrchestrator(
     whenSafeToInsert(registerHighlightStyles); // no-op unless the document was replaced under us
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
-    resolveScopeRoot();
-    const base = scanBase();
-    if (base) ingestUnits(collect(base, makeClaimFilter()));
+    ingestUnits(collect(document.body, makeClaimFilter()));
     updateFab();
     log.log("rescan");
   }

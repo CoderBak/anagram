@@ -123,7 +123,7 @@ async function startAnalysis(owned: number): Promise<void> {
   setRangeLocator((unit, spans) => currentSource.ranges(unit, spans));
   let answered = false;
   orchestrator = createOrchestrator(null, {
-    mountFab: true, lockScope: "page", reportUrl,
+    mountFab: true, reportUrl,
     reportScopeNote: () => t("readerReportScope", scopeCount(), app.pdfDocument?.numPages ?? 0),
     collect: (_root, claim, options) => {
       if (answered) return [];

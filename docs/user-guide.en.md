@@ -15,23 +15,23 @@ this computer:
 - **On most computers** it runs inside the browser, and its model starts downloading at once:
   1.4 GB, one time, from Hugging Face into the browser's own storage. With Data Saver on, or
   too little disk space, it waits for **Set up (one-time 1.4 GB download)** instead.
-- **On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card**, where a
-  local engine is clearly faster, the page asks first, and nothing downloads until you pick:
+- **On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card**, the
+  page asks first, and nothing downloads until you pick:
   **One click** runs in the browser as above. **Terminal** asks the browser to let Anagram
   talk to a local engine, then shows one command: run it in Terminal. No administrator
   password or system Python is needed. It installs the engine under `~/.anagram`, registers
   it for this exact extension, and downloads the model files with progress in the terminal
-  (`~/.anagram/bin/anagram download` resumes an interrupted download). On an M4 the local
-  engine scores a paragraph in about 43 ms with about 1.8 GB of memory; the browser takes
-  about 92 ms and up to 2.5 GB.
+  (`~/.anagram/bin/anagram download` resumes an interrupted download).
 - **A computer with less than 4 GB of memory**, or too little free disk space, is told so,
   and nothing is downloaded; with exactly 4 GB it runs, and may slow down while it scores.
   Where the graphics card supports 16-bit maths, that computer, or one short of disk space
   for the full model, gets a lighter version of the model instead (a 715 MB download), whose
   verdicts match the full model's on 99.8% of texts; the setup page and Settings say so.
 
-The in-browser download shows progress, speed and time left, with Pause, Resume and Cancel;
-a download that stops says why, and **Retry** continues where it left off. The model runs on
+The in-browser download shows a bar with the percentage, the bytes, time left and speed, with
+Pause, Resume and Cancel, and asks you to keep the browser open until it finishes (if the
+browser closes, the download carries on the next time Anagram starts); a download that stops
+says why, and **Retry** continues where it left off. The model runs on
 the graphics card through WebGPU, or on the processor, much more slowly, where the browser
 offers no usable GPU. The local engine detects your hardware and loads the best
 configuration itself. When the setup page says **Ready**, allow sites as described below.
@@ -50,7 +50,7 @@ loads it until Firefox restarts.
 
 ## Read
 
-Grant a site with the switch in the popup, or allow all sites from Settings. Without a
+Grant a site with the switch in the popup, or allow all sites on the setup page or in Settings. Without a
 grant, **Analyze this page** in the popup scores the page in front of you once. Google
 Play Books, Libby and VitalSource Bookshelf show the book in a frame from a second
 address, and the switch asks for both; a reader granted with an older version shows as
@@ -59,7 +59,7 @@ off until you switch it on again.
 - A chip after each paragraph shows the score. Hover it for where the score sits on the
   scale, the four-way breakdown and the word count. Non-English text gets a grey chip
   with the language code.
-- The chip's dot and the underline share one colour scale, from a soft green for human
+- The chip's dot and the underline share one colour scale, from a vivid green for human
   writing through amber to red for AI-generated text. The word follows the number: Human below .17, Lightly
   edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
   word is likely right; the less likely, the thinner the ring the dot becomes.
@@ -81,7 +81,7 @@ off until you switch it on again.
   misspellings lowered detection by 2 points at most. Swapping in synonyms lowered it from
   29% to 18%, and paraphrasing with another model to 6%. Text whose letters were replaced
   with look-alike Cyrillic ones gets no verdict: it shows as another language.
-- A paragraph needs 50 words to be scored; **Minimum length** in Settings offers 25, 50,
+- A paragraph needs 50 words to be scored; **Minimum words** in Settings offers 25, 50,
   75, 100 or 150. Shorter paragraphs are scored together with their neighbours in the same
   section, never across a heading; a ×2 on a chip means it covers two paragraphs, and a
   short paragraph with nothing to join is not scored. The open model was trained on texts
@@ -98,13 +98,14 @@ off until you switch it on again.
 - Text in a frame is read where Anagram may read the frame, an EPUB reader's chapters
   included. Its chips are in the frame; the ball's list and report cover the page itself.
 - The floating ball shows or hides marks. Its counter shows how many paragraphs read as
-  AI-generated and opens their list, which can jump to each one and copy a report. When
-  reports include both the page address and passage text, each flagged paragraph in a
-  copied report links back to the page, scrolled to it.
+  AI-generated and opens their list, which can jump to each one and copy a report.
 - Right-click a selection to score just that text. Alt+Shift+P toggles Anagram on the
   page, Alt+Shift+L opens the list, Alt+Shift+J and K walk flagged paragraphs.
 - PDFs open in Anagram's reader from the popup, the floating ball or a right-click on a
-  link. You can also drop a file into the reader. The first chips come from a quick
+  link; the popup's **PDF reader** opens it empty, and **Analyze text** opens a page for
+  pasted text. You can also drop a file into the reader. Local PDFs need "Allow access to
+  file URLs" on the extension's page in `chrome://extensions`; the setup page and Settings
+  have a button that takes you there. The first chips come from a quick
   reading of each page; a moment later Zotero's document engine has worked out the
   paragraphs, leaving out captions, footnotes and reference lists, and the chips are
   redrawn on those. Past 300 pages every page is read by the quick reading alone.
@@ -112,19 +113,18 @@ off until you switch it on again.
 
 ## Settings
 
-The toolbar icon's gear opens Settings.
+The toolbar icon's gear opens Settings, one list of rows.
 
-- **Local engine** or **In-browser engine**: status, delete model files, and the switch to
-  the other engine. The local engine adds update and uninstall, and **Advanced** lists the
-  configurations that work on this computer, lets you switch, and can run a benchmark to
-  compare them. FP32 is always the automatic choice; FP16 is optional.
-- **Marks**: whether text is marked in place, and whether chips appear on every
-  paragraph or only on flagged ones.
-- **Reading**: the whole page or the main article only, and the minimum length.
-- **Sites**: grants and per-site rules.
-- **Privacy**: score cache retention, clearing, and what copied reports include.
+- **Engine**: its status in words, the switch to the other engine, delete model files and
+  when the model is unloaded. The local engine adds update, stop and uninstall. FP32 is
+  always the automatic choice; FP16 is used only where FP32 does not fit.
+- **Sites**: allow or withdraw all sites, run on granted sites by default, and per-site rules.
+- **PDFs**: open PDFs in Anagram automatically, and PDFs on this computer.
+- **Marks**: chips on every paragraph or only flagged ones, and underlines.
+- **Length**: the minimum words, and grouping short paragraphs.
+- **Cache**: how long verdicts are kept, and clearing them.
 
-The engine unloads the model after five minutes without work and reloads on demand.
+The engine unloads the model after five minutes without work by default and reloads on demand.
 **Source code** in the footer opens the code of the exact version you are running.
 
 ## Update and remove

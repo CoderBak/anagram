@@ -78,7 +78,7 @@ describe(NOTICES_FILE, () => {
     expect(packageOfModule("lib/surfaces/chunk.ts")).toBeNull();
     expect(packageOfModule("\0anagram:en-messages")).toBeNull();
     expect(packageOfModule(`${ROOT}/node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs`)).toBe("@floating-ui/dom");
-    expect(packageOfModule("../../node_modules/defuddle/dist/index.js")).toBe("defuddle");
+    expect(packageOfModule("../../node_modules/dompurify/dist/purify.es.mjs")).toBe("dompurify");
     expect(packageOfModule("\0vite/preload-helper.js")).toBe("vite");
     expect(packageOfModule("\0rolldown/runtime.js")).toBe("rolldown");
     expect(packageOfModule("virtual:wxt-background-entrypoint")).toBe("wxt");

@@ -157,30 +157,6 @@ test("Immersive Translate's bilingual copy is never read, the original beside it
   expect(sent.every((t) => t.includes("ORIGINAL-IMT") && !t.includes("MACHINE-IMT")), bilingual).toBe(true);
 });
 
-// With "Main content only" chosen before the page opens, the paragraph outside the article
-// must never be chipped, and its text must never reach the host, not even during the few
-// hundred milliseconds the settings read used to leave the page scanning whole-page defaults.
-test("main-content scope holds from the first scan: nothing outside is chipped or sent", async ({ page, pages, nativeHost, storage }) => {
-  const MARKER = "ZORBLAX";
-  const OUTSIDE = `${MARKER} sits in a block outside the article region, and it is deliberately long enough to clear the evidence floor on its own, with well over seventy-five ordinary English words in it, so that nothing except the analysis scope can explain its absence: if the first scan ran under the default whole-page setting, this sentence would have been dispatched to the scoring fixture long before the stored setting ever arrived, and the fixture's log would show it among the very first texts it was sent.`;
-  pages.serve({
-    "/scope.html": PAGE("scope fixture", `<main id="article"><h1>The article region</h1>
-<p id="s1">${PARA("SCOPED-ONE")}</p>
-<p id="s2">${PARA("SCOPED-TWO")}</p>
-<p id="s3">${PARA("SCOPED-THREE")}</p></main>
-<div id="offmain"><p id="s4">${OUTSIDE}</p></div>`),
-  });
-  await storage.set({ analysisScope: "main" });
-  const mark = nativeHost.textMark();
-  await page.goto(pages.url("/scope.html"), { waitUntil: "load" });
-  const scope = "main-content scope holds from the first scan: nothing outside is chipped or sent";
-  await chipsSettle(page, 3, "main");
-  await page.evaluate(() => document.getElementById("offmain").scrollIntoView());
-  await page.waitForTimeout(ABSENCE_MS);
-  await expect(page.locator(`#offmain ${BADGE_SEL}`), scope).toHaveCount(0);
-  expect(nativeHost.textsSince(mark).filter((t) => t.includes(MARKER)), scope).toEqual([]);
-});
-
 // ---- the same page, built step by step or all at once ------------------------------------
 // The safety net under lib/capture/orchestrator.ts's scan-root rule. A page that grows and
 // changes under the reader must end up with exactly the chips a single fresh scan of its

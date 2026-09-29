@@ -101,12 +101,11 @@ async function copyText(text: string): Promise<CopyResult["via"]> {
 
 export async function copyPageDiagnostics(facts: DiagnosticsFacts): Promise<CopyResult> {
   const manifest = browser.runtime.getManifest();
-  const [chunk, daemon, rule, globallyEnabled, analysisScope, mergeShorts, minWords, displayMode] = await Promise.all([
+  const [chunk, daemon, rule, globallyEnabled, mergeShorts, minWords, displayMode] = await Promise.all([
     loadDiagnostics(),
     daemonFacts(),
     effectiveRule(facts.host).catch(() => null),
     settings.enabled.getValue().catch(() => true),
-    settings.analysisScope.getValue().catch(() => "page"),
     settings.mergeShorts.getValue().catch(() => true),
     readMinWords(),
     settings.displayMode.getValue().catch(() => "all"),
@@ -117,7 +116,6 @@ export async function copyPageDiagnostics(facts: DiagnosticsFacts): Promise<Copy
     manifestVersion: manifest.manifest_version,
     uiLanguage: uiLanguage(),
     messageLocale: messageLocale(),
-    analysisScope,
     mergeShorts,
     minWords,
     displayMode,

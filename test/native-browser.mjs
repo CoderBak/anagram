@@ -98,8 +98,8 @@ while True:
       type: "stdio", allowed_origins: [`chrome-extension://${id}/`],
     }));
     const panel = page.locator("#componentSettings");
-    await panel.locator("progress").waitFor({ timeout: 20000 });
-    assert.equal(await panel.locator("progress").getAttribute("value"), "100");
+    await panel.getByRole("progressbar").waitFor({ timeout: 20000 });
+    assert.equal(await panel.getByRole("progressbar").getAttribute("aria-valuenow"), "100");
     // The page only observes: model download intent belongs to the native component.
     const requests = () => readFileSync(logFile, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(requests().filter((r) => r.op === "models.download").length, 0);
@@ -114,7 +114,7 @@ while True:
     await worker.evaluate(() => chrome.runtime.openOptionsPage());
     const settings = await openedSettings;
     await settings.waitForURL(`chrome-extension://${id}/options.html`);
-    await settings.locator("#componentSettings progress").waitFor();
+    await settings.locator("#componentSettings").getByRole("progressbar").waitFor();
     assert.equal(new Set(requests().map((r) => r.pid)).size, 1, "Setup and Settings must share a single native process");
     assert.deepEqual(await worker.evaluate(async () => (await chrome.permissions.getAll()).origins ?? []), []);
     console.log(`PASS ${language}: real native framing, shared process, responsive pause/resume, no host grants`);
@@ -135,12 +135,14 @@ while True:
     // Move to an idle state to exercise the exact delete confirmation boundary.
     state = JSON.parse(readFileSync(stateFile, "utf8"));
     state.state = "needs_models"; state.download.status = "idle"; save();
-    // Destructive actions live behind the Manage fold.
-    await panel.locator("#manage > summary").waitFor();
-    await panel.locator("#manage > summary").click();
-    const remove = panel.getByRole("button", { name: language === "en" ? "Delete model files" : "删除模型文件", exact: true });
+    // The destructive actions are Settings' line of controls; the setup page has none of them.
+    assert.equal(await controls.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).count(), 0, "the setup page carries no uninstall");
+    const managing = await context.newPage();
+    await managing.goto(`chrome-extension://${id}/options.html`);
+    const controls = managing.locator("#componentSettings");
+    const remove = controls.getByRole("button", { name: language === "en" ? "Delete model files" : "删除模型文件", exact: true });
     await remove.waitFor(); await remove.click();
-    const dialog = page.getByRole("dialog");
+    const dialog = managing.getByRole("dialog");
     await dialog.waitFor();
     assert.equal(requests().filter((r) => r.op === "models.delete").length, 0);
     const cancel = dialog.getByRole("button", { name: language === "en" ? "Cancel" : "取消", exact: true });
@@ -149,12 +151,12 @@ while True:
     assert.equal(requests().filter((r) => r.op === "models.delete").length, 0);
     await remove.click();
     await dialog.getByRole("button", { name: language === "en" ? "Delete model files" : "删除模型文件", exact: true }).click();
-    await page.waitForFunction(() => !document.querySelector("dialog[open]"));
+    await managing.waitForFunction(() => !document.querySelector("dialog[open]"));
     assert.equal(requests().filter((r) => r.op === "models.delete").length, 1);
-    await panel.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).click();
+    await controls.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).click();
     await dialog.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).click();
-    await page.waitForFunction(() => !document.querySelector("dialog[open]"));
-    await page.waitForFunction(() => document.querySelector("#componentSettings")?.textContent?.match(/system window|系统窗口|清理窗口/i));
+    await managing.waitForFunction(() => !document.querySelector("dialog[open]"));
+    await managing.waitForFunction(() => document.querySelector("#componentSettings")?.textContent?.match(/system window|系统窗口|清理窗口/i));
     assert.equal(await worker.evaluate(() => chrome.runtime.getManifest().version), manifest.version, "Scheduled cleanup must not uninstall the extension");
     assert.deepEqual(errors, []);
     console.log(`PASS ${language}: light/dark/narrow UI, confirmations, scheduled cleanup is not completion`);
@@ -164,7 +166,7 @@ while True:
     save();
     // A completed host receipt is required before the actual browser removes its
     // temporary extension. No management permission is present in the manifest.
-    await page.waitForEvent("close", { timeout: 15000 });
+    await managing.waitForEvent("close", { timeout: 15000 });
     console.log(`PASS ${language}: confirmed local cleanup triggers real browser self-uninstall`);
   } finally {
     await context?.close();

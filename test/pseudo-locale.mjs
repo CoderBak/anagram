@@ -247,8 +247,7 @@ async function pages(context, extId, fixture, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
   const page = await context.newPage();
   const componentReady = () =>
-    page.waitForFunction(() => !!document.querySelector('#runtimeSettings .runtime-row[data-active="true"]'), null, { timeout: 15000 }).catch(() => {});
-  const openFolds = () => page.evaluate(() => document.querySelectorAll("details").forEach((d) => d.setAttribute("open", "")));
+    page.waitForFunction(() => /(Ready|就绪)$/.test(document.querySelector("#componentSettings .component-status")?.textContent ?? ""), null, { timeout: 15000 }).catch(() => {});
 
   // The popup is a fixed 300 px wide, whatever the window.
   await page.setViewportSize({ width: 300, height: 600 });
@@ -260,7 +259,6 @@ async function pages(context, extId, fixture, lang) {
     await page.setViewportSize(size);
     await page.goto(url("options.html"), { waitUntil: "load" });
     await componentReady();
-    await openFolds();
     await check(page, lang, "settings");
 
     // Opened by the panel's offer to allow a comment site (lib/access/commentFrames.ts).
@@ -270,7 +268,6 @@ async function pages(context, extId, fixture, lang) {
 
     await page.goto(url("onboarding.html"), { waitUntil: "load" });
     await componentReady();
-    await openFolds();
     await check(page, lang, "setup, engine ready");
   }
 
@@ -337,8 +334,6 @@ async function enginePages(context, extId, lang) {
     await page.goto(url(path), { waitUntil: "load" });
     return page;
   };
-  // The local engine's folds open, as the settings pages above are checked.
-  const openFolds = (page) => page.evaluate(() => document.querySelectorAll("details").forEach((d) => d.setAttribute("open", "")));
   const up = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 })
     .then(() => true, () => false);
   const faces = [["apple-silicon", "#engine-pick-inbrowser", "the choice of engines"], ["linux-2gb", ".engine-cannot", "a device that cannot run the model"]];
@@ -364,11 +359,11 @@ async function enginePages(context, extId, lang) {
     else record(`${lang}: setup page, the lighter model at ${size.width} px`, false, "the line never showed");
     await lighter.close();
     const crashing = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
-    if (await up(crashing, "#engine-crash-switch")) { await openFolds(crashing); await check(crashing, lang, "setup page, the local engine crashing"); }
+    if (await up(crashing, "#engine-crash-switch")) { await check(crashing, lang, "setup page, the local engine crashing"); }
     else record(`${lang}: setup page, the local engine crashing at ${size.width} px`, false, "the switch never showed");
     await crashing.close();
     const settings = await open("options.html", size, async (p) => { await scriptEngine(p, "needed", { engine: "native" }); await scriptDevice(p, DEVICES["linux-cpu"]); });
-    if (await up(settings, "#engine-delete-leftover") && await up(settings, "#engine-switch")) { await openFolds(settings); await check(settings, lang, "settings, the switch and the files left behind"); }
+    if (await up(settings, "#engine-delete-leftover") && await up(settings, "#engine-switch")) { await check(settings, lang, "settings, the switch and the files left behind"); }
     else record(`${lang}: settings, the switch and the files left behind at ${size.width} px`, false, "they never showed");
     await settings.close();
   }
