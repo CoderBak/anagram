@@ -55,6 +55,14 @@ interface Pending {
 export interface PortMessages {
   /** What a failed `connect()` means to the user. */
   cannotStart: string;
+  /**
+   * The in-browser engine loads its model on the processor in minutes, not seconds: a score
+   * or token count that reaches its timeout while the engine says it is loading (`status`
+   * answers `loading`) waits on, another timeout at a time, until this many ms have passed
+   * since it was asked, and only then fails. Without it (the local engine) a request that
+   * reaches its timeout fails, as ever.
+   */
+  loadWaitMs?: number;
 }
 
 export class PortTransport implements EngineTransport {
@@ -243,9 +251,23 @@ export class PortTransport implements EngineTransport {
           if (!this.pending.delete(id)) return;
           cleanup(); reject(error);
         };
+        const began = Date.now();
         const arm = () => {
           clearTimeout(timer);
-          timer = setTimeout(() => settle(new NativeTransportError("native_timeout", "Local component did not answer in time")), timeout);
+          timer = setTimeout(() => {
+            const wait = this.messages.loadWaitMs;
+            const on = request.port;
+            if (wait && on && !request.internal && (op === "score" || op === "tokens") && Date.now() - began < wait) {
+              // Out of time, but the model may be on its way in: ask, and keep waiting while it is.
+              void this.isLoading(on).then((loading) => {
+                if (!this.pending.has(id) || request.port !== on) return;
+                if (loading && Date.now() - began < wait) arm();
+                else settle(new NativeTransportError("native_timeout", "Local component did not answer in time"));
+              });
+              return;
+            }
+            settle(new NativeTransportError("native_timeout", "Local component did not answer in time"));
+          }, timeout);
         };
         const request: Pending = {op, message, port: null, replayed: false, internal, resolve, reject, arm, disarm, cleanup};
         this.pending.set(id, request);
@@ -253,6 +275,15 @@ export class PortTransport implements EngineTransport {
         if (target) this.post(target, request);
       });
     } catch (error) { return Promise.reject(error); }
+  }
+
+  /** Whether the engine behind `port` says its model is loading. */
+  private async isLoading(port: NativePort): Promise<boolean> {
+    try {
+      const reply = await this.create("status", {}, undefined, 5_000, port, true);
+      const state = reply.ok && isRecord(reply.data) ? reply.data.state : undefined;
+      return state === "loading" || state === "starting";
+    } catch { return false; }
   }
 
   private post(port: NativePort, request: Pending): void {

@@ -20,8 +20,12 @@ import { Tokenizer } from "./tokenizer";
 const PIPELINE_REV = "pre1";
 const STATE_FILE = "state.json";
 const MAX_PENDING_SCORES = 8;
-/** native_component's score_wait_timeout: how long a score waits for an idle engine to wake. */
-const WAKE_TIMEOUT_MS = 25_000;
+/** How long a score waits for a model that is loading (a wake from idle, or the first load after
+ *  setup). native_component waits 25 s for its engine; the browser's model takes minutes on the
+ *  processor, and a score answered "still loading" at 25 s would only be asked again in a cycle
+ *  until the load ends. The bound is for a load that hangs; the transport's own (lib/webengine/
+ *  client.ts LOAD_WAIT_MS, 300 s) is a little longer, so the engine's answer is what arrives. */
+const WAKE_TIMEOUT_MS = 285_000;
 const IDLE_CHECK_MS = 1_000;
 
 type State = "starting" | "needs_models" | "downloading" | "paused" | "loading" | "ready" | "idle" | "stopped" | "error";
@@ -76,6 +80,8 @@ export interface EngineInit {
   /** A backend factory, for the suite; the real one loads the ONNX model. */
   createSession?: (candidate: Candidate, model: Blob, signal: AbortSignal) => Promise<LoadedSession>;
   probe?: (tier: ModelTier) => Promise<Candidate[]>;
+  /** How long a score waits for a loading model, in ms (the suite shortens it). */
+  wakeTimeoutMs?: number;
   /** The clock, for the suite. */
   now?: () => number;
   /** Start as a model let go while idle: loaded by the next score, not now. */
@@ -473,7 +479,7 @@ export class Engine {
     if (this.loaded) return;
     if (this.state !== "idle" && this.state !== "loading") throw new EngineError("not_ready", "The local engine is not ready; open component settings", 503);
     if (this.state === "idle") { this.state = "loading"; }
-    const waited = Promise.race([this.load(), new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), WAKE_TIMEOUT_MS))]);
+    const waited = Promise.race([this.load(), new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), this.init.wakeTimeoutMs ?? WAKE_TIMEOUT_MS))]);
     if ((await waited) === "timeout" || !this.loaded) {
       throw new EngineError("not_ready", "The idle engine is still loading or was stopped; retry when it is ready", 503);
     }

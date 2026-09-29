@@ -54,7 +54,7 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
 }
 
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
-function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void>;
+function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void>; wakeTimeoutMs?: number;
   /** Blocks a session's creation (which may honour the load's abort signal, as the real one does). */
   gate?: (candidate: Candidate, signal: AbortSignal) => Promise<void> } = {}): Made {
   const store = options.store ?? new MemoryStore();
@@ -71,6 +71,7 @@ function make(options: { store?: MemoryStore; server?: FakeServerOptions; failin
     },
     probe: async () => options.probe ?? candidates(),
     now: () => clock.now,
+    ...(options.wakeTimeoutMs ? { wakeTimeoutMs: options.wakeTimeoutMs } : {}),
     idle: options.idle,
     onIdle: () => log.push("idle"),
   });
@@ -409,6 +410,23 @@ describe("the engine's lifecycle", () => {
     await m.engine.handle("runtime.config", { id: "webgpu:fp32" });
     expect((await ready(m.engine)).state).toBe("ready");
     expect((await m.engine.handle("health", {})).data).toMatchObject({ device: "webgpu" });
+  });
+
+  it("holds a score for a model that is still loading past the old wake time, up to its own bound", async () => {
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    // The default waits minutes (the old 25 s answered "still loading" and the page asked again, in a cycle).
+    let loaded!: () => void;
+    const slow = track(make({ store: first.store, hold: new Promise<void>((resolve) => { loaded = resolve; }) }));
+    const score = slow.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] });
+    await new Promise((r) => setTimeout(r, 120));
+    loaded();
+    expect(((await score).data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
+    // A load that hangs is still answered, at the bound.
+    const hung = track(make({ store: first.store, wakeTimeoutMs: 60, gate: (_c, signal) => new Promise((_r, reject) => signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })) }));
+    await fails(hung.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }), "not_ready", 503);
   });
 
   it("stops and resumes, and deletes the model files", async () => {
