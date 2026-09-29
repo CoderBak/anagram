@@ -16,7 +16,7 @@ import { probeRuntimes } from "./session";
 import { OpfsStore } from "./storage";
 
 export interface WorkerInit {
-  type: "init"; pin: EngineInit["pin"]; assets: EngineInit["assets"]; version: string | null; idle?: boolean;
+  type: "init"; pin: EngineInit["pin"]; fallback?: EngineInit["fallback"]; assets: EngineInit["assets"]; version: string | null; idle?: boolean;
   /** The engine's own suites only (test/webengine/harness.mjs): a software WebGPU adapter counts as a GPU. */
   softwareGpu?: boolean;
 }
@@ -57,9 +57,9 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     void (async () => {
       const store = await OpfsStore.open();
       engine = new Engine({
-        pin: message.pin, assets: message.assets, version: message.version, store, idle: message.idle === true,
+        pin: message.pin, fallback: message.fallback, assets: message.assets, version: message.version, store, idle: message.idle === true,
         onIdle: () => post({ type: "idle" }),
-        ...(message.softwareGpu === true ? { probe: () => probeRuntimes({ softwareGpu: true }) } : {}),
+        ...(message.softwareGpu === true ? { probe: (tier) => probeRuntimes({ softwareGpu: true, tier }) } : {}),
       });
       await engine.start();
       post({ type: "ready" });

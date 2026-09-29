@@ -360,6 +360,10 @@ async function enginePages(context, extId, lang) {
     if (await up(tight, ".engine-tight")) await check(tight, lang, "setup page, 4 GB of memory");
     else record(`${lang}: setup page, 4 GB of memory at ${size.width} px`, false, "the note never showed");
     await tight.close();
+    const lighter = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "lighter"); await scriptDevice(p, DEVICES["linux-4gb-f16"]); });
+    if (await up(lighter, ".engine-lighter")) await check(lighter, lang, "setup page, the lighter model");
+    else record(`${lang}: setup page, the lighter model at ${size.width} px`, false, "the line never showed");
+    await lighter.close();
     const crashing = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
     if (await up(crashing, "#engine-crash-switch")) { await openFolds(crashing); await check(crashing, lang, "setup page, the local engine crashing"); }
     else record(`${lang}: setup page, the local engine crashing at ${size.width} px`, false, "the switch never showed");

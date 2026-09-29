@@ -14,8 +14,12 @@ import type { EngineTransport } from "../backend/transport";
 import { WORKER_URL, workerInit } from "./assets";
 import { EngineHost } from "./host";
 import { ENGINE_PORT } from "./protocol";
+import { tierQuery } from "./tier";
+import { engineTierChoice } from "./tierStore";
 
 const OFFSCREEN_PATH = "/engine.html";
+/** The overall bound on a request that waits for the model to load: about five minutes. */
+export const LOAD_WAIT_MS = 300_000;
 
 interface OffscreenApi {
   createDocument(options: { url: string; reasons: string[]; justification: string }): Promise<void>;
@@ -30,8 +34,10 @@ export async function ensureOffscreenDocument(): Promise<void> {
   const api = offscreenApi();
   if (!api) throw new Error("no offscreen API");
   if (api.hasDocument && (await api.hasDocument())) return;
+  // The tier the setup page chose goes in the address: the document has no storage to read it from.
+  const tier = tierQuery(await engineTierChoice.getValue().catch(() => null));
   creating ??= api.createDocument({
-    url: OFFSCREEN_PATH,
+    url: OFFSCREEN_PATH + tier,
     reasons: ["WORKERS"],
     justification: "Runs the EditLens scoring model in a Web Worker; a service worker cannot start workers and is unloaded when idle",
   }).catch((error: unknown) => {
@@ -87,8 +93,10 @@ export function offscreenPort(): NativePort {
 
 class WebEngineTransport extends PortTransport {
   constructor() {
-    super(() => (offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: workerInit() })),
-      { cannotStart: "The in-browser engine could not be started" });
+    // A score waits for a loading model, which takes minutes on the processor, for at most as long as
+    // the engine itself does (its WAKE_TIMEOUT_MS, 285 s) and a little more, so its answer is the one heard.
+    super(() => (offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: async () => workerInit(await engineTierChoice.getValue().catch(() => null)) })),
+      { cannotStart: "The in-browser engine could not be started", loadWaitMs: LOAD_WAIT_MS });
   }
   protected override lastError(): string | undefined { return browser.runtime.lastError?.message; }
 }

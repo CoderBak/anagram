@@ -38,9 +38,14 @@ const CDN = "us.aws.cdn.hf.co";
  *  the request on (`cdn`: a path on its CDN), and its pinned size. */
 export const PINNED = {
   "model.onnx": { host: HF, path: kitPath("onnx/model.onnx"), cdn: "/xet-bridge-us/anagram-test/model.onnx", size: size("onnx/model.onnx") },
+  // The FP16 model, for the devices FP32 does not fit (lib/device.ts TIERS).
+  "model_fp16.onnx": { host: HF, path: kitPath("onnx/model_fp16.onnx"), cdn: "/xet-bridge-us/anagram-test/model_fp16.onnx", size: size("onnx/model_fp16.onnx") },
   "tokenizer.json": { host: HF, path: kitPath("tokenizer.json"), size: size("tokenizer.json") },
 };
-export const DOWNLOAD_BYTES = Object.values(PINNED).reduce((n, f) => n + f.size, 0);
+/** What a default (FP32) setup downloads. */
+export const DOWNLOAD_BYTES = PINNED["model.onnx"].size + PINNED["tokenizer.json"].size;
+/** What the FP16 tier's setup downloads. */
+export const DOWNLOAD_BYTES_FP16 = PINNED["model_fp16.onnx"].size + PINNED["tokenizer.json"].size;
 
 /**
  * Chromium's switch that sends Hugging Face nowhere. A fresh profile on a device with no

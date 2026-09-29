@@ -569,6 +569,9 @@
   "engineTight": {
     "message": "Anagram 评分时，这台电脑可能会变慢。"
   },
+  "engineLighter": {
+    "message": "这台设备的内存较小，因此 Anagram 运行的是其模型的轻量版本。它给出的判断与完整模型在 99.8% 的文本上一致。"
+  },
   "engineNativeRefused": {
     "message": "Anagram 未获准与本地引擎通信，因此没有任何改动。准备好后请重新选择。"
   },
@@ -666,7 +669,7 @@
     "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
   },
   "engineDiskFull": {
-    "message": "磁盘可用空间不足。请至少腾出 $1，然后再试一次。"
+    "message": "磁盘可用空间不足。请至少腾出 $1，然后点击“重试”。"
   },
   "engineServerDown": {
     "message": "下载站点暂时没有响应。请等几分钟后点击“重试”。"

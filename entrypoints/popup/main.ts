@@ -435,8 +435,9 @@ async function init(): Promise<void> {
 
   switchEngineEl.addEventListener("click", () => {
     switchEngineEl.disabled = true;
-    // The download starts now, and the setup page shows it.
-    void chooseEngine("inbrowser", "now").then((reply) => {
+    // The download starts now, and the setup page shows it; on the model tier this device gets.
+    void readDeviceInputs().then(decide).catch(() => null)
+      .then((d) => chooseEngine("inbrowser", "now", d?.tier ? { tier: d.tier, fallback: d.fallback !== null } : undefined)).then((reply) => {
       if (!reply.ok) { switchEngineEl.disabled = false; statusEl.textContent = t("engineSwitchFailed"); return; }
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
       window.close();

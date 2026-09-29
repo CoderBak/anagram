@@ -6,16 +6,19 @@
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { LID_PATH, pin } from "./pin";
+import type { TierChoice } from "./tier";
 import type { WorkerInit } from "./worker";
 
 const url = (path: string): string => browser.runtime.getURL(path as PublicPath);
 
-/** The worker's first message. */
-export function workerInit(): Omit<WorkerInit, "type"> {
+/** The worker's first message, for the tier the setup page chose (FP32 when none). */
+export function workerInit(choice?: TierChoice | null): Omit<WorkerInit, "type"> {
   let version: string | null = null;
   try { version = browser.runtime.getManifest().version; } catch { /* outside an extension */ }
   return {
-    pin: pin(url(LID_PATH)),
+    pin: pin(url(LID_PATH), choice?.tier === "fp16" ? "fp16" : "fp32"),
+    // Where FP16 fails to run and FP32 fits the device, FP32 takes its place (lib/webengine/engine.ts).
+    ...(choice?.tier === "fp16" && choice.fallback ? { fallback: pin(url(LID_PATH), "fp32") } : {}),
     assets: {
       ort: url("/vendor/engine/ort.jspi.min.mjs"),
       mjs: url("/vendor/engine/ort-wasm-simd-threaded.jspi.mjs"),

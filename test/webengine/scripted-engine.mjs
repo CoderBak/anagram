@@ -10,6 +10,8 @@
 // Save-Data setting. Everything else the page asks goes to the real extension.
 // test/inbrowser.mjs drives the real engine through the same states it can reach.
 const TOTAL = 1_425_459_555;
+/** The FP16 tier's download: its model and the tokenizer (lib/device.ts TIERS). */
+const TOTAL_FP16 = 714_899_390;
 
 const download = (over = {}) => ({ status: "idle", bytes_received: 0, total_bytes: 0, file: null, error: null, phase: "detecting", detail: null, ...over });
 const runtime = (active, selected = active ?? "webgpu:fp32") => ({
@@ -33,6 +35,8 @@ const done = download({ status: "completed", bytes_received: TOTAL, total_bytes:
 export const STATES = {
   needed: snapshot({}),
   downloading: snapshot({ state: "downloading", download: download({ status: "running", bytes_received: TOTAL * 0.45, total_bytes: TOTAL, phase: "downloading", file: "model.onnx" }), storage: { models_bytes: TOTAL * 0.45 } }),
+  // The lighter model (FP16) downloading: the line that says so beside the progress.
+  lighter: snapshot({ tier: "fp16", state: "downloading", download: download({ status: "running", bytes_received: TOTAL_FP16 * 0.45, total_bytes: TOTAL_FP16, phase: "downloading", file: "model_fp16.onnx" }), storage: { models_bytes: TOTAL_FP16 * 0.45 } }),
   retrying: snapshot({ state: "downloading", download: download({ status: "running", bytes_received: TOTAL * 0.45, total_bytes: TOTAL, phase: "downloading", file: "model.onnx", detail: "Retrying model.onnx in 5 s" }), storage: { models_bytes: TOTAL * 0.45 } }),
   paused: snapshot({ state: "paused", download: download({ status: "paused", bytes_received: TOTAL * 0.45, total_bytes: TOTAL, phase: "downloading", file: "model.onnx" }), storage: { models_bytes: TOTAL * 0.45 } }),
   network: failed("The connection for model.onnx was lost"),

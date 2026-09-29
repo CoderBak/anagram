@@ -9,8 +9,10 @@ import { browser } from "#imports";
 import { EngineHost } from "../../lib/webengine/host";
 import { ENGINE_PORT } from "../../lib/webengine/protocol";
 import { WORKER_URL, workerInit } from "../../lib/webengine/assets";
+import { tierFromQuery } from "../../lib/webengine/tier";
 
-const host = new EngineHost({ workerUrl: WORKER_URL(), init: workerInit() });
+// The tier the background chose is in the address it created this document at.
+const host = new EngineHost({ workerUrl: WORKER_URL(), init: workerInit(tierFromQuery(location.search)) });
 const owners = new Map<string, { postMessage(message: unknown): void; disconnect(): void }>();
 
 host.onMessage.addListener((reply) => {

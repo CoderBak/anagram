@@ -10,7 +10,8 @@ Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) first. User instructions overrid
   ONNX Runtime Web) exists by the user's decision. Never score over HTTP or any remote
   service, and do not add an HTTP inference service.
 - Each engine picks its own configuration. Never require a benchmark during setup; FP32 is
-  the only automatic pick. The setup page decides the engine (lib/device.ts) or offers the
+  the automatic pick; the in-browser engine uses the modelkit's FP16 model on WebGPU only
+  where FP32 does not fit (the user's decision of 2026-09-29); INT8 is never picked. The setup page decides the engine (lib/device.ts) or offers the
   choice only where the user decided it should.
 - Keep the pinned Hugging Face modelkit, its attribution and CC BY-NC-SA 4.0 license.
 - Test installation, download and removal only in temporary homes and temporary browser

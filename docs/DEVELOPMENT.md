@@ -48,7 +48,9 @@ at run time, and `engineTransport()` (`lib/backend/engines.ts`) is the one in us
 anything is chosen the setup page decides (`lib/device.ts`, `lib/ui/engineCard.ts`): the
 choice on Apple Silicon and beside an NVIDIA GPU, the in-browser engine by itself elsewhere,
 the local engine alone without WebAssembly JSPI (Firefox 140), nothing where the model does
-not fit. Native Messaging is optional and asked for when the local engine is picked; where
+not fit. Where FP32 does not fit but FP16 does (`TIERS`, `affordable()`), the in-browser engine
+runs the modelkit's FP16 model on WebGPU; the page's tier travels with `setEngine` into
+`local:engineTier` and to the engine in its pin (`lib/webengine/tier.ts`). Native Messaging is optional and asked for when the local engine is picked; where
 it is granted and nothing was chosen (an update from 0.7.0, which required it) the local
 engine is the one in use. The test build requires it, so the fake-host suites drive the
 local engine; the suites stand in for other devices with copies of the test build carrying
