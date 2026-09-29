@@ -241,6 +241,9 @@ function placeMarks(pieces: Piece[]): Piece[] {
   return out;
 }
 
+/** What pdf.js spells otherwise than Zotero does: TeX's ℓ, which Zotero reads as a plain "l". */
+const SPELT: Record<string, string> = { l: "ℓ" };
+
 /**
  * Find every piece's glyph among the text layer's runs: by geometry to the run, then in
  * order along the run's own string, so that "e" number three of a run is the third "e".
@@ -278,8 +281,17 @@ function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): Located
       const k = opens(box, p.ch);
       if (k >= 0) return put(i, box, k);
     }
-    // Out of step (a superscript Zotero read after the line): look from the start once.
+    // Out of step (a superscript Zotero read after the line): look from the start once. A
+    // character only the part already found holds is not this one's: TeX's ℓ, which Zotero
+    // reads as "l", stands in the run beside it, and not in the "areal" it stands against.
     j = first.it.str.indexOf(p.ch);
+    const alias = SPELT[p.ch];
+    if (alias && j >= 0 && j < (cursor.get(first) ?? 0)) {
+      for (const box of right) {
+        const k = box.it.str.indexOf(alias, cursor.get(box) ?? 0);
+        if (k >= 0) return put(i, box, k);
+      }
+    }
     if (j >= 0) put(i, first, j);
   });
   return { sources, faces };

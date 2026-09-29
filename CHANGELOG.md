@@ -596,6 +596,7 @@ local component and the installer all carry the same version.
 - An author's bio box named the BEM way (`author__bio`, `author-row__bio`, `ala-author__description`, `author_desc`) is left out like the `author-box` and `author-bio` boxes already were.
 - A forum's list of site notices over every thread (XenForo's and vBulletin's "If this is your first visit…", "Please be sure to read the rules", a scam alert) is no longer read beside the posts; a box named `notices` that holds a paragraph, such as a documentation theme's call-out, still is.
 - Legal fine print is also recognised by a box named for the legal text it is (`copy-legal`, `game_area_legal`, `legal-text`), such as the footnotes under a price list or a game's licence terms; a law firm's `legal-services` section is still read.
+- The PDF reader finds TeX's ℓ in its own run: Zotero reads it as an "l", and where the glyph stood left of its run it was looked for in the word before it, so "the areal ℓ in place of" read "the areall in place of", a word of its own that no formula rule could take out. On the benchmark's development papers the scored text that is not prose fell from 3.45% to 3.44%.
 
 ## [0.7.0] — 2026-09-26
 

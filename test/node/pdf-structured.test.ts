@@ -555,6 +555,20 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0]!, pages);
   });
 
+  it("finds TeX's ℓ, which Zotero reads as an \"l\", in its own run and not in the word before it", () => {
+    // "the areal ℓ in place": the glyph stands left of where pdf.js drew it, inside the box of
+    // "areal", whose own "l" is found already; the "l" was looked for in that word again.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "OHTAKJ+CMMI10" };
+    const a = drawn(1, { text: "With the areal", x: 72, y: 100 });
+    const ell = drawn(1, { text: "ℓ", x: 72 + 15 * CW, y: 100, font: "f_math", drift: -1.5 * CW });
+    const b = drawn(1, { text: "in place of the measured one", x: 72 + 17 * CW, y: 100 });
+    const n = { text: "With the areal l in place of the measured one", anchor: { textMap: JSON.stringify([a.run, ell.run, b.run]) } };
+    const pages = [pageText(1, [a.item, ell.item, b.item], fonts)];
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
+    expect(blocks[0]!.text).toBe("With the areal in place of the measured one");
+    expectRunsToMatch(blocks[0]!, pages);
+  });
+
   it("leaves out what TeX sets of a formula in the text face: operator names, capital Greek, sub- and superscripts", () => {
     // "\sup \Gamma(\Delta)", "\log p", "x_{\mathrm{init}}": TeX takes the operator names,
     // the upright capital Greek and the letters of \mathrm from the text face, so only the
