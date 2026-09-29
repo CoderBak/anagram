@@ -110,6 +110,67 @@ class ModelkitTests(unittest.TestCase):
         self.assertIn("model.safetensors", self.calls)
         self.assertEqual(self.mod.invalid_files(self.target, self.pin), [])
 
+    def unreachable_hub(self, log, *, error=None):
+        """A transfer where huggingface.co refuses connections and hf-mirror.com serves."""
+        served = transfer_with(self.opener_any, self.mod.DownloadPaused)
+        def transfer(url, part, size, offset, *, cancel, progress):
+            log.append((url.split("/")[2], offset))
+            if url.startswith("https://huggingface.co/"):
+                raise (error or self.mod.HostUnreachable("connect failed"))
+            return served(url, part, size, offset, cancel=cancel, progress=progress)
+        return transfer
+
+    def opener_any(self, request, timeout):
+        prefix = "https://hf-mirror.com/fixture/model/resolve/" + self.pin["revision"] + "/"
+        self.assertTrue(request.full_url.startswith(prefix), request.full_url)
+        data = self.contents[unquote(request.full_url[len(prefix):])]
+        offset = int(request.get_header("Range", "bytes=0-")[6:].split("-")[0])
+        response = io.BytesIO(data[offset:])
+        response.status, response.headers = (206 if offset else 200), {}
+        return response
+
+    def test_unreachable_huggingface_falls_back_to_the_mirror_for_the_session(self):
+        log, said = [], []
+        self.mod.install_streaming(self.target, self.pin, transfer=self.unreachable_hub(log), on_fallback=said.append)
+        self.assertEqual(self.mod.invalid_files(self.target, self.pin), [])
+        self.assertEqual(said, ["hf-mirror.com"])  # said once
+        hosts = [host for host, _ in log]
+        self.assertEqual(hosts[:2], ["huggingface.co", "hf-mirror.com"])
+        self.assertTrue(all(host == "hf-mirror.com" for host in hosts[2:]))  # sticky for the rest
+
+    def test_resume_carries_the_partial_and_range_to_the_mirror(self):
+        name = "tokenizer.json"
+        write_files(self.root / ".incoming-model", {name + ".part": self.contents[name][:4]})
+        log = []
+        self.mod.install_streaming(self.target, self.pin, selected_paths=[name], transfer=self.unreachable_hub(log))
+        self.assertEqual(log, [("huggingface.co", 4), ("hf-mirror.com", 4)])
+        self.assertEqual((self.target / name).read_bytes(), self.contents[name])
+
+    def test_a_missing_file_or_bad_bytes_never_fall_back(self):
+        log = []
+        with self.assertRaisesRegex(RuntimeError, "404"):
+            self.mod.install_streaming(self.target, self.pin, transfer=self.unreachable_hub(log, error=RuntimeError("404 Not Found")))
+        self.assertEqual([host for host, _ in log], ["huggingface.co"])
+        def corrupt(url, part, size, offset, *, cancel, progress):
+            log.append((url, offset))
+            part.write_bytes(b"x" * size)
+        log.clear()
+        with self.assertRaisesRegex(ValueError, "Checksum or size mismatch"):
+            self.mod.install_streaming(self.target, self.pin, transfer=corrupt)
+        self.assertEqual(len(log), 1)
+
+    def test_the_lid_file_has_a_byte_identical_hub_copy_and_its_mirror(self):
+        urls = ["https://dl.fbaipublicfiles.com/x", self.mod.LID_HUB_URL, self.mod.mirror_of(self.mod.LID_HUB_URL)]
+        self.assertEqual(urls[2].split("/")[2], "hf-mirror.com")
+        entry, seen = {"path": "lid.176.ftz", "size_bytes": 3, "sha256": hashlib.sha256(b"lid").hexdigest()}, []
+        def transfer(url, part, size, offset, *, cancel, progress):
+            seen.append(url.split("/")[2])
+            if not url.startswith("https://hf-mirror.com/"):
+                raise self.mod.HostUnreachable("down")
+            part.write_bytes(b"lid")
+        self.mod.download_asset(urls[0], self.root / "lid.176.ftz", entry, transfer=transfer, fallbacks=urls[1:])
+        self.assertEqual(seen, ["dl.fbaipublicfiles.com", "huggingface.co", "hf-mirror.com"])
+
     def test_cli_only_checks_local_files_without_mutation(self):
         write_files(self.target, self.contents)
         manifest = self.root / "pin.json"

@@ -23,6 +23,23 @@ LID_ENTRY = {"path": "lid.176.ftz", "size_bytes": 938013,
              "sha256": "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83"}
 
 
+# Where Hugging Face cannot be reached (mainland China, for one) hf-mirror.com serves the same
+# repositories under the same paths. The pinned SHA-256 still decides what is kept.
+HF_HOST = "huggingface.co"
+MIRROR_HOST = "hf-mirror.com"
+# fastText's own file has a byte-identical copy (same SHA-256) in a public Hub repository.
+LID_HUB_URL = f"https://{HF_HOST}/julien-c/fasttext-language-id/resolve/9f2e94d2fd6b2615d26f5ec5b34cf7e2f38cb86e/lid.176.ftz"
+
+
+def mirror_of(url: str) -> str | None:
+    return url.replace("https://" + HF_HOST + "/", "https://" + MIRROR_HOST + "/", 1) if url.startswith("https://" + HF_HOST + "/") else None
+
+
+class HostUnreachable(RuntimeError):
+    """The host answered no byte: a network error, timeout or 5xx. A missing file or a
+    checksum mismatch is never this."""
+
+
 class DownloadPaused(Exception):
     """The caller requested a cooperative pause; verified/staged bytes remain."""
 
@@ -51,6 +68,7 @@ def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _
         process.stdin.flush()  # pipe stays open as the worker's parent-lifetime signal
         reader.start()
         error = None
+        unreachable = False
         while True:
             _check_pause(cancel)
             try:
@@ -61,11 +79,14 @@ def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _
                 break
             if "error" in event:
                 error = event["error"]
+                unreachable = bool(event.get("unreachable"))
             elif "bytes" in event:
                 progress(event["bytes"])
             elif "message" in event:
                 notice(event["message"])
         if process.wait() != 0:
+            if unreachable:
+                raise HostUnreachable(error)
             raise RuntimeError(error or "The Hugging Face download process stopped; retry to resume")
     finally:
         if process.poll() is None:
@@ -82,11 +103,16 @@ def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _
 
 
 def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
-                   progress=lambda _bytes: None, transfer=None, notice=lambda _text: None) -> None:
+                   progress=lambda _bytes: None, transfer=None, notice=lambda _text: None,
+                   fallbacks=(), route=None, on_fallback=lambda _host: None) -> None:
     """Anonymous HTTPS download with a resumable .part file and final SHA-256.
 
     The official HF transport handles network retries/ranges. Cancellation stops
     its child process, preserving the partial for a subsequent invocation.
+
+    `fallbacks` are other addresses of the same bytes, tried in order only when the host
+    is unreachable before any byte arrives. Resuming carries the partial across the
+    switch; `route` (a dict shared by a session's downloads) remembers a mirror that worked.
     """
     from urllib.parse import urlsplit
 
@@ -119,7 +145,23 @@ def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
         offset = 0
     progress(offset)
     transfer = transfer or (lambda *args, **kwargs: transfer_asset(*args, notice=notice, **kwargs))
-    transfer(url, part, entry["size_bytes"], offset, cancel=cancel, progress=progress)
+    route = route if route is not None else {}
+    sources = [url, *fallbacks]
+    if route.get("mirror"):  # the mirror already worked in this session
+        sources.sort(key=lambda source: urlsplit(source).hostname != MIRROR_HOST)
+    for index, source in enumerate(sources):
+        try:
+            transfer(source, part, entry["size_bytes"], offset, cancel=cancel, progress=progress)
+            break
+        except HostUnreachable:
+            if index == len(sources) - 1:
+                raise
+            offset = part.stat().st_size if part.is_file() else 0
+            following = sources[index + 1]
+            if urlsplit(following).hostname == MIRROR_HOST:
+                route["mirror"] = True
+                on_fallback(MIRROR_HOST)
+            progress(offset)
     _check_pause(cancel)
     if regular_stat(part).st_size < entry["size_bytes"]:
         raise RuntimeError(f"Incomplete download of {entry['path']}; partial bytes retained for retry")
@@ -131,7 +173,7 @@ def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
 
 def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel=None,
                       progress=lambda _received, _total, _file: None, transfer=None,
-                      notice=lambda _text: None) -> None:
+                      notice=lambda _text: None, on_fallback=lambda _host: None, route=None) -> None:
     """Install pinned files with progress and cooperative pause; no stdout.
 
     None selects the whole pin. Otherwise only the selected files are required;
@@ -157,6 +199,7 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
         raise ValueError("Refusing a hardlinked download lock")
     total = sum(entry["size_bytes"] for entry in entries)
     received = 0
+    route = route if route is not None else {}
     with FileLock(str(lock_path), timeout=0):
         for folder in (model_dir, incoming, backup):
             plain_tree(folder)
@@ -196,6 +239,7 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
                 url = (f"https://huggingface.co/{pin['repository']}/resolve/{pin['revision']}/"
                        + quote(name, safe="/"))
                 download_asset(url, target, entry, cancel=cancel, transfer=transfer, notice=notice,
+                               fallbacks=[mirror_of(url)], route=route, on_fallback=on_fallback,
                                progress=lambda count, base=received, name=name: progress(base + count, total, name))
             received += entry["size_bytes"]
             progress(received, total, name)
