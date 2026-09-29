@@ -1328,13 +1328,6 @@ SOFTWARE.
 - Copyright: cyrb53 (c) 2018 bryc; "License: Public domain (or MIT if needed). Attribution appreciated."
 - In Anagram: The cache-key hash in lib/hash.ts.
 
-### Text Fragments polyfill (6.7.0, commit abc6ed4)
-
-- Project: https://github.com/GoogleChromeLabs/text-fragments-polyfill
-- Licence: Apache-2.0 (full text under Licence texts below)
-- Copyright: Copyright 2020 Google LLC
-- In Anagram: The fragment generation and the search it checks uniqueness with (src/fragment-generation-utils.js, src/text-fragment-utils.js), in lib/render/textFragment.ts and its build vendor/fragments.min.mjs: the copied report's links to flagged paragraphs. The file keeps the licence notice and says what was changed.
-
 ### emoji (tokenizer) (2.15.0, emoji/tokenizer.py)
 
 - Project: https://github.com/carpedm20/emoji

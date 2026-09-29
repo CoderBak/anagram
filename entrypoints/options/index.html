@@ -13,7 +13,10 @@
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
       .page { max-width: 720px; margin: 0 auto; padding: 24px 20px 32px; }
       header.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-      header.hdr img { width: 40px; height: 40px; border-radius: 10px; }
+      header.hdr img { width: 44px; height: 44px; margin: -2px; }
+      header.hdr .logo-dark { display: none; }
+      html.dark header.hdr .logo-light { display: none; }
+      html.dark header.hdr .logo-dark { display: block; }
       header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
       header.hdr .ver { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); }
       /* One list: a short label on the left, its controls on the right. */
@@ -48,7 +51,8 @@
   <body>
     <main class="page">
       <header class="hdr">
-        <img src="/icons/icon-128.png" alt="" />
+        <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
+        <img class="logo-dark" src="/icons/icon-96.png" alt="" />
         <h1 data-i18n="optionsTitle">Anagram settings</h1>
         <span class="ver" id="version"></span>
       </header>

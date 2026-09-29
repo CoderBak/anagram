@@ -28,6 +28,7 @@ import { loadPurify } from "./lazy";
 import { messageLocale, t } from "./i18n";
 import { MARK_ATTR } from "./types";
 import { highlightSheets } from "./render/highlight";
+import { logoImage } from "./render/logo";
 
 export const DOCS_OVERLAY_ID = "anagram-docs-overlay";
 
@@ -94,16 +95,11 @@ const OVERLAY_CSS = `
   border-bottom: 1px solid #e5e5e5;
 }
 .bar .mark {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
+  margin: -2px;
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: #171717;
-  color: #fafafa;
-  font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+  display: block;
 }
 .bar .titles { flex: 1 1 auto; min-width: 0; }
 .bar .t {
@@ -322,9 +318,8 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     bar.className = "bar";
     bar.setAttribute(MARK_ATTR, "host"); // our chrome — never scored
 
-    const mark = document.createElement("span");
-    mark.className = "mark";
-    mark.textContent = "A";
+    // The bar is always white: the light tile.
+    const mark = logoImage("light", "mark");
 
     const titles = document.createElement("div");
     titles.className = "titles";

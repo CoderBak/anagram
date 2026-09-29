@@ -30,10 +30,17 @@ const PARA = (tag) =>
   "be one key press away and read out in words rather than shown only as a colour.";
 // Tags whose fixture scores are .05, .30, .60 and .95 (test/fake-native.mjs fakeScore).
 const CHIP_TAGS = ["S2197", "S366", "S1643", "S1430"];
+// One paragraph under the reader's 50 words (not scored) and one of 60 (scored, "less reliable").
+const SHORT_NOTE = "The committee met on Thursday and agreed to move the review to the following week.";
+const MID_NOTE = "The harbor road closes at dusk, and the ferry keeps its own timetable through the winter months, which surprises most visitors. " + "Locals plan around it: they buy bread early, post letters before noon and leave the last crossing for emergencies. ".repeat(2) + "Nobody complains.";
 const chipsHtml = (dark) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Chips</title></head>
 <body style="margin:0;${dark ? "background:#0d1117;color:#e6edf3" : "background:#fff;color:#1a1a1a"}"><div style="max-width:680px;margin:0 auto;padding:32px 24px;font:16px/1.65 Georgia,serif">
 <h1 style="font:600 22px system-ui">A page read by Anagram</h1>
-${CHIP_TAGS.map((t) => `<p>${PARA(t)}</p>`).join("\n")}</div></body></html>`;
+${CHIP_TAGS.map((t) => `<p>${PARA(t)}</p>`).join("\n")}
+<h2 style="font:600 18px system-ui">Notes</h2>
+<p>${SHORT_NOTE}</p>
+<h2 style="font:600 18px system-ui">Shorter than the model's minimum</h2>
+<p>${MID_NOTE}</p></div></body></html>`;
 
 async function painted(page) {
   await page.waitForFunction(() => {
@@ -101,6 +108,53 @@ for (const [lang, tag] of LANGS) {
         await chip.hover();
         await page.waitForTimeout(900);
         await page.screenshot({ path: name("chips"), fullPage: true });
+        // The ball, and the panel open beside it (flagged out of read, then what was too short).
+        await page.mouse.move(5, 5);
+        await page.evaluate(() => scrollTo(0, 0));
+        await page.waitForTimeout(400);
+        const stack = page.locator("#anagram-fab .stack");
+        const box = await stack.boundingBox();
+        await page.screenshot({ path: name("ball"), clip: { x: box.x - 24, y: box.y - 24, width: box.width + 48, height: box.height + 48 } });
+        await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".count").click());
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: name("panel"), fullPage: false });
+        await page.close();
+      } finally { await site.close(); }
+    });
+  }
+}
+
+// The count badge on the ball, close up at 1, 12 and 99+ (the cap): the numbers are set the way
+// setCount writes them, and the ball is shot at 3x.
+if (wanted("badge")) {
+  const [lang] = LANGS[0];
+  for (const scheme of SCHEMES) {
+    await run(undefined, lang, async (ctx) => {
+      const site = await serveHtml({ "/chips.html": chipsHtml(scheme === "dark") });
+      try {
+        await waitForRegistration(ctx.sw);
+        const page = await ctx.context.newPage();
+        await page.setViewportSize({ width: 900, height: 900 });
+        await page.emulateMedia({ colorScheme: scheme });
+        const cdp = await ctx.context.newCDPSession(page);
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 900, height: 900, deviceScaleFactor: 3, mobile: false });
+        await page.goto(site.url("/chips.html"));
+        await page.waitForFunction((sel) => document.querySelectorAll(sel).length >= 4 && [...document.querySelectorAll(sel)].every((h) => h.shadowRoot?.querySelector(".pill.scored")), BADGE_SEL, { timeout: 20000 });
+        // A hostile page style: the badge must not take any of it.
+        await page.addStyleTag({ content: "* { font-family: 'Times New Roman', serif !important; font-style: italic !important; letter-spacing: 3px !important; text-transform: uppercase !important; }" });
+        await page.mouse.move(5, 5);
+        const shots = [];
+        for (const text of ["1", "12", "99+"]) {
+          await page.evaluate((text) => { document.getElementById("anagram-fab").shadowRoot.querySelector(".count").textContent = text; }, text);
+          await page.waitForTimeout(300);
+          const box = await page.locator("#anagram-fab .stack").boundingBox();
+          shots.push((await page.screenshot({ clip: { x: box.x - 12, y: box.y - 12, width: box.width + 24, height: box.height + 24 } })).toString("base64"));
+        }
+        const sheet = await ctx.context.newPage();
+        await sheet.setViewportSize({ width: 700, height: 240 });
+        await sheet.setContent(`<body style="margin:0;display:flex;gap:16px;padding:12px;background:${scheme === "dark" ? "#0d1117" : "#fff"}">${shots.map((b) => `<img style="height:198px" src="data:image/png;base64,${b}">`).join("")}</body>`);
+        await sheet.screenshot({ path: join(out, `badge-${scheme}.png`), fullPage: true });
+        await sheet.close();
         await page.close();
       } finally { await site.close(); }
     });

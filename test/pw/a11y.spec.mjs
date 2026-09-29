@@ -76,7 +76,7 @@ const PARA = (tag) =>
 // The fake fixture's verdicts are a pure function of the text, so the tags below are chosen
 // (with test/fake-native.mjs's own fakeScore) to land three paragraphs AI-generated — the
 // flagged ones, the panel's rows — three heavily edited and two below: every word the chips
-// can say is on the page, and the panel has rows and a Copy report button.
+// can say is on the page, and the panel has rows and a Close button.
 const AI_TAGS = ["FLAG-16", "FLAG-18", "FLAG-27"];
 const HEAVY_TAGS = ["FLAG-4", "FLAG-8", "FLAG-11"];
 const CALM_TAGS = ["FLAG-1", "FLAG-19"]; // lightly edited, human
@@ -609,7 +609,7 @@ async function keyboardPage(open, site) {
  * as far as reading what the live region says after the event — whether a real screen
  * reader speaks it is for a human with VoiceOver.
  */
-test("the ball's live region: its shape, the settled count, and Copy report said out loud", async ({ open, site }) => {
+test("the ball's live region: its shape and the settled count said out loud", async ({ open, site }) => {
   const page = await keyboardPage(open, site);
   const live = () => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".live")?.textContent ?? null);
   const shape = await page.evaluate(() => {
@@ -635,15 +635,6 @@ test("the ball's live region: its shape, the settled count, and Copy report said
     typeof said === "string" && new RegExp(`^${counter} flagged paragraphs? on this page$`).test(said),
     `the settled flagged count is said once, and matches the counter: ${JSON.stringify({ said, counter })}`,
   ).toBe(true);
-
-  // Copy report confirms itself by swapping a label — invisible to a screen reader.
-  await openPanel(page);
-  await still(page);
-  await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".pcopy")?.click());
-  await page.waitForTimeout(500);
-  const copied = await live();
-  const label = await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".pcopy")?.textContent ?? null);
-  expect.soft(/copied/i.test(copied ?? "") && /Copied/.test(label ?? ""), `"Copy report" says so out loud, not only by changing its own label: ${JSON.stringify({ copied, label })}`).toBe(true);
 });
 
 /** The keyboard route the chips deliberately do not provide: ball → counter → panel. */
@@ -727,9 +718,9 @@ test("the panel's controls: its rows, names, focus rings, hit targets and contra
   await still(page);
   const state = await page.evaluate(() => {
     const panel = document.getElementById("anagram-fab").shadowRoot.querySelector(".panel");
-    return { open: panel.classList.contains("open"), items: panel.querySelectorAll(".pitem").length, filters: [...panel.querySelectorAll(".fchip")].map((c) => c.textContent), copy: !!panel.querySelector(".pcopy") };
+    return { open: panel.classList.contains("open"), items: panel.querySelectorAll(".pitem").length, filters: [...panel.querySelectorAll(".fchip")].map((c) => c.textContent), close: panel.querySelector(".pclose")?.getAttribute("aria-label") ?? null, gone: !panel.querySelector(".pcopy, .psiteoff") };
   });
-  expect.soft(state, "the keyboard fixture's three AI-generated paragraphs are the panel's rows (heavily edited ones are not flagged)").toEqual({ open: true, items: 3, filters: [], copy: true });
+  expect.soft(state, "the keyboard fixture's three AI-generated paragraphs are the panel's rows (heavily edited ones are not flagged)").toEqual({ open: true, items: 3, filters: [], close: "Close", gone: true });
   await axe.scan(page, "ball (panel open)", "#anagram-fab");
   const stops = await tabWalk(page, { max: 40 });
   const ours = stops.filter((s) => s.path.includes("#anagram-fab"));

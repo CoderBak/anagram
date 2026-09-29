@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
+  <img src="assets/icon-light.svg" alt="" width="64" height="64">
+</picture>
+
 # Anagram
 
 Anagram marks English prose in your browser with a local estimate of how much an AI
@@ -27,7 +32,7 @@ not been exercised on real machines. Firefox 153+ has a build but is not the foc
 
 Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
 (AI-generated). Hover it for the four-way breakdown. The floating ball counts and
-lists paragraphs that read as AI-generated, and copies a report. PDFs open in a
+lists paragraphs that read as AI-generated. PDFs open in a
 built-in reader. Google Docs get a reading view. Settings covers site access, marks,
 cache and the engine.
 

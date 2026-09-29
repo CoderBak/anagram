@@ -48,7 +48,7 @@ export function vendorPdfViewer(root) {
   replace('<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf" />',
     '<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf" hidden />');
   replace('<div id="toolbarViewerRight" class="toolbarHorizontalGroup">', `<div id="toolbarViewerRight" class="toolbarHorizontalGroup">
-                <button id="anagramAnalyze" class="toolbarButton labeled" type="button" data-anagram="host"><span>Anagram</span></button>
+                <button id="anagramAnalyze" class="toolbarButton labeled" type="button" data-anagram="host"><img class="logo logo-light" src="/icons/icon-light-48.png" alt="" /><img class="logo logo-dark" src="/icons/icon-48.png" alt="" /><span>Anagram</span></button>
                 <button id="original" class="toolbarButton labeled" type="button" data-anagram="host" hidden><span></span></button>`);
   replace('<body tabindex="0">', `<body tabindex="0">
     <aside id="anagramReaderStatus" data-anagram="host" aria-live="polite">

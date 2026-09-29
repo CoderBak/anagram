@@ -1,5 +1,5 @@
 // The PDF reader: a real PDF handed to the full PDF.js viewer and shown as it is, with the
-// ORDINARY pipeline over it (the same chips, underlines, ball, panel and copied report). The
+// ORDINARY pipeline over it (the same chips, underlines, ball and panel). The
 // reconstruction is invisible and is only asserted through what it decides: what reaches the
 // host, and where a chip lands. Then short paragraphs grouped under a heading, a thirty-page
 // document, a scan and a corrupt file, the way in from a tab showing a PDF, the drop zone,
@@ -84,7 +84,7 @@ const readReader = (page) =>
     };
   }, BADGE_SEL);
 
-test("a PDF in the reader: its paragraphs read as written, drawn with a text layer, one chip each beside the text, marks on their glyphs, zoom from the cache, the panel and the report", async ({ page, pdfs, nativeHost, report }) => {
+test("a PDF in the reader: its paragraphs read as written, drawn with a text layer, one chip each beside the text, marks on their glyphs, zoom from the cache and the panel", async ({ page, pdfs, nativeHost }) => {
   const extErrors = [];
   page.on("console", (m) => {
     // Only what OUR page said: the browser's own viewer asking the server for a favicon it
@@ -141,21 +141,19 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
   expect.soft(zoomed.placed.filter((c) => !c.inPage || c.overText), zoom).toEqual([]);
   expect.soft(nativeHost.stats.requests, zoom).toBe(requestsBefore);
 
-  // The report must name the PDF by its scope note, not by the chrome-extension:// address it
-  // is rendered on. PDF.js is still re-drawing after the zoom, and the reader re-reads each
-  // page it re-draws: the panel is drawn when it opens and the report when it is copied, so
-  // the two are compared once they agree, the panel reopened each time.
-  const panel = "PDF reader: the panel lists the flagged paragraphs and Copy report carries the scope note";
+  // The panel must name the PDF's scope, not the chrome-extension:// address it is rendered on.
+  // PDF.js is still re-drawing after the zoom, and the reader re-reads each page it re-draws:
+  // the panel is drawn when it opens, so it is reopened until its title and rows agree.
+  const panel = "PDF reader: the panel lists the flagged paragraphs, its title counts them, and it carries the scope note";
   await expect(async () => {
     const open = await page.evaluate(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open"));
     if (open) await toggleCounter(page);
     await toggleCounter(page);
     const items = await page.locator("#anagram-fab .panel.open .pitem").count();
-    const text = await report(page);
-    expect(text).toMatch(/^# Anagram analysis report/);
-    expect(items).toBe(Number(text.match(/, Flagged: (\d+)/)?.[1]));
-    // Reports omit titles and URLs unless the user opts in: the PDF is named by its scope note.
-    expect(text).toContain("not a complete document assessment");
+    const title = (await page.locator("#anagram-fab .panel.open .phead h2").textContent()) ?? "";
+    expect(title).toMatch(/^Flagged paragraphs \(\d+\/\d+\)$/);
+    expect(items).toBe(Number(title.match(/\((\d+)\//)?.[1]));
+    expect(await page.locator("#anagram-fab .panel.open .pscope").textContent()).toContain("not a complete document assessment");
   }, panel).toPass({ timeout: 30_000 });
 });
 

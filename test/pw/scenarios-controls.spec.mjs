@@ -172,14 +172,12 @@ test("the toggle shortcut analyzes a switched-off page once instead of doing not
 });
 
 // The same run on a site whose rule ALREADY says "off", the likeliest page to ask for one. An
-// unrelated rule written while it runs must leave it alone, and the panel's own "Turn off on
-// <host>" must end it although it stores the value that is already there, so no settings
-// change ever reaches the page.
-test("analyze this page: an already-off site keeps its run through an unrelated rule, and the panel's own switch ends it", async ({ page, pages, storage, tell }) => {
+// unrelated rule written while it runs must leave it alone.
+test("analyze this page: an already-off site keeps its run through an unrelated rule", async ({ page, pages, storage, tell }) => {
   pages.serve({ "/turnoff.html": CONTROLS_PAGE("TURNOFF") });
   await storage.set({ enabled: true, siteOverrides: { localhost: "off" } });
   await page.goto(pages.url("/turnoff.html"), { waitUntil: "load" });
-  const off = "analyze this page: an already-off site keeps its run through an unrelated rule, and the panel's own switch ends it";
+  const off = "analyze this page: an already-off site keeps its run through an unrelated rule";
   await runsHere(page, tell, false);
   expect(await chips(page), `${off} (off at first)`).toBe(0);
   await tell(page, { action: "analyzePage" });
@@ -189,12 +187,6 @@ test("analyze this page: an already-off site keeps its run through an unrelated 
   await storage.set({ siteOverrides: { localhost: "off", "example.org": "off" } });
   await page.waitForTimeout(ABSENCE_MS);
   expect(await chips(page), `${off} (kept through an unrelated rule)`).toBe(3);
-  // The panel's footer, reached the way a keyboard user reaches it.
-  await tell(page, { action: "openPanel" });
-  const siteOff = page.locator("#anagram-fab .psiteoff");
-  await expect(siteOff, off).toHaveText("Turn off on localhost");
-  await siteOff.click();
-  await expect.poll(() => chips(page), { message: `${off} (ended by the panel)` }).toBe(0);
   expect((await storage.get("siteOverrides")).siteOverrides?.localhost, off).toBe("off");
 });
 

@@ -13,7 +13,7 @@ const calls = vi.hoisted(() => ({
   session: "first", units: [] as Unit[],
   caches: [] as ScoreCache[],
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
-  reports: [] as (() => Promise<string>)[],
+  panels: [] as { scopeNote?: () => string }[],
 }));
 vi.mock("../../lib/capture/langGate", async (original) => ({
   ...await original<typeof import("../../lib/capture/langGate")>(), detectUnsupported: calls.detect,
@@ -41,8 +41,8 @@ vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({
   remove: calls.remove, teardownAll() {}, resetTheme() {},
 })}));
-vi.mock("../../lib/render/fab", () => ({createFab: (options: {panel: {buildReport: () => Promise<string>}}) => {
-  calls.reports.push(options.panel.buildReport);
+vi.mock("../../lib/render/fab", () => ({createFab: (options: {panel: { scopeNote?: () => string }}) => {
+  calls.panels.push(options.panel);
   return {setCount() {}, setBackendDown() {}, unmount() {}, mount() {}, setActive() {}};
 }}));
 vi.mock("../../lib/render/highlight", () => ({
@@ -55,7 +55,6 @@ vi.mock("../../lib/settings/settings", () => {
   return {settings: {
     debug: setting(false),
     showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true), minWords: setting(75),
-    reportIncludeText: setting(false), reportIncludeUrl: setting(false),
   }};
 });
 
@@ -65,7 +64,7 @@ const unit = {id: "unit", text, order: 0} as Unit;
 beforeEach(() => {
   fakeBrowser.reset();
   vi.spyOn(fakeBrowser.runtime, "getManifest").mockReturnValue({manifest_version: 3, version: "0.4.1", name: "Anagram"});
-  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.reports.length = 0;
+  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.panels.length = 0;
   calls.detect.mockReset(); calls.request.mockReset(); calls.main.mockReset();
   calls.detect.mockResolvedValue(null);
   calls.message.mockReset(); calls.message.mockResolvedValue(undefined);
@@ -129,15 +128,6 @@ describe("capture cancellation across language detection and replies", () => {
     } finally {controller.stop();}
   });
 
-  it("reports the producer carried by the batch reply", async () => {
-    const {controller, send} = await page();
-    try {
-      expect(await send([unit], "viewport")).toHaveLength(1);
-      const report = await calls.reports[0]!();
-      expect(report).toContain("model");
-    } finally {controller.stop();}
-  });
-
   it("drops the old scan when this reply changes model", async () => {
     const {controller, send, cache} = await page();
     try {
@@ -149,31 +139,15 @@ describe("capture cancellation across language detection and replies", () => {
       }));
       expect(await send([next], "viewport")).toEqual([]);
       expect(cache.size()).toBe(0);
-      expect(await calls.reports[0]!()).toContain("replacement-model");
     } finally {controller.stop();}
   });
-  it("says a page with nothing long enough had too little text, not that nothing was flagged", async () => {
-    const {controller} = await page();
-    try {
-      const report = await calls.reports[0]!();
-      expect(report).toContain("Too little text to judge: no passage reached the 75 words the model needs for a verdict.");
-      expect(report).not.toContain("No paragraphs were flagged");
-      // Nothing was sent, so the engine did not fail to answer either.
-      expect(report).not.toContain("did not answer");
-      expect(report).toContain("Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.");
-    } finally {controller.stop();}
-  });
-
-  it("keeps a virtual document coverage limit in reports even when source metadata is private", async () => {
+  it("hands the panel a virtual document's coverage limit", async () => {
     const {controller: original} = await page();
     const controller = createOrchestrator(null, {reportScopeNote: () => "PDF scope: 2 of 30 rendered pages; incomplete document."});
     try {
-      const report = await calls.reports.at(-1)!();
-      expect(report).toContain("PDF scope: 2 of 30 rendered pages; incomplete document.");
-      expect(report).not.toContain("https://");
+      expect(calls.panels.at(-1)!.scopeNote!()).toBe("PDF scope: 2 of 30 rendered pages; incomplete document.");
     } finally {controller.stop(); original.stop();}
   });
-
 });
 
 describe("work abandoned by stop, rescan and a cleared cache", () => {

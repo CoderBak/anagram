@@ -1,8 +1,7 @@
 // What Anagram draws into a page, on test/ui-fixtures.html: the hover card at the edges of
 // the screen and out of an overflow:hidden box, the chip in RTL, small, large, tight and
 // vertical text, shadow DOM and slots, copying, a trailing link, dark sections, duplicates,
-// KaTeX, the top layer (a modal dialog, a site overlay), the ball and its panel; the
-// copied report's legend; and the host going away
+// KaTeX, the top layer (a modal dialog, a site overlay), the ball and its panel; and the host going away
 // and coming back. Every test fails on an error the extension writes to the page's console.
 //
 //   npx playwright test scenarios-ui
@@ -328,6 +327,36 @@ test("the triage panel opens from the counter and lists AI-generated paragraphs 
   expect((await panel()).items, lists).toBeGreaterThan(0);
 });
 
+test("the ball is the icon, not a letter: the light tile on a light page, the dark tile on a dark one, both loaded", async ({ fixtures: page }) => {
+  const ball = () =>
+    page.evaluate(() => {
+      const host = document.getElementById("anagram-fab");
+      const fab = host.shadowRoot.querySelector(".fab");
+      const shown = [...fab.querySelectorAll(".mark img")].filter((i) => getComputedStyle(i).display !== "none");
+      return {
+        text: fab.querySelector(".mark").textContent.trim(),
+        shown: shown.map((i) => i.className),
+        size: shown.map((i) => [i.naturalWidth, Math.round(i.getBoundingClientRect().width)]),
+        srcs: [...fab.querySelectorAll(".mark img")].map((i) => i.src.split("/").slice(-2).join("/")),
+      };
+    });
+  const icon = "the ball shows the icon and no \"A\"";
+  expect.soft(await ball(), icon).toMatchObject({ text: "", shown: ["logo-light"], srcs: ["icons/icon-light-96.png", "icons/icon-96.png"] });
+  expect((await ball()).size, `${icon}: a 96 px PNG drawn at 40 px, so it is sharp at 2x`).toEqual([[96, 40]]);
+  await page.evaluate(() => document.getElementById("anagram-fab").classList.add("pg-dark"));
+  expect(await ball(), "the ball on a page treated as dark shows the dark tile").toMatchObject({ shown: ["logo-dark"] });
+});
+
+test("the count badge sets its own type: the UI sans-serif at weight 600 with tabular digits, whatever the page styles", async ({ fixtures: page }) => {
+  await page.addStyleTag({ content: "* { font-family: 'Times New Roman', serif !important; font-style: italic !important; text-transform: uppercase !important; }" });
+  const type = await page.evaluate(() => {
+    const cs = getComputedStyle(document.getElementById("anagram-fab").shadowRoot.querySelector(".count"));
+    return { family: cs.fontFamily, weight: cs.fontWeight, style: cs.fontStyle, digits: cs.fontVariantNumeric, transform: cs.textTransform, align: cs.textAlign };
+  });
+  expect(type.family, "the badge's face is the UI stack, not the UA's serif").toMatch(/^ui-sans-serif, /);
+  expect({ weight: type.weight, style: type.style, digits: type.digits, transform: type.transform, align: type.align }, "the badge's own type settings").toEqual({ weight: "600", style: "normal", digits: "tabular-nums", transform: "none", align: "center" });
+});
+
 test("the ball: dragged, it snaps to the left edge; left alone, it tucks half away and comes back under the pointer", async ({ fixtures: page }) => {
   await pointAtBall(page); // untuck first: a tucked ball sits half off-screen
   await expect.poll(() => tucked(page), { message: "the ball comes out under the pointer" }).toBe(false);
@@ -346,18 +375,6 @@ test("the ball: dragged, it snaps to the left edge; left alone, it tucks half aw
   await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover", timeout: 15_000 }).toBe(true);
   await pointAtBall(page);
   await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover" }).toBe(false);
-});
-
-test("the copied report gives bare 0-1 scores, the legend that explains them and the caveat that travels with them", async ({ fixtures: page, report }) => {
-  const text = await report(page);
-  const legend = "copied report: bare 0-1 scores plus the legend that explains them and the caveat that travels with them";
-  expect.soft(text, legend).toMatch(/^# Anagram analysis report/);
-  expect.soft(text, legend).not.toContain("% AI");
-  // Every flagged entry opens "1. **AI-generated, .96** (…", never with a percentage.
-  const entries = text.split("\n").filter((l) => /^\d+\. \*\*/.test(l));
-  expect.soft(entries.filter((l) => !/^\d+\. \*\*[^*]+, (\.\d\d|1\.0)\*\*/.test(l)), legend).toEqual([]);
-  expect.soft(text, legend).toContain("not the fraction of AI-written words");
-  expect.soft(text, legend).toContain("Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.");
 });
 
 // The host goes away: the batch in flight renders "Unavailable", nothing new is dispatched,

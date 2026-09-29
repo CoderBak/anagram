@@ -5,7 +5,6 @@ import { createOrchestrator, type Orchestrator } from "../../lib/capture/orchest
 import { enabledForSite, settings } from "../../lib/settings/settings";
 import { ACTIONS, type ControlMessage, type TabState } from "../../lib/messaging/protocol";
 import { setRangeLocator } from "../../lib/render/highlight";
-import { setOwnPageSite } from "../../lib/render/fab";
 import { extractPageText } from "../../lib/pdf/extract";
 import { readReflowed } from "../../lib/pdf/reading";
 import type { PdfPageText, ReflowBlock } from "../../lib/pdf/reflow";
@@ -32,7 +31,7 @@ const analyze = document.getElementById("anagramAnalyze") as HTMLButtonElement;
 let app: PdfApplication;
 let orchestrator: Orchestrator | null = null;
 let source: PdfUnitSource | null = null;
-let reportUrl = "";
+
 let originalUrl: string | null = null;
 let site: string | null = null;
 let generation = 0;
@@ -123,7 +122,7 @@ async function startAnalysis(owned: number): Promise<void> {
   setRangeLocator((unit, spans) => currentSource.ranges(unit, spans));
   let answered = false;
   orchestrator = createOrchestrator(null, {
-    mountFab: true, reportUrl,
+    mountFab: true,
     reportScopeNote: () => t("readerReportScope", scopeCount(), app.pdfDocument?.numPages ?? 0),
     collect: (_root, claim, options) => {
       if (answered) return [];
@@ -133,8 +132,6 @@ async function startAnalysis(owned: number): Promise<void> {
       return currentSource.collect(claim, options.mergeShorts, options.minWords);
     },
     placeBadge: (unit, host) => placeChip({pageOf: (layer) => [...pages.values()].find(({view}) => view.layer === layer)?.view}, unit, host),
-    // The panel's "Turn off on <site>" wrote the rule for the document's own site.
-    onSiteOff: () => { started = false; orchestrator?.stop(); },
   });
   // A web document follows its site's rule, as the page it came from does; a file from
   // this computer has no site and follows the global switch.
@@ -183,7 +180,7 @@ function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void
   setRangeLocator(null);
   pages.clear(); source = null; structure = null; scopeLabel.hidden = true;
   originalUrl = null; original.hidden = true;
-  site = null; setOwnPageSite(null);
+  site = null;
   say(t("readerLoading")); drop.hidden = true;
   const closing = app.close().catch(() => undefined);
   return {owned, signal: controller.signal, closing};
@@ -193,9 +190,9 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   if (bytes.byteLength > MAX_BYTES) { failure("large"); return; }
   await load.closing;
   if (load.owned !== generation) return;
-  source = createPdfUnitSource(); reportUrl = url ?? name;
+  source = createPdfUnitSource();
   originalUrl = url; original.hidden = !url;
-  site = siteOf(url); setOwnPageSite(site);
+  site = siteOf(url);
   // Upstream controls the password dialog, rendering, navigation, find and printing.
   try {
     app.setTitleUsingUrl(name);

@@ -19,12 +19,14 @@
 // (Escape gives it back). A pointer click still leaves the page's focus alone.
 import { computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
-import { settings, setSiteOverride } from "../settings/settings";
+import { settings } from "../settings/settings";
 import { messageLocale, t, tn } from "../i18n";
 import { bandLabel, type Band } from "./band";
 import { formatScore, spokenScore } from "./score";
 import { isDarkPage } from "./theme";
 import { scaleColorCss } from "./scale";
+import { logoImage } from "./logo";
+import { MODEL_MIN_WORDS } from "../dom/text";
 import { commentHost } from "../access/commentFrames";
 import type { EngineSetup } from "../messaging/protocol";
 
@@ -43,9 +45,9 @@ export interface PanelEntry {
  * nothing on the page was long enough to judge, or that none of it was English.
  */
 export interface PanelCounts {
-  /** Units with a real verdict behind them. */
+  /** Units with a real verdict behind them: the panel title's "read". */
   read: number;
-  /** Prose the walker found and left unread: under the 75-word evidence floor, with no
+  /** Prose the walker found and did NOT score: under the reader's minimum length, with no
    *  neighbour of its own voice to join. Zero — and left off the line — in strict
    *  per-paragraph mode, where the walk never decides what a short run was. */
   short: number;
@@ -55,6 +57,9 @@ export interface PanelCounts {
   pending: number;
   /** Units the daemon never answered for. */
   unavailable: number;
+  /** Of `read`, the verdicts on texts under the model's 75-word training minimum: scored,
+   *  and less reliable (the same test the cards' "Short text" note makes). */
+  lessReliable: number;
 }
 
 export interface PanelHooks {
@@ -64,8 +69,6 @@ export interface PanelHooks {
   counts(): PanelCounts;
   /** Scroll to a unit and flash its chip. */
   onJump(id: string): void;
-  /** Markdown report of the page's verdicts (for the Copy report button). */
-  buildReport(): string | Promise<string>;
   /** Explicit coverage limits for a virtualized document surface. */
   scopeNote?(): string;
   /** Comment threads the page shows in frames of a site nobody granted, as the patterns a
@@ -164,27 +167,37 @@ const FAB_CSS = `
 .fab {
   height: ${BALL}px;
   min-width: ${BALL}px;
-  padding: 0 10px; /* 20 px mark + 2×10 + 2×1 border = a ${BALL} px square */
+  padding: 0; /* the icon is the ball: ${BALL - 2}px + 2×1 border = a ${BALL} px square */
   justify-content: center;
   /* No flex gap here: the collapsed label would still claim it and push the mark
      off-centre. The label brings its own margin when it slides out. */
   gap: 0;
+  /* At rest only the icon shows; the chip's surface returns with the label on hover. */
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
   overflow: hidden;
   touch-action: none; /* pointer-drag must not turn into page scroll */
 }
 
+.fab:hover, .fab:focus-visible { background: #ffffff; border-color: #e5e5e5; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
 .label {
   white-space: nowrap;
   max-width: 0;
   opacity: 0;
   overflow: hidden;
-  transition: max-width 180ms ease, opacity 140ms ease, margin-left 180ms ease;
-  margin-left: 0;
+  /* Hidden, not just transparent: at rest the ball has no surface, so a label drawn on the
+     page's own background would be dark ink on whatever that is. */
+  visibility: hidden;
+  transition: max-width 180ms ease, opacity 140ms ease, margin 180ms ease, visibility 0s linear 180ms;
+  margin: 0;
 }
 .fab:hover .label {
   max-width: 120px;
   opacity: 1;
-  margin-left: 8px;
+  visibility: visible;
+  margin: 0 12px 0 4px;
+  transition-delay: 0s;
 }
 
 .action {
@@ -204,20 +217,25 @@ const FAB_CSS = `
 }
 .action.attn { animation: anagram-attn 1.3s ease-in-out 3; }
 
-/* The mark: the primary token (near-black) — no gradient, no accent colour. */
+/* The mark: the icon, its light tile on light pages and its dark tile on dark ones (the
+   page's own theme, isDarkPage). The tile's own edge and glow do the work a chip surface
+   would, so the ball rests on a soft shadow only. */
 .mark {
-  width: 20px;
-  height: 20px;
+  width: ${BALL - 2}px;
+  height: ${BALL - 2}px;
   flex: 0 0 auto;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: #171717;
-  color: #fafafa;
-  font-size: 11px;
-  font-weight: 700;
 }
+.mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
+}
+.mark .logo-dark { display: none; }
+:host(.pg-dark) .mark .logo-light { display: none; }
+:host(.pg-dark) .mark .logo-dark { display: block; }
 
 /* Flagged counter: colour ONLY when something is flagged (destructive token); a zero
    count and the daemon-down "!" stay neutral. It is a real button (the panel behind it
@@ -240,11 +258,18 @@ const FAB_CSS = `
   background: #dc2626;
   color: #fff;
   appearance: none;
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: normal;
+  /* Set out in full: the host's "all: initial" leaves the UA's default (serif) face here, and
+     a button brings its own font from the UA sheet. The same stack as the ball's chips. */
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  text-transform: none;
+  -webkit-font-smoothing: antialiased;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer; /* opens the flagged-paragraphs panel */
 }
@@ -319,23 +344,24 @@ const FAB_CSS = `
 /* The dialog's own heading (and its accessible name). Kept typographically identical
    to the plain span it replaced — the row only gained semantics. */
 .panel .phead h2 { font: inherit; margin: 0; min-width: 0; overflow-wrap: anywhere; }
-/* Basecoat "primary" button: near-black surface, light text. A longer title wraps; the
-   button keeps its one line. */
-.panel .pcopy {
+/* The close button: a quiet 24 px target (WCAG 2.5.8) at the end of the heading row. */
+.panel .pclose {
   flex: none;
-  white-space: nowrap;
-  font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  text-transform: none;
-  letter-spacing: 0;
-  color: #fafafa;
-  border: 1px solid transparent;
-  background: #171717;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -3px -3px -3px 0;
+  padding: 0;
+  border: none;
   border-radius: 6px;
-  padding: 6px 9px; /* 6, not 5: 24 px tall — WCAG 2.5.8 target size, minimum */
+  background: none;
+  color: inherit;
+  font: 400 16px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
 }
-.panel .pcopy:hover { background: #333333; }
-.panel .pcopy.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
+.panel .pclose:hover { background: #f5f5f5; color: #252525; }
 
 /* Daemon-down notice at the top of the panel. */
 .panel .pnotice {
@@ -409,32 +435,14 @@ const FAB_CSS = `
   color: #737373;
   font-variant-numeric: tabular-nums;
 }
-.panel .pfoot {
-  display: flex;
-  justify-content: flex-end;
-  padding: 5px 8px 3px;
-  border-top: 1px solid #f0f0f0;
-  margin-top: 4px;
-}
-.panel .psiteoff {
-  font: 500 10px/1.2 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #737373;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 6px 4px; /* 6, not 3: 24 px tall — WCAG 2.5.8 target size, minimum */
-}
-.panel .psiteoff:hover { color: #b42318; text-decoration: underline; }
-
 /* inactive (overlay hidden) → muted */
 .fab.off { opacity: 0.62; }
 .fab.off .mark { filter: grayscale(0.5); }
 .fab.off + .count, .fabwrap.off .count { opacity: 0.5; }
 
 /* The only thing here that is not drawn: a polite live region. The counter changes
-   silently as scoring lands, and the panel's Copy report confirms itself by swapping a
-   label — both are invisible events to a screen reader, and neither is worth a word of
-   visible chrome. Clipped rather than display:none, which would take it out of the
+   silently as scoring lands, which is an invisible event to a screen reader and not worth a
+   word of visible chrome. Clipped rather than display:none, which would take it out of the
    accessibility tree along with the pixels. */
 .live {
   position: absolute;
@@ -462,10 +470,7 @@ const FAB_CSS = `
   color-scheme: dark; /* the list scrolls — its scrollbar belongs to this surface */
 }
 :host(.pg-dark) .panel .phead { color: #a3a3a3; }
-/* The primary button inverts, the way a primary button does in dark mode. */
-:host(.pg-dark) .panel .pcopy { color: #171717; background: #fafafa; }
-:host(.pg-dark) .panel .pcopy:hover { background: #e5e5e5; }
-:host(.pg-dark) .panel .pcopy.done { color: #4ecb71; border-color: rgba(78, 203, 113, 0.4); background: rgba(78, 203, 113, 0.12); }
+:host(.pg-dark) .panel .pclose:hover { background: rgba(255, 255, 255, 0.12); color: #fafafa; }
 :host(.pg-dark) .panel .pnotice { background: rgba(255, 255, 255, 0.06); color: #d4d4d4; }
 :host(.pg-dark) .panel .fchip { color: #a3a3a3; border-color: rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); }
 :host(.pg-dark) .panel .fchip:hover { background: rgba(255, 255, 255, 0.12); color: #fafafa; }
@@ -475,9 +480,6 @@ const FAB_CSS = `
 :host(.pg-dark) .panel .ptext { color: #d4d4d4; }
 :host(.pg-dark) .panel .pempty { color: #8a8a8a; }
 :host(.pg-dark) .panel .pcov { color: #8a8a8a; }
-:host(.pg-dark) .panel .pfoot { border-top-color: rgba(255, 255, 255, 0.08); }
-:host(.pg-dark) .panel .psiteoff { color: #8a8a8a; }
-:host(.pg-dark) .panel .psiteoff:hover { color: #ff7b81; }
 
 /* ---- keyboard focus -------------------------------------------------------------
    One ring for every control here: the primary near-black token, two pixels, held off
@@ -486,10 +488,9 @@ const FAB_CSS = `
 .fab:focus-visible,
 .action:focus-visible,
 .count:focus-visible,
-.panel .pcopy:focus-visible,
+.panel .pclose:focus-visible,
 .panel .fchip:focus-visible,
 .panel .pitem:focus-visible,
-.panel .psiteoff:focus-visible,
 .panel .phead h2:focus-visible {
   outline: 2px solid #171717;
   outline-offset: 2px;
@@ -499,10 +500,9 @@ const FAB_CSS = `
 .panel .pitem:focus-visible { outline-offset: -2px; }
 
 /* A near-black ring is invisible on a near-black panel. */
-:host(.pg-dark) .panel .pcopy:focus-visible,
+:host(.pg-dark) .panel .pclose:focus-visible,
 :host(.pg-dark) .panel .fchip:focus-visible,
 :host(.pg-dark) .panel .pitem:focus-visible,
-:host(.pg-dark) .panel .psiteoff:focus-visible,
 :host(.pg-dark) .panel .phead h2:focus-visible {
   outline-color: #fafafa;
 }
@@ -513,10 +513,9 @@ const FAB_CSS = `
   .fab:focus-visible,
   .action:focus-visible,
   .count:focus-visible,
-  .panel .pcopy:focus-visible,
+  .panel .pclose:focus-visible,
   .panel .fchip:focus-visible,
   .panel .pitem:focus-visible,
-  .panel .psiteoff:focus-visible,
   .panel .phead h2:focus-visible {
     outline-color: Highlight;
   }
@@ -541,18 +540,6 @@ function sheet(): CSSStyleSheet {
   return _sheet;
 }
 
-/**
- * The site the panel footer turns off on our own extension pages, where the page's host
- * is the extension's id and no site at all. The PDF reader sets the host its document
- * came from, and null for a file from this computer, where the footer offers no switch.
- */
-let _ownPageSite: string | null = null;
-
-/** Name (or, with null, clear) that site. One per document. */
-export function setOwnPageSite(host: string | null): void {
-  _ownPageSite = host;
-}
-
 type Side = "left" | "right";
 
 export function createFab(opts: {
@@ -561,11 +548,6 @@ export function createFab(opts: {
   /** The in-browser engine's setup page, from the panel's button while it is not set up. */
   onSetup?: () => void;
   panel?: PanelHooks;
-  /** The footer's per-site kill switch was used. The rule is written here either way;
-   *  this is how the PAGE learns to stop, which the stored rule cannot always tell it:
-   *  a site whose rule already says "off" — the page is being analyzed once from the
-   *  context menu — takes the same value again, and storage fires no change event. */
-  onSiteOff?: () => void;
 }): Fab {
   let host: HTMLElement | null = null;
   let stackEl: HTMLElement | null = null;
@@ -619,7 +601,7 @@ export function createFab(opts: {
     fabEl.classList.toggle("off", !active);
     fabEl.parentElement?.classList.toggle("off", !active);
     fabEl.title = active ? t("fabHide") : t("fabShow");
-    // The ball's own content is a one-letter mark: without a label it announces as "A".
+    // The ball's own content is the (decorative) icon: without a label it announces as nothing.
     fabEl.setAttribute("aria-label", active ? t("fabHideAria") : t("fabShowAria"));
     if (actionEl) {
       actionEl.classList.toggle("show", actionLabel !== null);
@@ -801,7 +783,7 @@ export function createFab(opts: {
 
     const mark = document.createElement("span");
     mark.className = "mark";
-    mark.textContent = "A";
+    mark.append(logoImage("light", "logo-light"), logoImage("dark", "logo-dark"));
 
     const label = document.createElement("span");
     label.className = "label";
@@ -869,8 +851,8 @@ export function createFab(opts: {
     // no layout — and last is where Tab wants it: ball, counter, then what the counter
     // opened.
     stack.append(actionEl, wrap, panelEl, liveEl);
-    // Tapping anywhere outside the FAB closes the panel; Escape too.
-    document.addEventListener("pointerdown", onOutsidePointer, true);
+    // The panel is a tool to work beside the page, not a popup over it: a click or a
+    // scroll on the page leaves it open. It closes from the ball, the close button and Escape.
     document.addEventListener("keydown", onKeydown, true);
     document.addEventListener("fullscreenchange", onFullscreenChange);
     shadow.appendChild(stack);
@@ -898,10 +880,6 @@ export function createFab(opts: {
     scheduleTuck();
   }
 
-  function onOutsidePointer(e: Event): void {
-    if (host && !e.composedPath().includes(host)) closePanel();
-  }
-
   function onKeydown(e: KeyboardEvent): void {
     // Escape belongs to the panel wherever focus sits — including inside the page,
     // which is where a pointer-opened panel leaves it.
@@ -923,7 +901,9 @@ export function createFab(opts: {
       countEl.setAttribute("aria-label", t("countDownAria"));
       return;
     }
-    countEl.textContent = String(flagged);
+    // The bubble is 18 px tall: three digits would stretch it, so it stops at "99+" (the
+    // accessible name and the panel's title carry the real number).
+    countEl.textContent = flagged > 99 ? "99+" : String(flagged);
     announceCount(flagged);
     countEl.title = t("countTitle");
     countEl.setAttribute("aria-label", tn("countAria", flagged));
@@ -1042,65 +1022,40 @@ export function createFab(opts: {
     const title = document.createElement("h2");
     title.id = PANEL_TITLE_ID; // the dialog's accessible name
     title.tabIndex = -1; // where keyboard focus lands when there is no result to land on
-    title.textContent = entries.length ? t("panelTitleCount", entries.length) : t("panelTitle");
+    // "Flagged paragraphs (10/79)": flagged out of read, in the title itself.
+    const coverage = opts.panel?.counts();
+    title.textContent = coverage && coverage.read > 0 ? t("panelTitleCount", entries.length, coverage.read) : t("panelTitle");
     head.appendChild(title);
-    // Also with nothing flagged: the report then says what the page's zero means — nothing
-    // long enough to judge, nothing in English, or verdicts that are close calls.
-    if (opts.panel) {
-      const copy = document.createElement("button");
-      copy.type = "button";
-      copy.className = "pcopy";
-      copy.textContent = t("panelCopyReport");
-      copy.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        copy.disabled = true;
-        let report: string;
-        try { report = await opts.panel!.buildReport(); }
-        catch { copy.disabled = false; announce(t("reportCopyFailed")); return; }
-        const done = () => {
-          copy.textContent = t("copied");
-          copy.classList.add("done");
-          announce(t("panelAnnounceCopied"));
-          setTimeout(() => {
-            copy.textContent = t("panelCopyReport");
-            copy.classList.remove("done");
-          }, 1600);
-        };
-        navigator.clipboard.writeText(report).then(done, () => {
-          // Clipboard API can be blocked — textarea/execCommand fallback.
-          const ta = document.createElement("textarea");
-          ta.value = report;
-          ta.style.cssText = "position:fixed;opacity:0";
-          document.body.appendChild(ta);
-          ta.select();
-          try {
-            if (document.execCommand("copy")) done();
-            else announce(t("reportCopyFailed"));
-          } finally {
-            ta.remove();
-          }
-        }).finally(() => { copy.disabled = false; });
-      });
-      head.appendChild(copy);
-    }
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "pclose";
+    close.textContent = "\u00d7";
+    close.title = t("panelClose");
+    close.setAttribute("aria-label", t("panelClose"));
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closePanel(true);
+    });
+    head.appendChild(close);
     panelEl.appendChild(head);
 
-    // The coverage line. It is drawn, never announced: the live region below belongs to
-    // the flagged count and to the Copy button, and a reader who asked for one number
-    // does not want five of them read out again every time a batch lands.
-    const coverage = opts.panel?.counts();
+    // The coverage line: what was NOT read, or read less reliably. It is drawn, never
+    // announced: the live region below belongs to the flagged count, and a reader who asked
+    // for one number does not want five of them read out again every time a batch lands.
     if (coverage) {
       const parts = [
-        t("panelCovRead", coverage.read),
         ...(coverage.short > 0 ? [t("panelCovShort", coverage.short)] : []),
+        ...(coverage.lessReliable > 0 ? [t("panelCovLessReliable", coverage.lessReliable, MODEL_MIN_WORDS)] : []),
         ...(coverage.notEnglish > 0 ? [t("panelCovNotEnglish", coverage.notEnglish)] : []),
         ...(coverage.pending > 0 ? [t("panelCovPending", coverage.pending)] : []),
         ...(coverage.unavailable > 0 ? [t("panelCovUnavailable", coverage.unavailable)] : []),
       ];
-      const cov = document.createElement("div");
-      cov.className = "pcov";
-      cov.textContent = parts.join(", ");
-      panelEl.appendChild(cov);
+      if (parts.length) {
+        const cov = document.createElement("div");
+        cov.className = "pcov";
+        cov.textContent = parts.join(", ");
+        panelEl.appendChild(cov);
+      }
     }
 
     const scopeNote = opts.panel?.scopeNote?.();
@@ -1159,35 +1114,11 @@ export function createFab(opts: {
       // ".93" is read out badly — an aria-label says the number with its leading zero.
       item.setAttribute("aria-label", t("panelItemAria", bandLabel(entry.band), spokenScore(entry.score), entry.snippet));
       item.append(dot, score, text);
-      item.addEventListener("click", () => {
-        closePanel();
-        opts.panel?.onJump(entry.id);
-      });
+      item.addEventListener("click", () => opts.panel?.onJump(entry.id));
       list.appendChild(item);
     }
     panelEl.appendChild(list);
 
-    // Footer: per-site kill switch (writes the same rule the popup manages). On our own
-    // extension pages — the PDF reader — the host is the extension's id, which no rule may
-    // name: the switch turns off the site the page says it is showing, if any.
-    const ownPage = location.protocol === "chrome-extension:" || location.protocol === "moz-extension:";
-    const site = ownPage ? _ownPageSite : location.hostname;
-    if (!site) return;
-    const foot = document.createElement("div");
-    foot.className = "pfoot";
-    const off = document.createElement("button");
-    off.type = "button";
-    off.className = "psiteoff";
-    off.textContent = t("panelTurnOffOn", site);
-    off.title = t("panelTurnOffTitle");
-    off.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closePanel();
-      void setSiteOverride(site, "off").catch(() => undefined);
-      opts.onSiteOff?.();
-    });
-    foot.appendChild(off);
-    panelEl.appendChild(foot);
   }
 
   function setAction(
@@ -1207,7 +1138,6 @@ export function createFab(opts: {
       clearTimeout(liveTimer);
       liveTimer = null;
     }
-    document.removeEventListener("pointerdown", onOutsidePointer, true);
     document.removeEventListener("keydown", onKeydown, true);
     document.removeEventListener("fullscreenchange", onFullscreenChange);
     try {

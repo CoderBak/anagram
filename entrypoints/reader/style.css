@@ -27,6 +27,10 @@
 #original { max-width: 120px; }
 #anagramAnalyze::before, #original::before { display: none; }
 #anagramAnalyze > span, #original > span { margin-inline-start: 0; }
+#anagramAnalyze { display: inline-flex; align-items: center; gap: 6px; }
+#anagramAnalyze .logo { width: 20px; height: 20px; flex: none; }
+#anagramAnalyze .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) { #anagramAnalyze .logo-light { display: none; } #anagramAnalyze .logo-dark { display: block; } }
 .anagramPdfChips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .anagramPdfChips > span { position: absolute; transform: translateY(-50%); pointer-events: auto; }
 @media (max-width: 700px) { #original { width: 32px; } #original > span { font-size: 0; } #original::after { content: "↗"; font-size: 18px; } #anagramAnalyze { min-width: 38px; } }

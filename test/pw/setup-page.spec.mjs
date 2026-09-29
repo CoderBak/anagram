@@ -127,7 +127,7 @@ test.describe("Settings", () => {
     const seen = await page.evaluate(() => ({
       headings: [...document.querySelectorAll("h2, h3")].filter((h) => !h.closest("dialog") && h.getClientRects().length > 0).length,
       folds: document.querySelectorAll("details, summary").length,
-      ids: ["analysisScope", "reportIncludeText", "reportIncludeUrl", "debug", "openReader"].filter((id) => document.getElementById(id)),
+      ids: ["analysisScope", "debug", "openReader"].filter((id) => document.getElementById(id)),
       labels: [...document.querySelectorAll(".group-label")].map((el) => el.textContent),
       text: document.body.innerText,
     }));

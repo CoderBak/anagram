@@ -26,8 +26,8 @@ const firstCard = (page) =>
 test.describe("a zh-CN browser", () => {
   test.use({ uiLanguage: "zh-CN" });
 
-  test("a zh-CN browser gets a Chinese popup, options page, chip card, triage panel, menu entries and report", async ({ context, page, pages, extension, report }) => {
-    const zh = "a zh-CN browser gets a Chinese popup, options page, chip card, triage panel, menu entries and report";
+  test("a zh-CN browser gets a Chinese popup, options page, chip card, triage panel and menu entries", async ({ context, page, pages, extension }) => {
+    const zh = "a zh-CN browser gets a Chinese popup, options page, chip card, triage panel and menu entries";
     // The context menus are created with t(), and chrome.contextMenus cannot read a title
     // back, so the same lookup the worker made is asked for again.
     const menus = await extension.worker().evaluate(() => ["menuAnalyzeSelection", "menuAnalyzePage", "menuOpenPdf", "cmdOpenPanel"].map((k) => chrome.i18n.getMessage(k)));
@@ -69,7 +69,7 @@ test.describe("a zh-CN browser", () => {
       });
     await opts.close();
 
-    // The in-page UI: a chip's card, the panel behind the ball, and the report.
+    // The in-page UI: a chip's card, the panel behind the ball.
     pages.serve({ "/zh.html": ZH_PAGE });
     await page.goto(pages.url("/zh.html"), { waitUntil: "load" });
     await chipsSettle(page, 4);
@@ -84,27 +84,16 @@ test.describe("a zh-CN browser", () => {
       return {
         lang: sr.querySelector(".stack")?.lang ?? "",
         title: sr.querySelector(".phead h2")?.textContent ?? "",
-        cov: sr.querySelector(".pcov")?.textContent ?? "",
-        copy: sr.querySelector(".pcopy")?.textContent ?? "",
-        off: sr.querySelector(".psiteoff")?.textContent ?? "",
+        cov: sr.querySelector(".pcov")?.textContent ?? null,
+        close: sr.querySelector(".pclose")?.getAttribute("aria-label") ?? "",
+        buttons: [...sr.querySelectorAll(".panel button")].filter((b) => !b.classList.contains("pitem")).map((b) => b.className),
+        text: sr.querySelector(".panel")?.textContent ?? "",
       };
     });
-    await expect.poll(panel, { message: `${zh} (panel)` }).toMatchObject({ lang: "zh-CN", title: "存疑段落（4）", copy: "复制报告", off: "在 localhost 关闭" });
-    // The coverage line is translated too: "已读 N", and nothing else where every paragraph was read.
-    expect.soft((await panel()).cov, `${zh} (panel coverage)`).toMatch(/^已读 \d+$/);
-
-    // The button says it copied, for 1.6 s: every label it shows is kept.
-    await page.evaluate(() => {
-      const copy = document.getElementById("anagram-fab").shadowRoot.querySelector(".pcopy");
-      window.__copyLabels = [];
-      new MutationObserver(() => window.__copyLabels.push(copy.textContent)).observe(copy, { childList: true, characterData: true, subtree: true });
-    });
-    const text = await report(page);
-    expect.soft(await page.evaluate(() => window.__copyLabels), `${zh} (copied)`).toContain("已复制 ✓");
-    expect.soft(text, `${zh} (report)`).toMatch(/^# Anagram 分析报告/);
-    expect.soft(text, `${zh} (report)`).toContain("## 存疑段落（4）");
-    expect.soft(text, `${zh} (report)`).toContain("也不能证明作者身份");
-    expect.soft(text, `${zh} (report)`).toContain("请勿将其用于纪律处分或其他重大决定");
+    // The title is flagged out of read, the close button is named, and the Copy report and
+    // Turn off buttons are gone; with every paragraph read, there is no coverage line.
+    await expect.poll(panel, { message: `${zh} (panel)` }).toMatchObject({ lang: "zh-CN", title: "存疑段落（4/4）", close: "关闭", buttons: ["pclose"], cov: null });
+    expect.soft((await panel()).text, `${zh} (panel buttons)`).not.toMatch(/复制报告|关闭 localhost|在 localhost 关闭/);
   });
 });
 

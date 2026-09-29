@@ -10,7 +10,10 @@
       html { width: 300px; }
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.45; }
       header.hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
-      header.hdr img { width: 30px; height: 30px; border-radius: 8px; }
+      header.hdr img { width: 34px; height: 34px; margin: -2px; }
+      header.hdr .logo-dark { display: none; }
+      html.dark header.hdr .logo-light { display: none; }
+      html.dark header.hdr .logo-dark { display: block; }
       header.hdr h1 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
       main { padding: 4px 14px 12px; }
       .grp { padding: 9px 0 8px; border-bottom: 1px solid var(--border); }
@@ -47,7 +50,8 @@
   </head>
   <body>
     <header class="hdr">
-      <img class="logo" src="/icons/icon-48.png" alt="" />
+      <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
+      <img class="logo-dark" src="/icons/icon-96.png" alt="" />
       <h1>Anagram</h1>
       <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="Settings" aria-label="Settings"
         data-i18n-title="popupSettings" data-i18n-aria-label="popupSettings">
