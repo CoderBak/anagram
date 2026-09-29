@@ -47,8 +47,8 @@ One extension carries both engines; the person's choice (`storage.local` `engine
 at run time, and `engineTransport()` (`lib/backend/engines.ts`) is the one in use. Before
 anything is chosen the setup page decides (`lib/device.ts`, `lib/ui/engineCard.ts`): the
 choice on Apple Silicon and beside an NVIDIA GPU, the in-browser engine by itself elsewhere,
-the local engine alone without WebAssembly JSPI (Firefox 140), nothing where the model does
-not fit. Where FP32 does not fit but FP16 does (`TIERS`, `affordable()`), the in-browser engine
+nothing where the model does
+not fit (the local engine alone where it installs). Where FP32 does not fit but FP16 does (`TIERS`, `affordable()`), the in-browser engine
 runs the modelkit's FP16 model on WebGPU; the page's tier travels with `setEngine` into
 `local:engineTier` and to the engine in its pin (`lib/webengine/tier.ts`). Native Messaging is optional and asked for when the local engine is picked; where
 it is granted and nothing was chosen (an update from 0.7.0, which required it) the local
@@ -80,8 +80,8 @@ npm run test:pseudo-locale         # every page in a stretched pseudo-locale, Ch
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
 npx playwright test                # the suites in test/pw/ (Playwright Test), no network; ANAGRAM_LIVE=1 adds the real sites; --repeat-each 10 hunts a flake, a failure keeps its trace
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
-ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 140+, e.g. an ESR from archive.mozilla.org, never installed
-ANAGRAM_FIREFOX=<path to firefox> node test/webengine/firefox-extension.mjs   # the engine choice in Firefox, Native Messaging granted at run time; in 153+ the in-browser engine's worker in the background page (--hf: 20 MB from Hugging Face)
+ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 153+, e.g. the ESR in ~/anagram-bench/tools/firefox-esr/153.3.0esr/Firefox.app/Contents/MacOS/firefox, never installed
+ANAGRAM_FIREFOX=<path to firefox> node test/webengine/firefox-extension.mjs   # the engine choice in Firefox, Native Messaging granted at run time; the in-browser engine's worker in the background page (--hf: 20 MB from Hugging Face)
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
 npm run test:pdf-route             # PDF routing, handoff caps and privacy
 npm run test:network-privacy       # the network promises in PRIVACY.md, for both engines

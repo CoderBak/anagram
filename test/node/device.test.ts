@@ -4,8 +4,8 @@ import { DISK_MARGIN, TIERS, decide, type DeviceInputs } from "../../lib/device"
 
 const GB = 1e9;
 const roomy = { quota: 200 * GB, usage: 1 * GB };
-const chrome = (over: Partial<DeviceInputs>): DeviceInputs => ({ browser: "chrome", jspi: true, deviceMemory: 8, storage: roomy, ...over });
-const firefox = (over: Partial<DeviceInputs>): DeviceInputs => ({ browser: "firefox", jspi: true, storage: roomy, ...over });
+const chrome = (over: Partial<DeviceInputs>): DeviceInputs => ({ browser: "chrome", deviceMemory: 8, storage: roomy, ...over });
+const firefox = (over: Partial<DeviceInputs>): DeviceInputs => ({ browser: "firefox", storage: roomy, ...over });
 
 // What the browsers really say, as the gatherer (lib/ui/deviceInputs.ts) passes it on.
 const M4 = { platform: "macOS", architecture: "arm", navigatorPlatform: "MacIntel", gpu: { vendor: "apple", architecture: "metal-3" },
@@ -57,18 +57,6 @@ describe("the rule, row by row", () => {
 
   it("takes the processor path where the GPU cannot bind the model's largest tensor", () => {
     expect(decide(chrome({ ...M4, gpu: { vendor: "apple", fits: false } }))).toMatchObject({ offer: "choice", path: "cpu" });
-  });
-});
-
-describe("Firefox 140: no WebAssembly JSPI", () => {
-  it("offers the local engine only, where it installs", () => {
-    expect(decide(firefox({ jspi: false, navigatorPlatform: "MacIntel", webgl: { renderer: "Apple M1, or similar" } }))).toMatchObject({ offer: "terminal-only", reason: "no-jspi", path: null, tier: null });
-    expect(decide(firefox({ jspi: false, navigatorPlatform: "Linux x86_64" }))).toMatchObject({ offer: "terminal-only", reason: "no-jspi" });
-    expect(decide(firefox({ jspi: false, navigatorPlatform: "Win32" }))).toMatchObject({ offer: "terminal-only" });
-  });
-
-  it("runs nothing where the local engine does not install either", () => {
-    expect(decide(firefox({ jspi: false, navigatorPlatform: "MacIntel", webgl: { renderer: "Intel(R) HD Graphics, or similar" } }))).toMatchObject({ offer: "cannot-run", reason: "no-jspi" });
   });
 });
 

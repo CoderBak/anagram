@@ -35,8 +35,7 @@
 
 开发版构建中的命令是禁用的，因为还没有与之匹配的发行版本。
 
-Anagram 也可以在 Firefox 140 及以上版本（含 ESR）中通过 Firefox 版 ZIP 运行。Firefox 140
-只能运行本地引擎；浏览器内引擎需要 Firefox 153。Firefox 只有在 ESR、Developer Edition 和
+Anagram 也可以在 Firefox 153 及以上版本（含 ESR）中通过 Firefox 版 ZIP 运行。Firefox 只有在 ESR、Developer Edition 和
 Nightly 中、并在 `about:config` 里把 `xpinstall.signatures.required` 设为 false 时，才会长期
 保留未签名的附加组件；其他版本可在 `about:debugging` 中临时加载，重启 Firefox 后失效。
 

@@ -114,7 +114,7 @@ window.__ready = true;
 /**
  * `csp` goes on every response; with `pageCsp` false only the worker's script carries it
  * (a dedicated worker takes its policy from its script's response), for a driver whose
- * page.evaluate is itself dynamic code under the page's policy (Firefox 140 over BiDi).
+ * page.evaluate is itself dynamic code under the page's policy (Firefox over BiDi).
  * `port` 0 takes any free one; a profile that keeps the model in OPFS between runs needs
  * the same one every time, since the origin, port included, is what OPFS is kept under.
  */

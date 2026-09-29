@@ -36,8 +36,8 @@ function install(layout: "mac" | "flat", ini: string | null): string {
 
 describe("the Firefox a suite drives", () => {
   it("is known by its install, whether or not the browser could start just then", () => {
-    const esr = firefoxVersion(install("mac", INI("140.16.0", "https://hg.mozilla.org/releases/mozilla-esr140")));
-    expect(esr).toEqual({ version: "140.16.0esr", major: 140, banner: "Mozilla Firefox 140.16.0esr" });
+    const esr = firefoxVersion(install("mac", INI("153.3.0", "https://hg.mozilla.org/releases/mozilla-esr153")));
+    expect(esr).toEqual({ version: "153.3.0esr", major: 153, banner: "Mozilla Firefox 153.3.0esr" });
     const release = firefoxVersion(install("flat", INI("156.0.1", "https://hg.mozilla.org/releases/mozilla-release")));
     expect(release).toEqual({ version: "156.0.1", major: 156, banner: "Mozilla Firefox 156.0.1" });
   });

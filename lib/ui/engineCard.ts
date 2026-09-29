@@ -94,9 +94,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   terminal.append(terminalTitle, terminalWhat, terminalCost, terminalButton);
   cards.append(oneClick, terminal);
   const measured = element("p", t("engineMeasured"), "engine-note");
-  const jspiNote = element("p", t("engineJspiNote"), "engine-note"); jspiNote.hidden = true;
   const refused = element("p", "", "engine-error"); refused.setAttribute("role", "alert"); refused.hidden = true;
-  choice.append(intro, cards, measured, jspiNote, refused);
+  choice.append(intro, cards, measured, refused);
 
   const cannot = element("p", "", "engine-cannot"); cannot.hidden = true;
   const tight = element("p", t("engineTight"), "engine-note engine-tight"); tight.hidden = true;
@@ -162,17 +161,15 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     switchRow.hidden = tight.hidden = true;
     if (d.offer === "cannot-run") {
       setTitle("engineCannotTitle");
-      cannot.textContent = t(d.reason === "no-jspi" ? "engineCannotRunBrowser" : "engineCannotRun");
+      cannot.textContent = t("engineCannotRun");
       cannot.hidden = false; choice.hidden = true;
     } else {
-      // Firefox 140: one way to run it, so nothing to choose between.
+      // Where the model does not fit but the local engine installs: one way to run it.
       setTitle(d.offer === "terminal-only" ? "componentTitle" : "engineChooseTitle");
       intro.hidden = d.offer !== "choice";
       cannot.hidden = true; choice.hidden = false;
-      // Firefox 140: the local engine only, and where the in-browser one runs.
       oneClick.hidden = d.offer === "terminal-only";
       terminal.hidden = d.offer === "auto-inbrowser";
-      jspiNote.hidden = !(d.offer === "terminal-only" && d.reason === "no-jspi");
       // The figures are the M4's: shown on Apple Silicon only, never as a promise elsewhere.
       const measuredHere = d.machine === "apple-silicon";
       oneClickCost.hidden = terminalCost.hidden = !measuredHere;

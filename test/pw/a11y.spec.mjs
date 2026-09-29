@@ -977,7 +977,7 @@ test.describe("the in-browser engine's setup", () => {
 const device = (name, granted = false) => join(TEST_DIR, "..", "output-test", "devices", `${name}-chrome${granted ? "-granted" : ""}`);
 const choiceUp = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 });
 
-for (const [name, what, selector] of [["apple-silicon", "the choice of engines", "#engine-pick-inbrowser"], ["no-jspi", "the local engine alone", "#engine-pick-native"], ["linux-2gb", "a device that cannot run the model", ".engine-cannot"]]) {
+for (const [name, what, selector] of [["apple-silicon", "the choice of engines", "#engine-pick-inbrowser"], ["linux-2gb", "a device that cannot run the model", ".engine-cannot"]]) {
   test.describe(`the setup page: ${what}`, () => {
     test.use({ build: device(name), launch: { args: [NO_MODEL_HOSTS] } });
     for (const scheme of ["light", "dark"]) {

@@ -43,8 +43,7 @@ stopping unexpectedly, the setup page and the popup offer the in-browser engine 
 The command shown in a development build is disabled because no matching release exists
 for it yet.
 
-Anagram also runs in Firefox 140 or later, ESR included, from its Firefox ZIP. Firefox 140
-runs the local engine only; the in-browser engine needs Firefox 153. Firefox keeps an
+Anagram also runs in Firefox 153 or later, ESR included, from its Firefox ZIP. Firefox keeps an
 unsigned add-on only in ESR, Developer Edition and Nightly with
 `xpinstall.signatures.required` set to false in `about:config`; elsewhere, `about:debugging`
 loads it until Firefox restarts.

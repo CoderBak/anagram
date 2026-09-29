@@ -723,10 +723,6 @@
     "message": "Speed and memory measured on an M4 Mac.",
     "description": "Setup page: under the engine cards, where the numbers on them come from."
   },
-  "engineJspiNote": {
-    "message": "Firefox 153 or later also runs the one-click engine.",
-    "description": "Setup page in Firefox 140, which can run the local engine only."
-  },
   "engineTight": {
     "message": "This computer may slow down while Anagram scores.",
     "description": "Setup page: under the in-browser engine on a computer with 4 GB of memory, just enough for the model."
@@ -746,10 +742,6 @@
   "engineCannotRun": {
     "message": "This device doesn't have enough memory or free disk space for Anagram's model, so nothing was downloaded. Anagram never sends your text anywhere else to be scored.",
     "description": "Setup page on a device with less than 4 GB of memory or too little free disk space for the model."
-  },
-  "engineCannotRunBrowser": {
-    "message": "This version of Firefox can't run Anagram's model, and the local engine doesn't install on this computer. Firefox 153 or later runs it in the browser.",
-    "description": "Setup page in Firefox 140 on a computer the local engine does not install on."
   },
   "engineSwitchToInBrowser": {
     "message": "Switch to the in-browser engine",

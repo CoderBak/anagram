@@ -563,9 +563,6 @@
   "engineMeasured": {
     "message": "速度和内存在 M4 Mac 上测得。"
   },
-  "engineJspiNote": {
-    "message": "Firefox 153 及以上版本也能运行一键引擎。"
-  },
   "engineTight": {
     "message": "Anagram 评分时，这台电脑可能会变慢。"
   },
@@ -580,9 +577,6 @@
   },
   "engineCannotRun": {
     "message": "这台设备的内存或可用磁盘空间不足以运行 Anagram 的模型，因此没有下载任何内容。Anagram 从不把你的文字发往别处评分。"
-  },
-  "engineCannotRunBrowser": {
-    "message": "这个版本的 Firefox 无法运行 Anagram 的模型，本地引擎也不能安装在这台电脑上。Firefox 153 及以上版本可以在浏览器中运行它。"
   },
   "engineSwitchToInBrowser": {
     "message": "切换到浏览器内引擎"

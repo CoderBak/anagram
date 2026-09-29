@@ -41,7 +41,7 @@ def verify(path):
             assert set(manifest.get("optional_permissions", [])) == OPTIONAL | {"clipboardWrite", "nativeMessaging"}, "Unexpected optional permissions"
             gecko = manifest["browser_specific_settings"]["gecko"]
             # The ID the local engine's installer registers (installer/native_registration.py).
-            assert gecko["id"] == "anagram@coderbak.dev" and gecko["strict_min_version"] == "140.0", f"Unexpected Firefox ID or minimum: {gecko}"
+            assert gecko["id"] == "anagram@coderbak.dev" and gecko["strict_min_version"] == "153.0", f"Unexpected Firefox ID or minimum: {gecko}"
         csp = manifest["content_security_policy"]
         if isinstance(csp, dict): csp = csp["extension_pages"]
         assert "connect-src 'self'" in csp

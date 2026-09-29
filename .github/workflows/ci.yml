@@ -113,7 +113,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: resolve Firefox (>= 140, printed)
+      - name: resolve Firefox (>= 153, printed)
         run: |
           set -e
           MAJOR=0
@@ -123,8 +123,8 @@ jobs:
           else
             echo "runner image: no firefox on PATH"
           fi
-          if [ "$MAJOR" -lt 140 ]; then
-            echo "runner Firefox is $MAJOR (< 140) — fetching a Mozilla build"
+          if [ "$MAJOR" -lt 153 ]; then
+            echo "runner Firefox is $MAJOR (< 153) — fetching a Mozilla build"
             npx --yes @puppeteer/browsers install firefox@stable --path "$HOME/.cache/puppeteer"
             "$HOME"/.cache/puppeteer/firefox/*/firefox/firefox --version 2>/dev/null || true
           fi

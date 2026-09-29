@@ -12,8 +12,7 @@
 //
 //   * MV2: a background PAGE, not a service worker, and browserAction instead of action;
 //   * moz-extension:// pages (popup / options / onboarding) render and talk to it;
-//   * Firefox 140 ESR, the manifest's floor, has no Navigation API, so a pushState route
-//     swap is covered by the orchestrator's 2.5 s URL poll and is given ~6 s here;
+//   * a pushState route swap is covered by the orchestrator's 2.5 s URL poll and is given ~6 s here;
 //   * the Popover API (top-layer hover card) has a CSS fallback;
 //   * the PDF reading mode is the one page where the whole pipeline runs on a
 //     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin;
@@ -832,13 +831,10 @@ for (const how of ["lang", "ids"]) {
   await waitFor(p, (sel) => ["srcdoc", "blank", "blob"].every((id) => (document.getElementById(id)?.contentDocument?.querySelectorAll(sel).length ?? 0) > 0), { timeout: 15000, arg: BADGE_SEL });
   await sleep(1500);
   const r = { srcdoc: await inFrame("srcdoc"), blank: await inFrame("blank"), blob: await inFrame("blob"), sandboxedSent: sentSince(before, "SANDBOXEDFRAME") };
-  // Known on Firefox 140 (153 reads it): an about:blank frame the page fills while it is
-  // still being parsed, still "uninitialized", is read only once something in it changes.
-  const blankKnownMiss = firefox.major < 153 && r.blank === 0;
   check(
     "a srcdoc, an about:blank and a blob: frame are read by the page's origin, a sandboxed frame is left alone",
-    r.srcdoc === 1 && (r.blank === 1 || blankKnownMiss) && r.blob === 1 && r.sandboxedSent === 0,
-    JSON.stringify(r) + (blankKnownMiss ? " (Firefox 140: the about:blank frame filled during parsing is not read)" : ""),
+    r.srcdoc === 1 && r.blank === 1 && r.blob === 1 && r.sandboxedSent === 0,
+    JSON.stringify(r),
   );
   await p.close();
 }
@@ -937,7 +933,7 @@ for (const how of ["lang", "ids"]) {
   const missing = [
     ["LICENSE", "GNU AFFERO GENERAL PUBLIC LICENSE"],
     ["THIRD_PARTY_NOTICES.md", "# Third-party notices"],
-    ["vendor/document-worker/ThirdPartyNotices.onnxruntime-web.txt", "THIRD PARTY SOFTWARE NOTICES"],
+    ["vendor/engine/ThirdPartyNotices.onnxruntime-web.txt", "THIRD PARTY SOFTWARE NOTICES"],
     ["vendor/pdfjs/LICENSE", "Apache License"],
     ["vendor/document-worker/LICENSE.document-worker", "GNU AFFERO GENERAL PUBLIC LICENSE"],
     ["vendor/document-worker/LICENSE.pdfjs", "Apache License"],

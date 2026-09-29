@@ -341,8 +341,7 @@ async function enginePages(context, extId, lang) {
   const openFolds = (page) => page.evaluate(() => document.querySelectorAll("details").forEach((d) => d.setAttribute("open", "")));
   const up = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 })
     .then(() => true, () => false);
-  const faces = [["apple-silicon", "#engine-pick-inbrowser", "the choice of engines"], ["no-jspi", "#engine-pick-native", "the local engine alone"],
-    ["linux-2gb", ".engine-cannot", "a device that cannot run the model"]];
+  const faces = [["apple-silicon", "#engine-pick-inbrowser", "the choice of engines"], ["linux-2gb", ".engine-cannot", "a device that cannot run the model"]];
   for (const size of [WIDE, NARROW]) {
     for (const [device, selector, what] of faces) {
       const page = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "needed", { engine: null }); await scriptDevice(p, DEVICES[device]); });

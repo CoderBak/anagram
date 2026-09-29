@@ -59,7 +59,7 @@ export function readStructure(bytes: Uint8Array, pages: number, signal?: AbortSi
       id: 1, buf, password: "", sourceHash: "0".repeat(32),
       roots: {
         cmaps: asset("cmaps/"), standard_fonts: asset("standard_fonts/"), wasm: asset("wasm/"),
-        onnx: asset("document-worker/onnx/"), "block-seg": asset("document-worker/block-seg/"),
+        onnx: asset("engine/"), "block-seg": asset("document-worker/block-seg/"),
       },
     }, [buf]);
   });

@@ -46,15 +46,8 @@ export const EXT = join(TEST_OUT, "firefox-mv2");
 export const GECKO_ID = "anagram@coderbak.dev";
 /** Seeded into the profile so moz-extension:// URLs are knowable before the install. */
 export const EXT_UUID = "5e0b7a12-3c4d-4f8a-9b16-2d7e8c0f4a31";
-/** Lowest Firefox the PRODUCT allows (manifest strict_min_version). */
-export const MIN_FIREFOX = 140;
-/**
- * Lowest Firefox this SUITE can drive. Higher than the product's minimum on purpose:
- * WebDriver BiDi only learned `webExtension.install` in Firefox 135, so there is no way
- * to get the extension into an older build without geckodriver. Verified here: Firefox
- * 128.0esr answers `unknown command webExtension.install`.
- */
-export const MIN_DRIVER_FIREFOX = 140;
+/** Lowest Firefox the PRODUCT allows (manifest strict_min_version), and so the lowest this suite drives. */
+export const MIN_FIREFOX = 153;
 /** Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id. */
 export const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
 
@@ -100,7 +93,7 @@ export function firefoxVersion(executablePath) {
     } catch {
       continue;
     }
-    // An ESR says so in its repository, as `--version` does in its number: "140.16.0esr".
+    // An ESR says so in its repository, as `--version` does in its number: "153.3.0esr".
     const version = /^Version=(\S+)/m.exec(text)?.[1] + (/^SourceRepository=\S*\/mozilla-esr\d+/m.test(text) ? "esr" : "");
     const vendor = /^Vendor=(.+)$/m.exec(text)?.[1]?.trim() ?? "Mozilla";
     const name = /^Name=(.+)$/m.exec(text)?.[1]?.trim() ?? "Firefox";
@@ -153,17 +146,14 @@ export async function resolveFirefox() {
       reject(`would not report a version: ${v.error}`);
       continue;
     }
-    if (v.major < MIN_DRIVER_FIREFOX) {
-      reject(
-        `${v.version} cannot be driven: BiDi webExtension.install needs ${MIN_DRIVER_FIREFOX}+` +
-          (v.major >= MIN_FIREFOX ? ` (the extension itself claims to support ${MIN_FIREFOX}+)` : ""),
-      );
+    if (v.major < MIN_FIREFOX) {
+      reject(`${v.version} is older than the extension's minimum, Firefox ${MIN_FIREFOX}`);
       continue;
     }
     return { executablePath, version: v.version, major: v.major, banner: v.banner, source };
   }
   throw new Error(
-    `No drivable Firefox found (needs ${MIN_DRIVER_FIREFOX}+; the extension itself supports ${MIN_FIREFOX}+).\n` +
+    `No usable Firefox found (needs ${MIN_FIREFOX}+, the extension's minimum).\n` +
       `Install one without touching /Applications:\n` +
       `  npx @puppeteer/browsers install firefox@stable\n` +
       `or point the suite at a binary:  ANAGRAM_FIREFOX=/path/to/firefox npm run test:firefox\n` +
@@ -179,7 +169,7 @@ export const VIEWPORT = { width: 1280, height: 860 };
 
 /**
  * puppeteer's setViewport goes through BiDi `emulation.setScreenOrientationOverride`,
- * which Firefox only grew in 140 — on 135-139 it is an unknown command. The window is
+ * which an older Firefox lacks. The window is
  * sized by `--window-size` at launch anyway, so a failure here is not fatal.
  */
 export async function setViewportSafe(page, viewport = VIEWPORT) {
@@ -234,7 +224,7 @@ export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [],
     await browser.close().catch(() => {});
     if (String(e).includes("unknown command webExtension.install")) {
       throw new Error(
-        `Firefox ${firefox.version} has no BiDi webExtension.install (needs ${MIN_DRIVER_FIREFOX}+).\n` +
+        `Firefox ${firefox.version} has no BiDi webExtension.install (needs ${MIN_FIREFOX}+).\n` +
           `  npx @puppeteer/browsers install firefox@stable`,
       );
     }
@@ -361,7 +351,7 @@ export async function sweep(page, steps = 8, stepDelay = 320) {
 /**
  * Poll `fn` in the page until it returns something truthy; false on timeout. Not puppeteer's
  * waitForFunction: it builds its poller with Function(), which the extension's policy
- * refuses on a moz-extension: document in Firefox 140 ("call to Function() blocked by CSP").
+ * refuses on a moz-extension: document in an older Firefox ("call to Function() blocked by CSP").
  */
 export async function waitFor(page, fn, { timeout = 8000, arg } = {}) {
   const deadline = Date.now() + timeout;

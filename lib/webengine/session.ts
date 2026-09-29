@@ -6,8 +6,8 @@
 // library, its WebAssembly loader and the one WebAssembly binary that carries both the
 // native WebGPU execution provider (the GPU path) and the CPU one (the WASM path), in
 // the JSPI build (see scripts/webengine.mjs for why not the package's default JSEP one).
-// WebAssembly JSPI is in Chrome 137, the manifest's minimum, and Firefox 153; on Firefox
-// 140 the setup page offers the local engine only (lib/device.ts).
+// WebAssembly JSPI is in Chrome 137 and Firefox 153, the manifests' minimums,
+// so a browser without it is a plain failure below.
 //
 // The model reaches the runtime as its graph without the weights, with the file itself as
 // external data (lib/webengine/onnx.ts): the JSPI build reads each tensor from the file

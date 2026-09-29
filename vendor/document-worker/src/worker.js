@@ -11,7 +11,13 @@ import { getStructure } from '../src/pdf/index.js';
 let roots = null;
 const loaded = new Map();
 
-function provide(path) {
+// The worker asks for the plain build's WebAssembly; the extension ships one ONNX Runtime
+// binary, the JSPI build the in-browser engine runs (vendor/engine/), which the bundle of
+// onnxruntime-web/jspi (anagram/webpack.config.cjs) is built for. `roots.onnx` is that folder.
+const ORT_WASM = { 'onnx/ort-wasm-simd-threaded.wasm': 'onnx/ort-wasm-simd-threaded.jspi.wasm' };
+
+function provide(requested) {
+	const path = ORT_WASM[requested] ?? requested;
 	const slash = path.indexOf('/');
 	const root = roots?.[slash < 0 ? path : path.slice(0, slash)];
 	if (!root) return Promise.reject(new Error(`no root for ${path}`));

@@ -207,12 +207,10 @@ export default defineConfig({
               gecko: {
                 // The ID the local engine's installer registers (installer/native_registration.py).
                 id: "anagram@coderbak.dev",
-                // 140 (an ESR) is where CSS.highlights arrived, which draws every underline.
-                // What it still lacks is made up for in lib/dom/shadow.ts (adoptSheets) and
-                // lib/pdf/upsert.ts; test/firefox.mjs runs against it. It has no WebAssembly
-                // JSPI, which the in-browser engine's runtime needs on both paths, so there the
-                // setup page offers the local engine only (lib/device.ts); 153 runs both.
-                strict_min_version: "140.0",
+                // 153 (an ESR) has WebAssembly JSPI, which ONNX Runtime Web's one build needs
+                // (the in-browser engine and the PDF document worker), and CSS.highlights,
+                // which draws every underline; test/firefox.mjs runs against it.
+                strict_min_version: "153.0",
                 // AMO's data-collection disclosure: nothing is collected or transmitted.
                 data_collection_permissions: { required: ["none"] },
               },

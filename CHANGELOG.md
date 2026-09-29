@@ -17,8 +17,7 @@ local component and the installer all carry the same version.
   and up to 2.5 GB in the browser, 43 ms and about 1.8 GB for the local engine), and nothing
   downloads until you pick. Elsewhere the in-browser engine's model downloads by itself, once,
   from Hugging Face into the browser's storage, with no permission to grant (fastText's
-  language file ships in the package); Firefox 140, which lacks WebAssembly JSPI, gets the
-  local engine alone; a computer with under 4 GB of memory or too little disk is told so and
+  language file ships in the package); a computer with under 4 GB of memory or too little disk is told so and
   downloads nothing, and 4 GB runs with a note that it may slow down. Picking the local engine
   asks for Native Messaging, now an optional permission (an update keeps the grant 0.7.0 had),
   then shows the install command; a refusal goes back to the choice. The in-browser setup
@@ -31,7 +30,7 @@ local component and the installer all carry the same version.
   storage a tensor at a time, straight onto the graphics card: on an M4 the browser takes
   2.3 GB while the model loads and at most 2.5 GB while scoring (2.0 GB on the processor,
   on up to eight threads under the pages' cross-origin isolation), and an idle model's
-  worker ends and gives the memory back. Anagram now needs Chrome 137; Firefox stays at 140.
+  worker ends and gives the memory back. Anagram now needs Chrome 137; Firefox needs 153.
   The engine runs on ONNX Runtime Web 1.30 (MIT).
 - A page whose comments come from another site's frame — Disqus, Facebook's comments
   plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
@@ -103,6 +102,8 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- Firefox 153 is the minimum (it was 140, an ESR whose support has ended and which lacks WebAssembly JSPI): the in-browser engine now runs in every supported Firefox.
+- The PDF reader's paragraph worker runs on ONNX Runtime Web 1.30, the same build and the same WebAssembly binary as the in-browser engine, instead of a second copy of 1.27: the package is 3.4 MB smaller (11 MB unpacked).
 - Customer reviews are read one by one: the stars a review card shows mark it as a voice of its own (Google Maps and Google Play cards carried nothing else), a review declared in schema.org microdata, RDFa or the page's JSON-LD is read without its name, stars and date, and a sentence every card of a list repeats, such as Tripadvisor's disclaimer, is left out.
 - **Minimum length** in Settings: 25, 50, 75, 100 or 150 words, 50 by default (it was a fixed 75), for pages, PDFs, selections and pasted text; a verdict on under 75 words, the model's training minimum, says "Short text: less reliable" and its dot is thinner.
 - The small script Anagram runs in a page's own context no longer gives it away: its event is named at random for each page, told to the extension before the page's first script, and the attachShadow it watches, and Function.prototype.toString, answer the usual checks as the browser's own functions do.

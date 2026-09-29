@@ -19,11 +19,6 @@ const IMPORT = /^Unsafe call to import for argument 0$/;
 /** The warnings Anagram's Firefox build carries on purpose, and how many of each. */
 const ACCEPTED = [
   {
-    code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
-    why: "data_collection_permissions (AMO's disclosure: nothing collected) is read by Firefox " +
-      "for Android only after 140; Anagram is a desktop extension.",
-  },
-  {
     code: "UNSAFE_VAR_ASSIGNMENT", message: INNER_HTML, file: /^(content-scripts\/content\.js|chunks\/reader-[\w-]+\.js)$/, count: 8,
     why: "The chip card and the selection card (lib/render/badge.ts, selectionCard.ts): markup " +
       "built from our own messages, band labels and numbers. No page text goes into it.",
@@ -51,10 +46,12 @@ const ACCEPTED = [
       "extension URL (lib/webengine/session.ts). Nothing remote.",
   },
   {
-    code: "DANGEROUS_EVAL", file: /^vendor\/engine\/ort-wasm-simd-threaded\.jspi\.mjs$/, count: 1,
-    why: "ONNX Runtime Web as published: Emscripten embind's method caller builds a function with " +
-      "new Function. The extension's CSP has no 'unsafe-eval', so that path throws rather than runs; " +
-      "the engine never reaches it (test/webengine/engine-browser.mjs runs the worker under that CSP).",
+    code: "DANGEROUS_EVAL", file: /^vendor\/(engine\/ort-wasm-simd-threaded\.jspi\.mjs|document-worker\/worker\.js)$/, count: 2,
+    why: "ONNX Runtime Web as published, its loader in the engine and inside the document worker's " +
+      "bundle: Emscripten embind's method caller builds a function with new Function. The " +
+      "extension's CSP has no 'unsafe-eval', so that path throws rather than runs; neither " +
+      "reaches it (test/webengine/engine-browser.mjs runs the engine's worker under that CSP, " +
+      "and the PDF reader suites run the document worker).",
   },
 ];
 
