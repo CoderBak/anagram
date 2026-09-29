@@ -71,7 +71,7 @@ type Registration = Parameters<typeof browser.scripting.registerContentScripts>[
  * frames of a granted page that have no address of their own — about:blank and srcdoc
  * frames, blob: documents — by the origin they take from it, which the browser reports on
  * their messages (lib/access/messages.ts): an EPUB reader shows every chapter in a srcdoc
- * frame. Chrome 119+ and Firefox 140 ESR both do.
+ * frame. Chrome 119+ and Firefox both do.
  */
 function registrations(matches: string[]): Registration[][] {
   return [

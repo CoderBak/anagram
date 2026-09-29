@@ -12,7 +12,7 @@
 //
 //   * MV2: a background PAGE, not a service worker, and browserAction instead of action;
 //   * moz-extension:// pages (popup / options / onboarding) render and talk to it;
-//   * a pushState route swap is covered by the orchestrator's 2.5 s URL poll and is given ~6 s here;
+//   * a pushState route swap is seen through the Navigation API's currententrychange;
 //   * the Popover API (top-layer hover card) has a CSS fallback;
 //   * the PDF reading mode is the one page where the whole pipeline runs on a
 //     moz-extension: document, and it loads pdf.js and a MODULE WORKER from that origin;
