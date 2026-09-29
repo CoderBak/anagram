@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 def prepare(home, *, installer=False, language="en", profile=None):
     from native_component import HomeLock, STATE_DEFAULT, validate_home
     from native_host import configure_environment
-    from download_modelkit import (PIN, LID_ENTRY, LID_URL, load_pin, installed_profile,
+    from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, load_pin, installed_profile,
                                    install_streaming, download_asset, invalid_files, matches)
     from safe_files import atomic_json, read_json, is_link
     from hub_transfer import safe_error
@@ -66,10 +66,15 @@ def prepare(home, *, installer=False, language="en", profile=None):
                 last_time, last_name = now, name
 
         try:
-            install_streaming(model_dir, pin, selected_paths=plan["selected_paths"],
+            route = {}
+            use_mirror = lambda host: say(
+                f"Hugging Face is unreachable; downloading from {host} (same files, checked by SHA-256).",
+                f"无法连接 Hugging Face；改从 {host} 下载（文件相同，均经 SHA-256 校验）。")
+            install_streaming(model_dir, pin, selected_paths=plan["selected_paths"], route=route, on_fallback=use_mirror,
                               progress=lambda got, _total, name: progress(got, total, name))
             lid = home / "models/lid.176.ftz"
-            download_asset(LID_URL, lid, LID_ENTRY,
+            download_asset(LID_URL, lid, LID_ENTRY, route=route, on_fallback=use_mirror,
+                           fallbacks=[LID_HUB_URL, mirror_of(LID_HUB_URL)],
                            progress=lambda got: progress(plan["total_bytes"] + got, total, "lid.176.ftz"))
             if invalid_files(model_dir, pin, plan["selected_paths"]) or not matches(lid, LID_ENTRY):
                 raise ValueError("Downloaded files failed SHA-256 verification")

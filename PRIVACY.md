@@ -78,8 +78,10 @@ later is read too.
 
 The local engine runs with your ordinary user privileges. When you install, download models or
 request an update, it contacts GitHub releases, the Astral Python and uv distributions,
-PyPI, Hugging Face and its file CDN, and the fastText file host. Those requests carry
-normal download metadata and never page text.
+PyPI, Hugging Face and its file CDN, and the fastText file host. Only when `huggingface.co`
+cannot be reached does it fall back to `hf-mirror.com`, a public mirror of the same
+repositories, for the same files, each checked against its pinned SHA-256. Those requests
+carry normal download metadata and never page text.
 
 ## What is stored
 

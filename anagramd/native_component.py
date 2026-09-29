@@ -20,7 +20,7 @@ import threading
 import time
 import tomllib
 
-from download_modelkit import (PIN, LID_ENTRY, LID_URL, DownloadPaused, download_asset,
+from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
                                install_streaming, invalid_files, load_pin, matches, plain_tree)
 from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes
 from safe_files import atomic_json, is_link, read_json, regular_stat
@@ -354,9 +354,13 @@ class NativeComponent:
         plain_tree(self.home / "models")
         model_total = self.plan["total_bytes"]
         total = model_total + LID_ENTRY["size_bytes"]
+        route = {}
+        mirror = lambda host: self._download_notice(f"Hugging Face is unreachable; downloading from {host}")
         install_streaming(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"], cancel=cancel,
-                          progress=lambda got, _total, name: progress(got, total, name), notice=self._download_notice)
-        download_asset(LID_URL, self.lid_path, LID_ENTRY, cancel=cancel,
+                          progress=lambda got, _total, name: progress(got, total, name), notice=self._download_notice,
+                          route=route, on_fallback=mirror)
+        download_asset(LID_URL, self.lid_path, LID_ENTRY, cancel=cancel, route=route, on_fallback=mirror,
+                       fallbacks=[LID_HUB_URL, mirror_of(LID_HUB_URL)],
                        progress=lambda got: progress(model_total + got, total, "lid.176.ftz"), notice=self._download_notice)
         progress(total, total, None)
 

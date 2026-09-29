@@ -43,6 +43,12 @@ downloads, into the extension's own storage.
 | `lib/ui/deviceInputs.ts` | `fetch(` | the test build only (absent from the shipping bundles): reads the stand-in device a suite put beside the pages | `chrome-extension://<this extension>/test-device.json` |
 | `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` |
 
+The local component's installer (`anagramd/download_modelkit.py`) downloads the same
+pinned files, checked by SHA-256, from huggingface.co and from dl.fbaipublicfiles.com for
+lid.176.ftz. `hf-mirror.com`, a mirror of the same Hugging Face repositories, is a fallback
+download host for those files, contacted only when huggingface.co is unreachable; a
+missing file or a checksum mismatch never triggers it.
+
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub.
 
