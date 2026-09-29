@@ -283,11 +283,12 @@ function locate(pieces: Piece[], pagesByNumber: Map<number, PageIndex>): Located
       if (k >= 0) return put(i, box, k);
     }
     // Out of step (a superscript Zotero read after the line): look from the start once. A
-    // character only the part already found holds is not this one's: TeX's ℓ, which Zotero
-    // reads as "l", stands in the run beside it, and not in the "areal" it stands against.
+    // character that only the part already found holds, or the run holds not at all, is not
+    // this one's: TeX's ℓ, which Zotero reads as "l", stands in the run beside it, and not in
+    // the "areal" or the ", where" it stands against.
     j = first.it.str.indexOf(p.ch);
     const alias = SPELT[p.ch];
-    if (alias && j >= 0 && j < (cursor.get(first) ?? 0)) {
+    if (alias && j < (cursor.get(first) ?? 0)) {
       for (const box of right) {
         const k = box.it.str.indexOf(alias, cursor.get(box) ?? 0);
         if (k >= 0) return put(i, box, k);

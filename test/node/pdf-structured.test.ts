@@ -567,6 +567,16 @@ describe("structuredBlocks — formulas", () => {
     const blocks = structuredBlocks(structure([paragraph(1, [n])]), pages);
     expect(blocks[0]!.text).toBe("With the areal in place of the measured one");
     expectRunsToMatch(blocks[0]!, pages);
+
+    // The run before it has no "l" at all, and the glyph took the face of that run: "wherel".
+    const c = drawn(1, { text: "it is seen where", x: 72, y: 200 });
+    const ell2 = drawn(1, { text: "ℓ", x: 72 + 17 * CW, y: 200, font: "f_math", drift: -1.5 * CW });
+    const d = drawn(1, { text: "is largest", x: 72 + 19 * CW, y: 200 });
+    const n2 = { text: "it is seen where l is largest", anchor: { textMap: JSON.stringify([c.run, ell2.run, d.run]) } };
+    const pages2 = [pageText(1, [c.item, ell2.item, d.item], fonts)];
+    const blocks2 = structuredBlocks(structure([paragraph(1, [n2])]), pages2);
+    expect(blocks2[0]!.text).toBe("it is seen where is largest");
+    expectRunsToMatch(blocks2[0]!, pages2);
   });
 
   it("leaves out what TeX sets of a formula in the text face: operator names, capital Greek, sub- and superscripts", () => {
