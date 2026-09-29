@@ -5,12 +5,13 @@
 // page, Settings, the popup); the background has no WebGL to ask.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
-import type { DeviceInputs } from "../device";
-import { EMBEDDING_BYTES, hasJspi } from "../webengine/session";
+import { TIERS, type DeviceInputs } from "../device";
+import { hasJspi } from "../webengine/session";
 import { storedModelBytes } from "../webengine/autoSetup";
 
 interface GpuAdapterLike {
   limits: { maxStorageBufferBindingSize: number; maxBufferSize: number };
+  features?: { has(name: string): boolean };
   info?: { vendor?: string; architecture?: string; description?: string; isFallbackAdapter?: boolean };
   isFallbackAdapter?: boolean;
 }
@@ -31,8 +32,8 @@ async function adapter(nav: NavigatorExtras): Promise<DeviceInputs["gpu"]> {
   const found = await within(nav.gpu?.requestAdapter({ powerPreference: "high-performance" }), 3000);
   if (!found || (found.info?.isFallbackAdapter ?? found.isFallbackAdapter) === true) return null;
   const { vendor, architecture, description } = found.info ?? {};
-  const fits = found.limits.maxStorageBufferBindingSize >= EMBEDDING_BYTES && found.limits.maxBufferSize >= EMBEDDING_BYTES;
-  return { vendor, architecture, description, fits };
+  const holds = (bytes: number): boolean => found.limits.maxStorageBufferBindingSize >= bytes && found.limits.maxBufferSize >= bytes;
+  return { vendor, architecture, description, fits: holds(TIERS[0].maxTensorBytes), fitsFp16: holds(TIERS[1].maxTensorBytes), f16: found.features?.has("shader-f16") === true };
 }
 
 /** WebGL's names for the GPU (Firefox gives a generalized one, "Apple M1, or similar"). */

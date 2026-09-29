@@ -12,10 +12,12 @@
 import type { NativePort } from "../backend/portTransport";
 import type { WorkerInit, WorkerReply } from "./worker";
 
+type Init = Omit<WorkerInit, "type">;
 export interface HostOptions {
   /** The worker script's URL. */
   workerUrl: string;
-  init: Omit<WorkerInit, "type">;
+  /** What the worker is told first; a function where it has to be read (the chosen tier is in storage). */
+  init: Init | (() => Init | Promise<Init>);
 }
 
 export class EngineHost implements NativePort {
@@ -68,9 +70,12 @@ export class EngineHost implements NativePort {
       this.error = { message: event.message || "The engine worker failed" };
       this.disconnect();
     };
-    const init: WorkerInit = { type: "init", ...this.options.init, idle: this.idle };
+    const idle = this.idle;
     this.idle = false;
-    worker.postMessage(init);
+    const given = typeof this.options.init === "function" ? this.options.init() : this.options.init;
+    const send = (init: Init): void => { if (this.worker === worker) worker.postMessage({ type: "init", ...init, idle } satisfies WorkerInit); };
+    if (given instanceof Promise) void given.then(send, () => this.disconnect());
+    else send(given);
     return worker;
   }
 

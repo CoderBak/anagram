@@ -8,7 +8,7 @@
 import type { ScoreResult } from "../contract";
 import { downloadFile, DownloadFailed, DownloadPaused, noRoomFor, outOfSpace, readPackaged, verifyFile } from "./download";
 import { FastText } from "./fasttext";
-import { BUCKET_LABELS, CALIBRATION, MODEL_ID, SUPPORTED_LANGUAGES, type Pin, type PinnedFile } from "./pin";
+import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES, modelFileName, type ModelTier, type Pin, type PinnedFile } from "./pin";
 import { CONTRACT_VERSION, EngineError, checkPayloadKeys, parseScorePayload, parseTokensPayload, type EngineOperation } from "./protocol";
 import { countTokens, MAX_LENGTH, N_BUCKETS, pyRound, scoreTexts } from "./scoring";
 import { probeRuntimes, Session, type Candidate, type RuntimeAssets } from "./session";
@@ -40,6 +40,8 @@ interface Settings {
   selected_id: string | null;
   /** The pinned hashes of the files verified so far, by name. */
   verified: Record<string, string>;
+  /** The FP16 model did not run on this device (its warm-up failed): it is never tried again. */
+  fp16_failed?: boolean;
   /** Why the failed download stopped, said again after a restart (a full disk is still full). */
   download_error?: string;
 }
@@ -60,6 +62,9 @@ interface Download {
 
 export interface EngineInit {
   pin: Pin;
+  /** Where `pin` is the FP16 model and FP32 fits the device too: what setup falls back to, on the
+   *  processor, when FP16 does not run here. Without it that device cannot run the model. */
+  fallback?: Pin;
   assets: RuntimeAssets;
   /** The extension's version, reported as the component's. */
   version: string | null;
@@ -70,7 +75,7 @@ export interface EngineInit {
   retryWaits?: number[];
   /** A backend factory, for the suite; the real one loads the ONNX model. */
   createSession?: (candidate: Candidate, model: Blob) => Promise<LoadedSession>;
-  probe?: () => Promise<Candidate[]>;
+  probe?: (tier: ModelTier) => Promise<Candidate[]>;
   /** The clock, for the suite. */
   now?: () => number;
   /** Start as a model let go while idle: loaded by the next score, not now. */
@@ -84,10 +89,17 @@ export type LoadedSession = Pick<Session, "logits" | "info" | "device" | "releas
 
 interface Loaded { session: LoadedSession; tokenizer: Tokenizer; lid: FastText; version: string }
 
+/** The FP16 model failed on this device and FP32 does not fit it: the setup page's "cannot run". */
+const CANNOT_RUN = { code: "cannot_run", message: "This device cannot run the model: the lighter version failed and the full one does not fit" };
+
 const asText = (error: unknown): string => (error instanceof Error ? error.message : String(error)).slice(0, 2000);
 
 export class Engine {
   private readonly store: FileStore;
+  /** The files this engine runs on: the tier setup asked for, or FP32 in its place (abandonFp16). */
+  private pin: Pin;
+  /** The FP16 model failed here and FP32 does not fit: nothing can run. */
+  private cannotRun = false;
   private settings: Settings = { ...STATE_DEFAULT, verified: {} };
   private state: State = "starting";
   private error: { code: string; message: string } | null = null;
@@ -115,6 +127,15 @@ export class Engine {
   constructor(private readonly init: EngineInit) {
     this.store = init.store ?? new MemoryStore();
     this.now = init.now ?? (() => Date.now());
+    this.pin = init.pin;
+    this.download = { ...this.download, total_bytes: this.totals().total_bytes };
+  }
+
+  private get tier(): ModelTier { return this.pin.tier ?? "fp32"; }
+
+  /** The runtimes this tier can use here. */
+  private probeFor(tier: ModelTier): Promise<Candidate[]> {
+    return (this.init.probe ?? ((t: ModelTier) => probeRuntimes({ tier: t })))(tier);
   }
 
   // ---- lifecycle ------------------------------------------------------------------------------
@@ -122,11 +143,13 @@ export class Engine {
   /** Read what an earlier run left and carry on: a download that was running, or the model. */
   start(): Promise<void> {
     return this.started ??= (async () => {
-      this.candidates = await (this.init.probe ?? probeRuntimes)();
+      this.candidates = await this.probeFor(this.tier);
       await this.readSettings();
+      if (this.tier === "fp16" && this.settings.fp16_failed) await this.leaveFp16();
       await this.refreshStorage();
       this.idleTimer = setInterval(() => void this.unloadIfIdle(), IDLE_CHECK_MS);
       if (this.error) { this.state = "stopped"; return; }
+      if (this.cannotRun) { this.state = "error"; this.error = CANNOT_RUN; return; }
       if (await this.modelsPresent()) {
         if (this.settings.download_pending) this.settings.download_pending = false;
         await this.writeSettings();
@@ -200,12 +223,12 @@ export class Engine {
   }
 
   private totals(): { total_bytes: number; bytes_received: number } {
-    return { total_bytes: this.init.pin.files.reduce((n, f) => n + f.size_bytes, 0), bytes_received: this.download.bytes_received };
+    return { total_bytes: this.pin.files.reduce((n, f) => n + f.size_bytes, 0), bytes_received: this.download.bytes_received };
   }
 
   /** Every pinned file is on disk at its size, and was verified when it arrived. */
   private async modelsPresent(): Promise<boolean> {
-    for (const file of this.init.pin.files) {
+    for (const file of this.pin.files) {
       if (this.settings.verified[file.name] !== file.sha256 || (await this.store.size(file.name)) !== file.size_bytes) return false;
     }
     return true;
@@ -230,7 +253,8 @@ export class Engine {
     const total = this.download.total_bytes;
     let received = 0;
     try {
-      for (const file of this.init.pin.files) {
+      await this.dropOtherFiles();
+      for (const file of this.pin.files) {
         this.download = { ...this.download, phase: "downloading", file: file.name, detail: null };
         if (this.settings.verified[file.name] === file.sha256 && (await this.store.size(file.name)) === file.size_bytes) {
           received += file.size_bytes;
@@ -277,6 +301,38 @@ export class Engine {
     }
   }
 
+  /** Only one tier's model is stored at a time: what is not this pin's (the other tier's model,
+   *  and what was verified of it) goes before a download starts. */
+  private async dropOtherFiles(): Promise<void> {
+    const keep = new Set([STATE_FILE, ...this.pin.files.flatMap((f) => [f.name, `${f.name}.part`])]);
+    let dropped = false;
+    for (const name of await this.store.list()) if (!keep.has(name)) { await this.store.delete(name); dropped = true; }
+    for (const name of Object.keys(this.settings.verified)) {
+      if (!this.pin.files.some((f) => f.name === name)) { delete this.settings.verified[name]; dropped = true; }
+    }
+    if (dropped) { await this.writeSettings(); await this.refreshStorage(); }
+  }
+
+  /**
+   * The FP16 model does not run on this device, now or when it was last tried: it is never
+   * tried again. Where FP32 fits (the pin's `fallback`) it takes its place, on the processor;
+   * where it does not, nothing can run here.
+   */
+  private async leaveFp16(): Promise<"fallback" | "stop"> {
+    this.settings.fp16_failed = true;
+    const fallback = this.init.fallback;
+    if (fallback) {
+      this.pin = fallback;
+      this.candidates = await this.probeFor(this.tier);
+      // The graphics card is what the lighter model failed on: the full one runs on the processor.
+      for (const c of this.candidates) if (c.device === "gpu") { c.available = false; c.reason = "The lighter model did not run on this graphics card"; }
+      this.download = { ...this.download, total_bytes: this.totals().total_bytes };
+    } else {
+      this.cannotRun = true;
+    }
+    return fallback ? "fallback" : "stop";
+  }
+
   private async pauseDownload(): Promise<void> {
     const running = this.downloading;
     this.downloadAbort?.abort();
@@ -301,15 +357,17 @@ export class Engine {
     this.runtimeState = "loading";
     this.runtimeError = null;
     this.error = null;
+    let modelFailed = false;
+    let fallbackNext = false;
     this.loading = (async () => {
       try {
-        const files = new Map(this.init.pin.files.map((f) => [f.name, f]));
+        const files = new Map(this.pin.files.map((f) => [f.name, f]));
         const tokenizerBytes = await this.store.read("tokenizer.json");
         const tokenizer = new Tokenizer(JSON.parse(new TextDecoder().decode(tokenizerBytes)));
         const lidBytes = await readPackaged(this.init.pin.lid);
         const lid = new FastText(lidBytes);
         const version = this.modelVersion(files, tokenizerBytes, lidBytes);
-        const entry = files.get("model.onnx")!;
+        const entry = files.get(modelFileName(this.tier))!;
         let session: LoadedSession | null = null;
         let lastError: unknown = null;
         for (const candidate of this.candidateOrder()) {
@@ -325,7 +383,7 @@ export class Engine {
             candidate.reason = `Failed to load: ${asText(error)}`;
           }
         }
-        if (!session) throw lastError ?? new Error("No runtime can load the model here");
+        if (!session) { modelFailed = true; throw lastError ?? new Error("No runtime can load the model here"); }
         if (abort.signal.aborted || this.closed) { await session.release(); throw new Error("cancelled"); }
         this.loaded = { session, tokenizer, lid, version };
         this.activeId = session.info.candidate.id;
@@ -335,6 +393,25 @@ export class Engine {
         if (this.state === "loading") this.state = "ready";
       } catch (error) {
         if (abort.signal.aborted) { this.runtimeState = "idle"; return; }
+        if (modelFailed && this.tier === "fp16" && !this.closed) {
+          // The FP16 model's session or first pass failed on every runtime it may use.
+          this.runtimeState = "idle";
+          const next = await this.leaveFp16();
+          if (next === "fallback") {
+            // The FP16 files go, and FP32 downloads in their place.
+            await this.dropOtherFiles();
+            Object.assign(this.settings, { download_pending: true, download_paused: false, download_failed: false });
+            await this.writeSettings().catch(() => {});
+            fallbackNext = true;
+          } else {
+            for (const name of await this.store.list()) if (name !== STATE_FILE) await this.store.delete(name).catch(() => {});
+            this.settings.verified = {};
+            await this.writeSettings().catch(() => {});
+            await this.refreshStorage();
+            this.state = "error"; this.error = CANNOT_RUN;
+          }
+          return;
+        }
         this.runtimeState = "error";
         this.runtimeError = asText(error);
         if (this.state === "loading" || this.state === "ready") this.state = "error";
@@ -342,6 +419,7 @@ export class Engine {
       } finally {
         this.loading = null;
         if (this.loadAbort === abort) this.loadAbort = null;
+        if (fallbackNext && !this.closed) this.beginDownload();
       }
     })();
     return this.loading;
@@ -359,9 +437,9 @@ export class Engine {
 
   /** runtime_adapters.runtime_version's shape: the weights, then everything else that decides a verdict. */
   private modelVersion(files: Map<string, PinnedFile>, tokenizer: Uint8Array, lid: Uint8Array): string {
-    const weights = files.get("model.onnx")!.sha256;
+    const weights = files.get(modelFileName(this.tier))!.sha256;
     const manifest = {
-      files: { "tokenizer.json": sha256Hex(tokenizer) }, max_length: MAX_LENGTH, dtype: "fp32", language_gate: true,
+      files: { "tokenizer.json": sha256Hex(tokenizer) }, max_length: MAX_LENGTH, dtype: this.tier, language_gate: true,
       lid: { name: "fasttext-lid.176", sha256: sha256Hex(lid) }, languages: SUPPORTED_LANGUAGES, labels: BUCKET_LABELS,
       label_schema: CALIBRATION, preprocess: PIPELINE_REV, runtime: "onnxruntime-web", rev: PIPELINE_REV,
     };
@@ -425,6 +503,7 @@ export class Engine {
       schema_version: 1 as const,
       version: this.init.version,
       home: "opfs:anagram-engine",
+      tier: this.tier,
       state,
       download: { ...this.download },
       runtime: this.state === "needs_models" || this.state === "downloading" || this.state === "paused" ? null : this.runtimeSnapshot(),
@@ -440,14 +519,14 @@ export class Engine {
       ok: true as const,
       contract: CONTRACT_VERSION,
       app_version: this.init.version,
-      model: { id: MODEL_ID, ver: loaded.version, calibration: CALIBRATION },
+      model: { id: this.pin.model.id, ver: loaded.version, calibration: CALIBRATION },
       n_buckets: N_BUCKETS,
       buckets: BUCKET_LABELS,
       languages: SUPPORTED_LANGUAGES,
       lid: "fasttext-lid.176",
       max_tokens: MAX_LENGTH,
       device: loaded.session.device,
-      dtype: "fp32",
+      dtype: this.tier,
     };
   }
 
@@ -538,6 +617,7 @@ export class Engine {
       }
       case "engine.resume": {
         checkPayloadKeys(payload);
+        if (this.cannotRun) return { status: 200, data: this.status() };
         this.settings.engine_stopped = false;
         this.error = null;
         if (await this.modelsPresent()) {
@@ -569,6 +649,7 @@ export class Engine {
   }
 
   private async startDownload() {
+    if (this.cannotRun) return this.status();
     if (this.downloading) throw new EngineError("busy", "A model download is already running", 409);
     if (this.operation?.status === "running") throw new EngineError("not_ready", "Reconnect the native component after this operation", 503);
     this.settings = { ...this.settings, initialized: true, download_pending: true, download_paused: false, download_failed: false, models_deleted: false, engine_stopped: false };
@@ -596,7 +677,7 @@ export class Engine {
       for (const name of await this.store.list()) if (name !== STATE_FILE) await this.store.delete(name);
       this.settings = { ...this.settings, models_deleted: true, download_pending: false, download_paused: false, download_failed: false, verified: {} };
       await this.writeSettings();
-      this.download = { status: "idle", bytes_received: 0, total_bytes: 0, file: null, error: null, phase: "detecting", detail: null };
+      this.download = { status: "idle", bytes_received: 0, total_bytes: this.totals().total_bytes, file: null, error: null, phase: "detecting", detail: null };
       this.runtimeState = "idle";
       this.error = null;
       this.state = "needs_models";
@@ -637,7 +718,7 @@ export class Engine {
       this.lastActivity = this.now();
       return {
         v: CONTRACT_VERSION,
-        model: { id: MODEL_ID, ver: loaded.version, calibration: CALIBRATION },
+        model: { id: this.pin.model.id, ver: loaded.version, calibration: CALIBRATION },
         results: blocks.map((block) => results.get(block.id) ??
           { id: block.id, bucket: 0, probs: new Array<number>(N_BUCKETS).fill(1 / N_BUCKETS), score: 0, tokens: 0, truncated: false, degraded: true }),
       };

@@ -3,6 +3,12 @@
 //
 //   ANAGRAM_MODELKIT=<modelkit dir> ANAGRAM_LID_MODEL=<lid.176.ftz> ANAGRAM_PARITY_SAMPLE=<sample.json> \
 //     node test/webengine/parity.mjs [--runtimes webgpu,wasm] [--report out.json] [--clean] [--firefox <binary>]
+//     [--tier fp16]     (or ANAGRAM_PARITY_TIER=fp16; ANAGRAM_FP16_MODEL=<model_fp16.onnx> where the kit has none)
+//
+// The FP16 tier (lib/device.ts TIERS) runs the modelkit's model_fp16.onnx on WebGPU only, in a
+// profile of its own, and is held to what the user accepted for it rather than to 1e-4: every
+// text's four probabilities within 0.07 of the official ones, at least 198 of 200 verdict words
+// equal, and every text's flag (the AI-generated word, lib/render/band.ts isFlagged) equal.
 //
 // The sample is test/webengine/parity-sample.py's: the 200 texts test/editlens-parity.py
 // scores (100 longer than the model's window) with the official FP32 probabilities and
@@ -25,45 +31,53 @@ const argv = process.argv.slice(2);
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i < 0 ? fallback : argv[i + 1]; };
 const flag = (name) => argv.includes(`--${name}`);
 const CUTS = [1 / 6, 1 / 2, 5 / 6];
-const TOLERANCE = 1e-4;
+const TIER = opt("tier", process.env.ANAGRAM_PARITY_TIER ?? "fp32");
+if (!["fp32", "fp16"].includes(TIER)) { console.log(`FAIL  --tier ${TIER}: fp32 or fp16`); process.exit(2); }
+const FP16 = TIER === "fp16";
+const TOLERANCE = FP16 ? 0.07 : 1e-4;
+const MIN_VERDICTS = FP16 ? 198 : Infinity;
 const MAX_LENGTH = 512;
 const level = (score) => CUTS.filter((cut) => score >= cut).length;
 const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
-const profile = join(tmpdir(), "anagram-webengine-parity-profile");
+const profile = join(tmpdir(), FP16 ? "anagram-webengine-parity-profile-fp16" : "anagram-webengine-parity-profile");
 if (flag("clean")) { rmSync(profile, { recursive: true, force: true }); console.log("removed", profile); process.exit(0); }
 if (process.env.CI) { console.log("SKIP  web engine parity — never in CI"); process.exit(0); }
 const kit = process.env.ANAGRAM_MODELKIT, lid = process.env.ANAGRAM_LID_MODEL, samplePath = process.env.ANAGRAM_PARITY_SAMPLE;
 const missing = [["ANAGRAM_MODELKIT", kit], ["ANAGRAM_LID_MODEL", lid], ["ANAGRAM_PARITY_SAMPLE", samplePath]].filter(([, v]) => !v).map(([k]) => k);
 if (missing.length) { console.log(`SKIP  web engine parity — set ${missing.join(", ")}`); process.exit(0); }
-const modelPath = join(kit, "onnx", "model.onnx");
+const MODEL_ENTRY = FP16 ? "onnx/model_fp16.onnx" : "onnx/model.onnx";
+const MODEL_NAME = FP16 ? "model_fp16.onnx" : "model.onnx";
+const modelPath = FP16 && process.env.ANAGRAM_FP16_MODEL ? process.env.ANAGRAM_FP16_MODEL : join(kit, MODEL_ENTRY);
 for (const path of [modelPath, join(kit, "tokenizer.json"), lid, samplePath]) {
   if (!existsSync(path)) { console.log(`SKIP  web engine parity — missing ${path}`); process.exit(0); }
 }
 const modelkit = JSON.parse(readFileSync(join(ROOT, "anagramd", "modelkit.json"), "utf8"));
 const entry = (path) => modelkit.files.find((f) => f.path === path);
 const LID_SHA = "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83";
-for (const [path, file] of [["onnx/model.onnx", modelPath], ["tokenizer.json", join(kit, "tokenizer.json")]]) {
+for (const [path, file] of [[MODEL_ENTRY, modelPath], ["tokenizer.json", join(kit, "tokenizer.json")]]) {
   if (statSync(file).size !== entry(path).size_bytes) { console.log(`SKIP  web engine parity — ${file} is not the pinned size`); process.exit(0); }
 }
 const sample = JSON.parse(readFileSync(samplePath, "utf8"));
-const runtimes = opt("runtimes", "webgpu,wasm").split(",").filter(Boolean);
+const runtimes = opt("runtimes", FP16 ? "webgpu" : "webgpu,wasm").split(",").filter(Boolean);
+if (FP16 && runtimes.some((r) => r !== "webgpu")) { console.log("FAIL  the FP16 tier runs on WebGPU only"); process.exit(2); }
 mkdirSync(profile, { recursive: true });
 
 const firefox = opt("firefox");
 // One port every time: the profile keeps the model in the OPFS of this origin, port included.
-const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, "..") }, { pageCsp: !firefox, port: firefox ? 0 : 47613 });
+const { base, close: closeServer } = await serve({ "/kit/": kit, "/lid/": join(lid, ".."), "/model/": join(modelPath, "..") }, { pageCsp: !firefox, port: firefox ? 0 : FP16 ? 47614 : 47613 });
 const pin = {
+  tier: TIER,
   files: [
-    { name: "model.onnx", size_bytes: entry("onnx/model.onnx").size_bytes, sha256: entry("onnx/model.onnx").sha256, url: `${base}/kit/onnx/model.onnx` },
+    { name: MODEL_NAME, size_bytes: entry(MODEL_ENTRY).size_bytes, sha256: entry(MODEL_ENTRY).sha256, url: `${base}/model/${MODEL_NAME}` },
     { name: "tokenizer.json", size_bytes: entry("tokenizer.json").size_bytes, sha256: entry("tokenizer.json").sha256, url: `${base}/kit/tokenizer.json` },
   ],
   lid: { name: "lid.176.ftz", size_bytes: 938013, sha256: LID_SHA, url: `${base}/lid/${lid.split("/").pop()}` },
-  model: { id: "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
+  model: { id: FP16 ? "editlens_roberta-large-fp16" : "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: modelkit.license,
 };
 
-const report = { started: new Date().toISOString(), sample: sample.length, longer_than_512: sample.filter((t) => t.length > MAX_LENGTH).length, runtimes: {} };
+const report = { tier: TIER, started: new Date().toISOString(), sample: sample.length, longer_than_512: sample.filter((t) => t.length > MAX_LENGTH).length, runtimes: {} };
 const browser = firefox ? await launchFirefox(base, firefox, { prefs: { "dom.webgpu.enabled": true } }) : await launchChromium(base, { profile });
 let memory = watchMemory(firefox ? browser.profile : profile);
 report.browser = browser.version;
@@ -93,7 +107,7 @@ try {
   console.log("candidates:", status.data.runtime.candidates.map((c) => `${c.id}: ${c.available ? "available" : c.reason}`).join("; "));
 
   for (const runtime of runtimes) {
-    const id = `${runtime}:fp32`;
+    const id = `${runtime}:${runtime === "webgpu" ? TIER : "fp32"}`;
     const out = { id };
     report.runtimes[runtime] = out;
     report.memory_peak_gib_startup ??= await memory.stop();
@@ -126,6 +140,7 @@ try {
       if (!reply.ok) throw new Error(`score failed on ${id}: ${JSON.stringify(reply)}`);
       results.push(...reply.data.results);
       out.model_version = reply.data.model.ver;
+      out.model_id = reply.data.model.id;
     }
     out.score_s = +((performance.now() - t0) / 1000).toFixed(1);
     const counts = { data: { alone: [], following: [] } };
@@ -136,7 +151,7 @@ try {
       counts.data.following.push(...reply.data.following);
     }
     const rows = [];
-    let dp = 0, ds = 0, exact = 0, gated = 0, bucket = 0, verdict = 0, tokens = 0;
+    let dp = 0, ds = 0, exact = 0, gated = 0, bucket = 0, verdict = 0, tokens = 0, flags = 0;
     const failures = [];
     sample.forEach((t, k) => {
       const r = results[k];
@@ -150,15 +165,19 @@ try {
       dp = Math.max(dp, diff); ds = Math.max(ds, Math.abs(r.score - officialScore));
       exact += t.official.map((p) => Number(p.toFixed(4))).every((p, i) => p === r.probs[i]);
       bucket += sameBucket; verdict += sameLevel; tokens += sameTokens;
-      const ok = diff <= TOLERANCE && sameBucket && sameLevel && sameTokens;
+      const sameFlag = (level(r.score) === 3) === (level(officialScore) === 3);
+      flags += sameFlag;
+      // The FP16 tier is held to the aggregate it was accepted on (below); its texts to the tolerance and the counts.
+      const ok = diff <= TOLERANCE && sameTokens && (FP16 || (sameBucket && sameLevel));
       if (!ok) failures.push(t.text_id);
       rows.push({ text_id: t.text_id, tokens: t.length, official: t.official, browser: r.probs, native: t.native, max_abs_diff: diff, bucket: [officialBucket, r.bucket], level: [level(officialScore), level(r.score)], ok });
     });
     const compared = sample.length - gated;
-    Object.assign(out, { compared, gated, rounded_identical: exact, max_prob_diff: dp, max_score_diff: ds, bucket_agreement: bucket / compared, verdict_agreement: verdict / compared, counts_identical: tokens, failures: failures.length, texts: rows });
+    Object.assign(out, { compared, gated, rounded_identical: exact, max_prob_diff: dp, max_score_diff: ds, bucket_agreement: bucket / compared, verdict_agreement: verdict / compared, verdicts_equal: verdict, flags_equal: flags, counts_identical: tokens, failures: failures.length, texts: rows });
     const nativeDiff = Math.max(...rows.map((r) => Math.max(...r.browser.map((p, i) => Math.abs(p - r.native[i])))));
     out.max_prob_diff_vs_native = nativeDiff;
-    console.log(`${id}: ${compared} texts in ${out.score_s} s — max |Δp| ${dp.toExponential(2)} vs official (${exact} identical at four places; ${nativeDiff.toExponential(2)} vs native), buckets ${bucket}/${compared}, verdicts ${verdict}/${compared}, counts ${tokens}/${compared}`);
+    console.log(`${id}: ${compared} texts in ${out.score_s} s — max |Δp| ${dp.toExponential(2)} vs official (${exact} identical at four places; ${nativeDiff.toExponential(2)} vs native), buckets ${bucket}/${compared}, verdicts ${verdict}/${compared}, flags ${flags}/${compared}, counts ${tokens}/${compared}; model id ${out.model_id}`);
+    if (FP16 && (verdict < MIN_VERDICTS || flags !== compared)) { failed = true; console.log(`FAIL  ${id} parity — verdicts ${verdict}/${compared} (at least ${MIN_VERDICTS}), flags ${flags}/${compared}`); }
     if (failures.length) { failed = true; console.log(`FAIL  ${id} parity — ${failures.length} texts differ: ${failures.slice(0, 10).join(", ")}`); }
     else console.log(`PASS  ${id} parity`);
 

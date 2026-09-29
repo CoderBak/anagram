@@ -93,6 +93,13 @@ local component and the installer all carry the same version.
   authorship. Do not use them for disciplinary or other high-stakes decisions." The idea of
   stated result states and a caveat that travels with the result comes from
   lynote-ai/ai-text-detector (MIT).
+- The in-browser engine runs the modelkit's FP16 model (715 MB, on WebGPU only) where FP32
+  does not fit: on 4 GB of memory, where the free disk cannot take the 1.4 GB but can take
+  715 MB, or where the graphics card can bind FP16's largest tensor but not FP32's, and only
+  with `shader-f16`. Its verdict word matches FP32's on 99.82% of the EditLens test split (6,100
+  of 6,111 texts); the setup page and Settings say so, its scores carry a model id of their
+  own, and if it does not run on a device it is deleted and FP32 takes its place on the
+  processor where that fits. FP32 stays the automatic pick everywhere else; INT8 is never used.
 
 ### Changed
 

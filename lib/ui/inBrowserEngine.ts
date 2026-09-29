@@ -19,7 +19,8 @@ import "./componentSettings.css";
 import "./inBrowserEngine.css";
 
 type Operation = "models.download" | "models.pause" | "models.delete" | "engine.resume" | "engine.settings";
-/** Every byte setup downloads: the pinned files. */
+/** Every byte setup downloads at FP32: the pinned files. The engine says its own total (the FP16
+ *  tier's is half), which is what the panel shows once it has answered. */
 const DOWNLOAD_BYTES = pinnedFiles().reduce((n, f) => n + f.size_bytes, 0);
 
 /** A size in the units a download is counted in. */
@@ -87,6 +88,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const summary = element("p", t("componentStarting"), "component-status"); summary.setAttribute("role", "status");
   const intro = element("p", t("engineSetUpIntro", formatSize(DOWNLOAD_BYTES)), "engine-intro"); intro.hidden = true;
   const note = element("p", t("engineSaveData"), "engine-note"); note.hidden = true;
+  // The FP16 tier is in use: said once, whatever the stage.
+  const lighter = element("p", t("engineLighter"), "engine-note engine-lighter"); lighter.hidden = true;
   const progress = element("progress"); progress.hidden = true;
   const progressText = element("p", "", "engine-progress"); progressText.id = "engine-progress"; progressText.hidden = true;
   progress.setAttribute("aria-describedby", progressText.id);
@@ -127,7 +130,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const keep = makeButton("buttonCancel", () => dialog.close(), "outline");
   const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming) run("models.delete"); }); accept.id = "engine-confirm";
   dialogActions.append(keep, accept); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, intro, note, progress, progressText, where, stored, error, details, actions, manage, dialog);
+  host.replaceChildren(summary, intro, note, lighter, progress, progressText, where, stored, error, details, actions, manage, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let stage: SetupStage | undefined;
@@ -147,6 +150,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   /** What a download has put on disk so far: the engine counts its storage when a file
    *  completes, the download its bytes as they arrive. */
+  /** What setup downloads on this device: the engine's own total, the FP32 files' before it says. */
+  function downloadBytes(): number { return snapshot?.download.total_bytes || DOWNLOAD_BYTES; }
+
   function downloadedBytes(): number {
     return Math.max(snapshot?.storage.models_bytes ?? 0, stage && "received" in stage ? stage.received : 0);
   }
@@ -179,7 +185,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
    *  (or the browser gives no estimate). */
   async function roomNeeded(): Promise<number | null> {
     try {
-      return roomShort(await navigator.storage.estimate(), Math.max(0, DOWNLOAD_BYTES - (snapshot?.storage.models_bytes ?? 0)));
+      return roomShort(await navigator.storage.estimate(), Math.max(0, downloadBytes() - (snapshot?.storage.models_bytes ?? 0)));
     } catch { return null; }
   }
 
@@ -209,12 +215,12 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (!everConnected || !s) setPrimary(everConnected || actionError ? "panelRetry" : null, retryEngine);
     else if (crashed) setPrimary("panelRetry", retryEngine);
     else switch (s.stage) {
-      case "needed": setPrimary("engineSetUpButton", download, true, formatSize(DOWNLOAD_BYTES)); break;
+      case "needed": setPrimary("engineSetUpButton", download, true, formatSize(downloadBytes())); break;
       case "downloading": setPrimary("componentPauseDownload", () => run("models.pause"), false); break;
       case "paused": setPrimary("componentResumeDownload", download); break;
       case "failed": setPrimary("panelRetry", download); break;
       case "stopped": setPrimary("componentResume", () => run("engine.resume")); break;
-      case "error": setPrimary("panelRetry", () => run("engine.resume")); break;
+      case "error": if (snapshot?.error?.code === "cannot_run") setPrimary(null); else setPrimary("panelRetry", () => run("engine.resume")); break;
       default: setPrimary(null);
     }
     // A running download can always be cancelled; a stopped one once it left bytes on disk.
@@ -229,6 +235,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (destroyed) return;
     const s = stage;
     intro.hidden = !(s?.stage === "needed" && !crashed);
+    intro.textContent = t("engineSetUpIntro", formatSize(downloadBytes()));
+    lighter.hidden = snapshot?.tier !== "fp16" || crashed || !s;
     note.hidden = intro.hidden || !saveData;
     const counting = s && (s.stage === "downloading" || s.stage === "paused" || s.stage === "failed") ? s : null;
     progressText.hidden = !counting || crashed;
@@ -237,7 +245,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (!counting) progress.removeAttribute("value");
     progress.setAttribute("aria-label", t(counting ? "engineDownloading" : "engineLoading"));
     if (counting) {
-      const total = counting.total || DOWNLOAD_BYTES;
+      const total = counting.total || downloadBytes();
       progress.max = total; progress.value = Math.min(counting.received, total);
       const parts = [t("engineProgress", percentOf(counting.received, total), formatSize(counting.received), formatSize(total))];
       if (counting.stage === "downloading") {
@@ -258,6 +266,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     }
     let problem = actionError;
     if (!problem && crashed) problem = t("componentEngineCrashed");
+    // The lighter model failed here and the full one does not fit: the setup page's "cannot run".
+    if (!problem && s?.stage === "error" && snapshot?.error?.code === "cannot_run") problem = t("engineCannotRun");
     if (!problem && s) problem = failureText(s) || (s.stage === "error" ? t("engineLoadFailed") : "");
     if (!problem && !s && everConnected) problem = t("engineUnavailable");
     error.textContent = problem; error.hidden = !problem;

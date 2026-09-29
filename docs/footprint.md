@@ -132,6 +132,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | --- | --- |
 | `extensionUpdatePending` | version of a browser extension update waiting for the user to reload |
 | `engine` | the engine the user chose, `native` or `inbrowser`; unset until the setup page or Settings has one |
+| `engineTier` | the in-browser engine's model tier the setup page decided (`fp16` where FP32 does not fit, and whether FP32 fits as a fallback); unset means FP32 |
 | `enabled` | the master switch |
 | `siteOverrides` | per-site on/off rules, as hostnames the user chose |
 | `showHighlights` | whether analyzed text is underlined in place |
