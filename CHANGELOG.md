@@ -149,6 +149,10 @@ local component and the installer all carry the same version.
   asked for up to 300 pages: on 336- to 816-page documents the worker took 9–17 seconds and
   its tab 0.7–0.9 GB at its peak, and its reading would stay in the tab at about 0.3 MB a
   page for as long as the document is open, while the reflow holds only the pages drawn.
+- The verdict colours run from a soft green for human writing through amber to red for
+  AI-generated text: one continuous scale, whose lightness still orders it for a reader who
+  cannot tell red from green (the dark-page scale spans more lightness, as reds darken for
+  protanopes).
 
 ### Changed
 
