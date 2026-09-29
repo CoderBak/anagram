@@ -248,14 +248,13 @@ describe.each(["chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
     expect(existsSync(join(OUT, "pdf-loader.html"))).toBe(true);
   });
 
-  it.skipIf(!ready)("makes only the four content-script chunks and the ball's two icons web accessible", () => {
+  it.skipIf(!ready)("makes only the three content-script chunks and the ball's two icons web accessible", () => {
     expect(manifest().web_accessible_resources).toEqual([
       {
         resources: [
           "vendor/purify.min.mjs",
           "vendor/diagnostics.min.mjs",
           "vendor/surfaces.min.mjs",
-          "vendor/fragments.min.mjs",
           "icons/icon-96.png",
           "icons/icon-light-96.png",
         ],

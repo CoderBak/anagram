@@ -264,7 +264,6 @@ export default defineConfig({
             "vendor/purify.min.mjs",
             "vendor/diagnostics.min.mjs",
             "vendor/surfaces.min.mjs",
-            "vendor/fragments.min.mjs",
             // The floating ball's icon on a light and on a dark page (lib/render/logo.ts).
             "icons/icon-96.png",
             "icons/icon-light-96.png",

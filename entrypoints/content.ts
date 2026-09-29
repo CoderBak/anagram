@@ -143,15 +143,6 @@ export default defineContentScript({
       mountFab: isTop,
       collect: surface?.collect,
       placeBadge: surface?.placeBadge,
-      // The panel's "Turn off on <host>" writes the rule; this page stops here and now.
-      // It has to, because the write is not always a change: on a site whose rule already
-      // says "off" — where the only way to be looking at the panel is a one-shot run from
-      // the context menu — storage takes the same value again and no watch ever fires.
-      onSiteOff: () => {
-        enabled = false;
-        onceForPage = false;
-        orchestrator.stop();
-      },
     });
 
     // Site rules are keyed on the TOP page's hostname — that is what the popup writes.

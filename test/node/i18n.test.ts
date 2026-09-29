@@ -162,7 +162,7 @@ describe("t()", () => {
 
   it("substitutes $1…$9 itself in that fallback", () => {
     withoutExtension();
-    expect(t("panelTitleCount", 6)).toBe("Flagged paragraphs (6)");
+    expect(t("panelTitleCount", 6, 79)).toBe("Flagged paragraphs (6/79)");
     expect(t("cardOfCount", 2, 5)).toBe("2 of 5");
     expect(t("panelItemAria", "AI-generated", "0.96", "Delving into…")).toBe(
       "AI-generated, 0.96: Delving into…",

@@ -19,10 +19,6 @@ export const settings = {
   pdfStructure: storage.defineItem<boolean>("local:pdfStructure", { fallback: true }),
   // Console logging (lib/log.ts). No setting in the UI: chrome.storage.local.set({ debug: true }) in devtools.
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
-  // Whether a copied report carries the passages and the page title and address. No setting in
-  // the UI: reports leave them out.
-  reportIncludeText: storage.defineItem<boolean>("local:reportIncludeText", { fallback: false }),
-  reportIncludeUrl: storage.defineItem<boolean>("local:reportIncludeUrl", { fallback: false }),
   // Filters rendering, not analysis: all units or only heavily edited / AI-generated ones.
   displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
     fallback: "all",

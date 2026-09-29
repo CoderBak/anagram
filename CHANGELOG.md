@@ -10,6 +10,7 @@ local component and the installer all carry the same version.
 ### Changed
 
 - One new icon everywhere: the dark tile for the extension and its toolbar button (16, 32, 48, 96 and 128 px, rendered by `npm run icons` from `assets/`), the light or dark tile in the setup page, Settings, the popup, the PDF reader's toolbar, the Google Docs bar and the README, and on the floating ball in place of the black "A" (the light tile on light pages, the dark tile on dark ones). Firefox shows the light tile on dark toolbars.
+- The floating panel is titled with flagged out of read ("Flagged paragraphs (10/79)") and its second line says "38 too short to score" and, new, "12 less reliable (under 75 words)" for scored paragraphs under the model's minimum. It stays open while you use the page and closes from the ball, Escape and a new × button. Copy report and Turn off on <site> are gone from it (turning a site off stays in the toolbar popup), and with them the copied report, its paragraph links and the Copy report settings.
 
 ## [0.8.1] — 2026-09-29
 

@@ -1,12 +1,12 @@
 // What the reader asks for and takes away: the selection card (closed while the host is
-// still thinking, a selection read whole in passes), the copied report (passes, paragraph
-// links, too little text, a close call), dense text planned on the engine's token counts,
-// and the triage panel and the three keyboard commands.
+// still thinking, a selection read whole in passes), look-alike letters, dense text planned on
+// the engine's token counts, and the triage panel (its title, its coverage line, how it opens
+// and closes) and the three keyboard commands.
 //
 //   npx playwright test scenarios-report
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test, expect, BADGE_SEL, SCORE, PAGE, KEY_PARA, KEY_TAGS, chipsSettle, toggleCounter } from "./kit.mjs";
+import { test, expect, BADGE_SEL, SCORE, PAGE, KEY_PARA, KEY_TAGS, ABSENCE_MS, chipsSettle, toggleCounter } from "./kit.mjs";
 import { fakeScore, fakeTokens } from "../fake-native.mjs";
 
 // The self-test page's paragraph read in passes (~3750 characters; its seeded pass verdicts
@@ -90,74 +90,9 @@ test("selection card: a long selection is analyzed whole, in overlapping passes 
   expect.soft(readWhole(blocks, WINDOWED_TEXT), note).toBe(true);
 });
 
-// Whoever reads the report has no underline to look at.
-test("copied report: a paragraph read in passes says so, with each pass's own number", async ({ page, pages, report }) => {
-  pages.serve({ "/windows.html": PAGE("windows fixture", `<h1>One paragraph, several passes</h1>\n<p id="wp">${WINDOWED_TEXT}</p>`) });
-  await page.goto(pages.url("/windows.html"), { waitUntil: "load" });
-  const passes = "copied report: a paragraph read in passes says so, with each pass's own number";
-  await expect(page.locator(`#wp ${BADGE_SEL} .num`), passes).toHaveText(SCORE);
-  const line = (await report(page)).split("\n").find((l) => l.startsWith("1. ")) ?? "";
-  expect(line, passes).toMatch(/; \d+ words; read in \d+ passes: (\.\d\d|1\.0)(, (\.\d\d|1\.0))+\)$/);
-  expect(line, passes).not.toContain("not read");
-});
-
-// Two paragraphs the fake scores as AI-generated, far down a long page, each opening and
-// closing on words of its own so a link can name it by them alone. The tags are found here
-// rather than written down: the fake's verdict is a pure function of the text.
-const LINK_PARA = (tag) => `${tag} opens this paragraph, written so that a copied report can point back to it: the link names its first words and its last, the browser finds them, scrolls the page until the paragraph is in view and marks it, and whoever opens the report later lands on the words it is about instead of the top of a long page, which is the whole point of giving a paragraph a link of its own, closing on ${tag}.`;
-const LINK_TAGS = [];
-for (let n = 1; LINK_TAGS.length < 2 && n < 1000; n++) if (fakeScore(LINK_PARA(`LINK-${n}`)).score >= 0.88) LINK_TAGS.push(`LINK-${n}`);
-
-test("copied report: with the address and passage text included, each flagged paragraph links to the page scrolled to it; without either, no link", async ({ context, page, pages, storage, report }) => {
-  pages.serve({
-    "/links.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>links fixture</title></head><body style="max-width:720px;margin:0 auto;font:15px/1.6 system-ui">
-<h1>Links to flagged paragraphs</h1>
-${LINK_TAGS.map((t, i) => `<div style="height:1600px"></div>\n<p id="l${i + 1}">${LINK_PARA(t)}</p>`).join("\n")}
-<div style="height:1600px"></div>
-</body></html>`,
-  });
-  const links = "copied report: with the address and passage text included, each flagged paragraph links to the page scrolled to it; without either, no link";
-  expect(LINK_TAGS, links).toHaveLength(2);
-  const pageUrl = pages.url("/links.html");
-  await page.goto(pageUrl, { waitUntil: "load" });
-  for (const id of ["l1", "l2"]) await expect(page.locator(`#${id} ${BADGE_SEL} .num`), links).toHaveText(SCORE);
-  const linksIn = (text) => [...text.matchAll(/^ {3}Open at this paragraph: (\S+)$/gm)].map((m) => m[1]);
-  const copyWith = async (url, text) => {
-    await storage.set({ reportIncludeUrl: url, reportIncludeText: text });
-    return report(page);
-  };
-  const bare = await copyWith(false, false);
-  expect.soft(bare, `${links} (neither)`).not.toContain(":~:");
-  expect.soft(linksIn(bare), `${links} (neither)`).toEqual([]);
-  const urlOnly = await copyWith(true, false);
-  expect.soft(urlOnly, `${links} (the address alone)`).toContain(`Page: ${pageUrl}`);
-  expect.soft(urlOnly, `${links} (the address alone)`).not.toContain(":~:");
-  expect.soft(linksIn(urlOnly), `${links} (the address alone)`).toEqual([]);
-  const full = await copyWith(true, true);
-  expect.soft(full.split("\n").filter((l) => /^\d+\. \*\*/.test(l)), `${links} (both)`).toHaveLength(2);
-  const found = linksIn(full);
-  expect(found, `${links} (both)`).toHaveLength(2);
-  expect(found.filter((l) => !l.startsWith(`${pageUrl}#:~:text=`)), `${links} (both)`).toEqual([]);
-  // Each link, opened fresh, lands on its paragraph: the page is scrolled until it is on screen.
-  const landed = [];
-  for (const [i, link] of found.entries()) {
-    const q = await context.newPage();
-    await q.goto(link, { waitUntil: "load" });
-    const at = () => q.evaluate((id) => {
-      const r = document.getElementById(id).getBoundingClientRect();
-      return { onScreen: r.top >= 0 && r.bottom <= innerHeight, y: Math.round(scrollY) };
-    }, `l${i + 1}`);
-    await expect.poll(async () => (await at()).onScreen, { message: `${links} (link ${i + 1} lands on its paragraph)` }).toBe(true);
-    landed.push((await at()).y);
-    await q.close();
-  }
-  expect(landed[0], `${links} (far down the page)`).toBeGreaterThan(1000);
-  expect(landed[1], `${links} (the second further down)`).toBeGreaterThan(landed[0]);
-});
-
 // English written with Cyrillic and Greek look-alike letters, as RAID's homoglyph attack
-// writes it: the engine reads it with its Latin letters back, and the card and the report
-// say that it was disguised. Russian and Greek are no disguise: sent as written, refused.
+// writes it: the engine reads it with its Latin letters back, and the card says that it was
+// disguised. Russian and Greek are no disguise: sent as written, refused.
 const LOOK = { a: "а", e: "е", o: "о", i: "і", c: "с", p: "р", y: "у", x: "х", I: "Ι", T: "Τ", A: "Α", H: "Н", M: "М", B: "Β", N: "Ν", P: "Р", C: "С" };
 const disguise = (s) => s.replace(/[aeoicpyxITAHMBNPC]/g, (ch) => LOOK[ch]);
 const LOOK_PARA = (tag) => `${tag} This paragraph was written in plain English and then disguised letter by letter, the way a homoglyph attack does it: most of its vowels and several consonants were swapped for Cyrillic and Greek letters that look exactly the same on screen, so a reader notices nothing while a language detector sees Ukrainian and a detector of machine writing reads a text that nobody wrote. The extension has to give it its Latin letters back before the model reads it.`;
@@ -166,8 +101,8 @@ for (let n = 1; !LOOK_TAG && n < 1000; n++) if (fakeScore(LOOK_PARA(`LOOK-${n}`)
 const RUSSIAN = "Вечером мы долго гуляли по старому городу. Узкие улицы были почти пустыми, только иногда мимо проезжал трамвай, и его звонок отражался от каменных стен. Мы зашли в маленькое кафе на углу площади, где пахло корицей и свежим хлебом. Хозяйка рассказала нам, что кафе открыл её дед сразу после войны, и с тех пор меню почти не изменилось. Мы заказали чай с вареньем и пирог с яблоками, а потом ещё долго сидели у окна и смотрели, как на площади зажигаются фонари. Домой вернулись поздно, уставшие, но очень довольные этим тихим вечером.";
 const GREEK = "Το πρωί ξυπνήσαμε νωρίς για να προλάβουμε το πρώτο πλοίο για το νησί. Ο καιρός ήταν καθαρός και η θάλασσα ήρεμη, οπότε το ταξίδι κράτησε λιγότερο από δύο ώρες. Στο λιμάνι μας περίμενε ένας φίλος με το αυτοκίνητό του και μας πήγε στο χωριό του, ψηλά στο βουνό. Εκεί φάγαμε σε μια μικρή ταβέρνα με θέα τον κόλπο, ενώ ο ιδιοκτήτης μας έλεγε ιστορίες για τους ψαράδες που ζούσαν παλιά στο νησί. Το απόγευμα κατεβήκαμε στην παραλία και κολυμπήσαμε μέχρι να δύσει ο ήλιος πίσω από τα βράχια.";
 
-test("look-alike letters: a disguised English paragraph is read with its Latin letters back and its card and the report say so; Russian and Greek are refused as written", async ({ page, pages, nativeHost, report }) => {
-  const look = "look-alike letters: a disguised English paragraph is read with its Latin letters back and its card and the report say so; Russian and Greek are refused as written";
+test("look-alike letters: a disguised English paragraph is read with its Latin letters back and its card says so; Russian and Greek are refused as written", async ({ page, pages, nativeHost }) => {
+  const look = "look-alike letters: a disguised English paragraph is read with its Latin letters back and its card says so; Russian and Greek are refused as written";
   expect(LOOK_TAG, look).not.toBeNull();
   const english = LOOK_PARA(LOOK_TAG);
   pages.serve({
@@ -191,50 +126,6 @@ test("look-alike letters: a disguised English paragraph is read with its Latin l
     expect(await foot(id), `${look} (${id})`).not.toContain("Look-alike");
   }
   expect(sent.filter((t) => t.includes("Вечером") || t.includes("πρωί")).every((t) => t === RUSSIAN || t === GREEK), `${look} (sent as written)`).toBe(true);
-  const text = await report(page);
-  expect(text, look).toMatch(/^1\. \*\*AI-generated, [^\n]*\n {3}Look-alike letters were replaced before scoring\.$/m);
-});
-
-// "Flagged: 0" on a page where nothing reached the floor is not a clean page, it is a page
-// that was not judged.
-test("copied report: a page with nothing long enough to judge says there was too little text, not that nothing was flagged", async ({ page, pages, report }) => {
-  pages.serve({
-    "/short.html": PAGE("short fixture", `<h1>A page of short notes</h1>
-<p>The meeting moved to Thursday afternoon, after the budget review ran long again.</p>
-<h2>Parking</h2>
-<p>The north lot is closed for repaving until the end of the month, so please use the garage.</p>`),
-  });
-  await page.goto(pages.url("/short.html"), { waitUntil: "load" });
-  const short = "copied report: a page with nothing long enough to judge says there was too little text, not that nothing was flagged";
-  await expect(page.locator("#anagram-fab .count"), short).toBeAttached();
-  // The ball is up before the first walk has run: copy until the report has the walk in it.
-  let text = "";
-  await expect(async () => {
-    text = await report(page);
-    expect(text).toMatch(/Analyzed: 0 units, Flagged: 0, Too short: [1-9]/);
-  }, short).toPass({ timeout: 30_000 });
-  // The floor is the reader's minimum length, 50 words unless Settings says otherwise.
-  expect.soft(text, short).toContain("Too little text to judge: no passage reached the 50 words the model needs for a verdict.");
-  expect.soft(text, short).not.toContain("No paragraphs were flagged");
-  expect.soft(text, short).not.toContain("did not answer");
-  expect.soft(text, short).toContain("high-stakes decisions");
-});
-
-test("copied report: a flagged verdict just over the cut is marked a close call, and a page of such verdicts is called mixed or uncertain", async ({ page, pages, report }) => {
-  // A paragraph the fake scores AI-generated by a hair, within .05 of the cut at 5/6.
-  let tag = null;
-  for (let n = 1; !tag && n < 2000; n++) {
-    const score = fakeScore(LINK_PARA(`CLOSE-${n}`)).score;
-    if (score > 5 / 6 + 0.005 && score < 5 / 6 + 0.045) tag = `CLOSE-${n}`;
-  }
-  const close = "copied report: a flagged verdict just over the cut is marked a close call, and a page of such verdicts is called mixed or uncertain";
-  expect(tag, close).not.toBeNull();
-  pages.serve({ "/closecall.html": PAGE("close call fixture", `<h1>One close call</h1>\n<p id="cc">${LINK_PARA(tag)}</p>`) });
-  await page.goto(pages.url("/closecall.html"), { waitUntil: "load" });
-  await expect(page.locator(`#cc ${BADGE_SEL} .num`), close).toHaveText(SCORE);
-  const text = await report(page);
-  expect.soft(text, close).toContain("Mixed or uncertain: 1 of 1 verdicts is a close call");
-  expect.soft(text, close).toMatch(/^1\. \*\*AI-generated, \.8\d\*\* \(close call; Human /m);
 });
 
 // A paragraph short in characters and long in tokens (figures, URLs, names) is not left
@@ -383,22 +274,102 @@ keyboard("next/prev-flagged walk the flagged paragraphs in document order and wr
 });
 
 // A flagged paragraph found AFTER the others (a post a feed prepends, a reply inserted above)
-// is listed, reported and walked where it stands, not after everything found before it.
-keyboard("a flagged paragraph inserted above the others comes first in the panel, the copied report and the next-flagged walk", async ({ keys: page, tell, report }) => {
+// is listed and walked where it stands, not after everything found before it.
+keyboard("a flagged paragraph inserted above the others comes first in the panel and the next-flagged walk", async ({ keys: page, tell }) => {
   const LATE_TAG = "LATE-1"; // AI-generated (.90) under the fake's scores
   await page.evaluate((html) => document.getElementById("k1").insertAdjacentHTML("beforebegin", html), `<p id="k0">${KEY_PARA(LATE_TAG)}</p>\n<div style="height:700px"></div>`);
-  const first = "a flagged paragraph inserted above the others comes first in the panel, the copied report and the next-flagged walk";
+  const first = "a flagged paragraph inserted above the others comes first in the panel and the next-flagged walk";
   await expect(page.locator(`#k0 ${BADGE_SEL} .num`), first).toHaveText(SCORE);
-  const pageScores = await page.evaluate((sel) => ["k0", "k1", "k2", "k3", "k4"].map((id) => document.querySelector(`#${id} ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent?.trim() ?? null), BADGE_SEL);
   await toggleCounter(page);
   await expect(page.locator("#anagram-fab .panel .pitem"), first).toHaveCount(5);
   const listed = await page.evaluate(() =>
     [...document.getElementById("anagram-fab").shadowRoot.querySelectorAll(".panel .pitem")].map((r) => /: (\S+) paragraph/.exec(r.getAttribute("aria-label") ?? "")?.[1] ?? null));
   expect.soft(listed, `${first} (the panel)`).toEqual([LATE_TAG, ...KEY_TAGS]);
-  const reported = (await report(page)).split("\n").map((l) => /^\d+\. \*\*[^*]+, (\.\d\d|1\.0)\*\*/.exec(l)?.[1]).filter(Boolean);
-  expect.soft(reported, `${first} (the report)`).toEqual(pageScores);
   await page.keyboard.press("Escape");
   const lateAt = await page.evaluate((sel) => Math.round(document.querySelector(`#k0 ${sel}`).getBoundingClientRect().top + scrollY), BADGE_SEL);
   await page.evaluate(() => scrollTo(0, 0));
   expect.soft(await jump(page, tell, "nextFlagged"), `${first} (the walk)`).toBe(lateAt);
+});
+
+// ---- the panel's title, coverage line, buttons and lifetime -------------------------------
+const panelText = (page) =>
+  page.evaluate(() => {
+    const panel = document.getElementById("anagram-fab").shadowRoot.querySelector(".panel");
+    return {
+      open: panel.classList.contains("open"),
+      title: panel.querySelector(".phead h2")?.textContent ?? "",
+      coverage: panel.querySelector(".pcov:not(.pscope)")?.textContent ?? null,
+      buttons: [...panel.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent.trim()),
+      text: panel.textContent,
+    };
+  });
+
+keyboard("the panel's title says flagged out of read, and it has a Close button and no Copy report or Turn off button", async ({ keys: page }) => {
+  const title = "the panel's title says flagged out of read, and it has a Close button and no Copy report or Turn off button";
+  await toggleCounter(page);
+  await expect.poll(async () => (await panelText(page)).open, { message: title }).toBe(true);
+  const shown = await panelText(page);
+  // Four flagged, every paragraph of the page read: "(4/4)". Nothing on the page is short.
+  expect.soft(shown.title, title).toBe("Flagged paragraphs (4/4)");
+  expect.soft(shown.coverage, `${title} (nothing short: no coverage line)`).toBeNull();
+  expect.soft(shown.buttons.filter((b) => !/^(Heavily edited|AI-generated),/.test(b)), title).toEqual(["Close"]);
+  expect.soft(shown.text, title).not.toMatch(/Copy report|Turn off on/);
+});
+
+test("the panel's coverage line: what was too short to score, and what was scored under 75 words is less reliable", async ({ page, pages }) => {
+  const words = (n, tag) => `${tag} ` + Array.from({ length: n - 1 }, (_, i) => ["river", "stone", "lantern", "window", "orchard", "letter", "harbor", "ladder"][i % 8]).join(" ") + ".";
+  pages.serve({
+    "/coverage.html": PAGE("coverage fixture", `<h1>Three lengths</h1>
+<p id="tiny">${words(12, "Tiny")}</p>
+<h2>Under the floor</h2>
+<p id="mid">${words(60, "Middle")}</p>
+<h2>Over the model's minimum</h2>
+<p id="full">${words(90, "Full")}</p>`),
+  });
+  await page.goto(pages.url("/coverage.html"), { waitUntil: "load" });
+  const cov = "the panel's coverage line: what was too short to score, and what was scored under 75 words is less reliable";
+  await expect(page.locator(`#full ${BADGE_SEL} .num`), cov).toHaveText(SCORE);
+  await expect(page.locator(`#mid ${BADGE_SEL} .num`), cov).toHaveText(SCORE);
+  await toggleCounter(page);
+  // Read: the 60-word and the 90-word paragraph. The 12-word one was not scored at all.
+  await expect.poll(async () => (await panelText(page)).title, { message: cov }).toMatch(/^Flagged paragraphs \(\d\/2\)$/);
+  const shown = await panelText(page);
+  expect.soft(shown.coverage, cov).toBe("1 too short to score, 1 less reliable (under 75 words)");
+  expect.soft(shown.coverage, cov).not.toMatch(/\bread\b/);
+});
+
+keyboard("a click or a scroll on the page leaves the panel open; the counter, Escape and the Close button close it", async ({ keys: page }) => {
+  const life = "a click or a scroll on the page leaves the panel open; the counter, Escape and the Close button close it";
+  const open = async () => {
+    await toggleCounter(page);
+    await expect.poll(async () => (await panelText(page)).open, { message: `${life} (opens)` }).toBe(true);
+  };
+  const isOpen = async () => (await panelText(page)).open;
+  await open();
+  // The page still gets its clicks: a listener on the document sees this one.
+  await page.evaluate(() => { window.__pageClicks = 0; document.addEventListener("click", () => window.__pageClicks++); });
+  await page.mouse.click(20, 300);
+  await expect.poll(() => page.evaluate(() => window.__pageClicks), { message: `${life} (the page got the click)` }).toBe(1);
+  // ...and it scrolls under the open panel.
+  const before = await page.evaluate(() => scrollY);
+  await page.mouse.move(200, 300);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => scrollY), { message: `${life} (the page scrolled)` }).toBeGreaterThan(before);
+  await page.waitForTimeout(ABSENCE_MS);
+  expect(await isOpen(), `${life} (still open after a click and a scroll)`).toBe(true);
+  // A row jumps to its paragraph and the panel stays for the next one.
+  await page.locator("#anagram-fab .panel .pitem").first().click();
+  expect(await isOpen(), `${life} (still open after a jump)`).toBe(true);
+  // The counter toggles it.
+  await toggleCounter(page);
+  await expect.poll(isOpen, { message: `${life} (the counter closes it)` }).toBe(false);
+  // Escape closes it, wherever the focus is: here, on the page.
+  await open();
+  await page.keyboard.press("Escape");
+  await expect.poll(isOpen, { message: `${life} (Escape closes it)` }).toBe(false);
+  // The Close button closes it and hands the keyboard back to the counter.
+  await open();
+  await page.locator("#anagram-fab .panel .pclose").click();
+  await expect.poll(isOpen, { message: `${life} (Close closes it)` }).toBe(false);
+  await expect.poll(() => panelState(page), { message: `${life} (focus back on the counter)` }).toMatchObject({ open: false, expanded: "false" });
 });

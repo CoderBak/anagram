@@ -213,22 +213,22 @@
     "message": "存疑段落"
   },
   "panelTitleCount": {
-    "message": "存疑段落（$1）"
+    "message": "存疑段落（$1/$2）"
+  },
+  "panelClose": {
+    "message": "关闭"
   },
   "panelCopyReport": {
     "message": "复制报告"
   },
-  "panelAnnounceCopied": {
-    "message": "报告已复制到剪贴板"
-  },
   "panelEmpty": {
     "message": "本页没有存疑段落。"
   },
-  "panelCovRead": {
-    "message": "已读 $1"
-  },
   "panelCovShort": {
-    "message": "过短 $1"
+    "message": "过短未评分 $1"
+  },
+  "panelCovLessReliable": {
+    "message": "可靠性较低 $1（不足 $2 个词）"
   },
   "panelCovNotEnglish": {
     "message": "非英文 $1"
@@ -241,12 +241,6 @@
   },
   "panelItemAria": {
     "message": "$1，$2：$3"
-  },
-  "panelTurnOffOn": {
-    "message": "在 $1 关闭"
-  },
-  "panelTurnOffTitle": {
-    "message": "会写入一条站点规则，随时可在工具栏弹窗中重新开启"
   },
   "actionAnalyzeDocument": {
     "message": "分析文档"
@@ -287,103 +281,22 @@
   "docsSnapshotNotice": {
     "message": "文档的静态快照，点“刷新”可重新读取。"
   },
-  "reportTitle": {
-    "message": "Anagram 报告：$1"
-  },
-  "reportPage": {
-    "message": "页面：$1"
-  },
-  "reportGenerated": {
-    "message": "生成时间：$1"
-  },
-  "reportAnalyzed_one": {
-    "message": "已分析：$1 个单元"
-  },
-  "reportAnalyzed_other": {
-    "message": "已分析：$1 个单元"
-  },
-  "reportFlagged": {
-    "message": "存疑：$1"
-  },
-  "reportUnavailable": {
-    "message": "不可用：$1"
-  },
-  "reportSkipped": {
-    "message": "略过（语言不支持）：$1"
-  },
   "reportEstimate": {
     "message": "分数为 EditLens 四类预测的 (p1 + 2p2 + 3p3) / 3，用于概括类别分布。它不是 AI 撰写的字数占比、实际修改距离，也不能证明作者身份。"
   },
-  "reportNothingFlagged": {
-    "message": "没有段落被判为 AI 生成。"
-  },
-  "reportFlaggedHeading": {
-    "message": "存疑段落（$1）"
-  },
-  "reportWords": {
-    "message": "$1 词"
-  },
-  "reportCloseCall": {
-    "message": "临界判断"
-  },
-  "reportWindows": {
-    "message": "；分 $1 次读取：$2"
-  },
   "reportUnread": {
     "message": "；段落末尾未被读取"
-  },
-  "reportLink": {
-    "message": "打开页面并定位到此段：$1"
-  },
-  "reportModel": {
-    "message": "评分来自本地引擎上的 $1（$2）——这是 EditLens 对 AI 编辑程度的估计。"
-  },
-  "reportNoModel": {
-    "message": "分析本页时本地引擎没有响应。"
   },
   "reportPrivateTitle": {
     "message": "Anagram 分析报告",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
-  "reportShort": {
-    "message": "文本过短：$1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportPending": {
-    "message": "尚未分析：$1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportStateShort": {
-    "message": "文本太少，无法判断：没有一段文字达到模型给出判断所需的 $1 个词。"
-  },
-  "reportStateNotEnglish": {
-    "message": "没有判断：够长的段落都不是英文，而模型只读英文。"
-  },
-  "reportStateUnavailable": {
-    "message": "没有判断：本地引擎没有响应。"
-  },
-  "reportStatePending": {
-    "message": "尚无判断：复制此报告时仍在分析。"
-  },
-  "reportStateUncertain_one": {
-    "message": "判断不一或不确定：$2 个判断中有 $1 个是临界判断，紧挨两种判断的分界，或更可能判错。这类判断只能当作估计，不能当作定论。"
-  },
-  "reportStateUncertain_other": {
-    "message": "判断不一或不确定：$2 个判断中有 $1 个是临界判断，紧挨两种判断的分界，或更可能判错。这类判断只能当作估计，不能当作定论。"
-  },
   "reportCaveat": {
     "message": "分数只是估计，不能证明作者身份。请勿将其用于纪律处分或其他重大决定。"
-  },
-  "reportRuntime": {
-    "message": "校准 / 预处理标识：$1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportCopyFailed": {
     "message": "无法复制报告。",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportDevice": {
-    "message": "计算设备：$1，精度：$2"
   },
   "readerOpenOriginal": {
     "message": "打开原文件"

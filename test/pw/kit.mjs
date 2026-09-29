@@ -6,8 +6,6 @@
 //   tell(page, message)  the worker's chrome.tabs.sendMessage to that page's tab (the
 //                        context menu, the keyboard commands and the popup's Rescan all
 //                        arrive this way; the real key combinations never reach a page)
-//   report(page)         the panel's Copy report, read back off the clipboard once it holds
-//                        more than the sentinel put there first (its links may take 1.5 s)
 //   backendUp()          the worker has the fixture host up again (after close()/resume())
 import { test as base, expect as baseExpect } from "./fixtures.mjs";
 import { BADGE_SEL } from "../harness.mjs";
@@ -23,8 +21,6 @@ export const SCORE = /^(\.\d\d|1\.0)$/;
 /** How long a check that something does NOT happen watches for it, once what would have
  *  caused it is known to have happened: there is no signal for a chip that never comes. */
 export const ABSENCE_MS = 2500;
-
-const NO_REPORT = "NO REPORT COPIED";
 
 export const test = base.extend({
   tell: async ({ extension }, use) => {
@@ -42,23 +38,6 @@ export const test = base.extend({
       }, { url, message });
       expect(found, `a tab showing ${url}`).toBe(true);
       return reply;
-    });
-  },
-
-  report: async ({ clipboard }, use) => {
-    await use(async (page, { open = true } = {}) => {
-      await clipboard.write(page, NO_REPORT);
-      await page.evaluate((open) => {
-        const sr = document.getElementById("anagram-fab")?.shadowRoot;
-        if (open && !sr?.querySelector(".panel.open")) sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        sr?.querySelector(".pcopy")?.click();
-      }, open);
-      let text = null;
-      await expect
-        .poll(async () => (text = await clipboard.read(page)), { message: "Copy report put a report on the clipboard" })
-        .not.toMatch(new RegExp(`^(${NO_REPORT})?$`));
-      // Windows hands the clipboard back with CRLF line ends; the report itself is LF.
-      return text.replace(/\r\n/g, "\n");
     });
   },
 

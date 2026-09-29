@@ -96,9 +96,12 @@ off until you switch it on again.
   adds is skipped. On review pages each customer review is read by itself, never with
   another one, and the reviewer's name, stars, date and "Helpful" row are left out.
 - Text in a frame is read where Anagram may read the frame, an EPUB reader's chapters
-  included. Its chips are in the frame; the ball's list and report cover the page itself.
+  included. Its chips are in the frame; the ball's list covers the page itself.
 - The floating ball shows or hides marks. Its counter shows how many paragraphs read as
-  AI-generated and opens their list, which can jump to each one and copy a report.
+  AI-generated and opens their list, titled with how many were flagged of how many were read, which can
+  jump to each one. The list stays open while you use the page; close it with ×, Escape or
+  the ball. Its second line counts what was too short to score and what was scored under
+  75 words, which is less reliable.
 - Right-click a selection to score just that text. Alt+Shift+P toggles Anagram on the
   page, Alt+Shift+L opens the list, Alt+Shift+J and K walk flagged paragraphs.
 - PDFs open in Anagram's reader from the popup, the floating ball or a right-click on a

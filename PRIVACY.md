@@ -85,7 +85,7 @@ carry normal download metadata and never page text.
 ## What is stored
 
 - **Settings** in `chrome.storage.local`: switches, per-site rules, marking style, scope,
-  cache mode, report options, the ball's position. Nothing is synced.
+  cache mode, the ball's position. Nothing is synced.
 - **The score cache** in IndexedDB, keyed by the model identity plus a 53-bit hash of the
   normalized text. No text is stored. Rows expire after 30 days, the store is capped at
   20 000 rows, and **Clear cached verdicts** in Settings empties it. **Memory only** mode
@@ -101,10 +101,9 @@ carry normal download metadata and never page text.
   your browser profile. Nothing from your browsing is written with them. They stay when you
   switch to the local engine until you delete them there, in Settings.
 - **Which engine you chose**, in `chrome.storage.local`.
-- **Your clipboard**, only when you click Copy. A copied report holds the page's title and
-  address, and passage text, only when Settings includes them; its links to flagged
-  paragraphs carry words of each paragraph, so they appear only with both. Diagnostics
-  reports replace every word of page text with same-shaped filler and drop URLs and titles.
+- **Your clipboard**, only when you click Copy: a paragraph and its readout from a card, the
+  report of the Analyze text page, or a diagnostics report, which replaces every word of
+  page text with same-shaped filler and drops URLs and titles.
 
 ## Permissions
 

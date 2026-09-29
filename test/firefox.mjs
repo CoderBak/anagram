@@ -855,47 +855,36 @@ for (const how of ["lang", "ids"]) {
   await p.close();
 }
 
-// The copied report's link to a flagged paragraph: the chunk that writes it loads, and
-// Firefox (text fragments since 131) opens the page at the paragraph. A real click, so the
-// copy has the user activation Firefox asks the clipboard for.
+// The triage panel in Firefox: its title counts flagged out of read, it has a Close button and
+// no Copy report or Turn off button, and a click on the page leaves it open.
 {
   const LINK_PARA = (tag) => `${tag} opens this paragraph, written so that a copied report can point back to it: the link names its first words and its last, the browser finds them, scrolls the page until the paragraph is in view and marks it, and whoever opens the report later lands on the words it is about instead of the top of a long page, which is the whole point of giving a paragraph a link of its own, closing on ${tag}.`;
   let tag = null;
   for (let n = 1; !tag && n < 1000; n++) if (fakeScore(LINK_PARA(`LINK-${n}`)).score >= 0.88) tag = `LINK-${n}`;
-  PAGES["/report-link.html"] = html("A flagged paragraph far down", `<div style="height:1600px"></div><p id="far">${LINK_PARA(tag)}</p><div style="height:1600px"></div>`);
-  await optionsPage.evaluate(() => browser.storage.local.set({ reportIncludeUrl: true, reportIncludeText: true }));
+  PAGES["/panel.html"] = html("A flagged paragraph", `<p id="far">${LINK_PARA(tag)}</p><div style="height:1600px"></div>`);
   const p = await browser.newPage();
-  await p.goto(server.url("/report-link.html"), { waitUntil: "load" });
-  await p.evaluate(() => window.scrollTo(0, 1400));
+  await p.goto(server.url("/panel.html"), { waitUntil: "load" });
   const chipped = await waitFor(p, (sel) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#far ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), { timeout: 15000, arg: BADGE_SEL });
-  let report = null;
-  try {
-    await (await p.$("#anagram-fab >>> .count")).click();
-    await sleep(400);
-    await (await p.$("#anagram-fab >>> .pcopy")).click();
-    await sleep(1500);
-    report = await p.evaluate(() => navigator.clipboard.readText().catch(() => null));
-  } catch (e) {
-    report = String(e);
-  }
-  await optionsPage.evaluate(() => browser.storage.local.set({ reportIncludeUrl: false, reportIncludeText: false }));
+  const panel = () => p.evaluate(() => {
+    const sr = document.getElementById("anagram-fab")?.shadowRoot;
+    const el = sr?.querySelector(".panel");
+    return { open: !!el?.classList.contains("open"), title: sr?.querySelector(".phead h2")?.textContent ?? "", buttons: [...(el?.querySelectorAll("button") ?? [])].map((b) => b.className), text: el?.textContent ?? "" };
+  });
+  await (await p.$("#anagram-fab >>> .count")).click();
+  await sleep(400);
+  const opened = await panel();
+  await p.mouse.click(20, 400);
+  await sleep(500);
+  const afterClick = await panel();
+  await (await p.$("#anagram-fab >>> .pclose")).click();
+  await sleep(400);
+  const closed = await panel();
   await p.close();
-  const link = /^ {3}Open at this paragraph: (\S+)$/m.exec(report ?? "")?.[1] ?? null;
-  let landed = null;
-  if (link) {
-    const q = await browser.newPage();
-    await q.goto(link, { waitUntil: "load" });
-    await sleep(1500);
-    landed = await q.evaluate(() => {
-      const r = document.getElementById("far").getBoundingClientRect();
-      return { y: Math.round(scrollY), onScreen: r.top >= 0 && r.bottom <= innerHeight };
-    });
-    await q.close();
-  }
   check(
-    "copied report: a flagged paragraph's link reopens the page scrolled to it in Firefox",
-    chipped && !!link && link.startsWith(`${server.url("/report-link.html")}#:~:text=`) && !!landed && landed.onScreen && landed.y > 1000,
-    JSON.stringify({ tag, chipped, link, landed }),
+    "the panel in Firefox: flagged out of read in the title, a Close button and no Copy report or Turn off, open through a page click, closed by Close",
+    chipped && opened.open && opened.title === "Flagged paragraphs (1/1)" && opened.buttons.includes("pclose") && !opened.buttons.includes("pcopy") && !opened.buttons.includes("psiteoff") &&
+      !/Copy report|Turn off/.test(opened.text) && afterClick.open && !closed.open,
+    JSON.stringify({ chipped, opened, afterClick: afterClick.open, closed: closed.open }),
   );
 }
 

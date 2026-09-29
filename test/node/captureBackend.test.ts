@@ -40,7 +40,6 @@ vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {
     debug: setting(false), showHighlights: setting(false), displayMode: setting("all"), mergeShorts: setting(true),
-    reportIncludeText: setting(false), reportIncludeUrl: setting(false),
   }};
 });
 

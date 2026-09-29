@@ -449,45 +449,17 @@ test.describe("a locked PDF", () => {
   });
 });
 
-test.describe("the reader's site switch", () => {
-  // The panel's switch turns off the site the PDF came from. The reader's own host is the
-  // extension's id, which is no site: no rule may name it, and a local file has no switch.
-  const panelSwitch = (p) =>
+test.describe("the reader's site rule", () => {
+  // A site turned off (from the toolbar popup) is not analyzed in the reader either. The
+  // panel carries no switch of its own, for a web PDF or for a file from this computer.
+  const panelOpened = (p) =>
     p
       .evaluate(() => {
         const sr = document.getElementById("anagram-fab")?.shadowRoot;
         sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        return { open: !!sr?.querySelector(".phead"), label: sr?.querySelector(".psiteoff")?.textContent ?? null };
+        return { open: !!sr?.querySelector(".phead"), siteSwitch: !!sr?.querySelector(".psiteoff") };
       })
-      .catch(() => ({ open: false, label: null }));
-
-  test("reader: Turn off names the PDF's own site, writes the rule there, and stops the reader", async ({ context, extension, files }) => {
-    const page = await openPdfInReader(context, files.url("/site-off.pdf"));
-    // Counted once the structure worker's answer has re-laid the chips, not in the moment
-    // between its rescan taking them down and the cache putting them back.
-    await readerRead(page).catch(() => {});
-    const before = await pdfChips(page);
-    const reader = await readerState(page);
-    const offered = await panelSwitch(page);
-    await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".psiteoff")?.click()).catch(() => {});
-    // A stopped reader takes its ball down with its chips (lib/render/fab.ts unmount).
-    await page.waitForFunction(() => !document.getElementById("anagram-fab"), null, { timeout: 10000 }).catch(() => {});
-    const after = await pdfChipCount(page);
-    // The rule as soon as the panel's write lands (it is not awaited before the reader stops).
-    const written = await extension.sw.evaluate(() => new Promise((resolve) => {
-      const read = () => chrome.storage.local.get("siteOverrides", (v) => {
-        if (Object.keys(v.siteOverrides ?? {}).length) { chrome.storage.onChanged.removeListener(read); clearTimeout(timer); resolve(v.siteOverrides); }
-      });
-      const timer = setTimeout(() => { chrome.storage.onChanged.removeListener(read); chrome.storage.local.get("siteOverrides", (v) => resolve(v.siteOverrides ?? {})); }, 10000);
-      chrome.storage.onChanged.addListener(read);
-      read();
-    }));
-    const note = JSON.stringify({ before, offered, after, written, reader });
-    expect(before, note).toBeGreaterThan(0);
-    expect(offered.label, note).toBe("Turn off on localhost");
-    expect(after, note).toBe(0);
-    expect(written, note).toEqual({ localhost: "off" });
-  });
+      .catch(() => ({ open: false, siteSwitch: null }));
 
   test("reader: the next PDF from a site turned off opens without being analyzed", async ({ context, extension, files, storage }) => {
     await storage.set({ siteOverrides: { localhost: "off" } });
@@ -503,7 +475,7 @@ test.describe("the reader's site switch", () => {
     expect(await pdfChipCount(next)).toBe(0);
   });
 
-  test("reader: a file from this computer has no site, so its panel offers no switch", async ({ context, extension }) => {
+  test("reader: the panel offers no site switch", async ({ context, extension }) => {
     const local = await context.newPage();
     await local.goto(READER(extension), { waitUntil: "load" });
     await pickerShown(local);
@@ -511,7 +483,6 @@ test.describe("the reader's site switch", () => {
     await readerRead(local).catch(() => {});
     await pdfChips(local);
     const reader = await readerState(local);
-    const localSwitch = await panelSwitch(local);
-    expect(localSwitch, JSON.stringify(reader)).toEqual({ open: true, label: null });
+    expect(await panelOpened(local), JSON.stringify(reader)).toEqual({ open: true, siteSwitch: false });
   });
 });

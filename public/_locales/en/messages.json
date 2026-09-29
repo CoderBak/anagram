@@ -284,28 +284,28 @@
     "description": "Triage panel heading with nothing flagged."
   },
   "panelTitleCount": {
-    "message": "Flagged paragraphs ($1)",
-    "description": "Triage panel heading. $1 = flagged count."
+    "message": "Flagged paragraphs ($1/$2)",
+    "description": "Triage panel heading. $1 = flagged count, $2 = paragraphs read (given a verdict)."
+  },
+  "panelClose": {
+    "message": "Close",
+    "description": "The panel's close button (a multiplication sign), tooltip and accessible name."
   },
   "panelCopyReport": {
     "message": "Copy report",
     "description": "Panel action: copy the page's verdicts as text."
   },
-  "panelAnnounceCopied": {
-    "message": "Report copied to the clipboard",
-    "description": "Spoken after Copy report."
-  },
   "panelEmpty": {
     "message": "Nothing flagged on this page.",
     "description": "Panel empty state."
   },
-  "panelCovRead": {
-    "message": "$1 read",
-    "description": "Coverage line in the triage panel: units the model gave a verdict for. One word after the number — the line is five of these joined by middots."
-  },
   "panelCovShort": {
-    "message": "$1 short",
-    "description": "Coverage line: prose the walk found and left unread, under the 75-word evidence floor with no neighbour of its own voice to join."
+    "message": "$1 too short to score",
+    "description": "Coverage line: prose the walk found and did NOT score, under the minimum length (Settings) with no neighbour of its own voice to join."
+  },
+  "panelCovLessReliable": {
+    "message": "$1 less reliable (under $2 words)",
+    "description": "Coverage line: scored paragraphs under the model's 75-word training minimum, whose cards say \"Short text: less reliable\". Shown only when there are any. $2 = 75."
   },
   "panelCovNotEnglish": {
     "message": "$1 not English",
@@ -322,14 +322,6 @@
   "panelItemAria": {
     "message": "$1, $2: $3",
     "description": "Accessible name of a panel row: verdict, the score with its leading zero (a screen reader reads a bare \".93\" badly), snippet."
-  },
-  "panelTurnOffOn": {
-    "message": "Turn off on $1",
-    "description": "Panel footer kill switch. $1 = hostname."
-  },
-  "panelTurnOffTitle": {
-    "message": "Adds a per-site rule — re-enable any time from the toolbar popup",
-    "description": "Tooltip on the panel's kill switch."
   },
   "actionAnalyzeDocument": {
     "message": "Analyze document",
@@ -383,128 +375,24 @@
     "message": "Static snapshot of the document — Refresh reads it again.",
     "description": "Line above the paper in the Docs reading overlay."
   },
-  "reportTitle": {
-    "message": "Anagram report — $1",
-    "description": "Report heading. $1 = page title or hostname."
-  },
-  "reportPage": {
-    "message": "Page: $1",
-    "description": "Report line. $1 = URL."
-  },
-  "reportGenerated": {
-    "message": "Generated: $1",
-    "description": "Report line. $1 = local date and time."
-  },
-  "reportAnalyzed_one": {
-    "message": "Analyzed: $1 unit",
-    "description": "Report summary. $1 = 1."
-  },
-  "reportAnalyzed_other": {
-    "message": "Analyzed: $1 units",
-    "description": "Report summary. $1 = number of units with a real verdict."
-  },
-  "reportFlagged": {
-    "message": "Flagged: $1",
-    "description": "Report summary. $1 = flagged count."
-  },
-  "reportUnavailable": {
-    "message": "Unavailable: $1",
-    "description": "Report summary. $1 = units the daemon never answered for."
-  },
-  "reportSkipped": {
-    "message": "Skipped (unsupported language): $1",
-    "description": "Report summary. $1 = units the language gate refused."
-  },
   "reportEstimate": {
     "message": "The score is (p1 + 2p2 + 3p3) / 3 for the four EditLens classes. It summarizes the class distribution; it is not the fraction of AI-written words, a measured edit distance, or proof of authorship.",
     "description": "Report preamble: what the percentages mean."
-  },
-  "reportNothingFlagged": {
-    "message": "No paragraphs were flagged as AI-generated.",
-    "description": "Report body when nothing was flagged."
-  },
-  "reportFlaggedHeading": {
-    "message": "Flagged paragraphs ($1)",
-    "description": "Report section heading. $1 = flagged count."
-  },
-  "reportWords": {
-    "message": "$1 words",
-    "description": "Report entry detail. $1 = word count."
-  },
-  "reportCloseCall": {
-    "message": "close call",
-    "description": "Copied report, first detail of a flagged paragraph whose verdict is a close call (next to the line between two verdicts, or more likely wrong than right)."
-  },
-  "reportWindows": {
-    "message": "; read in $1 passes: $2",
-    "description": "Report entry detail for a long paragraph. $1 = pass count, $2 = each pass's percentage."
   },
   "reportUnread": {
     "message": "; the end of the paragraph was not read",
     "description": "Report entry detail appended when the text outran the pass cap."
   },
-  "reportLink": {
-    "message": "Open at this paragraph: $1",
-    "description": "Report entry line under a flagged paragraph. $1 is a link that opens the page scrolled to that paragraph, with it highlighted."
-  },
-  "reportModel": {
-    "message": "Scores from $1 ($2) via the local engine — EditLens estimates of AI-editing extent.",
-    "description": "Report footer. $1 = model id, $2 = model version. Both are identifiers, never translated."
-  },
-  "reportNoModel": {
-    "message": "The local engine did not answer while this page was analyzed.",
-    "description": "Report footer when nothing scored."
-  },
   "reportPrivateTitle": {
     "message": "Anagram analysis report",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportShort": {
-    "message": "Too short: $1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportPending": {
-    "message": "Not yet analyzed: $1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportStateShort": {
-    "message": "Too little text to judge: no passage reached the $1 words the model needs for a verdict.",
-    "description": "Copied report, the line under the counts when nothing on the page was long enough to be scored. $1 = the word floor (75)."
-  },
-  "reportStateNotEnglish": {
-    "message": "No verdict: the passages long enough to judge are not in English, the only language the model reads.",
-    "description": "Copied report, the line under the counts when every passage long enough to score was in another language."
-  },
-  "reportStateUnavailable": {
-    "message": "No verdict: the local engine did not answer.",
-    "description": "Copied report, the line under the counts when the local engine gave no verdict at all."
-  },
-  "reportStatePending": {
-    "message": "No verdict yet: the page was still being analyzed when this report was copied.",
-    "description": "Copied report, the line under the counts when no verdict had arrived yet."
-  },
-  "reportStateUncertain_one": {
-    "message": "Mixed or uncertain: $1 of $2 verdicts is a close call, next to the line between two verdicts or more likely wrong than right. Read it as an estimate, not a label.",
-    "description": "Copied report, the line under the counts when half or more of the verdicts are close calls. $1 = close calls, $2 = verdicts."
-  },
-  "reportStateUncertain_other": {
-    "message": "Mixed or uncertain: $1 of $2 verdicts are close calls, next to the line between two verdicts or more likely wrong than right. Read them as estimates, not labels.",
-    "description": "Copied report, the line under the counts when half or more of the verdicts are close calls. $1 = close calls, $2 = verdicts."
   },
   "reportCaveat": {
     "message": "Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.",
     "description": "The fixed caveat every copied report carries."
   },
-  "reportRuntime": {
-    "message": "Calibration / preprocessing identity: $1",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
   "reportCopyFailed": {
     "message": "Could not copy the report.",
-    "description": "Report privacy preference, export metadata, or cache status shown in settings."
-  },
-  "reportDevice": {
-    "message": "Device: $1, precision: $2",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "readerOpenOriginal": {

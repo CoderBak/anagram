@@ -13,7 +13,7 @@ import { cancelDocumentSession, documentSessionId, sendDocumentMessage } from ".
 // re-collected or gone. SPA navigations (pushState included — the Navigation API's
 // currententrychange, plus popstate/hashchange) refresh incrementally without
 // flickering still-valid badges. The popup Rescan button remains the full teardown+rescan.
-import { browser, type ContentScriptContext } from "#imports";
+import type { ContentScriptContext } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
 import type { BackendStatus, CommentAccessReply, EngineSetup } from "../messaging/protocol";
 import { commentOriginsIn } from "../access/commentFrames";
@@ -22,9 +22,7 @@ import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../c
 import { CONTRACT_VERSION } from "../contract";
 import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
 import { restoreSplits } from "../dom/splits";
-import { loadFragments } from "../lazy";
-import { partTextOf, minWordsOf, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, type MinWords } from "../dom/text";
-import { hasLookalikes } from "../dom/lookalikes";
+import { partTextOf, minWordsOf, isShortText, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, type MinWords } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
@@ -41,11 +39,8 @@ import {
   refreshHighlightTheme,
 } from "../render/highlight";
 import { createFab, type Fab, type PanelCounts } from "../render/fab";
-import { t, tn } from "../i18n";
-import { band, bandLabel, BUCKET_BANDS, isFlagged } from "../render/band";
-import { formatScore } from "../render/score";
-import { shortTextNote, windowReadout } from "../render/coverage";
-import { isCloseCall, mayLinkParagraphs, reportState } from "../render/report";
+import { t } from "../i18n";
+import { band, isFlagged } from "../render/band";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -163,20 +158,8 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
 export interface OrchestratorOptions {
   /** Mount the floating toggle. False in subframes — one FAB per TAB, in the top frame. */
   mountFab?: boolean;
-  /**
-   * What the copied report names as the page. The PDF reader is an extension page, so
-   * its own address ("chrome-extension://…/reader.html?src=…") says nothing to whoever
-   * reads the report — it passes the PDF's own URL instead.
-   */
-  reportUrl?: string;
-  /** Reader-specific coverage shown beside panel counts and in copied reports. */
+  /** Reader-specific coverage shown beside the panel counts. */
   reportScopeNote?: () => string;
-  /**
-   * The panel footer's "Turn off on <host>" was used. The rule is written by the footer
-   * itself; this tells the OWNER of the page's on/off state to stop, which the settings
-   * watch cannot always do — writing "off" where "off" is already stored changes nothing.
-   */
-  onSiteOff?: () => void;
   /**
    * Where the units come from, when they do not come from a DOM walk. The PDF reader
    * supplies this: a PDF's paragraphs are the document's own reconstruction, decided by
@@ -247,7 +230,6 @@ export function createOrchestrator(
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
   let l1Dim: string | null = null;
-  let l1Model: ModelInfo | null = null;
   let lastHref = location.href;
   /** A route change's refresh, waiting out the burst it arrived in. */
   let urlRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -305,7 +287,6 @@ export function createOrchestrator(
         })),
       counts: panelCounts,
       onJump: jumpTo,
-      buildReport,
       scopeNote: opts.reportScopeNote,
       commentOrigins: () => commentOffer,
       // Nothing is asked for here: the worker opens the settings page at the offer, where
@@ -314,29 +295,32 @@ export function createOrchestrator(
         void sendDocumentMessage({ action: ACTIONS.OPEN_COMMENT_ACCESS, origin }).catch(() => undefined),
       onOpen: () => refreshCommentOffer(),
     },
-    // The panel's "Turn off on <host>" writes the rule itself; the content script is what
-    // knows whether this page is running because of the settings or because it was asked
-    // for once, so it gets to end the run.
-    onSiteOff: opts.onSiteOff,
   });
 
   /**
    * The coverage line's numbers. "Read" is verdicts the model really gave, so an outage
    * and a page of Chinese are both counted where they belong rather than passing for
-   * analysis; "short" is what the walk found and left alone (see shortTexts).
+   * analysis; "short" is what the walk found and did not score (see shortTexts); and
+   * "lessReliable" counts the verdicts on texts under the model's 75-word training minimum,
+   * the ones whose card says "Short text: less reliable" (shortTextNote, lib/render/coverage.ts).
    */
   function panelCounts(): PanelCounts {
     let read = 0;
     let notEnglish = 0;
     let unavailable = 0;
-    for (const v of verdictsById.values()) {
+    let lessReliable = 0;
+    for (const [id, v] of verdictsById) {
       if (v.result.unsupported) notEnglish++;
       else if (v.result.degraded) unavailable++;
-      else read++;
+      else {
+        read++;
+        const unit = unitsById.get(id);
+        if (unit && isShortText(unit.wordCount)) lessReliable++;
+      }
     }
     let pending = 0;
     for (const id of unitsById.keys()) if (!verdictsById.has(id)) pending++;
-    return { read, short: shortTexts.size, notEnglish, pending, unavailable };
+    return { read, short: shortTexts.size, notEnglish, pending, unavailable, lessReliable };
   }
 
   /**
@@ -411,122 +395,6 @@ export function createOrchestrator(
 
   function openPanel(): void {
     if (started && mountFab) fab.openPanel(true);
-  }
-
-  /** Markdown summary of this page's verdicts — the triage panel's Copy report. */
-  async function buildReport(): Promise<string> {
-    const [includeText, includeUrl] = await Promise.all([settings.reportIncludeText.getValue(), settings.reportIncludeUrl.getValue()]);
-    const status = await sendDocumentMessage({action: ACTIONS.GET_BACKEND_STATUS}).catch(() => undefined) as BackendStatus | undefined;
-    const flagged = flaggedInOrder().map(({ unit, v }) => ({ unit, v, r: v.result }));
-    // A link that reopens the page at each flagged paragraph. Only the walk's own units are
-    // the page's text as the browser will search it: a reader or a surface draws its units
-    // over something else, and names a document rather than this address.
-    const links =
-      !opts.collect && !opts.reportUrl && mayLinkParagraphs({ includeUrl, includeText, pageUrl: location.href })
-        ? await loadFragments()
-            .then((m) => m.paragraphLinks(location.href, flagged.map(({ unit }) => unitRange(unit))))
-            .catch(() => [])
-        : [];
-
-    const lines: string[] = [];
-    lines.push(`# ${includeUrl ? t("reportTitle", document.title || location.hostname) : t("reportPrivateTitle")}`);
-    lines.push("");
-    if (includeUrl) lines.push(`- ${t("reportPage", opts.reportUrl ?? location.href)}`);
-    const scopeNote = opts.reportScopeNote?.();
-    if (scopeNote) lines.push(`- ${scopeNote}`);
-    lines.push(`- ${t("reportGenerated", new Date().toLocaleString())}`);
-    lines.push(`- Anagram ${browser.runtime.getManifest().version}, contract ${CONTRACT_VERSION}`);
-    // "Analyzed" is real verdicts only. A paragraph the language gate refused and one
-    // the daemon never answered for were both counted as analyzed before, which made
-    // an outage look like a clean sweep.
-    let skipped = 0;
-    let unavailable = 0;
-    let closeCalls = 0;
-    for (const v of verdictsById.values()) {
-      if (v.result.unsupported) skipped++;
-      else if (v.result.degraded) unavailable++;
-      else if (isCloseCall(v)) closeCalls++;
-    }
-    const analyzed = verdictsById.size - skipped - unavailable;
-    const pending = Math.max(0, unitsById.size - verdictsById.size);
-    lines.push(
-      "- " +
-        [
-          tn("reportAnalyzed", analyzed),
-          t("reportFlagged", flagged.length),
-          ...(unavailable > 0 ? [t("reportUnavailable", unavailable)] : []),
-          ...(skipped > 0 ? [t("reportSkipped", skipped)] : []),
-          t("reportShort", shortTexts.size),
-          t("reportPending", pending),
-        ].join(", "),
-    );
-    lines.push("");
-    // What the counts add up to, where they would mislead on their own: "Flagged: 0" on a
-    // page where nothing was judged, or a list of verdicts half of which are close calls.
-    const state = reportState({ analyzed, unavailable, skipped, pending }, closeCalls, minWords);
-    if (state) lines.push(state, "");
-    // The caveat travels with every report, whoever it is forwarded to.
-    lines.push(t("reportCaveat"));
-    lines.push("");
-    lines.push(t("reportEstimate"));
-    if (flagged.length === 0) {
-      // With no verdict at all, the state line has already said why.
-      if (analyzed > 0) lines.push("", t("reportNothingFlagged"));
-    } else {
-      lines.push("");
-      lines.push(`## ${t("reportFlaggedHeading", flagged.length)}`);
-      lines.push("");
-      flagged.forEach(({ unit, v, r }, i) => {
-        const score = formatScore(r.score);
-        const dist = r.probs
-          .map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`)
-          .join(", ");
-        const snippet = unit.text.replace(/\s+/g, " ").slice(0, 220);
-        const ellipsis = unit.text.length > 220 ? "…" : "";
-        // A long paragraph's score combines several passes; whoever reads the
-        // report without the page in front of them needs the parts it was made from.
-        const read = windowReadout(v);
-        const windows = read
-          ? t("reportWindows", read.count, read.scores.join(", ")) +
-            (v.unreadChars > 0 ? t("reportUnread") : "")
-          : "";
-        const close = isCloseCall(v) ? `${t("reportCloseCall")}; ` : "";
-        lines.push(
-          `${i + 1}. **${bandLabel(band(r))}, ${score}** ` +
-            `(${close}${dist}; ${t("reportWords", unit.wordCount)}${windows})`,
-        );
-        // Before the quotation: a line after it would be read as part of the quotation.
-        const short = shortTextNote(unit.wordCount);
-        if (short) lines.push(`   ${short}`);
-        if (hasLookalikes(unit.text)) lines.push(`   ${t("coverageLookalikes").trim()}`);
-        if (links[i]) lines.push(`   ${t("reportLink", links[i]!)}`);
-        if (includeText) lines.push(`   > ${snippet}${ellipsis}`);
-      });
-    }
-    const m = l1Model;
-    // No model and nothing waiting on one: every passage was too short or not English, and
-    // the engine was never asked, so it did not fail to answer either.
-    const backend = m ? t("reportModel", m.id, m.ver) : unavailable > 0 || pending > 0 ? t("reportNoModel") : null;
-    if (backend) lines.push("", "---", backend);
-    if (m) lines.push(t("reportRuntime", m.calibration));
-    if (m && status?.model && modelDim(status.model) === modelDim(m)) lines.push(t("reportDevice", status.server.device ?? "?", status.server.dtype ?? "?"));
-    return lines.join("\n");
-  }
-
-  /** The stretch of the page a unit reads, from its first text node to the end of its last. */
-  function unitRange(unit: Unit): Range | null {
-    const first = unit.parts[0]?.nodes[0];
-    const lastPart = unit.parts[unit.parts.length - 1];
-    const last = lastPart?.nodes[lastPart.nodes.length - 1];
-    if (!first?.isConnected || !last?.isConnected) return null;
-    try {
-      const range = document.createRange();
-      range.setStart(first, 0);
-      range.setEnd(last, last.data.length);
-      return range;
-    } catch {
-      return null;
-    }
   }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */
@@ -943,7 +811,6 @@ export function createOrchestrator(
     if (dim === l1Dim) return;
     const previous = l1Dim;
     l1Dim = dim;
-    l1Model = { ...m };
     if (previous === null) return; // first answer in this frame — nothing to drop
     log.log("backend changed", previous, "→", dim, "— dropping", cache.size(), "L1 entries");
     forgetCached();
