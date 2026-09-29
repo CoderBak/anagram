@@ -25,6 +25,10 @@ def safe_error(exc):
     return re.sub(r"https?://[^\s'\"<>]+", lambda m: m[0].split("?")[0], str(exc))[:1500]
 
 
+class Unreachable(Exception):
+    """The host could not be reached: no byte arrived, over a network error, timeout or 5xx."""
+
+
 def transfer(url, part, size, offset, progress, *, client_factory=None, sleep=time.sleep):
     import httpx
     from huggingface_hub import set_client_factory
@@ -60,6 +64,7 @@ def transfer(url, part, size, offset, progress, *, client_factory=None, sleep=ti
 
     # HF handles timeouts, connection errors, HTTP retries and ignored ranges.
     # Our file handle preserves the cross-process resume and no-follow policy.
+    start = offset
     for attempt in range(3):
         try:
             with open_partial(part, offset) as stream:
@@ -75,6 +80,10 @@ def transfer(url, part, size, offset, progress, *, client_factory=None, sleep=ti
                 isinstance(exc, HfHubHTTPError) and exc.response.status_code in (408, 429, 500, 502, 503, 504))
             short = isinstance(exc, OSError) and exc.errno is None and str(exc).startswith("Consistency check failed")
             if attempt == 2 or not (transient or short):
+                unreachable = isinstance(exc, httpx.TransportError) or (
+                    isinstance(exc, HfHubHTTPError) and exc.response.status_code >= 500)
+                if unreachable and (part.stat().st_size if part.exists() else 0) == start:
+                    raise Unreachable(safe_error(exc)) from exc
                 raise
             offset = part.stat().st_size
             logging.warning("Retry %s/2 in %ss; %s bytes retained: %s", attempt + 1, 2 ** attempt,
@@ -116,7 +125,7 @@ def main():
     try:
         transfer(request["url"], Path(request["part"]), request["size"], request["offset"], progress)
     except Exception as exc:
-        print(json.dumps({"error": safe_error(exc)}), flush=True)
+        print(json.dumps({"error": safe_error(exc), "unreachable": isinstance(exc, Unreachable)}), flush=True)
         return 1
     return 0
 

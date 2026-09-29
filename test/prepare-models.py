@@ -14,6 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 from native_component import HOST_NAME, HomeLock, STATE_DEFAULT
 from prepare_models import prepare
+from download_modelkit import HostUnreachable
 
 
 class PrepareTests(unittest.TestCase):
@@ -32,7 +33,7 @@ class PrepareTests(unittest.TestCase):
         self.plan = {"selected_paths": ["weights"], "total_bytes": 4, "devices": ["CPU"], "profile": "recommended"}
         self.requests = 0
 
-    def run_prepare(self, transfer=None, installer=False):
+    def run_prepare(self, transfer=None, installer=False, stdout=None):
         def download(url, part, size, offset, **kwargs):
             self.requests += 1
             part.write_bytes(b"data")
@@ -44,7 +45,7 @@ class PrepareTests(unittest.TestCase):
             stack.enter_context(patch("download_modelkit.transfer_asset", transfer or download))
             stack.enter_context(patch.dict(sys.modules, {"model_plan": SimpleNamespace(
                 discover_hardware=lambda: {}, build_plan=lambda *a: self.plan)}))
-            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stdout(stdout or io.StringIO()))
             stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
             prepare(self.home, installer=installer)
 
@@ -57,6 +58,31 @@ class PrepareTests(unittest.TestCase):
         self.assertFalse((self.home / "runtime.json").exists())
         self.run_prepare()
         self.assertEqual(self.requests, 2)
+
+    def test_unreachable_huggingface_installs_from_the_mirror_and_says_so_once(self):
+        hosts = []
+        def refuse_all_but_the_mirror(url, part, size, offset, **kwargs):
+            hosts.append(url.split("/")[2])
+            if hosts[-1] != "hf-mirror.com":
+                raise HostUnreachable("connection refused")
+            part.write_bytes(b"data")
+            kwargs["progress"](4)
+        out = io.StringIO()
+        self.run_prepare(refuse_all_but_the_mirror, stdout=out)
+        # The lid file goes straight to the mirror that already worked.
+        self.assertEqual(hosts, ["huggingface.co", "hf-mirror.com", "hf-mirror.com"])
+        self.assertEqual(out.getvalue().count("downloading from hf-mirror.com"), 1)
+        self.assertFalse(json.loads((self.home / "component-state.json").read_text())["download_failed"])
+        self.assertEqual((self.home / "models/editlens_roberta-large/weights").read_bytes(), b"data")
+
+    def test_a_missing_file_does_not_switch_to_the_mirror(self):
+        hosts = []
+        def missing(url, part, *args, **kwargs):
+            hosts.append(url.split("/")[2])
+            raise RuntimeError("404 Client Error")
+        with self.assertRaises(SystemExit):
+            self.run_prepare(missing)
+        self.assertEqual(hosts, ["huggingface.co"])
 
     def test_failure_preserves_partial_and_download_only_retry_recovers(self):
         def fail(url, part, *args, **kwargs):

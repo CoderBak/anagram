@@ -70,6 +70,36 @@ class TransferTests(unittest.TestCase):
             self.run_transfer(lambda _: httpx.Response(404))
         self.assertEqual(len(self.requests), 1)
 
+    def test_a_refused_connection_is_unreachable_only_before_any_byte(self):
+        def refuse(_):
+            raise httpx.ConnectError("refused")
+        with patch("time.sleep"), self.assertRaises(hub_transfer.Unreachable):  # the Hub's own retries come first
+            self.run_transfer(refuse)
+        self.assertGreaterEqual(len(self.requests), 3)
+
+    def test_a_real_refused_socket_is_unreachable(self):
+        # Nothing listens on port 1 of the loopback: the fake endpoint that refuses connections.
+        with patch("time.sleep"), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(hub_transfer.Unreachable):
+            hub_transfer.transfer("https://127.0.0.1:1/model", self.part, len(self.data), 0, lambda n: None, sleep=lambda _: None)
+        self.assertFalse(self.part.exists() and self.part.stat().st_size)
+
+    def test_persistent_5xx_is_unreachable_but_404_and_a_started_body_are_not(self):
+        with patch("time.sleep"), self.assertRaises(hub_transfer.Unreachable):
+            self.run_transfer(lambda _: httpx.Response(503))
+        self.requests.clear()
+        with self.assertRaises(Exception) as caught:
+            self.run_transfer(lambda _: httpx.Response(404))
+        self.assertNotIsInstance(caught.exception, hub_transfer.Unreachable)
+
+    def test_a_connection_that_dies_after_bytes_arrived_is_not_unreachable(self):
+        class Dies(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b"01"
+                raise httpx.ReadError("reset")
+        with patch("huggingface_hub.constants.DOWNLOAD_CHUNK_SIZE", 1), patch("time.sleep"), \
+                self.assertRaises(httpx.ReadError):
+            self.run_transfer(lambda _: httpx.Response(200, stream=Dies()))
+
     def test_redirect_cannot_downgrade_https(self):
         with self.assertRaisesRegex(ValueError, "non-HTTPS"):
             self.run_transfer(lambda _: httpx.Response(302, headers={"Location": "http://fixture.test/model"}))
