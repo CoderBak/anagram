@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1254 1254" width="1254" height="1254"><!-- Light-mode companion to icon.svg. Geometry is identical; only colour, glow and edges are retuned for white. -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1254 1254" width="1254" height="1254">
+  <!-- Light icon, staggered layout: three text lines top-left, the orb network lower-right. -->
   <defs>
     <!-- Tile: white, falling off to a cool light grey -->
     <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="93" x2="0" y2="1136">
@@ -14,27 +15,28 @@
     <path id="tileShape" d="M 368.5 93 H 884.5 C 1050.1 93, 1149.5 192.4, 1149.5 358 V 871 C 1149.5 1036.6, 1050.1 1136, 884.5 1136 H 368.5 C 202.9 1136, 103.5 1036.6, 103.5 871 V 358 C 103.5 192.4, 202.9 93, 368.5 93 Z"/>
     <clipPath id="tileClip"><use xlink:href="#tileShape"/></clipPath>
 
-    <!-- Geometry (shared with the dark icon) -->
-    <path id="line3" d="M 280.5 634.4 H 589.4 C 604.4 634.4, 621.2 653, 652 653 C 670 653, 688.4 639.1, 696 627.4 L 753 664.5 L 696 701.6 C 688.4 689.9, 670 681.3, 652 681.3 C 625.8 681.3, 600.7 703, 587.4 703 H 280.5 A 34.3 34.3 0 0 1 280.5 634.4 Z"/>
+    <!-- Geometry. The network (orb, branches, dots) is drawn in its original coordinates and placed
+         as one piece by the transform further down. The third line is one path: bar, shoulder,
+         an S-curve that echoes the branches, and a flare into the orb. -->
+    <path id="line3" d="M 280.5 521.7 H 392.0 C 407.0 521.7, 423.8 541.0, 454.6 541.0 C 500.9 541.0, 522.6 577.0, 539.2 610.4 C 554.0 640.3, 566.3 670.7, 588.2 677.8 C 607.9 684.2, 632.2 677.8, 644.8 667.2 L 694.0 728.0 L 618.5 748.3 C 614.5 732.3, 598.6 712.8, 578.9 706.4 C 543.6 694.9, 528.2 655.8, 512.4 623.8 C 496.3 591.4, 482.1 571.0, 454.6 571.0 C 423.8 571.0, 407.0 590.3, 392.0 590.3 H 280.5 A 34.3 34.3 0 0 1 280.5 521.7 Z"/>
     <path id="brG" d="M 795 641 C 907.3 617.8, 874.3 523.1, 972 516"/>
     <path id="brY" d="M 790 670 C 949.2 677.3, 881.4 659.3, 985 655"/>
     <path id="brR" d="M 792 697 C 886.2 718.7, 855.2 809.7, 972 805"/>
-    <clipPath id="orbClip"><circle cx="753" cy="664.5" r="68"/></clipPath>
+    <clipPath id="orbClip" clipPathUnits="userSpaceOnUse"><circle cx="753" cy="664.5" r="68"/></clipPath>
     <clipPath id="line3Clip"><use xlink:href="#line3"/></clipPath>
 
-    <!-- Stem: slate text line warming into blue glass as it reaches the orb -->
-    <linearGradient id="stemFill" gradientUnits="userSpaceOnUse" x1="585" y1="0" x2="700" y2="0">
+    <!-- Stem: slate text line warming into blue glass as it curves down into the orb -->
+    <linearGradient id="stemFill" gradientUnits="userSpaceOnUse" x1="392.0" y1="556.0" x2="619.6" y2="703.8">
       <stop offset="0" stop-color="#4a4f5c"/>
-      <stop offset="0.22" stop-color="#44536b"/>
-      <stop offset="0.4" stop-color="#39628f"/>
-      <stop offset="0.55" stop-color="#2f6db8"/>
-      <stop offset="0.7" stop-color="#2878dc"/>
-      <stop offset="0.85" stop-color="#3190f4"/>
+      <stop offset="0.28" stop-color="#44536b"/>
+      <stop offset="0.5" stop-color="#3a6290"/>
+      <stop offset="0.68" stop-color="#2f6db8"/>
+      <stop offset="0.84" stop-color="#2a80e2"/>
       <stop offset="1" stop-color="#3aa2fa"/>
     </linearGradient>
-    <linearGradient id="stemRimFade" gradientUnits="userSpaceOnUse" x1="630" y1="0" x2="670" y2="0">
-      <stop offset="0" stop-color="#000"/>
-      <stop offset="1" stop-color="#fff"/>
+    <linearGradient id="stemRimFade" gradientUnits="userSpaceOnUse" x1="392.0" y1="556.0" x2="619.6" y2="703.8">
+      <stop offset="0.55" stop-color="#000"/>
+      <stop offset="0.85" stop-color="#fff"/>
     </linearGradient>
     <mask id="stemRimMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254">
       <rect width="1254" height="1254" fill="url(#stemRimFade)"/>
@@ -124,8 +126,8 @@
       <stop offset="0.5" stop-color="#2f7dff"/>
       <stop offset="1" stop-color="#6a4df0"/>
     </linearGradient>
-    <linearGradient id="stemGlowFill" gradientUnits="userSpaceOnUse" x1="610" y1="0" x2="690" y2="0">
-      <stop offset="0" stop-color="#2f9cf5" stop-opacity="0"/>
+    <linearGradient id="stemGlowFill" gradientUnits="userSpaceOnUse" x1="392.0" y1="556.0" x2="619.6" y2="703.8">
+      <stop offset="0.35" stop-color="#2f9cf5" stop-opacity="0"/>
       <stop offset="1" stop-color="#2f9cf5"/>
     </linearGradient>
 
@@ -157,72 +159,79 @@
   </defs>
 
   <!-- Backdrop (delete for a transparent background) -->
+  
 
   <!-- Tile -->
   <use xlink:href="#tileShape" filter="url(#tileShadow)"/>
   <use xlink:href="#tileShape" fill="url(#tile)"/>
   <use xlink:href="#tileShape" fill="none" stroke="url(#tileEdge)" stroke-width="3" clip-path="url(#tileClip)"/>
 
-  <!-- Text lines: soft cool slate rather than black, echoing the off-white (not pure white) of the dark icon -->
+  <!-- Text lines (top-left block): soft cool slate. The third line is the stem path below. -->
   <g fill="#4a4f5c">
-    <rect x="246.5" y="379" width="485.8" height="68.7" rx="34.35"/>
-    <rect x="246.2" y="506.2" width="433.4" height="66.3" rx="33.15"/>
-    <rect x="246.3" y="758.9" width="284.5" height="66.1" rx="33.05"/>
+    <rect x="246.5" y="267.0" width="485.8" height="68.6" rx="34.30"/>
+    <rect x="246.2" y="394.5" width="400.0" height="66.4" rx="33.20"/>
   </g>
 
-  <!-- Pastel haze -->
+  <!-- Stem haze -->
   <g filter="url(#bloom)" opacity="0.34">
     <use xlink:href="#line3" fill="url(#stemGlowFill)" opacity="0.6"/>
-    <g fill="none" stroke-width="29" stroke-linecap="round" opacity="0.55">
-      <use xlink:href="#brG" stroke="url(#gG)"/>
-      <use xlink:href="#brY" stroke="url(#gY)"/>
-      <use xlink:href="#brR" stroke="url(#gR)"/>
-    </g>
-    <circle cx="988" cy="509" r="40.5" fill="#12d874"/>
-    <circle cx="998.5" cy="654.5" r="42.5" fill="#ffa200"/>
-    <circle cx="986" cy="804" r="43" fill="#ff2446"/>
-    <circle cx="753" cy="664.5" r="68" fill="url(#orbGlowFill)"/>
   </g>
 
-  <!-- Third line flowing into the stem -->
+  <!-- Third line: shoulders into a thin stem that curves down into the orb -->
   <use xlink:href="#line3" fill="url(#stemFill)"/>
   <g clip-path="url(#line3Clip)" mask="url(#stemRimMask)">
     <use xlink:href="#line3" fill="none" stroke="#bfe6ff" stroke-opacity="0.38" stroke-width="6"/>
   </g>
 
-  <!-- Branches -->
-  <g fill="none" stroke-width="29" stroke-linecap="round">
-    <use xlink:href="#brG" stroke="url(#gG)"/>
-    <use xlink:href="#brY" stroke="url(#gY)"/>
-    <use xlink:href="#brR" stroke="url(#gR)"/>
-  </g>
-
-  <!-- Dots -->
-  <circle cx="988" cy="509" r="40.5" fill="url(#dG)"/>
-  <circle cx="998.5" cy="654.5" r="42.5" fill="url(#dY)"/>
-  <circle cx="986" cy="804" r="43" fill="url(#dR)"/>
-
-  <!-- Cast shadow, offset down so it reads as depth rather than an outline -->
-  <ellipse cx="755" cy="700" rx="56" ry="40" fill="#2a3f9a" opacity="0.22" filter="url(#orbShadow)"/>
-
-  <!-- Frosted glass orb: the branch colours pool inside the glass near their roots -->
-  <g clip-path="url(#orbClip)">
-    <circle cx="753" cy="664.5" r="68" fill="url(#orbBase)"/>
-    <g filter="url(#soft14)">
-      <ellipse cx="752" cy="714" rx="62" ry="28" fill="#6f55f5"/>
-      <ellipse cx="710" cy="672" rx="18" ry="46" fill="#5cbcff" opacity="0.5"/>
+  <!-- Network (bottom-right block): orb centre at (694, 728), scaled 1.15x.
+       The stem path is shaped to land on the orb at exactly this spot, so if you move one, move the other. -->
+  <g transform="translate(694.0 728.0) scale(1.15) translate(-753 -664.5)">
+    <!-- Pastel haze -->
+    <g filter="url(#bloom)" opacity="0.34">
+      <g fill="none" stroke-width="29" stroke-linecap="round" opacity="0.55">
+        <use xlink:href="#brG" stroke="url(#gG)"/>
+        <use xlink:href="#brY" stroke="url(#gY)"/>
+        <use xlink:href="#brR" stroke="url(#gR)"/>
+      </g>
+      <circle cx="988" cy="509" r="40.5" fill="#12d874"/>
+      <circle cx="998.5" cy="654.5" r="42.5" fill="#ffa200"/>
+      <circle cx="986" cy="804" r="43" fill="#ff2446"/>
+      <circle cx="753" cy="664.5" r="68" fill="url(#orbGlowFill)"/>
     </g>
-    <g filter="url(#soft10)">
-      <ellipse cx="798" cy="632" rx="18" ry="14" fill="#5ee4c6" opacity="0.85"/>
-      <ellipse cx="806" cy="659" rx="18" ry="13" fill="#f0d27a" opacity="0.85"/>
-      <ellipse cx="800" cy="682" rx="19" ry="16" fill="#f58aa8" opacity="0.95"/>
-      <ellipse cx="784" cy="698" rx="20" ry="13" fill="#d64ed2"/>
-      <ellipse cx="810" cy="700" rx="10" ry="10" fill="#f8a88c" opacity="0.6"/>
-      <ellipse cx="753" cy="738" rx="60" ry="16" fill="#efe6ff" opacity="0.45"/>
+    <!-- Branches -->
+    <g fill="none" stroke-width="29" stroke-linecap="round">
+      <use xlink:href="#brG" stroke="url(#gG)"/>
+      <use xlink:href="#brY" stroke="url(#gY)"/>
+      <use xlink:href="#brR" stroke="url(#gR)"/>
     </g>
-    <circle cx="753" cy="664.5" r="68" fill="url(#orbRim)"/>
+
+    <!-- Dots -->
+    <circle cx="988" cy="509" r="40.5" fill="url(#dG)"/>
+    <circle cx="998.5" cy="654.5" r="42.5" fill="url(#dY)"/>
+    <circle cx="986" cy="804" r="43" fill="url(#dR)"/>
+
+    <!-- Cast shadow, offset down so it reads as depth rather than an outline -->
+    <ellipse cx="755" cy="700" rx="56" ry="40" fill="#2a3f9a" opacity="0.22" filter="url(#orbShadow)"/>
+
+    <!-- Frosted glass orb: the branch colours pool inside the glass near their roots -->
+    <g clip-path="url(#orbClip)">
+      <circle cx="753" cy="664.5" r="68" fill="url(#orbBase)"/>
+      <g filter="url(#soft14)">
+        <ellipse cx="752" cy="714" rx="62" ry="28" fill="#6f55f5"/>
+        <ellipse cx="710" cy="672" rx="18" ry="46" fill="#5cbcff" opacity="0.5"/>
+      </g>
+      <g filter="url(#soft10)">
+        <ellipse cx="798" cy="632" rx="18" ry="14" fill="#5ee4c6" opacity="0.85"/>
+        <ellipse cx="806" cy="659" rx="18" ry="13" fill="#f0d27a" opacity="0.85"/>
+        <ellipse cx="800" cy="682" rx="19" ry="16" fill="#f58aa8" opacity="0.95"/>
+        <ellipse cx="784" cy="698" rx="20" ry="13" fill="#d64ed2"/>
+        <ellipse cx="810" cy="700" rx="10" ry="10" fill="#f8a88c" opacity="0.6"/>
+        <ellipse cx="753" cy="738" rx="60" ry="16" fill="#efe6ff" opacity="0.45"/>
+      </g>
+      <circle cx="753" cy="664.5" r="68" fill="url(#orbRim)"/>
+    </g>
+    <!-- Glass edge: a tinted outer line defines the orb against white; a white inner line keeps it glassy -->
+    <circle cx="753" cy="664.5" r="67.6" fill="none" stroke="url(#orbEdge)" stroke-opacity="0.45" stroke-width="1.4"/>
+    <circle cx="753" cy="664.5" r="65.9" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="1.6"/>
   </g>
-  <!-- Glass edge: a tinted outer line defines the orb against white; a white inner line keeps it glassy -->
-  <circle cx="753" cy="664.5" r="67.6" fill="none" stroke="url(#orbEdge)" stroke-opacity="0.45" stroke-width="1.4"/>
-  <circle cx="753" cy="664.5" r="65.9" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="1.6"/>
 </svg>
