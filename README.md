@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
+  <img src="assets/icon-light.svg" alt="" width="64" height="64">
+</picture>
+
 # Anagram
 
 Anagram marks English prose in your browser with a local estimate of how much an AI

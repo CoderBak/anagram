@@ -126,7 +126,8 @@ const CSP = [
 ].join("; ");
 
 // WXT config: manifest keys, permissions, targets.
-// Icons are committed as PNGs under public/icons/ and copied into the build as-is.
+// Icons are committed as PNGs under public/icons/ and copied into the build as-is
+// (scripts/icons.mjs renders them from assets/*.svg).
 export default defineConfig({
   // Build into ./output (not WXT's default ./.output) so it's visible in Finder.
   outDir: TEST_GRANT_ALL ? "output-test" : "output",
@@ -264,6 +265,9 @@ export default defineConfig({
             "vendor/diagnostics.min.mjs",
             "vendor/surfaces.min.mjs",
             "vendor/fragments.min.mjs",
+            // The floating ball's icon on a light and on a dark page (lib/render/logo.ts).
+            "icons/icon-96.png",
+            "icons/icon-light-96.png",
           ],
           matches: ["<all_urls>"],
           use_dynamic_url: true,
@@ -271,12 +275,33 @@ export default defineConfig({
       ],
       icons: {
         16: "icons/icon-16.png",
+        32: "icons/icon-32.png",
         48: "icons/icon-48.png",
+        96: "icons/icon-96.png",
         128: "icons/icon-128.png",
       },
       action: {
         default_popup: "popup/index.html",
         default_title: productName,
+        // The dark tile reads on light and dark toolbars alike.
+        default_icon: {
+          16: "icons/icon-16.png",
+          32: "icons/icon-32.png",
+          48: "icons/icon-48.png",
+          96: "icons/icon-96.png",
+          128: "icons/icon-128.png",
+        },
+        // Firefox only: "light" is the icon for themes with light text (dark toolbars), "dark"
+        // for themes with dark text (light toolbars) - MDN, browser_action theme_icons.
+        ...(browser === "firefox"
+          ? {
+              theme_icons: [16, 32].map((size) => ({
+                light: `icons/icon-light-${size}.png`,
+                dark: `icons/icon-${size}.png`,
+                size,
+              })),
+            }
+          : {}),
       },
     };
   },

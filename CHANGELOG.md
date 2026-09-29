@@ -5,6 +5,12 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Changed
+
+- One new icon everywhere: the dark tile for the extension and its toolbar button (16, 32, 48, 96 and 128 px, rendered by `npm run icons` from `assets/`), the light or dark tile in the setup page, Settings, the popup, the PDF reader's toolbar, the Google Docs bar and the README, and on the floating ball in place of the black "A" (the light tile on light pages, the dark tile on dark ones). Firefox shows the light tile on dark toolbars.
+
 ## [0.8.1] — 2026-09-29
 
 The first official release of the 0.8 line. It follows the 0.8.0 pre-release with a compact

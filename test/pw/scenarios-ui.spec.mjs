@@ -328,6 +328,26 @@ test("the triage panel opens from the counter and lists AI-generated paragraphs 
   expect((await panel()).items, lists).toBeGreaterThan(0);
 });
 
+test("the ball is the icon, not a letter: the light tile on a light page, the dark tile on a dark one, both loaded", async ({ fixtures: page }) => {
+  const ball = () =>
+    page.evaluate(() => {
+      const host = document.getElementById("anagram-fab");
+      const fab = host.shadowRoot.querySelector(".fab");
+      const shown = [...fab.querySelectorAll(".mark img")].filter((i) => getComputedStyle(i).display !== "none");
+      return {
+        text: fab.querySelector(".mark").textContent.trim(),
+        shown: shown.map((i) => i.className),
+        size: shown.map((i) => [i.naturalWidth, Math.round(i.getBoundingClientRect().width)]),
+        srcs: [...fab.querySelectorAll(".mark img")].map((i) => i.src.split("/").slice(-2).join("/")),
+      };
+    });
+  const icon = "the ball shows the icon and no \"A\"";
+  expect.soft(await ball(), icon).toMatchObject({ text: "", shown: ["logo-light"], srcs: ["icons/icon-light-96.png", "icons/icon-96.png"] });
+  expect((await ball()).size, `${icon}: a 96 px PNG drawn at 40 px, so it is sharp at 2x`).toEqual([[96, 40]]);
+  await page.evaluate(() => document.getElementById("anagram-fab").classList.add("pg-dark"));
+  expect(await ball(), "the ball on a page treated as dark shows the dark tile").toMatchObject({ shown: ["logo-dark"] });
+});
+
 test("the ball: dragged, it snaps to the left edge; left alone, it tucks half away and comes back under the pointer", async ({ fixtures: page }) => {
   await pointAtBall(page); // untuck first: a tucked ball sits half off-screen
   await expect.poll(() => tucked(page), { message: "the ball comes out under the pointer" }).toBe(false);

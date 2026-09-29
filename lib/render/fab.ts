@@ -25,6 +25,7 @@ import { bandLabel, type Band } from "./band";
 import { formatScore, spokenScore } from "./score";
 import { isDarkPage } from "./theme";
 import { scaleColorCss } from "./scale";
+import { logoImage } from "./logo";
 import { commentHost } from "../access/commentFrames";
 import type { EngineSetup } from "../messaging/protocol";
 
@@ -164,27 +165,32 @@ const FAB_CSS = `
 .fab {
   height: ${BALL}px;
   min-width: ${BALL}px;
-  padding: 0 10px; /* 20 px mark + 2×10 + 2×1 border = a ${BALL} px square */
+  padding: 0; /* the icon is the ball: ${BALL - 2}px + 2×1 border = a ${BALL} px square */
   justify-content: center;
   /* No flex gap here: the collapsed label would still claim it and push the mark
      off-centre. The label brings its own margin when it slides out. */
   gap: 0;
+  /* At rest only the icon shows; the chip's surface returns with the label on hover. */
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
   overflow: hidden;
   touch-action: none; /* pointer-drag must not turn into page scroll */
 }
 
+.fab:hover, .fab:focus-visible { background: #ffffff; border-color: #e5e5e5; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
 .label {
   white-space: nowrap;
   max-width: 0;
   opacity: 0;
   overflow: hidden;
-  transition: max-width 180ms ease, opacity 140ms ease, margin-left 180ms ease;
-  margin-left: 0;
+  transition: max-width 180ms ease, opacity 140ms ease, margin 180ms ease;
+  margin: 0;
 }
 .fab:hover .label {
   max-width: 120px;
   opacity: 1;
-  margin-left: 8px;
+  margin: 0 12px 0 4px;
 }
 
 .action {
@@ -204,20 +210,25 @@ const FAB_CSS = `
 }
 .action.attn { animation: anagram-attn 1.3s ease-in-out 3; }
 
-/* The mark: the primary token (near-black) — no gradient, no accent colour. */
+/* The mark: the icon, its light tile on light pages and its dark tile on dark ones (the
+   page's own theme, isDarkPage). The tile's own edge and glow do the work a chip surface
+   would, so the ball rests on a soft shadow only. */
 .mark {
-  width: 20px;
-  height: 20px;
+  width: ${BALL - 2}px;
+  height: ${BALL - 2}px;
   flex: 0 0 auto;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: #171717;
-  color: #fafafa;
-  font-size: 11px;
-  font-weight: 700;
 }
+.mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
+}
+.mark .logo-dark { display: none; }
+:host(.pg-dark) .mark .logo-light { display: none; }
+:host(.pg-dark) .mark .logo-dark { display: block; }
 
 /* Flagged counter: colour ONLY when something is flagged (destructive token); a zero
    count and the daemon-down "!" stay neutral. It is a real button (the panel behind it
@@ -619,7 +630,7 @@ export function createFab(opts: {
     fabEl.classList.toggle("off", !active);
     fabEl.parentElement?.classList.toggle("off", !active);
     fabEl.title = active ? t("fabHide") : t("fabShow");
-    // The ball's own content is a one-letter mark: without a label it announces as "A".
+    // The ball's own content is the (decorative) icon: without a label it announces as nothing.
     fabEl.setAttribute("aria-label", active ? t("fabHideAria") : t("fabShowAria"));
     if (actionEl) {
       actionEl.classList.toggle("show", actionLabel !== null);
@@ -801,7 +812,7 @@ export function createFab(opts: {
 
     const mark = document.createElement("span");
     mark.className = "mark";
-    mark.textContent = "A";
+    mark.append(logoImage("light", "logo-light"), logoImage("dark", "logo-dark"));
 
     const label = document.createElement("span");
     label.className = "label";

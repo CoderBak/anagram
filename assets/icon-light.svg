@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1254 1254" width="1254" height="1254"><!-- Light-mode companion to icon.svg. Geometry is identical; only colour, glow and edges are retuned for white. -->
+  <defs>
+    <!-- Tile: white, falling off to a cool light grey -->
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="93" x2="0" y2="1136">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1f2f5"/>
+    </linearGradient>
+    <linearGradient id="tileEdge" gradientUnits="userSpaceOnUse" x1="0" y1="93" x2="0" y2="1136">
+      <stop offset="0" stop-color="#0a1020" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#0a1020" stop-opacity="0.11"/>
+    </linearGradient>
+
+    <!-- Continuous-curvature ("squircle") corners, same as the dark icon -->
+    <path id="tileShape" d="M 368.5 93 H 884.5 C 1050.1 93, 1149.5 192.4, 1149.5 358 V 871 C 1149.5 1036.6, 1050.1 1136, 884.5 1136 H 368.5 C 202.9 1136, 103.5 1036.6, 103.5 871 V 358 C 103.5 192.4, 202.9 93, 368.5 93 Z"/>
+    <clipPath id="tileClip"><use xlink:href="#tileShape"/></clipPath>
+
+    <!-- Geometry (shared with the dark icon) -->
+    <path id="line3" d="M 280.5 634.4 H 589.4 C 604.4 634.4, 621.2 653, 652 653 C 670 653, 688.4 639.1, 696 627.4 L 753 664.5 L 696 701.6 C 688.4 689.9, 670 681.3, 652 681.3 C 625.8 681.3, 600.7 703, 587.4 703 H 280.5 A 34.3 34.3 0 0 1 280.5 634.4 Z"/>
+    <path id="brG" d="M 795 641 C 907.3 617.8, 874.3 523.1, 972 516"/>
+    <path id="brY" d="M 790 670 C 949.2 677.3, 881.4 659.3, 985 655"/>
+    <path id="brR" d="M 792 697 C 886.2 718.7, 855.2 809.7, 972 805"/>
+    <clipPath id="orbClip"><circle cx="753" cy="664.5" r="68"/></clipPath>
+    <clipPath id="line3Clip"><use xlink:href="#line3"/></clipPath>
+
+    <!-- Stem: slate text line warming into blue glass as it reaches the orb -->
+    <linearGradient id="stemFill" gradientUnits="userSpaceOnUse" x1="585" y1="0" x2="700" y2="0">
+      <stop offset="0" stop-color="#4a4f5c"/>
+      <stop offset="0.22" stop-color="#44536b"/>
+      <stop offset="0.4" stop-color="#39628f"/>
+      <stop offset="0.55" stop-color="#2f6db8"/>
+      <stop offset="0.7" stop-color="#2878dc"/>
+      <stop offset="0.85" stop-color="#3190f4"/>
+      <stop offset="1" stop-color="#3aa2fa"/>
+    </linearGradient>
+    <linearGradient id="stemRimFade" gradientUnits="userSpaceOnUse" x1="630" y1="0" x2="670" y2="0">
+      <stop offset="0" stop-color="#000"/>
+      <stop offset="1" stop-color="#fff"/>
+    </linearGradient>
+    <mask id="stemRimMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254">
+      <rect width="1254" height="1254" fill="url(#stemRimFade)"/>
+    </mask>
+
+    <!-- Branch colours: same hue journeys as the dark icon, a step deeper so pastels hold up on white -->
+    <linearGradient id="gG" gradientUnits="userSpaceOnUse" x1="815" y1="634" x2="948" y2="521">
+      <stop offset="0" stop-color="#2cc39a"/>
+      <stop offset="0.055" stop-color="#31c898"/>
+      <stop offset="0.18" stop-color="#45d78d"/>
+      <stop offset="0.33" stop-color="#4bdc90"/>
+      <stop offset="0.51" stop-color="#2fd9aa"/>
+      <stop offset="0.7" stop-color="#16d0c0"/>
+      <stop offset="0.87" stop-color="#0bbfb8"/>
+      <stop offset="1" stop-color="#05b09c"/>
+    </linearGradient>
+    <linearGradient id="gY" gradientUnits="userSpaceOnUse" x1="815" y1="0" x2="955" y2="0">
+      <stop offset="0" stop-color="#d0b95a"/>
+      <stop offset="0.07" stop-color="#d7bd55"/>
+      <stop offset="0.21" stop-color="#ebc545"/>
+      <stop offset="0.36" stop-color="#fbcf36"/>
+      <stop offset="0.5" stop-color="#ffd23a"/>
+      <stop offset="0.64" stop-color="#ffcb34"/>
+      <stop offset="0.79" stop-color="#ffbb26"/>
+      <stop offset="0.93" stop-color="#ffa818"/>
+      <stop offset="1" stop-color="#ffa012"/>
+    </linearGradient>
+    <linearGradient id="gR" gradientUnits="userSpaceOnUse" x1="815" y1="703" x2="950" y2="804">
+      <stop offset="0" stop-color="#f7955e"/>
+      <stop offset="0.07" stop-color="#f8995b"/>
+      <stop offset="0.22" stop-color="#fb9d55"/>
+      <stop offset="0.4" stop-color="#fb875d"/>
+      <stop offset="0.49" stop-color="#fb7667"/>
+      <stop offset="0.59" stop-color="#fa6471"/>
+      <stop offset="0.67" stop-color="#fa5975"/>
+      <stop offset="0.74" stop-color="#f94e73"/>
+      <stop offset="0.81" stop-color="#f7436b"/>
+      <stop offset="0.87" stop-color="#f53862"/>
+      <stop offset="0.93" stop-color="#f3305a"/>
+      <stop offset="1" stop-color="#f02c54"/>
+    </linearGradient>
+
+    <!-- Dots: flat colour, a touch lighter where the branch enters -->
+    <radialGradient id="dG" gradientUnits="userSpaceOnUse" cx="960" cy="540" r="95">
+      <stop offset="0" stop-color="#5eeaa6"/>
+      <stop offset="0.3" stop-color="#34dc88"/>
+      <stop offset="0.45" stop-color="#22d57a"/>
+      <stop offset="1" stop-color="#14c96b"/>
+    </radialGradient>
+    <radialGradient id="dY" gradientUnits="userSpaceOnUse" cx="962" cy="665" r="100">
+      <stop offset="0" stop-color="#ffd44e"/>
+      <stop offset="0.3" stop-color="#ffc72f"/>
+      <stop offset="0.45" stop-color="#ffbb1e"/>
+      <stop offset="1" stop-color="#ffac10"/>
+    </radialGradient>
+    <radialGradient id="dR" gradientUnits="userSpaceOnUse" cx="950" cy="800" r="100">
+      <stop offset="0" stop-color="#fb5b72"/>
+      <stop offset="0.3" stop-color="#f7405a"/>
+      <stop offset="0.45" stop-color="#f3304a"/>
+      <stop offset="1" stop-color="#e92640"/>
+    </radialGradient>
+
+    <!-- Orb -->
+    <radialGradient id="orbBase" gradientUnits="userSpaceOnUse" cx="752" cy="676" r="76">
+      <stop offset="0" stop-color="#2270f0"/>
+      <stop offset="0.2" stop-color="#2376f1"/>
+      <stop offset="0.4" stop-color="#1e8cf2"/>
+      <stop offset="0.6" stop-color="#14a9ec"/>
+      <stop offset="0.8" stop-color="#1cc0ec"/>
+      <stop offset="1" stop-color="#34d2f2"/>
+    </radialGradient>
+    <!-- Frost is lighter than on dark, so the white rim doesn't dissolve into the white tile -->
+    <radialGradient id="orbRim" gradientUnits="userSpaceOnUse" cx="753" cy="664.5" r="68">
+      <stop offset="0.6" stop-color="#f2fbff" stop-opacity="0"/>
+      <stop offset="0.74" stop-color="#f2fbff" stop-opacity="0.08"/>
+      <stop offset="0.86" stop-color="#f4fbff" stop-opacity="0.26"/>
+      <stop offset="0.94" stop-color="#f7fcff" stop-opacity="0.44"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.58"/>
+    </radialGradient>
+    <linearGradient id="orbEdge" gradientUnits="userSpaceOnUse" x1="700" y1="600" x2="806" y2="730">
+      <stop offset="0" stop-color="#1a8fe0"/>
+      <stop offset="0.55" stop-color="#2c63d8"/>
+      <stop offset="1" stop-color="#6a3fd0"/>
+    </linearGradient>
+    <linearGradient id="orbGlowFill" gradientUnits="userSpaceOnUse" x1="705" y1="615" x2="795" y2="728">
+      <stop offset="0" stop-color="#1ab8ff"/>
+      <stop offset="0.5" stop-color="#2f7dff"/>
+      <stop offset="1" stop-color="#6a4df0"/>
+    </linearGradient>
+    <linearGradient id="stemGlowFill" gradientUnits="userSpaceOnUse" x1="610" y1="0" x2="690" y2="0">
+      <stop offset="0" stop-color="#2f9cf5" stop-opacity="0"/>
+      <stop offset="1" stop-color="#2f9cf5"/>
+    </linearGradient>
+
+    <!-- Soft blurs for the colour pools inside the orb (clipped to the circle, so no fringes) -->
+    <filter id="soft10" filterUnits="userSpaceOnUse" x="600" y="520" width="320" height="300" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="soft14" filterUnits="userSpaceOnUse" x="600" y="520" width="320" height="300" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+
+    <!-- On white a glow can't add light, so it becomes a pastel haze: same bloom, painted at low opacity -->
+    <filter id="bloom" filterUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="near"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="26" result="far"/>
+      <feComposite in="near" in2="far" operator="arithmetic" k1="0" k2="0.15" k3="1" k4="0" result="mix"/>
+      <feColorMatrix in="mix" type="saturate" values="1.2"/>
+    </filter>
+    <!-- Tile lift off the white page -->
+    <filter id="tileShadow" filterUnits="userSpaceOnUse" x="0" y="0" width="1254" height="1254" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="8"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.04  0 0 0 0 0.06  0 0 0 0 0.14  0 0 0 0.10 0"/>
+    </filter>
+    <!-- Soft cast shadow under the glass orb -->
+    <filter id="orbShadow" filterUnits="userSpaceOnUse" x="600" y="560" width="320" height="280" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+
+  <!-- Backdrop (delete for a transparent background) -->
+
+  <!-- Tile -->
+  <use xlink:href="#tileShape" filter="url(#tileShadow)"/>
+  <use xlink:href="#tileShape" fill="url(#tile)"/>
+  <use xlink:href="#tileShape" fill="none" stroke="url(#tileEdge)" stroke-width="3" clip-path="url(#tileClip)"/>
+
+  <!-- Text lines: soft cool slate rather than black, echoing the off-white (not pure white) of the dark icon -->
+  <g fill="#4a4f5c">
+    <rect x="246.5" y="379" width="485.8" height="68.7" rx="34.35"/>
+    <rect x="246.2" y="506.2" width="433.4" height="66.3" rx="33.15"/>
+    <rect x="246.3" y="758.9" width="284.5" height="66.1" rx="33.05"/>
+  </g>
+
+  <!-- Pastel haze -->
+  <g filter="url(#bloom)" opacity="0.34">
+    <use xlink:href="#line3" fill="url(#stemGlowFill)" opacity="0.6"/>
+    <g fill="none" stroke-width="29" stroke-linecap="round" opacity="0.55">
+      <use xlink:href="#brG" stroke="url(#gG)"/>
+      <use xlink:href="#brY" stroke="url(#gY)"/>
+      <use xlink:href="#brR" stroke="url(#gR)"/>
+    </g>
+    <circle cx="988" cy="509" r="40.5" fill="#12d874"/>
+    <circle cx="998.5" cy="654.5" r="42.5" fill="#ffa200"/>
+    <circle cx="986" cy="804" r="43" fill="#ff2446"/>
+    <circle cx="753" cy="664.5" r="68" fill="url(#orbGlowFill)"/>
+  </g>
+
+  <!-- Third line flowing into the stem -->
+  <use xlink:href="#line3" fill="url(#stemFill)"/>
+  <g clip-path="url(#line3Clip)" mask="url(#stemRimMask)">
+    <use xlink:href="#line3" fill="none" stroke="#bfe6ff" stroke-opacity="0.38" stroke-width="6"/>
+  </g>
+
+  <!-- Branches -->
+  <g fill="none" stroke-width="29" stroke-linecap="round">
+    <use xlink:href="#brG" stroke="url(#gG)"/>
+    <use xlink:href="#brY" stroke="url(#gY)"/>
+    <use xlink:href="#brR" stroke="url(#gR)"/>
+  </g>
+
+  <!-- Dots -->
+  <circle cx="988" cy="509" r="40.5" fill="url(#dG)"/>
+  <circle cx="998.5" cy="654.5" r="42.5" fill="url(#dY)"/>
+  <circle cx="986" cy="804" r="43" fill="url(#dR)"/>
+
+  <!-- Cast shadow, offset down so it reads as depth rather than an outline -->
+  <ellipse cx="755" cy="700" rx="56" ry="40" fill="#2a3f9a" opacity="0.22" filter="url(#orbShadow)"/>
+
+  <!-- Frosted glass orb: the branch colours pool inside the glass near their roots -->
+  <g clip-path="url(#orbClip)">
+    <circle cx="753" cy="664.5" r="68" fill="url(#orbBase)"/>
+    <g filter="url(#soft14)">
+      <ellipse cx="752" cy="714" rx="62" ry="28" fill="#6f55f5"/>
+      <ellipse cx="710" cy="672" rx="18" ry="46" fill="#5cbcff" opacity="0.5"/>
+    </g>
+    <g filter="url(#soft10)">
+      <ellipse cx="798" cy="632" rx="18" ry="14" fill="#5ee4c6" opacity="0.85"/>
+      <ellipse cx="806" cy="659" rx="18" ry="13" fill="#f0d27a" opacity="0.85"/>
+      <ellipse cx="800" cy="682" rx="19" ry="16" fill="#f58aa8" opacity="0.95"/>
+      <ellipse cx="784" cy="698" rx="20" ry="13" fill="#d64ed2"/>
+      <ellipse cx="810" cy="700" rx="10" ry="10" fill="#f8a88c" opacity="0.6"/>
+      <ellipse cx="753" cy="738" rx="60" ry="16" fill="#efe6ff" opacity="0.45"/>
+    </g>
+    <circle cx="753" cy="664.5" r="68" fill="url(#orbRim)"/>
+  </g>
+  <!-- Glass edge: a tinted outer line defines the orb against white; a white inner line keeps it glassy -->
+  <circle cx="753" cy="664.5" r="67.6" fill="none" stroke="url(#orbEdge)" stroke-opacity="0.45" stroke-width="1.4"/>
+  <circle cx="753" cy="664.5" r="65.9" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="1.6"/>
+</svg>
