@@ -699,7 +699,8 @@ for (const lang of ["en", "zh-CN"]) {
     await full.click("#component-primary");
     await sleep(500);
     check(`${lang}: a disk too full to start says how much room to make, and downloads nothing`,
-      fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && (await textOf(full, "#componentSettings .component-error")) === fullText && server.requests.length === before, fullText);
+      fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && fullText.endsWith("then click Retry.") && (await textOf(full, "#component-primary")) === w("panelRetry") &&
+      (await textOf(full, "#componentSettings .component-error")) === fullText && server.requests.length === before, fullText);
     await full.close();
 
     // Set up against a server that fails: a failed setup, with what to do and Retry; Retry downloads.

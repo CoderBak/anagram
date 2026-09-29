@@ -215,7 +215,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (!everConnected || !s) setPrimary(everConnected || actionError ? "panelRetry" : null, retryEngine);
     else if (crashed) setPrimary("panelRetry", retryEngine);
     else switch (s.stage) {
-      case "needed": setPrimary("engineSetUpButton", download, true, formatSize(downloadBytes())); break;
+      // A disk too full to start says "then click Retry" (engineDiskFull): the button then is Retry.
+      case "needed": if (noRoom !== null) setPrimary("panelRetry", download); else setPrimary("engineSetUpButton", download, true, formatSize(downloadBytes())); break;
       case "downloading": setPrimary("componentPauseDownload", () => run("models.pause"), false); break;
       case "paused": setPrimary("componentResumeDownload", download); break;
       case "failed": setPrimary("panelRetry", download); break;
