@@ -5,7 +5,12 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.8.1] — 2026-09-29
+
+The first official release of the 0.8 line. It follows the 0.8.0 pre-release with a compact
+setup page and Settings, clearer verdict colours, PDF chips on the right lines and an
+installer that falls back to hf-mirror.com. Published for Chrome on macOS and Linux; Windows
+is not validated.
 
 ### Added
 
