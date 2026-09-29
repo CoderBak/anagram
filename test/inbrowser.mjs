@@ -13,7 +13,7 @@
 //     refusal comes back to the choice saying so (a permission prompt is browser UI no
 //     automation can click: the browser's answer is stood in for, in the page and the worker);
 //   - where the model does not fit nothing downloads and the page says why; on 4 GB it runs
-//     with a note; without JSPI (Firefox 140, stood in for) the local engine alone is offered;
+//     with a note;
 //   - Native Messaging is accepted as optional and kept across an update from a release that
 //     required it, with the local host reached after it (Chrome cannot be granted it at run
 //     time without its prompt; test/webengine/firefox-extension.mjs grants it in Firefox);
@@ -299,9 +299,9 @@ for (const lang of ["en", "zh-CN"]) {
   }
 }
 
-// ---- what the device can afford, and a browser without JSPI --------------------------------------
+// ---- what the device can afford --------------------------------------
 
-for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "lighter"], ["no-jspi", "terminal"]]) {
+for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "lighter"]]) {
   const w = words("en");
   const server = await modelServer({ rate: 15e6 });
   const run = await launch("en", server, undefined, deviceBuild(name, DEVICES[name]));
@@ -337,13 +337,6 @@ for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"
       check("4 GB with an f16 GPU: model_fp16.onnx downloads, not model.onnx, and the progress counts its 715 MB", !!asked && !server.requests.some((r) => r.file === "model.onnx") &&
         progress?.includes(size(DOWNLOAD_BYTES_FP16)) && status?.data?.tier === "fp16" && status.data.download.total_bytes === DOWNLOAD_BYTES_FP16, JSON.stringify([asked, progress, status?.data?.tier]));
       await engine(setup, "models.delete", { confirm: true });
-    } else {
-      await until(() => shown(setup, "#engine-pick-native"), 15000);
-      const seen = await setup.evaluate(() => ({ oneClick: !document.querySelector('.engine-choice-card[data-engine="inbrowser"]')?.hidden,
-        title: document.getElementById("engineTitle")?.textContent, filled: !document.getElementById("engine-pick-native")?.dataset.variant }));
-      check("no JSPI (Firefox 140): the local engine alone, with a line that Firefox 153 runs the in-browser one", !seen.oneClick && seen.filled &&
-        seen.title === w("componentTitle") && (await textOf(setup, ".engine-choice .engine-note:not([hidden])")) === w("engineJspiNote") && server.requests.length === 0,
-        JSON.stringify(seen));
     }
   } finally {
     await run.close();

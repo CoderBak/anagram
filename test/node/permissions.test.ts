@@ -192,11 +192,10 @@ describe("the in-browser engine", () => {
     expect(firefox.manifest.browser_specific_settings?.gecko?.id).toBe("anagram@coderbak.dev");
   });
 
-  it.skipIf(!chrome.ready || !firefox.ready)("requires Chrome 137, where its runtime runs, and keeps Firefox at 140, where the local engine does", () => {
-    // WebAssembly JSPI, which the runtime's only build needs (lib/webengine/session.ts); Firefox
-    // has it from 153, and the setup page offers the local engine alone before (lib/device.ts).
+  it.skipIf(!chrome.ready || !firefox.ready)("requires Chrome 137 and Firefox 153, where WebAssembly JSPI, which its runtime needs, runs", () => {
+    // WebAssembly JSPI, which the runtime's only build needs (lib/webengine/session.ts).
     expect(chrome.manifest.minimum_chrome_version).toBe("137");
-    expect(firefox.manifest.browser_specific_settings?.gecko?.strict_min_version).toBe("140.0");
+    expect(firefox.manifest.browser_specific_settings?.gecko?.strict_min_version).toBe("153.0");
   });
 
   it.skipIf(!chrome.ready || !firefox.ready)("isolates Chrome's extension pages, so the engine's WebAssembly gets threads", () => {

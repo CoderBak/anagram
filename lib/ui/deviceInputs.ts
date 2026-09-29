@@ -6,7 +6,6 @@
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { TIERS, type DeviceInputs } from "../device";
-import { hasJspi } from "../webengine/session";
 import { storedModelBytes } from "../webengine/autoSetup";
 
 interface GpuAdapterLike {
@@ -72,7 +71,6 @@ export async function readDeviceInputs(): Promise<DeviceInputs> {
     browser: import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
     platform: ua?.platform, architecture: ua?.architecture, navigatorPlatform: navigator.platform,
     gpu, webgl: webgl(), storage: storage ? { quota: storage.quota, usage: storage.usage } : undefined, stored,
-    jspi: hasJspi(),
   };
   if (typeof nav.deviceMemory === "number") inputs.deviceMemory = nav.deviceMemory;
   if (import.meta.env.ANAGRAM_TEST_BUILD === "1") Object.assign(inputs, await testDevice());

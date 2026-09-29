@@ -21,8 +21,7 @@ Nothing you read leaves your machine.
    one page.
 
 Apple Silicon Macs are the tested platform. Linux and Windows installers exist but have
-not been exercised on real machines. Firefox 140+ has a build but is not the focus; its
-in-browser engine needs Firefox 153.
+not been exercised on real machines. Firefox 153+ has a build but is not the focus.
 
 ## Use
 

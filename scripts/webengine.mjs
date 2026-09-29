@@ -18,7 +18,7 @@
 //     (test/webengine/parity.mjs found every text off; ORT 1.27 and 1.30 alike), the
 //     native provider answers as the CPU does, and its JSPI variant runs several times
 //     faster than its Asyncify one. JSPI is in Chrome 137, the manifest's minimum, and in
-//     Firefox 153 (on Firefox 140 the setup page offers the local engine only), so the
+//     Firefox 153, the manifests' minimums, so the
 //     package's plain WebAssembly build is not copied: this one binary serves the CPU path too. The package carries no licence file: its
 //     MIT licence is the document-worker pin's copy (the same text at
 //     every tag) and the notices of the libraries its WebAssembly links are ONNX Runtime's

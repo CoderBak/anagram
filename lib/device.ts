@@ -9,7 +9,6 @@
 //                                        Intel macOS runtime
 //   anything else                        in the browser, automatically: native ONNX on the
 //                                        processor measured slower than the browser's WASM
-//   a browser without WebAssembly JSPI   (Firefox 140) the local engine only, where it installs
 //
 // and the in-browser engine only where the device can afford it (affordable() below). The
 // function is pure; lib/ui/deviceInputs.ts reads its inputs in a page.
@@ -37,8 +36,6 @@ export interface DeviceInputs {
   storage?: { quota?: number; usage?: number };
   /** Bytes of the in-browser model already in the browser's storage. */
   stored?: number;
-  /** WebAssembly JSPI, which the in-browser engine's runtime needs on both of its paths. */
-  jspi: boolean;
 }
 
 export type Offer = "choice" | "auto-inbrowser" | "terminal-only" | "cannot-run";
@@ -48,8 +45,6 @@ export type Reason =
   | "apple-silicon" | "nvidia"
   /** auto-inbrowser */
   | "intel-mac" | "no-nvidia" | "no-installer"
-  /** terminal-only, or cannot-run where the local engine does not install either */
-  | "no-jspi"
   /** the in-browser engine does not fit; terminal-only where the local engine installs */
   | "memory" | "disk";
 
@@ -184,10 +179,6 @@ export function decide(i: DeviceInputs): Decision {
   const machine = machineOf(i, os);
   const native = nativeInstalls(os, machine, i);
   const base = { os, machine, native, tight: false, tier: null, path: null, fallback: null };
-  if (!i.jspi) {
-    // Firefox 140: the runtime's only build needs JSPI, which Firefox has from 153.
-    return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "no-jspi" };
-  }
   const fits = affordable(i);
   if (!fits.tier) {
     // Nothing is downloaded where the model does not fit, and nothing is ever scored

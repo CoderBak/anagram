@@ -8,14 +8,13 @@
 // with Hugging Face resolving to this machine, where nothing answers (--hf lets the one
 // download below reach Hugging Face for real, 20 MB, with no host permission):
 //
-//   - this machine as it is: Firefox 140 has no WebAssembly JSPI, so the setup page offers the
-//     local engine alone, saying Firefox 153 runs the in-browser one; picking it asks for
+//   - this machine as it is: the setup page offers the in-browser engine; picking the local one asks for
 //     Native Messaging, granted here without the prompt (the profile's
 //     extensions.webextOptionalPermissionPrompts), and the page shows the install command;
 //     runtime.connectNative is there once granted, with no reload, and reaches no host (none is
 //     registered by that name). On macOS Firefox looks for hosts in the real Application
 //     Support folder, whatever HOME says: where a real registration is there, the pick is skipped;
-//   - Firefox 153+, a device with no choice: the background page hosts the engine's worker,
+//   - a device with no choice: the background page hosts the engine's worker,
 //     which the setup page started downloading at install, and which answers the contract after
 //     Cancel; a device with a choice downloads nothing before a pick.
 import { launch } from "puppeteer-core";
@@ -27,9 +26,9 @@ import { DEVICES } from "../pw/devices.mjs";
 import { firefoxVersion } from "../firefox-harness.mjs";
 
 const firefox = process.env.ANAGRAM_FIREFOX;
-if (!firefox) { console.log("SKIP  Firefox engines — set ANAGRAM_FIREFOX to a Firefox 140+ binary"); process.exit(0); }
+if (!firefox) { console.log("SKIP  Firefox engines — set ANAGRAM_FIREFOX to a Firefox 153+ binary"); process.exit(0); }
 const { major, version } = firefoxVersion(firefox);
-if (major < 140) { console.log(`SKIP  Firefox engines — the extension needs Firefox 140 or later, this is ${version}`); process.exit(0); }
+if (major < 153) { console.log(`SKIP  Firefox engines — the extension needs Firefox 153 or later, this is ${version}`); process.exit(0); }
 const GECKO_ID = "anagram@coderbak.dev";
 const UUID = "7c1f3d2a-8b4e-4a6f-9d21-5e0c8a7b3f14";
 const HF = process.argv.includes("--hf");
@@ -94,14 +93,8 @@ await withFirefox(deviceBuild("real", {}, { browser: "firefox" }), async (open) 
   const setup = await open("onboarding.html");
   const offered = await until(async () => (await shown(setup, "#engine-pick-native")) || (await shown(setup, ".engine-cannot")));
   const seen = await setup.evaluate(() => ({ title: document.getElementById("engineTitle")?.textContent,
-    oneClick: !!document.querySelector('.engine-choice-card[data-engine="inbrowser"]')?.getClientRects().length,
-    note: [...document.querySelectorAll(".engine-choice .engine-note")].filter((n) => n.getClientRects().length).map((n) => n.textContent) }));
-  if (major < 153) {
-    check("Firefox 140: the local engine alone, with a line that Firefox 153 runs the in-browser one", offered && !seen.oneClick &&
-      seen.title === "Local engine" && seen.note.includes("Firefox 153 or later also runs the one-click engine."), JSON.stringify(seen));
-  } else {
-    check("Firefox 153+: this machine is offered the in-browser engine", offered && seen.oneClick, JSON.stringify(seen));
-  }
+    oneClick: !!document.querySelector('.engine-choice-card[data-engine="inbrowser"]')?.getClientRects().length }));
+  check("this machine is offered the in-browser engine", offered && seen.oneClick, JSON.stringify(seen));
   check("nothing chosen, and Native Messaging not granted, before a pick",
     (await engineOf(setup)) === null && !(await setup.evaluate(() => browser.permissions.contains({ permissions: ["nativeMessaging"] }))));
   if (process.platform === "darwin" && existsSync(REAL_HOSTS)) {
@@ -130,11 +123,9 @@ await withFirefox(deviceBuild("real", {}, { browser: "firefox" }), async (open) 
     port.granted && port.type === "function" && /No such native application|not found/i.test(port.error), JSON.stringify(port));
 });
 
-// ---- Firefox 153+: the in-browser engine ---------------------------------------------------------
+// ---- the in-browser engine -----------------------------------------------------------------------
 
-if (major < 153) {
-  console.log(`SKIP  the in-browser engine — it needs Firefox 153 or later, this is ${version}`);
-} else {
+{
   // A device with no choice: the setup page starts the download at install.
   let auto = deviceBuild("linux-cpu", DEVICES["linux-cpu"], { browser: "firefox" });
   const home = mkdtempSync(join(tmpdir(), "anagram-ff-shipped-"));

@@ -19,11 +19,6 @@ const IMPORT = /^Unsafe call to import for argument 0$/;
 /** The warnings Anagram's Firefox build carries on purpose, and how many of each. */
 const ACCEPTED = [
   {
-    code: "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION", file: /^manifest\.json$/, count: 1,
-    why: "data_collection_permissions (AMO's disclosure: nothing collected) is read by Firefox " +
-      "for Android only after 140; Anagram is a desktop extension.",
-  },
-  {
     code: "UNSAFE_VAR_ASSIGNMENT", message: INNER_HTML, file: /^(content-scripts\/content\.js|chunks\/reader-[\w-]+\.js)$/, count: 8,
     why: "The chip card and the selection card (lib/render/badge.ts, selectionCard.ts): markup " +
       "built from our own messages, band labels and numbers. No page text goes into it.",

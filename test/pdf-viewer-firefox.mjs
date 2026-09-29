@@ -24,7 +24,7 @@ const fill=(id,value)=>page.evaluate((id,value)=>{const el=document.getElementBy
 const ready=()=>until(page,()=>!!window.PDFViewerApplication?.pdfDocument && document.querySelectorAll("#viewer .textLayer span").length>5,{timeout:20000});
 const chipped=()=>until(page,()=>[...document.querySelectorAll('.anagramPdfChips [data-anagram="host"]')].some(el=>el.shadowRoot?.querySelector(".pill")),{timeout:15000});
 try{
-  // Firefox 140's BiDi has no emulation.setNetworkConditions; the request log below still holds.
+  // An older Firefox's BiDi has no emulation.setNetworkConditions; the request log below still holds.
   const offline=await page.setOfflineMode(true).then(()=>true,()=>false);
   void page.goto(extUrl("reader.html?file=https://must-not-load.invalid/secret.pdf"),{timeout:1000}).catch(()=>{});
   await until(page,()=>!!document.querySelector("#drop:not([hidden])"));
