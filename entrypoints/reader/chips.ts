@@ -13,7 +13,7 @@ export function placeChip(viewer: Viewer, unit: Unit, host: HTMLElement): boolea
   range.selectNodeContents(node);
   const last = [...range.getClientRects()].at(-1);
   if (!last || !last.width) return false;
-  const box = page.box.getBoundingClientRect();
+  const box = page.chips.getBoundingClientRect();
   // Badge content is populated after placement; reserve its widest normal label.
   const width = unitParagraphs(unit) > 1 ? 80 : 54, height = 22;
   const y = (last.top + last.bottom) / 2 - box.top;
