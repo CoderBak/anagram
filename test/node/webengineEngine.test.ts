@@ -54,15 +54,18 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
 }
 
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
-function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void> } = {}): Made {
+function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void>;
+  /** Blocks a session's creation (which may honour the load's abort signal, as the real one does). */
+  gate?: (candidate: Candidate, signal: AbortSignal) => Promise<void> } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
   const clock = { now: 1_000_000 };
   const engine = new Engine({
     pin: pin(options.lid), assets: ASSETS, version: "9.9.9", store, transport: server.fetch, retryWaits: [0],
-    createSession: async (candidate, model) => {
+    createSession: async (candidate, model, signal) => {
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("no such device"); }
+      await options.gate?.(candidate, signal);
       await options.hold; // a model that takes its time to load
       return fakeSession(candidate, model, log);
     },
@@ -380,6 +383,32 @@ describe("the engine's lifecycle", () => {
     loaded();
     expect(((await score).data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
     expect((await m.engine.handle("health", {})).data).toMatchObject({ ok: true, device: "webgpu" });
+  });
+
+  it("restarts a load cleanly when the runtime is chosen during it, and marks no candidate unavailable for being cancelled", async () => {
+    const entered: string[] = [];
+    // The first session's creation hangs until the load is aborted, and then fails as the real one does.
+    const gate = (candidate: Candidate, signal: AbortSignal): Promise<void> => {
+      entered.push(candidate.id);
+      if (entered.length > 1) return Promise.resolve();
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }));
+    };
+    const m = track(make({ gate }));
+    await m.engine.handle("models.download", {});
+    for (let i = 0; i < 200 && entered.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(entered).toEqual(["webgpu:fp32"]);
+    expect(((await m.engine.handle("status", {})).data as { state: string }).state).toBe("loading");
+    let { data } = await m.engine.handle("runtime.config", { id: "wasm:fp32" });
+    expect(data).toMatchObject({ selected_id: "wasm:fp32", candidates: [{ id: "webgpu:fp32", available: true, reason: null }, { id: "wasm:fp32", available: true }] });
+    expect((await ready(m.engine)).state).toBe("ready");
+    expect(entered).toEqual(["webgpu:fp32", "wasm:fp32"]);
+    ({ data } = await m.engine.handle("runtime", {}));
+    // Nothing was marked "Failed to load: cancelled"; the GPU is still there to choose.
+    expect(data).toMatchObject({ state: "ready", active_id: "wasm:fp32", error: null, candidates: [{ id: "webgpu:fp32", available: true, reason: null }, { id: "wasm:fp32", available: true, reason: null }] });
+    expect(JSON.stringify(data)).not.toContain("cancelled");
+    await m.engine.handle("runtime.config", { id: "webgpu:fp32" });
+    expect((await ready(m.engine)).state).toBe("ready");
+    expect((await m.engine.handle("health", {})).data).toMatchObject({ device: "webgpu" });
   });
 
   it("stops and resumes, and deletes the model files", async () => {

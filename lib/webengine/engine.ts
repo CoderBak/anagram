@@ -74,7 +74,7 @@ export interface EngineInit {
   /** Waits between download attempts, in ms (the suite shortens them). */
   retryWaits?: number[];
   /** A backend factory, for the suite; the real one loads the ONNX model. */
-  createSession?: (candidate: Candidate, model: Blob) => Promise<LoadedSession>;
+  createSession?: (candidate: Candidate, model: Blob, signal: AbortSignal) => Promise<LoadedSession>;
   probe?: (tier: ModelTier) => Promise<Candidate[]>;
   /** The clock, for the suite. */
   now?: () => number;
@@ -375,9 +375,12 @@ export class Engine {
           // The file itself, which the runtime reads from disk a tensor at a time.
           const model = await this.store.file(entry.name);
           try {
-            session = await (this.init.createSession ? this.init.createSession(candidate, model) : Session.create(this.init.assets, candidate, model, abort.signal));
+            session = await (this.init.createSession ? this.init.createSession(candidate, model, abort.signal) : Session.create(this.init.assets, candidate, model, abort.signal));
             break;
           } catch (error) {
+            // A load that was cancelled (another runtime was chosen with runtime.config, or the
+            // model was let go) says nothing about this candidate: it stays as available as it was.
+            if (abort.signal.aborted) throw error;
             lastError = error;
             candidate.available = false;
             candidate.reason = `Failed to load: ${asText(error)}`;
