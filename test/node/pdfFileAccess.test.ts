@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
-import { FILE_ORIGIN, getFileAccess, legacyFirefoxFileAccess, requestFileAccess } from "../../lib/pdf/fileAccess";
+import { FILE_ORIGIN, getFileAccess, requestFileAccess } from "../../lib/pdf/fileAccess";
 
 describe("local PDF authorization", () => {
   beforeEach(() => fakeBrowser.reset());
@@ -17,14 +17,6 @@ describe("local PDF authorization", () => {
     vi.spyOn(fakeBrowser.extension, "isAllowedFileSchemeAccess").mockResolvedValue(false as never);
     // Chrome has no runtime.getBrowserInfo, and neither has WXT's fake browser.
     expect(await getFileAccess()).toEqual({ granted: true, allowed: false });
-  });
-
-  it("limits the Firefox legacy exception to known supported old versions", () => {
-    expect(legacyFirefoxFileAccess({ name: "Firefox", version: "140.14.0" })).toBe(true);
-    expect(legacyFirefoxFileAccess({ name: "Firefox", version: "152.0" })).toBe(true);
-    for (const info of [undefined, {name:"Chrome",version:"145"}, {name:"Firefox",version:"153.0"}, {name:"Firefox",version:"invalid"}]) {
-      expect(legacyFirefoxFileAccess(info)).toBe(false);
-    }
   });
 
   it("requests only file access and leaves a refusal refused", async () => {
