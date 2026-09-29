@@ -5,33 +5,41 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.8.0] — 2026-09-29
+
+One extension with two engines. Where the local engine is faster (Apple Silicon Macs,
+NVIDIA graphics cards) the setup page offers the choice; everywhere else the model runs
+inside the browser and downloads by itself, with nothing to install. Tested on Chrome 137+
+on macOS; the automated suites also ran the in-browser engine on Linux (x86-64 and arm64,
+in containers) and in Firefox 153 ESR. Windows is not validated. Local-engine users update
+it with the command the setup page shows.
 
 ### Added
 
 - One extension, two engines: Anagram can now run the same pinned model inside the browser
-  (ONNX Runtime Web on WebGPU, in an offscreen document) with nothing else to install, beside
-  the local engine. The setup page decides from what the browser says about the computer. On
-  an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card, it offers both,
-  the in-browser one highlighted, each with its speed and memory (on an M4, 92 ms a paragraph
-  and up to 2.5 GB in the browser, 43 ms and about 1.8 GB for the local engine), and nothing
-  downloads until you pick. Elsewhere the in-browser engine's model downloads by itself, once,
-  from Hugging Face into the browser's storage, with no permission to grant (fastText's
-  language file ships in the package); a computer with under 4 GB of memory or too little disk is told so and
-  downloads nothing, and 4 GB runs with a note that it may slow down. Picking the local engine
-  asks for Native Messaging, now an optional permission (an update keeps the grant 0.7.0 had),
-  then shows the install command; a refusal goes back to the choice. The in-browser setup
-  shows progress, speed and time left, Pause, Resume and Cancel, says why a download stopped
-  and resumes where it left off; when ready, Settings says whether the model runs on the
-  graphics card or the processor, and holds the idle unload and **Delete model files**.
-  Settings switches engines both ways and offers to delete what the in-browser engine left;
-  the popup and the panel name the engine in use; a local engine that keeps crashing is
-  offered the in-browser one beside Retry. The model's weights are read from the browser's
-  storage a tensor at a time, straight onto the graphics card: on an M4 the browser takes
-  2.3 GB while the model loads and at most 2.5 GB while scoring (2.0 GB on the processor,
-  on up to eight threads under the pages' cross-origin isolation), and an idle model's
-  worker ends and gives the memory back. Anagram now needs Chrome 137; Firefox needs 153.
-  The engine runs on ONNX Runtime Web 1.30 (MIT).
+  (ONNX Runtime Web on WebGPU, in an offscreen document) with nothing else to install,
+  beside the local engine. The setup page decides from what the browser says about the
+  computer. On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics
+  card, it offers both, the in-browser one highlighted, each with its speed and memory (on
+  an M4, 92 ms a paragraph and up to 2.5 GB in the browser, 43 ms and about 1.8 GB for the
+  local engine), and nothing downloads until you pick. Elsewhere the in-browser engine's
+  model downloads by itself, once, from Hugging Face into the browser's storage, with no
+  permission to grant (fastText's language file ships in the package); a computer with
+  under 4 GB of memory or too little disk is told so and downloads nothing, and 4 GB runs
+  with a note that it may slow down. Picking the local engine asks for Native Messaging,
+  now an optional permission (an update keeps the grant 0.7.0 had), then shows the install
+  command; a refusal goes back to the choice. The in-browser setup shows progress, speed
+  and time left, Pause, Resume and Cancel, says why a download stopped and resumes where
+  it left off; when ready, Settings says whether the model runs on the graphics card or
+  the processor, and holds the idle unload and **Delete model files**. Settings switches
+  engines both ways and offers to delete what the in-browser engine left; the popup and
+  the panel name the engine in use; a local engine that keeps crashing is offered the
+  in-browser one beside Retry. The model's weights are read from the browser's storage a
+  tensor at a time, straight onto the graphics card: on an M4 the browser takes 2.3 GB
+  while the model loads and at most 2.5 GB while scoring (2.0 GB on the processor, on up
+  to eight threads under the pages' cross-origin isolation), and an idle model's worker
+  ends and gives the memory back. Anagram now needs Chrome 137; Firefox needs 153. The
+  engine runs on ONNX Runtime Web 1.30 (MIT).
 - A page whose comments come from another site's frame — Disqus, Facebook's comments
   plugin, utterances, giscus — says so in the panel and offers to allow that site. Anagram
   reads a frame only with access to its own site, so those threads went unread without a
@@ -46,7 +54,6 @@ local component and the installer all carry the same version.
   it in the reader's worker folder.
 - Settings and the setup page link to Anagram's source code in their footer, next to the
   model credit: the release tag of the version that is running.
-
 - Google Drive's file preview is read in place. A PDF or Word file opened in Drive, embedded
   from Drive in another page, or shown by Google's document viewer is drawn as page images
   with an invisible line of text over each printed line; Anagram used to read those lines as
@@ -102,11 +109,23 @@ local component and the installer all carry the same version.
 
 ### Changed
 
-- Firefox 153 is the minimum (it was 140, an ESR whose support has ended and which lacks WebAssembly JSPI): the in-browser engine now runs in every supported Firefox.
-- The PDF reader's paragraph worker runs on ONNX Runtime Web 1.30, the same build and the same WebAssembly binary as the in-browser engine, instead of a second copy of 1.27: the package is 3.4 MB smaller (11 MB unpacked).
-- Customer reviews are read one by one: the stars a review card shows mark it as a voice of its own (Google Maps and Google Play cards carried nothing else), a review declared in schema.org microdata, RDFa or the page's JSON-LD is read without its name, stars and date, and a sentence every card of a list repeats, such as Tripadvisor's disclaimer, is left out.
-- **Minimum length** in Settings: 25, 50, 75, 100 or 150 words, 50 by default (it was a fixed 75), for pages, PDFs, selections and pasted text; a verdict on under 75 words, the model's training minimum, says "Short text: less reliable" and its dot is thinner.
-- The small script Anagram runs in a page's own context no longer gives it away: its event is named at random for each page, told to the extension before the page's first script, and the attachShadow it watches, and Function.prototype.toString, answer the usual checks as the browser's own functions do.
+- Firefox 153 is the minimum (it was 140, an ESR whose support has ended and which lacks
+  WebAssembly JSPI): the in-browser engine now runs in every supported Firefox.
+- The PDF reader's paragraph worker runs on ONNX Runtime Web 1.30, the same build and the
+  same WebAssembly binary as the in-browser engine, instead of a second copy of 1.27: the
+  package is 3.4 MB smaller (11 MB unpacked).
+- Customer reviews are read one by one: the stars a review card shows mark it as a voice
+  of its own (Google Maps and Google Play cards carried nothing else), a review declared
+  in schema.org microdata, RDFa or the page's JSON-LD is read without its name, stars and
+  date, and a sentence every card of a list repeats, such as Tripadvisor's disclaimer, is
+  left out.
+- **Minimum length** in Settings: 25, 50, 75, 100 or 150 words, 50 by default (it was a
+  fixed 75), for pages, PDFs, selections and pasted text; a verdict on under 75 words, the
+  model's training minimum, says "Short text: less reliable" and its dot is thinner.
+- The small script Anagram runs in a page's own context no longer gives it away: its event
+  is named at random for each page, told to the extension before the page's first script,
+  and the attachShadow it watches, and Function.prototype.toString, answer the usual
+  checks as the browser's own functions do.
 - Linux installs PyTorch and its CUDA libraries only beside an NVIDIA GPU (ONNX Runtime ran
   the processor anyway): the installation shrinks from 6.9 GB to 1.7 GB, and an update removes them.
 - On Apple silicon the local engine runs the model in MLX (MIT) on the GPU instead of
@@ -153,17 +172,25 @@ local component and the installer all carry the same version.
   AI-generated text: one continuous scale, whose lightness still orders it for a reader who
   cannot tell red from green (the dark-page scale spans more lightness, as reds darken for
   protanopes).
-
-### Changed
-
 - Anagram's code is now licensed under the GNU AGPL v3.0 or later. The licence text ships
   in the extension and in the local component. The model keeps its CC BY-NC-SA 4.0 licence.
-- While the in-browser engine's model downloads, the popup and the panel on a page move with it and show the same figure, each within about half a second of the download; the panel used to catch up every five seconds, and the popup kept the figure it opened with.
-- When a page Anagram reads starts opening in the tab in front, an in-browser engine that let its model go while idle starts loading it right away, beside the page, instead of when the page first asks for a verdict: the reload (about 3 seconds on an M4) overlaps the page's own loading, which on a page that opens at once saves 0.2 s (3.0 to 2.8 s to the first verdict) and on a slower page up to the whole reload. A tab switch, a tab in the background or a site Anagram does not read warms nothing, and a model warmed for nothing is let go after the idle time as before.
+- While the in-browser engine's model downloads, the popup and the panel on a page move
+  with it and show the same figure, each within about half a second of the download; the
+  panel used to catch up every five seconds, and the popup kept the figure it opened with.
+- When a page Anagram reads starts opening in the tab in front, an in-browser engine that
+  let its model go while idle starts loading it right away, beside the page, instead of
+  when the page first asks for a verdict: the reload (about 3 seconds on an M4) overlaps
+  the page's own loading, which on a page that opens at once saves 0.2 s (3.0 to 2.8 s to
+  the first verdict) and on a slower page up to the whole reload. A tab switch, a tab in
+  the background or a site Anagram does not read warms nothing, and a model warmed for
+  nothing is let go after the idle time as before.
 
 ### Fixed
 
-- English disguised with Cyrillic or Greek look-alike letters gets a verdict: they are turned back into Latin letters before scoring (Unicode's confusables), and the card and the report say so; on RAID's homoglyph texts no verdict becomes the verdicts of the undisguised texts.
+- English disguised with Cyrillic or Greek look-alike letters gets a verdict: they are
+  turned back into Latin letters before scoring (Unicode's confusables), and the card and
+  the report say so; on RAID's homoglyph texts no verdict becomes the verdicts of the
+  undisguised texts.
 - A PDF manuscript with numbered lines, as preprints and papers under review are set, is
   read without its line numbers. Word's line numbering and LaTeX's lineno put a number
   beside every line, and both of the reader's readings took it for a word: "84 Vertical
@@ -594,25 +621,99 @@ local component and the installer all carry the same version.
   put the old engine back, but the command's own Python processes killed it a quarter of
   a second into that, before it released its lock, and Anagram would not start until the
   update was run again. They now wait for the installer to finish.
-- The PDF reader no longer scores a thesis's or report's table of contents and lists of figures and tables, whose entries repeat every caption: an entry ending in a dot leader and a page number ends the writing, as a bibliography does; on the theses of the PDF benchmark the scored text that is not prose fell from 9.3% to 6.2%.
-- The PDF reader no longer scores a figure's or table's caption that its paragraph engine took for body text, told by the label it opens with ("Table S7:", "FIG. 1.", "Figure 8 Difference of…") and never a sentence that names a figure ("Figure 3 compares…", "…as shown in Figure 6.32. Notice…"); on the benchmark's development papers the scored text that is not prose fell from 4.44% to 4.13%.
-- The PDF reader no longer scores the bibliography of a physics paper set with no References heading (REVTeX, JHEP): a list whose entries open with a bracketed number and cite a year is taken for the references and ends the writing; on the benchmark's development papers the scored text that is not prose fell from 4.13% to 3.76%.
-- The PDF reader no longer scores the rest of a caption that its paragraph engine cut off from the caption and took for body text ("…Each dot is one system;" / "the horizontal line in each column marks the median…"): a paragraph set right under a caption, where the caption's next line would be, is read as the caption's; on the benchmark's development papers the scored text that is not prose fell from 3.76% to 3.67%.
-- In a manuscript with numbered lines the PDF reader leaves out a caption of any length, told by the label it opens with as elsewhere ("Figure 8 Difference of density plots…", 154 words, was read), and no longer drops a short paragraph that opens by naming a figure ("Figure 3 compares…"); on the benchmark's line-numbered manuscripts the scored text that is not prose fell from 7.5% to 4.3%.
-- The PDF reader no longer reads a paper's author list and affiliations as paragraphs of its first page: a line with a raised mark after every name or two ("Ann Author¹, Bob Writer², …") and one that opens with its mark and names an institution or an address ("¹Department of Physics, University of …", "∗Corresponding author: …") are left out, where they were read beside the abstract; on the benchmark's development papers the scored text that is not prose fell from 3.67% to 3.59%.
-- The PDF reader reads a magazine's or a newsletter's page in the order of its columns: under a photograph set across the page it read the middle and right columns before the left one, and a framed article before the boxes to its left, the lower box before the upper. A column is now read before any column it stands left of in the same band of the page, and from the top; a paper's pages, which were already read so, do not change. On olmOCR-Bench's multi-column pages the passages read in the wrong order fell from 23 to 4.
-- The PDF reader no longer scores the note set under a table ("BC, bounded coalescent; SC, standard coalescent; …", "Notes. Columns: (1) …"), which its paragraph engine read as body text: a paragraph set smaller than the body, a little way under a table, is read as the table's; on the benchmark's development papers the scored text that is not prose fell from 3.59% to 3.53%.
-- The PDF reader no longer scores code, JSON records and prompts quoted as typed, set in a typewriter face, that its paragraph engine read as body text; a document whose paragraphs are mostly typed, such as a screenplay or a typed filing, is read as before. On the benchmark's development papers the scored text that is not prose fell from 3.53% to 3.45%.
-- A disk that fills up while the in-browser engine's model downloads stops the download at once and says how much room to make, keeping what arrived for Retry, and says so again after a restart. Chrome reports a really full disk to it as an odd byte count rather than an error, and the download used to retry for half a minute and then say only that it had stopped.
-- A teaser of another page is no longer read as prose: an excerpt under 75 words that the site cut with "…", "[…]" or "… Read more", in a small card titled by a link to that page (a blog's related posts, a list of events), got a verdict on a text nobody wrote to end there once the minimum length went down to 50 words.
-- An author's bio box named the BEM way (`author__bio`, `author-row__bio`, `ala-author__description`, `author_desc`) is left out like the `author-box` and `author-bio` boxes already were.
-- A forum's list of site notices over every thread (XenForo's and vBulletin's "If this is your first visit…", "Please be sure to read the rules", a scam alert) is no longer read beside the posts; a box named `notices` that holds a paragraph, such as a documentation theme's call-out, still is.
-- Legal fine print is also recognised by a box named for the legal text it is (`copy-legal`, `game_area_legal`, `legal-text`), such as the footnotes under a price list or a game's licence terms; a law firm's `legal-services` section is still read.
-- The PDF reader finds TeX's ℓ in its own run: Zotero reads it as an "l", and where the glyph stood left of its run it was looked for in the word before it, so "the areal ℓ in place of" read "the areall in place of", a word of its own that no formula rule could take out. On the benchmark's development papers the scored text that is not prose fell from 3.45% to 3.44%.
-- The PDF reader leaves out the sub- and superscripts that TeX sets in the text's face, and the letter they stand under: "the proton injection luminosity L_inj" read "luminosity L inj", "above T_N" read "above T N". A word whose letters are all set at a script's size (an ordinal's "th" excepted), and the single letter before it, are formula; a number, a unit or a year is never touched. On the benchmark's development papers the scored text that is not prose fell from 3.44% to 3.33%, and the reader's own reflow, which reads the same way, from 16.29% to 16.22%.
-- The PDF reader finds the line numbers of a manuscript whose numbers and text Zotero ran together: where Word's line numbering is set with a tab, Zotero's reading puts the text where the number ends and writes no space, so "21As the basic" and "32smallholder" were words and the numbers stayed in the paragraphs. A number that begins a run of Zotero's glyphs, before a word, is now a number of its own, counted as a line number on a page with 16 of them, and elsewhere where it stands in line with those. On four EarthArXiv manuscripts the numbers left in the scored text fell from 919 to 18.
-- The PDF reader also finds TeX's ℓ where the run beside it holds no "l" at all ("where ℓ cannot be measured" read "wherel cannot be measured", the glyph taking the face of ", where"), and reads it as the formula's. On the benchmark's development papers the scored text that is not prose fell from 3.334% to 3.327%.
-- The PDF reader reads a magazine page's two-column article after its kicker in the order of the columns: a headline set across both columns and over half of the right one took the right column's paragraphs for its own, and they were read before the left column's. A block under a headline is now the headline's column only where it lies within the headline's width; no page of a paper in the benchmark reads any differently.
+- The PDF reader no longer scores a thesis's or report's table of contents and lists of
+  figures and tables, whose entries repeat every caption: an entry ending in a dot leader
+  and a page number ends the writing, as a bibliography does; on the theses of the PDF
+  benchmark the scored text that is not prose fell from 9.3% to 6.2%.
+- The PDF reader no longer scores a figure's or table's caption that its paragraph engine
+  took for body text, told by the label it opens with ("Table S7:", "FIG. 1.", "Figure 8
+  Difference of…") and never a sentence that names a figure ("Figure 3 compares…", "…as
+  shown in Figure 6.32. Notice…"); on the benchmark's development papers the scored text
+  that is not prose fell from 4.44% to 4.13%.
+- The PDF reader no longer scores the bibliography of a physics paper set with no
+  References heading (REVTeX, JHEP): a list whose entries open with a bracketed number and
+  cite a year is taken for the references and ends the writing; on the benchmark's
+  development papers the scored text that is not prose fell from 4.13% to 3.76%.
+- The PDF reader no longer scores the rest of a caption that its paragraph engine cut off
+  from the caption and took for body text ("…Each dot is one system;" / "the horizontal
+  line in each column marks the median…"): a paragraph set right under a caption, where
+  the caption's next line would be, is read as the caption's; on the benchmark's
+  development papers the scored text that is not prose fell from 3.76% to 3.67%.
+- In a manuscript with numbered lines the PDF reader leaves out a caption of any length,
+  told by the label it opens with as elsewhere ("Figure 8 Difference of density plots…",
+  154 words, was read), and no longer drops a short paragraph that opens by naming a
+  figure ("Figure 3 compares…"); on the benchmark's line-numbered manuscripts the scored
+  text that is not prose fell from 7.5% to 4.3%.
+- The PDF reader no longer reads a paper's author list and affiliations as paragraphs of
+  its first page: a line with a raised mark after every name or two ("Ann Author¹, Bob
+  Writer², …") and one that opens with its mark and names an institution or an address
+  ("¹Department of Physics, University of …", "∗Corresponding author: …") are left out,
+  where they were read beside the abstract; on the benchmark's development papers the
+  scored text that is not prose fell from 3.67% to 3.59%.
+- The PDF reader reads a magazine's or a newsletter's page in the order of its columns:
+  under a photograph set across the page it read the middle and right columns before the
+  left one, and a framed article before the boxes to its left, the lower box before the
+  upper. A column is now read before any column it stands left of in the same band of the
+  page, and from the top; a paper's pages, which were already read so, do not change. On
+  olmOCR-Bench's multi-column pages the passages read in the wrong order fell from 23 to
+  4.
+- The PDF reader no longer scores the note set under a table ("BC, bounded coalescent; SC,
+  standard coalescent; …", "Notes. Columns: (1) …"), which its paragraph engine read as
+  body text: a paragraph set smaller than the body, a little way under a table, is read as
+  the table's; on the benchmark's development papers the scored text that is not prose
+  fell from 3.59% to 3.53%.
+- The PDF reader no longer scores code, JSON records and prompts quoted as typed, set in a
+  typewriter face, that its paragraph engine read as body text; a document whose
+  paragraphs are mostly typed, such as a screenplay or a typed filing, is read as before.
+  On the benchmark's development papers the scored text that is not prose fell from 3.53%
+  to 3.45%.
+- A disk that fills up while the in-browser engine's model downloads stops the download at
+  once and says how much room to make, keeping what arrived for Retry, and says so again
+  after a restart. Chrome reports a really full disk to it as an odd byte count rather
+  than an error, and the download used to retry for half a minute and then say only that
+  it had stopped.
+- A teaser of another page is no longer read as prose: an excerpt under 75 words that the
+  site cut with "…", "[…]" or "… Read more", in a small card titled by a link to that page
+  (a blog's related posts, a list of events), got a verdict on a text nobody wrote to end
+  there once the minimum length went down to 50 words.
+- An author's bio box named the BEM way (`author__bio`, `author-row__bio`,
+  `ala-author__description`, `author_desc`) is left out like the `author-box` and
+  `author-bio` boxes already were.
+- A forum's list of site notices over every thread (XenForo's and vBulletin's "If this is
+  your first visit…", "Please be sure to read the rules", a scam alert) is no longer read
+  beside the posts; a box named `notices` that holds a paragraph, such as a documentation
+  theme's call-out, still is.
+- Legal fine print is also recognised by a box named for the legal text it is
+  (`copy-legal`, `game_area_legal`, `legal-text`), such as the footnotes under a price
+  list or a game's licence terms; a law firm's `legal-services` section is still read.
+- The PDF reader finds TeX's ℓ in its own run: Zotero reads it as an "l", and where the
+  glyph stood left of its run it was looked for in the word before it, so "the areal ℓ in
+  place of" read "the areall in place of", a word of its own that no formula rule could
+  take out. On the benchmark's development papers the scored text that is not prose fell
+  from 3.45% to 3.44%.
+- The PDF reader leaves out the sub- and superscripts that TeX sets in the text's face,
+  and the letter they stand under: "the proton injection luminosity L_inj" read
+  "luminosity L inj", "above T_N" read "above T N". A word whose letters are all set at a
+  script's size (an ordinal's "th" excepted), and the single letter before it, are
+  formula; a number, a unit or a year is never touched. On the benchmark's development
+  papers the scored text that is not prose fell from 3.44% to 3.33%, and the reader's own
+  reflow, which reads the same way, from 16.29% to 16.22%.
+- The PDF reader finds the line numbers of a manuscript whose numbers and text Zotero ran
+  together: where Word's line numbering is set with a tab, Zotero's reading puts the text
+  where the number ends and writes no space, so "21As the basic" and "32smallholder" were
+  words and the numbers stayed in the paragraphs. A number that begins a run of Zotero's
+  glyphs, before a word, is now a number of its own, counted as a line number on a page
+  with 16 of them, and elsewhere where it stands in line with those. On four EarthArXiv
+  manuscripts the numbers left in the scored text fell from 919 to 18.
+- The PDF reader also finds TeX's ℓ where the run beside it holds no "l" at all ("where ℓ
+  cannot be measured" read "wherel cannot be measured", the glyph taking the face of ",
+  where"), and reads it as the formula's. On the benchmark's development papers the scored
+  text that is not prose fell from 3.334% to 3.327%.
+- The PDF reader reads a magazine page's two-column article after its kicker in the order
+  of the columns: a headline set across both columns and over half of the right one took
+  the right column's paragraphs for its own, and they were read before the left column's.
+  A block under a headline is now the headline's column only where it lies within the
+  headline's width; no page of a paper in the benchmark reads any differently.
 
 ## [0.7.0] — 2026-09-26
 
