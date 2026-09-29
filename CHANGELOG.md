@@ -5,7 +5,9 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.8.2] — 2026-09-29
+
+A pre-release with the new icon, a leaner floating panel and a cleaner count badge.
 
 ### Changed
 
