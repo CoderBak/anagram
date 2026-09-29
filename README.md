@@ -5,7 +5,7 @@ edited it: human, lightly edited, heavily edited or AI-generated. Scoring runs o
 own computer with Pangram's EditLens model, inside the browser or in a local engine.
 Nothing you read leaves your machine.
 
-[User guide](https://github.com/CoderBak/anagram/blob/v0.8.0/docs/user-guide.en.md) · [中文指南](https://github.com/CoderBak/anagram/blob/v0.8.0/docs/user-guide.zh-CN.md) · [Privacy](https://github.com/CoderBak/anagram/blob/v0.8.0/PRIVACY.md)
+[User guide](https://github.com/CoderBak/anagram/blob/v0.8.1/docs/user-guide.en.md) · [中文指南](https://github.com/CoderBak/anagram/blob/v0.8.1/docs/user-guide.zh-CN.md) · [Privacy](https://github.com/CoderBak/anagram/blob/v0.8.1/PRIVACY.md)
 
 ## Install
 
@@ -40,14 +40,14 @@ npm run typecheck
 npm run test:node
 ```
 
-See [docs/DEVELOPMENT.md](https://github.com/CoderBak/anagram/blob/v0.8.0/docs/DEVELOPMENT.md) for the code map, the full check list
+See [docs/DEVELOPMENT.md](https://github.com/CoderBak/anagram/blob/v0.8.1/docs/DEVELOPMENT.md) for the code map, the full check list
 and open work.
 
 ## Model and license
 
-Anagram's code is licensed under the [GNU AGPL v3.0 or later](https://github.com/CoderBak/anagram/blob/v0.8.0/LICENSE). The third-party
+Anagram's code is licensed under the [GNU AGPL v3.0 or later](https://github.com/CoderBak/anagram/blob/v0.8.1/LICENSE). The third-party
 work it ships or adapts keeps its own licences, listed in
-[THIRD_PARTY_NOTICES.md](https://github.com/CoderBak/anagram/blob/v0.8.0/THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](https://github.com/CoderBak/anagram/blob/v0.8.1/THIRD_PARTY_NOTICES.md).
 
 Inference uses [Pangram's EditLens RoBERTa-large](https://huggingface.co/pangram/editlens_roberta-large)
 via the [CoderBak/editlens_roberta_modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit)
