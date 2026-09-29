@@ -1,7 +1,8 @@
 // lib/pdf/upsert.ts — Map and WeakMap getOrInsert() and getOrInsertComputed(), where missing.
 //
-// pdf.js, and the pdf.js inside Zotero's document-worker, call them, and Firefox 140 ESR
-// does not have them (Firefox 153 does): there no PDF opened at all. Installed in the reader
+// pdf.js, and the pdf.js inside Zotero's document-worker, call them, and Chrome before 145
+// does not have them (Chrome's minimum is 137; Firefox has them from 144): there no PDF
+// opened at all. Installed in the reader
 // page by entrypoints/reader/viewer.ts, and first thing in both workers by the start files
 // scripts/vendor.mjs writes around them. Nothing is replaced where the browser has them.
 type Keyed = { has(key: unknown): boolean; get(key: unknown): unknown; set(key: unknown, value: unknown): unknown };

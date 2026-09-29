@@ -246,7 +246,7 @@ export function hasLetters(text: string): boolean {
 // ---- segmenters (cached — constructing Intl.Segmenter per call is expensive) -------
 //
 // Every browser Anagram runs in has Intl.Segmenter (Chrome 87, Firefox 125; the Firefox
-// build asks for 140), so there is no fallback.
+// build asks for 153), so there is no fallback.
 
 type Seg = { segment(s: string): Iterable<{ segment: string; index: number; isWordLike?: boolean }> };
 

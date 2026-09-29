@@ -22,7 +22,6 @@ import { verdictConfidence } from "./confidence";
 import { countWords } from "../dom/text";
 import { readMinWords } from "../settings/settings";
 import { isDarkPage } from "./theme";
-import { adoptSheets } from "../dom/shadow";
 
 const CARD_CSS = `
 :host { all: initial; }
@@ -158,7 +157,7 @@ export async function analyzeSelection(): Promise<void> {
   _host = host;
   host.classList.toggle("pg-dark", isDarkPage());
   const shadow = host.attachShadow({ mode: "open" });
-  adoptSheets(shadow, [sheet()]);
+  shadow.adoptedStyleSheets = [sheet()];
   const card = document.createElement("div");
   card.className = "card";
   // Our chrome, in the UI's language — not the page's. Said on the element so screen
