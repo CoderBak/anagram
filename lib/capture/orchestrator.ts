@@ -60,12 +60,9 @@ const MAX_IN_FLIGHT = 4;
 const MAX_BACKGROUND_IN_FLIGHT = 1;
 /** Units enqueued per idle prefetch pass (huge pages drain in successive passes). */
 const PREFETCH_PASS = 300;
-// The Navigation API (window.navigation, Chrome 102+) fires `currententrychange` for
-// every same-document navigation — pushState/replaceState included — and is reachable
+// The Navigation API (window.navigation) fires `currententrychange` for every
+// same-document navigation — pushState/replaceState included — and is reachable
 // from the content script's isolated world, so no MAIN-world history patch is needed.
-// Where it is missing (Firefox 140 ESR has none; 153 ESR has it) a slow URL
-// poll covers pushState instead.
-const URL_POLL_MS = 2500;
 /** A route change is answered once, not once per entry: frameworks that push and then
  *  correct the address (a redirect, a canonical slug, a query the router rewrites) fire
  *  several changes in a row, and one walk answers all of them. */
@@ -110,10 +107,7 @@ const HYDRATION_IDLE_MS = 1200;
  *  see the text is owed the numbers. */
 const HYDRATION_MAX_MS = 2500;
 
-function navigationApi(): EventTarget | null {
-  const n = (window as unknown as { navigation?: EventTarget }).navigation;
-  return n && typeof n.addEventListener === "function" ? n : null;
-}
+const navigationApi = (): EventTarget => (window as unknown as { navigation: EventTarget }).navigation;
 
 export interface Orchestrator {
   /** Begin capture: initial scan + observers + scheduler + floating toggle. Idempotent. */
@@ -272,7 +266,6 @@ export function createOrchestrator(
   let l1Dim: string | null = null;
   let l1Model: ModelInfo | null = null;
   let lastHref = location.href;
-  let urlTimer: ReturnType<typeof setInterval> | null = null;
   /** A route change's refresh, waiting out the burst it arrived in. */
   let urlRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   /** The page's own tree may be touched: it carries no hydration marker, or the framework
@@ -1406,8 +1399,7 @@ export function createOrchestrator(
    * region again is left to the refresh: under "Main content only" that is Defuddle
    * over a clone of the whole document, which a rewrite on every scroll step cannot pay.
    *
-   * Anything else — a pushed entry, a traversal, a popstate, a hash change, the slow poll
-   * that stands in where the Navigation API is missing — is a real route change and gets
+   * Anything else — a pushed entry, a traversal, a popstate, a hash change — is a real route change and gets
    * the full refresh, debounced so that a burst of them is one walk.
    */
   function onUrlMaybeChanged(kind: "rewrite" | "route"): void {
@@ -1595,19 +1587,13 @@ export function createOrchestrator(
   function watchUrl(): void {
     window.addEventListener("popstate", onRouteChanged);
     window.addEventListener("hashchange", onRouteChanged);
-    const nav = navigationApi();
-    if (nav) nav.addEventListener("currententrychange", onEntryChanged);
-    else urlTimer = setInterval(onRouteChanged, URL_POLL_MS);
+    navigationApi().addEventListener("currententrychange", onEntryChanged);
   }
 
   function unwatchUrl(): void {
     window.removeEventListener("popstate", onRouteChanged);
     window.removeEventListener("hashchange", onRouteChanged);
-    navigationApi()?.removeEventListener("currententrychange", onEntryChanged);
-    if (urlTimer !== null) {
-      clearInterval(urlTimer);
-      urlTimer = null;
-    }
+    navigationApi().removeEventListener("currententrychange", onEntryChanged);
     if (urlRefreshTimer !== null) {
       clearTimeout(urlRefreshTimer);
       urlRefreshTimer = null;

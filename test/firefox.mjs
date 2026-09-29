@@ -147,7 +147,6 @@ const badgeCount = () => page.evaluate((sel) => document.querySelectorAll(sel).l
 const features = await page.evaluate(() => ({
   highlights: typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined",
   popover: "showPopover" in HTMLElement.prototype,
-  navigation: typeof window.navigation === "object" && window.navigation !== null,
   segmenter: typeof Intl.Segmenter === "function",
 }));
 console.log("platform features:", JSON.stringify(features));
@@ -332,8 +331,7 @@ await waitFor(page, ({ target, sel }) => document.querySelectorAll(sel).length >
 const afterAdd = await badgeCount();
 check("rapid insertion: every added paragraph is chipped", afterAdd === beforeAdd + RAPID, `${beforeAdd} → ${afterAdd} (+${RAPID})`);
 
-// The pushState swap. Chrome uses the Navigation API; where it is missing the
-// orchestrator falls back to a 2.5 s URL poll, so this is given ~6 s either way.
+// The pushState swap, seen through the Navigation API.
 await clickIn("#spaNav");
 const spaStart = Date.now();
 const spaOk = await waitFor(
@@ -348,7 +346,7 @@ const spaMs = Date.now() - spaStart;
 check(
   "pushState route swap: the new route is chipped and the stale unit purged",
   spaOk && spaMs <= 6500,
-  `${spaMs} ms (Navigation API ${features.navigation ? "present" : "absent — 2.5 s URL poll"})`,
+  `${spaMs} ms`,
 );
 
 // ── 8) a setting written in the options page reaches the open tab live ─────────────
