@@ -142,6 +142,9 @@ export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
   const pageTree = add(null);
   const regular = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   const bold = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+  // `mono` lines are Courier: every character 0.6 em wide, so a line of a stated length has a
+  // stated width and a column's right edge is where the test says it is.
+  const mono = add("<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>");
 
   const pageIds = [];
   for (const lines of pages) {
@@ -149,7 +152,7 @@ export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
       "BT\n" +
       lines
         // `up`: set bottom to top, as arXiv stamps its identifier up the first page's margin.
-        .map((l) => `/${l.bold ? "F2" : "F1"} ${l.size} Tf\n${l.up ? "0 1 -1 0" : "1 0 0 1"} ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
+        .map((l) => `/${l.mono ? "F3" : l.bold ? "F2" : "F1"} ${l.size} Tf\n${l.up ? "0 1 -1 0" : "1 0 0 1"} ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
         .join("\n") +
       "\nET\n";
     const contents = objects.length + 1; // the object number this stream is about to take
@@ -160,7 +163,7 @@ export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
     pageIds.push(
       add(
         `<< /Type /Page /Parent ${pageTree} 0 R /MediaBox [0 0 612 792] ` +
-          `/Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${contents} 0 R >>`,
+          `/Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R /F3 ${mono} 0 R >> >> /Contents ${contents} 0 R >>`,
       ),
     );
   }
@@ -307,6 +310,52 @@ export function buildTwoColumnPdf(pageCount) {
     pages.push(items);
   }
   return buildPdf(pages);
+}
+
+/**
+ * One page of two narrow columns with a gutter too tight for a chip (16 pt against a chip's
+ * 54 px), every full line of them the same width, whose paragraphs end on different rows in each column: a left paragraph's last
+ * line shares its row with a line of the right column, so a chip put on the wrong side of
+ * the page stands beside another paragraph's text. Every paragraph's last line carries its
+ * own tag. Returns the file and, per paragraph, its lines in reading order.
+ */
+export function buildColumnsPdf() {
+  const WORDS = "the quick brown fox jumps over a lazy dog rain falls on roofs and children read books near warm rooms long quiet nights before a timetable moved off paper until trains ran on time".split(" ");
+  const COLS = 32; // Courier at 11 pt: 6.6 pt a character, a full line 211.2 pt wide
+  // A line of exactly COLS characters, so that every full line of a column ends where its neighbours do.
+  const full = (seed) => {
+    for (let attempt = 0; ; attempt++) {
+      const words = [];
+      let length = -1;
+      for (let k = 0; length < COLS; k++) {
+        words.push(WORDS[Math.abs(Math.imul(seed * 977 + attempt * 131 + k * 7919, 2654435761) >>> 7) % WORDS.length]);
+        length += words.at(-1).length + 1;
+      }
+      if (length === COLS) return words.join(" ");
+    }
+  };
+  const layout = [
+    { x: 72, tag: ["Alpha", "Beta"], rows: [21, 17] },
+    { x: 299, tag: ["Gamma", "Delta"], rows: [19, 23] },
+  ];
+  const items = [];
+  const paragraphs = [];
+  layout.forEach((column, c) => {
+    let row = 0;
+    column.rows.forEach((count, p) => {
+      const lines = [];
+      for (let i = 0; i < count; i++) {
+        const seed = (c * 2 + p) * 1009 + i;
+        const text = i === count - 1 ? `${full(seed).split(" ").slice(0, 2).join(" ")} ends ${column.tag[p]}.` : full(seed);
+        lines.push(text);
+        items.push({ x: column.x, y: 700 - row * 14, size: 11, mono: true, text });
+        row++;
+      }
+      row++; // the gap between paragraphs
+      paragraphs.push({ tag: column.tag[p], column: c, lines });
+    });
+  });
+  return { pdf: buildPdf([items]), paragraphs };
 }
 
 /** Thirty pages of it — enough that most of the stack is nowhere near the viewport. */
