@@ -79,6 +79,19 @@ describe("EngineHost", () => {
     expect(w.terminated).toBe(true);
   });
 
+  it("sends an init that has to be read (the chosen tier) once it is, and no earlier", async () => {
+    let give!: (init: { pin: never; assets: never; version: string }) => void;
+    const h = new EngineHost({ workerUrl: "w", init: () => new Promise((resolve) => { give = resolve; }) });
+    h.postMessage({ id: "a" });
+    const w = FakeWorker.all[0]!;
+    expect(w.posted).toEqual([]);
+    give({ pin: { tier: "fp16" } as never, assets: {} as never, version: "1" });
+    await Promise.resolve();
+    expect(w.posted).toEqual([{ type: "init", pin: { tier: "fp16" }, assets: {}, version: "1", idle: false }]);
+    w.emit({ type: "ready" });
+    expect(w.posted.slice(1)).toEqual([{ type: "request", request: { id: "a" } }]);
+  });
+
   it("turns a crashed worker into a disconnect", () => {
     const { h, disconnects } = host();
     h.postMessage({ id: "a" });

@@ -26,6 +26,9 @@ this computer:
   about 92 ms and up to 2.5 GB.
 - **A computer with less than 4 GB of memory**, or too little free disk space, is told so,
   and nothing is downloaded; with exactly 4 GB it runs, and may slow down while it scores.
+  Where the graphics card supports 16-bit maths, that computer, or one short of disk space
+  for the full model, gets a lighter version of the model instead (a 715 MB download), whose
+  verdicts match the full model's on 99.8% of texts; the setup page and Settings say so.
 
 The in-browser download shows progress, speed and time left, with Pause, Resume and Cancel;
 a download that stops says why, and **Retry** continues where it left off. The model runs on

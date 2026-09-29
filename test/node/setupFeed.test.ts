@@ -1,7 +1,7 @@
 // test/node/setupFeed.test.ts — the in-browser engine's download, pushed to the popup and the
 // panel while it runs and they show it (lib/backend/setupFeed.ts).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSetupFeed, FOLLOW_MS, type SetupListener } from "../../lib/backend/setupFeed";
+import { createSetupFeed, FOLLOW_MS, WAITING_MS, type SetupListener } from "../../lib/backend/setupFeed";
 import type { EngineSetup } from "../../lib/messaging/protocol";
 
 const downloading = (percent: number): EngineSetup => ({ state: "downloading", percent });
@@ -53,26 +53,79 @@ describe("the download's progress, pushed", () => {
     expect(t.f.listeners()).toBe(0);
   });
 
-  it("stops at a pause, and when the engine says nothing about setup", async () => {
+  it("stops at a pause for the panel, and when the engine says nothing about setup", async () => {
     for (const after of [{ state: "paused", percent: 40 } as EngineSetup, null]) {
       const t = feed(downloading(40));
-      t.f.follow("pages", downloading(40));
+      t.f.follow(panel, downloading(40));
       t.set(after);
       await vi.advanceTimersByTimeAsync(FOLLOW_MS * 10);
-      expect(t.told).toEqual([["pages", after]]);
+      expect(t.told).toEqual([[panel, after]]);
       expect(t.reads.length).toBe(1);
     }
+    // The popup stops when the engine says nothing about setup.
+    const t = feed(downloading(40));
+    t.f.follow("pages", downloading(40));
+    t.set(null);
+    await vi.advanceTimersByTimeAsync(FOLLOW_MS * 10);
+    expect(t.told).toEqual([["pages", null]]);
+    expect(t.reads.length).toBe(1);
   });
 
-  it("reads nothing when no download runs, or when nobody shows it", async () => {
+  it("reads nothing when nobody shows a download, or when only a panel shows a wait", async () => {
     const t = feed({ state: "needed", percent: 0 });
     t.f.follow(panel, { state: "needed", percent: 0 });
-    t.f.follow("pages", { state: "paused", percent: 3 });
+    t.f.follow(panel, { state: "paused", percent: 3 });
+    t.f.follow("pages", { state: "loading", percent: 100 });
+    t.f.follow("pages", null);
     t.f.follow(panel, null);
     t.f.follow(panel, undefined);
     await vi.advanceTimersByTimeAsync(FOLLOW_MS * 20);
     expect(t.reads).toEqual([]);
     expect(t.told).toEqual([]);
+  });
+
+  it("reaches an open popup when a download starts or resumes from another page", async () => {
+    for (const wait of [{ state: "needed", percent: 0 }, { state: "paused", percent: 40 }, { state: "failed", percent: 40 }] as EngineSetup[]) {
+      const t = feed(wait);
+      t.f.follow("pages", wait);
+      // Nothing moves: it is looked at, and nothing is said.
+      await vi.advanceTimersByTimeAsync(WAITING_MS * 3);
+      expect(t.told).toEqual([]);
+      expect(t.reads.length).toBe(3);
+      // Started from the setup page: the popup is told, and follows it as it runs.
+      t.set(downloading(1));
+      await vi.advanceTimersByTimeAsync(WAITING_MS);
+      expect(t.told).toEqual([["pages", downloading(1)]]);
+      t.set(downloading(2));
+      await vi.advanceTimersByTimeAsync(FOLLOW_MS);
+      expect(t.told.slice(1)).toEqual([["pages", downloading(2)]]);
+      // And once it ends the popup is told and let go.
+      t.set({ state: "loading", percent: 100 });
+      await vi.advanceTimersByTimeAsync(FOLLOW_MS);
+      expect(t.told.at(-1)).toEqual(["pages", { state: "loading", percent: 100 }]);
+      expect(t.f.listeners()).toBe(0);
+    }
+  });
+
+  it("follows a popup through a pause and a resume, and lets it go when it closes", async () => {
+    const t = feed(downloading(30));
+    t.f.follow("pages", downloading(30));
+    t.set({ state: "paused", percent: 30 });
+    await vi.advanceTimersByTimeAsync(FOLLOW_MS);
+    expect(t.told).toEqual([["pages", { state: "paused", percent: 30 }]]);
+    expect(t.f.listeners()).toBe(1);
+    t.set(downloading(31));
+    await vi.advanceTimersByTimeAsync(WAITING_MS);
+    expect(t.told.at(-1)).toEqual(["pages", downloading(31)]);
+    t.set({ state: "paused", percent: 31 });
+    await vi.advanceTimersByTimeAsync(FOLLOW_MS);
+    t.leave("pages");
+    t.set(downloading(32));
+    await vi.advanceTimersByTimeAsync(WAITING_MS);
+    expect(t.f.listeners()).toBe(0);
+    const reads = t.reads.length;
+    await vi.advanceTimersByTimeAsync(WAITING_MS * 20);
+    expect(t.reads.length).toBe(reads);
   });
 
   it("drops a listener that no longer shows the download, a closed tab, and stops with the last", async () => {

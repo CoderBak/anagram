@@ -118,6 +118,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
 
   let engine: Engine | null = null;
   let decision: Decision | null = null;
+  /** The model tier the engine itself says it runs (its status), once it has said. */
+  let engineTier: "fp32" | "fp16" | null = null;
   let panel: { refresh(): void; destroy(): void } | undefined;
   let busy = false;
 
@@ -135,14 +137,22 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     panelHost.replaceChildren();
     panelHost.hidden = false;
     const crashAction = !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
-    panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply) => options.onUpdate?.(next, reply), { crashAction });
+    engineTier = null;
+    panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply) => {
+      if (reply.kind === "ok" && next === "inbrowser") { const before = engineTier; engineTier = reply.snapshot.tier ?? null; if (engineTier !== before) paintTight(); }
+      options.onUpdate?.(next, reply);
+    }, { crashAction });
     paintTight();
     void paintSwitch();
   }
 
-  /** The in-browser engine on 4 GB: the computer may slow down while it scores. */
+  /** The in-browser engine on 4 GB: the computer may slow down while it scores. Not under the
+   *  lighter model, which says its own line (lib/ui/inBrowserEngine.ts); but a lighter model that
+   *  did not run here leaves FP32 in its place, and on 4 GB that is the note again. */
   function paintTight(): void {
-    tight.hidden = !(engine === "inbrowser" && decision?.tight);
+    const lighter = engineTier === "fp16" || (engineTier === null && decision?.tier === "fp16");
+    const slow = decision?.tier === "fp16" ? engineTier === "fp32" && decision.fallback?.tight === true : decision?.tight === true;
+    tight.hidden = !(engine === "inbrowser" && !lighter && slow);
   }
 
   function showChoice(d: Decision): void {
@@ -167,7 +177,11 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       const measuredHere = d.machine === "apple-silicon";
       oneClickCost.hidden = terminalCost.hidden = !measuredHere;
       measured.hidden = d.offer === "terminal-only" || !measuredHere;
-      oneClickTight.hidden = !d.tight;
+      // The lighter model says so where it is offered; FP32 on 4 GB says the computer may slow down.
+      const bytes = TIERS.find((tier) => tier.id === d.tier)?.bytes ?? TIERS[0].bytes;
+      oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
+      oneClickTight.textContent = t(d.tier === "fp16" ? "engineLighter" : "engineTight");
+      oneClickTight.hidden = !(d.tight || d.tier === "fp16");
       terminalWhat.textContent = t(d.machine === "nvidia"
         ? (d.os === "windows" ? "engineTerminalWhatNvidiaWindows" : "engineTerminalWhatNvidia")
         : d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
@@ -180,7 +194,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     if (busy) return;
     busy = true; paintBusy();
     try {
-      const reply = await chooseEngine("inbrowser", setup);
+      // The model tier this device gets goes with the pick: the engine starts on it.
+      const d = decision ?? await device().catch(() => null);
+      const reply = await chooseEngine("inbrowser", setup, d?.tier ? { tier: d.tier, fallback: d.fallback !== null } : undefined);
       if (!reply.ok) { refused.textContent = t("engineSwitchFailed"); refused.hidden = false; return; }
       refused.hidden = true;
       show("inbrowser");

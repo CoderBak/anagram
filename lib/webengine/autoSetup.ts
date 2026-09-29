@@ -16,7 +16,7 @@
 // setup page then offers Set up and says why (lib/ui/inBrowserEngine.ts).
 import { roomShort } from "../backend/engineSetup";
 import type { NativeReply } from "../backend/nativeProtocol";
-import { pinnedFiles } from "./pin";
+import { pinnedFiles, type ModelTier } from "./pin";
 import { DIRECTORY } from "./storage";
 
 /** lib/webengine/engine.ts's state file: what the engine saved about the download. */
@@ -101,15 +101,15 @@ export async function storedModelBytes(): Promise<number> {
  * the way. Resolves once the engine has taken the request, or after OPEN_AFTER_MS, with
  * "started" or why not; never rejects.
  */
-export async function startSetupByItself(request: (op: "models.download") => Promise<NativeReply>, { asked = false } = {}):
+export async function startSetupByItself(request: (op: "models.download") => Promise<NativeReply>, { asked = false, tier = "fp32" }: { asked?: boolean; tier?: ModelTier } = {}):
   Promise<"started" | "unavailable" | Skipped> {
   try {
     const read = await readSaved();
     if (read === "unreadable") return "unreadable";
     // Asked for (the person picked the engine): whatever they chose before, and whatever the
     // browser says about saving data. Room is still room.
-    if (!asked && !wantsDownload(read.saved)) return "not_wanted";
-    const total = pinnedFiles().reduce((n, f) => n + f.size_bytes, 0);
+    if (!asked && !wantsDownload(read.saved, pinnedFiles(tier))) return "not_wanted";
+    const total = pinnedFiles(tier).reduce((n, f) => n + f.size_bytes, 0);
     let estimate: { quota?: number; usage?: number } = {};
     try { estimate = await navigator.storage.estimate(); } catch { /* no estimate: room is not known to be short */ }
     const connection = (navigator as { connection?: { saveData?: boolean } }).connection;

@@ -1,4 +1,4 @@
-// lib/webengine/session.ts — ONNX Runtime Web around the FP32 model: which of its two
+// lib/webengine/session.ts — ONNX Runtime Web around the model: which of its two
 // execution providers, and the forward pass.
 //
 // The runtime is the pinned onnxruntime-web package, copied verbatim into
@@ -16,7 +16,8 @@
 // WebAssembly memory never shrinks, so the worker is ended when the engine lets
 // the model go (lib/webengine/host.ts).
 //
-// The choice is automatic and FP32 either way, as the native engine's: WebGPU when the
+// The choice is automatic and FP32 either way, as the native engine's (the FP16 tier, below, is
+// the one exception): WebGPU when the
 // browser offers a hardware adapter (not a software one such as SwiftShader, which Chrome
 // gives a machine without a usable GPU when WebGPU is forced on, and which is far slower
 // than the CPU provider) whose storage-buffer limit can hold the word-embedding matrix
@@ -27,6 +28,7 @@
 // the GPU falls back to the CPU provider on its own.
 import { weightlessGraph } from "./onnx";
 import type { Backend } from "./scoring";
+import type { ModelTier } from "./pin";
 
 /** The runtime's files by URL, as scripts/webengine.mjs copies them: the library, its loader and its WebAssembly. */
 export interface RuntimeAssets { ort: string; mjs: string; wasm: string }
@@ -42,7 +44,7 @@ export interface Candidate {
   label: string;
   device: string;
   runtime: string;
-  precision: "fp32";
+  precision: ModelTier;
   experimental: false;
   available: boolean;
   reason?: string | null;
@@ -64,6 +66,12 @@ export const EMBEDDING_BYTES = 50265 * 1024 * 4;
  */
 export const SESSION_BATCH = { webgpu: 4, wasm: 8 } as const;
 export const WEBGPU_ID = "webgpu:fp32";
+/** The FP16 tier's only configuration (lib/device.ts TIERS): ONNX Runtime upcasts FP16 on the
+ *  processor and gains nothing, so it is never run there. It needs the adapter feature
+ *  `shader-f16` (without it the session builds and the first pass fails on the first Gather)
+ *  and a buffer for half the embedding matrix. */
+export const WEBGPU_FP16_ID = "webgpu:fp16";
+export const EMBEDDING_BYTES_FP16 = EMBEDDING_BYTES / 2;
 /** The name the graph gives the file its tensors lie in. */
 const MODEL_FILE = "model.onnx";
 export const WASM_ID = "wasm:fp32";
@@ -88,6 +96,7 @@ interface OrtModule {
 interface GpuAdapterLike {
   limits: { maxStorageBufferBindingSize: number; maxBufferSize: number };
   info?: { vendor?: string; architecture?: string; description?: string; isFallbackAdapter?: boolean };
+  features?: { has(name: string): boolean };
   /** Where browsers carried it before GPUAdapterInfo did. */
   isFallbackAdapter?: boolean;
 }
@@ -97,8 +106,11 @@ const NO_JSPI = "This browser has no WebAssembly JSPI, which the runtime needs";
 /** The candidates on this browser, most preferred first. `softwareGpu` takes a software
  *  adapter for a GPU: for the engine's own suites only (test/webengine/harness.mjs), so a
  *  machine without a GPU still runs the GPU path's kernels; the extension never sets it. */
-export async function probeRuntimes({ softwareGpu = false }: { softwareGpu?: boolean } = {}): Promise<Candidate[]> {
-  const webgpu: Candidate = { id: WEBGPU_ID, label: "GPU (WebGPU, FP32)", device: "gpu", runtime: "onnxruntime-web/webgpu", precision: "fp32", experimental: false, available: false, reason: null };
+export async function probeRuntimes({ softwareGpu = false, tier = "fp32" }: { softwareGpu?: boolean; tier?: ModelTier } = {}): Promise<Candidate[]> {
+  const fp16 = tier === "fp16";
+  const needed = fp16 ? EMBEDDING_BYTES_FP16 : EMBEDDING_BYTES;
+  const precision = fp16 ? "FP16" : "FP32";
+  const webgpu: Candidate = { id: fp16 ? WEBGPU_FP16_ID : WEBGPU_ID, label: `GPU (WebGPU, ${precision})`, device: "gpu", runtime: "onnxruntime-web/webgpu", precision: tier, experimental: false, available: false, reason: null };
   const gpu = (globalThis.navigator as { gpu?: { requestAdapter(o?: unknown): Promise<GpuAdapterLike | null> } }).gpu;
   const jspi = hasJspi();
   if (!jspi) webgpu.reason = NO_JSPI;
@@ -109,17 +121,20 @@ export async function probeRuntimes({ softwareGpu = false }: { softwareGpu?: boo
       if (!adapter) webgpu.reason = "No WebGPU adapter";
       else if ((adapter.info?.isFallbackAdapter ?? adapter.isFallbackAdapter) === true && !softwareGpu) {
         webgpu.reason = "The only WebGPU adapter is a software one, slower than the processor";
-      } else if (adapter.limits.maxStorageBufferBindingSize < EMBEDDING_BYTES || adapter.limits.maxBufferSize < EMBEDDING_BYTES) {
-        webgpu.reason = `The GPU binds at most ${Math.floor(adapter.limits.maxStorageBufferBindingSize / 1048576)} MiB per buffer; the model needs ${Math.ceil(EMBEDDING_BYTES / 1048576)} MiB`;
+      } else if (adapter.limits.maxStorageBufferBindingSize < needed || adapter.limits.maxBufferSize < needed) {
+        webgpu.reason = `The GPU binds at most ${Math.floor(adapter.limits.maxStorageBufferBindingSize / 1048576)} MiB per buffer; the model needs ${Math.ceil(needed / 1048576)} MiB`;
+      } else if (fp16 && adapter.features?.has("shader-f16") !== true) {
+        webgpu.reason = "The GPU does not offer shader-f16, which the FP16 model needs";
       } else {
         webgpu.available = true;
         const name = [adapter.info?.vendor, adapter.info?.architecture, adapter.info?.description].filter(Boolean).join(" ");
-        if (name) webgpu.label = `GPU (WebGPU, FP32) — ${name}`;
+        if (name) webgpu.label = `GPU (WebGPU, ${precision}) — ${name}`;
       }
     } catch (error) { webgpu.reason = `WebGPU adapter request failed: ${(error as Error).message}`; }
   }
   const threads = wasmThreads();
-  const wasm: Candidate = { id: WASM_ID, label: `CPU (WebAssembly, FP32, ${threads} thread${threads === 1 ? "" : "s"})`, device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: jspi, reason: jspi ? null : NO_JSPI };
+  const wasm: Candidate = { id: WASM_ID, label: `CPU (WebAssembly, FP32, ${threads} thread${threads === 1 ? "" : "s"})`, device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false,
+    ...(fp16 ? { available: false, reason: "The FP16 model runs on the graphics card only" } : { available: jspi, reason: jspi ? null : NO_JSPI }) };
   return [webgpu, wasm];
 }
 
@@ -172,7 +187,7 @@ export class Session implements Backend {
     const began = performance.now();
     const graph = await weightlessGraph(async (offset, length) => new Uint8Array(await model.slice(offset, offset + length).arrayBuffer()), model.size, MODEL_FILE);
     if (signal?.aborted) throw new Error("cancelled");
-    const provider = candidate.id === WEBGPU_ID ? [{ name: "webgpu" }] : ["wasm"];
+    const provider = candidate.device === "gpu" ? [{ name: "webgpu" }] : ["wasm"];
     const session = await ort.InferenceSession.create(graph.model, {
       executionProviders: provider,
       graphOptimizationLevel: "all",
@@ -196,7 +211,7 @@ export class Session implements Backend {
     return out;
   }
 
-  get device(): "webgpu" | "wasm" { return this.info.candidate.id === WEBGPU_ID ? "webgpu" : "wasm"; }
+  get device(): "webgpu" | "wasm" { return this.info.candidate.device === "gpu" ? "webgpu" : "wasm"; }
   get batchSize(): number { return SESSION_BATCH[this.device]; }
 
   async logits(inputIds: number[][], attentionMask: number[][], signal?: AbortSignal): Promise<Float32Array> {

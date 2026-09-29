@@ -30,11 +30,12 @@ export async function readEngine(): Promise<Engine | null> {
  * Make `engine` the one in use. `setup`: the in-browser engine's download starts, "now" as
  * the person asked for it, or "auto" as it does by itself on a device with no choice (not
  * after a Cancel, nor while the browser asks to save data). The local engine needs Native
- * Messaging granted first, in the click that picked it.
+ * Messaging granted first, in the click that picked it. `tier`: the model tier lib/device.ts
+ * decided for the in-browser engine, kept for it to start with (lib/webengine/tier.ts).
  */
-export async function chooseEngine(engine: Engine, setup?: "now" | "auto"): Promise<SetEngineReply> {
+export async function chooseEngine(engine: Engine, setup?: "now" | "auto", tier?: { tier: "fp32" | "fp16"; fallback: boolean }): Promise<SetEngineReply> {
   try {
-    const reply = await browser.runtime.sendMessage({ action: ACTIONS.SET_ENGINE, engine, ...(setup ? { setup } : {}) }) as SetEngineReply | undefined;
+    const reply = await browser.runtime.sendMessage({ action: ACTIONS.SET_ENGINE, engine, ...(setup ? { setup } : {}), ...(tier ? { tier: tier.tier, fallback: tier.fallback } : {}) }) as SetEngineReply | undefined;
     return reply ?? { ok: false, error: "no_reply" };
   } catch { return { ok: false, error: "no_worker" }; }
 }

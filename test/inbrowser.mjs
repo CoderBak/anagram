@@ -59,7 +59,7 @@ import { serveHtml, uiLanguage } from "./harness.mjs";
 import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
-import { DOWNLOAD_BYTES, modelServer, realFiles } from "./webengine/model-server.mjs";
+import { DOWNLOAD_BYTES, DOWNLOAD_BYTES_FP16, modelServer, realFiles } from "./webengine/model-server.mjs";
 import { STATES, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { LID } from "../scripts/webengine.mjs";
 /** The numbers the choice describes the engines by (lib/device.ts MEASURED, measured on an M4). */
@@ -301,7 +301,7 @@ for (const lang of ["en", "zh-CN"]) {
 
 // ---- what the device can afford, and a browser without JSPI --------------------------------------
 
-for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["no-jspi", "terminal"]]) {
+for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "lighter"], ["no-jspi", "terminal"]]) {
   const w = words("en");
   const server = await modelServer({ rate: 15e6 });
   const run = await launch("en", server, undefined, deviceBuild(name, DEVICES[name]));
@@ -326,6 +326,16 @@ for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"
       const note = await until(() => textOf(setup, ".engine-tight"), 20000);
       check("4 GB: the in-browser engine sets up, with a line that the computer may slow down", note === w("engineTight") &&
         (await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000)), note);
+      await engine(setup, "models.delete", { confirm: true });
+    } else if (want === "lighter") {
+      // 4 GB and a card with shader-f16: FP32 does not fit, so the modelkit's FP16 file is what downloads.
+      const line = await until(() => textOf(setup, ".engine-lighter"), 20000);
+      const asked = await until(async () => server.requests.find((r) => !r.preflight && r.file === "model_fp16.onnx"), 20000);
+      const progress = await until(() => textOf(setup, ".engine-progress"), 20000);
+      const status = await engine(setup, "status");
+      check("4 GB with an f16 GPU: the lighter model's line, and no note that the computer may slow down", line === w("engineLighter") && !(await shown(setup, ".engine-tight")), line);
+      check("4 GB with an f16 GPU: model_fp16.onnx downloads, not model.onnx, and the progress counts its 715 MB", !!asked && !server.requests.some((r) => r.file === "model.onnx") &&
+        progress?.includes(size(DOWNLOAD_BYTES_FP16)) && status?.data?.tier === "fp16" && status.data.download.total_bytes === DOWNLOAD_BYTES_FP16, JSON.stringify([asked, progress, status?.data?.tier]));
       await engine(setup, "models.delete", { confirm: true });
     } else {
       await until(() => shown(setup, "#engine-pick-native"), 15000);
@@ -689,7 +699,8 @@ for (const lang of ["en", "zh-CN"]) {
     await full.click("#component-primary");
     await sleep(500);
     check(`${lang}: a disk too full to start says how much room to make, and downloads nothing`,
-      fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && (await textOf(full, "#componentSettings .component-error")) === fullText && server.requests.length === before, fullText);
+      fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && (lang !== "en" || fullText.endsWith("then click Retry.")) && (await textOf(full, "#component-primary")) === w("panelRetry") &&
+      (await textOf(full, "#componentSettings .component-error")) === fullText && server.requests.length === before, fullText);
     await full.close();
 
     // Set up against a server that fails: a failed setup, with what to do and Retry; Retry downloads.

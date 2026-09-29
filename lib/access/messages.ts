@@ -50,7 +50,7 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.OPEN_COMMENT_ACCESS),session,origin:commentOrigin}),
   v.strictObject({action:v.literal(ACTIONS.OPEN_ENGINE_SETUP),session}),
   v.strictObject({action:v.literal(ACTIONS.GET_ENGINE)}),
-  v.strictObject({action:v.literal(ACTIONS.SET_ENGINE),engine:v.picklist(["native","inbrowser"]),setup:v.optional(v.picklist(["now","auto"]))}),
+  v.strictObject({action:v.literal(ACTIONS.SET_ENGINE),engine:v.picklist(["native","inbrowser"]),setup:v.optional(v.picklist(["now","auto"])),tier:v.optional(v.picklist(["fp32","fp16"])),fallback:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.DELETE_INBROWSER_MODEL)}),
 ]);
 export type WorkerMessage = v.InferOutput<typeof schema>;

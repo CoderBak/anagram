@@ -731,6 +731,10 @@
     "message": "This computer may slow down while Anagram scores.",
     "description": "Setup page: under the in-browser engine on a computer with 4 GB of memory, just enough for the model."
   },
+  "engineLighter": {
+    "message": "This device has little memory, so Anagram runs a lighter version of its model. Its verdicts match the full model's on 99.8% of texts.",
+    "description": "Setup page and Settings: the in-browser engine runs the FP16 model, because the full one does not fit this device. Half the download."
+  },
   "engineNativeRefused": {
     "message": "Anagram wasn't allowed to talk to the local engine, so nothing changed. Choose again when you're ready.",
     "description": "Setup page and Settings: the browser's permission for the local engine was refused."
@@ -860,7 +864,7 @@
     "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
   },
   "engineDiskFull": {
-    "message": "There isn't enough free disk space. Free up at least $1, then try again.",
+    "message": "There isn't enough free disk space. Free up at least $1, then click Retry.",
     "description": "In-browser edition: the download stopped on a full disk; $1 is how much it still needs, e.g. 800 MB."
   },
   "engineServerDown": {

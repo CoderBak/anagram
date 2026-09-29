@@ -40,6 +40,8 @@ import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
 import { deleteEngineFiles, startSetupByItself } from "../lib/webengine/autoSetup";
+import { tierOf } from "../lib/webengine/tier";
+import { engineTierChoice } from "../lib/webengine/tierStore";
 import { closeWebEngine, webEngineRunning } from "../lib/webengine/client";
 import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
 import { createWarmup } from "../lib/backend/warmup";
@@ -204,7 +206,7 @@ export default defineBackground(() => {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
     } else if (details.reason === "update") {
       void engineTransport().current().then((engine) => {
-        if (engine === "inbrowser") void startSetupByItself((op) => transportOf("inbrowser").request(op));
+        if (engine === "inbrowser") void engineTierChoice.getValue().catch(() => null).then((choice) => startSetupByItself((op) => transportOf("inbrowser").request(op),{tier:tierOf(choice)}));
       });
     }
   });
@@ -433,11 +435,18 @@ export default defineBackground(() => {
       case ACTIONS.SET_ENGINE: {
         // The local engine only once Native Messaging is granted: the page asked in its click.
         if (msg.engine === "native" && !(await nativeGranted())) return {ok:false,error:"permission"} satisfies SetEngineReply;
+        // The tier the setup page decided for the in-browser engine; a different one than the
+        // engine started with means it starts again, on the new pin.
+        if(msg.engine === "inbrowser" && msg.tier){
+          const before=tierOf(await engineTierChoice.getValue().catch(() => null));
+          await engineTierChoice.setValue({tier:msg.tier,fallback:msg.fallback === true});
+          if(before !== msg.tier) await closeWebEngine();
+        }
         await engineChoice.setValue(msg.engine);
         const engine=await engineTransport().refresh();
         getScoreClient().invalidate();
         const setup=engine === "inbrowser" && msg.setup
-          ? await startSetupByItself((op) => transportOf("inbrowser").request(op),{asked:msg.setup === "now"}) : undefined;
+          ? await startSetupByItself((op) => transportOf("inbrowser").request(op),{asked:msg.setup === "now",tier:tierOf(await engineTierChoice.getValue().catch(() => null))}) : undefined;
         return {ok:engine === msg.engine,engine,setup} satisfies SetEngineReply;
       }
       case ACTIONS.DELETE_INBROWSER_MODEL: {
