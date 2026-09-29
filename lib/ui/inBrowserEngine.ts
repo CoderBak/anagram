@@ -9,12 +9,17 @@
 // and time left, Pause, Resume and Cancel, what stopped a download and how to fix it, and
 // once it is ready, whether the model runs on the graphics card or the processor.
 // Benchmarks, updates and uninstalling belong to the local engine and are not here.
+// The setup page keeps it to a status line and the bar; Settings' row (`settings`) says the
+// status in words and puts Delete model files and the idle unload beside the engine switch.
 import { browser } from "#imports";
 import { t, tn, type MessageKey } from "../i18n";
+import { formatSize, timeLeft } from "./size";
+import { progressBar } from "./progressBar";
 import { requestComponent, type ComponentReply, type ComponentSnapshot } from "../backend/nativeClient";
 import { percentOf, roomShort, setupStage, type SetupStage } from "../backend/engineSetup";
 import { pinnedFiles } from "../webengine/pin";
 import { ACTIONS, type BackendStatus } from "../messaging/protocol";
+export { formatSize, timeLeft } from "./size";
 import "./componentSettings.css";
 import "./inBrowserEngine.css";
 
@@ -22,21 +27,6 @@ type Operation = "models.download" | "models.pause" | "models.delete" | "engine.
 /** Every byte setup downloads at FP32: the pinned files. The engine says its own total (the FP16
  *  tier's is half), which is what the panel shows once it has answered. */
 const DOWNLOAD_BYTES = pinnedFiles().reduce((n, f) => n + f.size_bytes, 0);
-
-/** A size in the units a download is counted in. */
-export function formatSize(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB`;
-  if (n >= 1e6) return `${Math.round(n / 1e6).toLocaleString()} MB`;
-  return `${Math.max(0, Math.round(n / 1e3)).toLocaleString()} KB`;
-}
-
-/** The time a download has left, from its speed, in words. */
-export function timeLeft(seconds: number): string {
-  if (seconds < 60) return t("engineLeftUnderMinute");
-  if (seconds < 3600) return tn("engineLeftMinutes", Math.ceil(seconds / 60));
-  const minutes = Math.round(seconds / 60);
-  return t("engineLeftHours", Math.floor(minutes / 60), minutes % 60);
-}
 
 const stageKeys: Record<SetupStage["stage"], MessageKey> = {
   needed: "engineNotSetUp", downloading: "engineDownloading", paused: "enginePaused", failed: "engineSetupFailed",
@@ -76,51 +66,56 @@ class Speedometer {
   }
 }
 
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, _options: { crashAction?: HTMLButtonElement } = {}): { refresh(): void; destroy(): void } {
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, options: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
+  const inSettings = options.settings === true;
   host.classList.add("component-settings");
   host.dataset.engine = "in-browser";
   const makeButton = (key: MessageKey, handler: () => void, variant?: string): HTMLButtonElement => {
-    const button = element("button", t(key), "btn"); button.type = "button";
+    const button = element("button", t(key), "btn"); button.type = "button"; button.dataset.size = "sm";
     if (variant) button.dataset.variant = variant;
     button.addEventListener("click", handler); return button;
   };
 
   const summary = element("p", t("componentStarting"), "component-status"); summary.setAttribute("role", "status");
-  const intro = element("p", t("engineSetUpIntro", formatSize(DOWNLOAD_BYTES)), "engine-intro"); intro.hidden = true;
   const note = element("p", t("engineSaveData"), "engine-note"); note.hidden = true;
   // The FP16 tier is in use: said once, whatever the stage.
   const lighter = element("p", t("engineLighter"), "engine-note engine-lighter"); lighter.hidden = true;
-  const progress = element("progress"); progress.hidden = true;
-  const progressText = element("p", "", "engine-progress"); progressText.id = "engine-progress"; progressText.hidden = true;
-  progress.setAttribute("aria-describedby", progressText.id);
-  const where = element("p", "", "engine-where"); where.hidden = true;
-  const stored = element("p", "", "engine-stored"); stored.hidden = true;
-  const error = element("p", undefined, "component-error"); error.setAttribute("role", "alert"); error.hidden = true;
-  const details = element("details", undefined, "component-details"); details.hidden = true;
-  const detailsText = element("pre"); details.append(element("summary", t("componentDetails")), detailsText);
 
-  // One button for the thing to do now (its label and act follow the stage, so keyboard focus
-  // stays on it from Set up to Pause to Resume), and Cancel beside it while a download exists.
+  // The bar, its percentage and the buttons for the thing to do now share one row. One button
+  // follows the stage (its label and act change, so keyboard focus stays on it from Set up to
+  // Pause to Resume), and Cancel sits beside it while a download exists.
+  const bar = progressBar(); bar.el.hidden = true;
+  const percent = element("span", "", "engine-percent"); percent.hidden = true;
   const actions = element("div", undefined, "component-actions");
   let primaryAct: (() => void) | undefined;
   const primary = makeButton("engineSetUp", () => primaryAct?.());
   primary.id = "component-primary"; primary.hidden = true;
   const cancel = makeButton("engineCancelDownload", () => confirm("cancel"), "outline"); cancel.id = "engine-cancel"; cancel.hidden = true;
   actions.append(primary, cancel);
+  const barRow = element("div", undefined, "engine-bar-row"); barRow.append(bar.el, percent, actions);
+  // "880 MB of 1.4 GB, about 3 min left, 15 MB/s", then a short note of where the files come from.
+  const progressText = element("p", undefined, "engine-progress"); progressText.id = "engine-progress"; progressText.hidden = true;
+  const progressLine = element("span"); progressLine.className = "engine-line";
+  const source = element("span", "", "engine-source"); source.id = "engine-source"; source.hidden = true;
+  progressText.append(progressLine, source);
+  bar.el.setAttribute("aria-describedby", progressText.id);
+  const keepOpen = element("p", t("engineKeepOpen"), "engine-note engine-keepopen"); keepOpen.hidden = true;
+  const where = element("p", "", "engine-where"); where.hidden = true;
+  const error = element("p", undefined, "component-error"); error.setAttribute("role", "alert"); error.hidden = true;
+  const details = element("p", undefined, "component-details"); details.hidden = true;
 
-  const manage = element("details", undefined, "component-fold"); manage.id = "manage"; manage.hidden = true;
-  const idleField = element("div", undefined, "field"); idleField.dataset.orientation = "horizontal";
+  // Settings: Delete model files, the idle unload and the engine switch, in one line.
+  const controls = element("div", undefined, "component-inline"); controls.hidden = true;
   const idleLabel = element("label", t("componentIdleSetting")); idleLabel.htmlFor = "idleUnload";
-  const idleSelect = element("select"); idleSelect.id = "idleUnload";
+  const idleSelect = element("select", undefined, "select"); idleSelect.id = "idleUnload";
   for (const seconds of [300, 60, 900, 0]) {
     const option = element("option", seconds ? tn("componentIdleMinutes", seconds / 60) : t("componentIdleNever"));
     option.value = String(seconds); idleSelect.append(option);
   }
   idleSelect.addEventListener("change", () => run("engine.settings"));
-  idleField.append(idleLabel, idleSelect);
-  const removeModel = makeButton("componentDeleteModels", () => confirm("delete"), "outline"); removeModel.id = "engine-delete"; removeModel.dataset.size = "sm";
-  const manageActions = element("div", undefined, "component-actions"); manageActions.append(removeModel);
-  manage.append(element("summary", t("componentManage")), idleField, manageActions);
+  const idleField = element("span", undefined, "inline-field"); idleField.append(idleLabel, idleSelect);
+  const removeModel = makeButton("componentDeleteModels", () => confirm("delete"), "outline"); removeModel.id = "engine-delete";
+  controls.append(...(options.extra ?? []), removeModel, idleField);
 
   const dialog = element("dialog", undefined, "component-dialog");
   const dialogTitle = element("h3"); dialogTitle.id = "component-confirm-title";
@@ -130,7 +125,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const keep = makeButton("buttonCancel", () => dialog.close(), "outline");
   const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming) run("models.delete"); }); accept.id = "engine-confirm";
   dialogActions.append(keep, accept); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, intro, note, lighter, progress, progressText, where, stored, error, details, actions, manage, dialog);
+  host.replaceChildren(summary, note, lighter, barRow, progressText, keepOpen, where, error, details, controls, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let stage: SetupStage | undefined;
@@ -228,42 +223,55 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     const downloadOnDisk = !!s && (s.stage === "downloading" || ((s.stage === "paused" || s.stage === "failed") && downloadedBytes() > 0));
     cancel.hidden = crashed || !downloadOnDisk;
     const modelOnDisk = !!s && ["ready", "loading", "stopped", "error"].includes(s.stage) && (snapshot?.storage.models_bytes ?? 0) > 0;
-    manage.hidden = crashed || !modelOnDisk;
+    // Settings: Delete model files and the idle unload once a model is on disk; the engine
+    // switch (`extra`) stays whatever the stage.
+    removeModel.hidden = idleField.hidden = crashed || !modelOnDisk;
+    controls.hidden = !inSettings;
     primary.disabled = cancel.disabled = removeModel.disabled = idleSelect.disabled = pending || checking;
+    barRow.hidden = bar.el.hidden && primary.hidden && cancel.hidden;
+  }
+
+  /** What the status line says: the stage, and in Settings the engine and where it runs, in words. */
+  function statusText(): string {
+    if (crashed || !stage) return t("componentNeedsAttention");
+    const label = t(stageKeys[stage.stage]);
+    if (!inSettings) return label;
+    const where = stage.stage === "ready" ? (stage.device === "cpu" ? t("engineWordsCpu") : stage.device === "gpu" ? t("engineWordsGpu") : "") : "";
+    return [t("engineWordsBrowser"), where, label].filter(Boolean).join(t("listSeparator"));
   }
 
   function repaint(): void {
     if (destroyed) return;
     const s = stage;
-    intro.hidden = !(s?.stage === "needed" && !crashed);
-    intro.textContent = t("engineSetUpIntro", formatSize(downloadBytes()));
     lighter.hidden = snapshot?.tier !== "fp16" || crashed || !s;
-    note.hidden = intro.hidden || !saveData;
+    note.hidden = !(s?.stage === "needed" && !crashed && saveData);
     const counting = s && (s.stage === "downloading" || s.stage === "paused" || s.stage === "failed") ? s : null;
     progressText.hidden = !counting || crashed;
     // While the model loads there is no count to show, only that something is happening.
-    progress.hidden = (!counting && s?.stage !== "loading") || crashed;
-    if (!counting) progress.removeAttribute("value");
-    progress.setAttribute("aria-label", t(counting ? "engineDownloading" : "engineLoading"));
+    bar.el.hidden = (!counting && s?.stage !== "loading") || crashed;
+    percent.hidden = !counting || crashed;
+    const barState = counting?.stage === "paused" ? "paused" : counting?.stage === "failed" ? "failed" : "running";
     if (counting) {
       const total = counting.total || downloadBytes();
-      progress.max = total; progress.value = Math.min(counting.received, total);
-      const parts = [t("engineProgress", percentOf(counting.received, total), formatSize(counting.received), formatSize(total))];
+      bar.set(total > 0 ? Math.min(counting.received, total) / total : 0, barState, t("engineDownloading"));
+      percent.textContent = `${percentOf(counting.received, total)}%`;
+      const parts = [t("engineProgress", formatSize(counting.received), formatSize(total))];
       if (counting.stage === "downloading") {
         if (counting.retrying) parts.push(t("engineRetrying"));
         else {
           const rate = speed.perSecond;
-          if (rate) parts.push(t("engineSpeed", formatSize(rate)), timeLeft((total - counting.received) / rate));
+          if (rate) parts.push(timeLeft((total - counting.received) / rate), t("engineSpeed", formatSize(rate)));
         }
       }
-      progressText.textContent = parts.join(t("listSeparator"));
-    }
+      progressLine.textContent = parts.join(t("listSeparator"));
+    } else bar.set(null, "running", t("engineLoading"));
+    // Only while the download runs: paused, failed or done there is nothing to keep the browser open for.
+    keepOpen.hidden = !(counting?.stage === "downloading") || crashed;
     const ready = s?.stage === "ready" && !crashed;
-    where.hidden = stored.hidden = !ready;
+    where.hidden = !ready || inSettings;
     if (ready) {
       where.textContent = s.device === "cpu" ? t("engineOnCpu") : s.device === "gpu" ? t("engineOnGpu") : "";
-      where.hidden = !where.textContent;
-      stored.textContent = t("componentStorage", formatSize(snapshot!.storage.models_bytes));
+      where.hidden = where.hidden || !where.textContent;
     }
     let problem = actionError;
     if (!problem && crashed) problem = t("componentEngineCrashed");
@@ -272,8 +280,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (!problem && s) problem = failureText(s) || (s.stage === "error" ? t("engineLoadFailed") : "");
     if (!problem && !s && everConnected) problem = t("engineUnavailable");
     error.textContent = problem; error.hidden = !problem;
-    detailsText.textContent = actionDetail || (s?.stage === "failed" ? snapshot?.download.error ?? "" : s?.stage === "error" ? snapshot?.error?.message ?? "" : "");
-    details.hidden = !detailsText.textContent;
+    details.textContent = actionDetail || (s?.stage === "failed" ? snapshot?.download.error ?? "" : s?.stage === "error" ? snapshot?.error?.message ?? "" : "");
+    details.hidden = !details.textContent;
     paintButtons();
   }
 
@@ -296,7 +304,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData === true;
       void roomNeeded().then((room) => { if (!destroyed && stage?.stage === "needed" && room !== null) { noRoom = room; repaint(); } });
     }
-    summary.textContent = crashed ? t("componentNeedsAttention") : t(stageKeys[stage.stage]);
+    summary.textContent = statusText();
     if (s.settings) {
       const value = String(s.settings.idle_unload_s);
       if (![...idleSelect.options].some((o) => o.value === value)) {

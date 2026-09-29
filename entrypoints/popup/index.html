@@ -26,6 +26,10 @@
       .status.down { color: var(--destructive); font-weight: 600; }
       .w-full { width: 100%; }
       .w-full + .w-full { margin-top: 6px; }
+      /* The two smaller ways in, beside the one action: the PDF reader and the page for pasted text. */
+      .tools { display: flex; gap: 6px; margin-top: 6px; }
+      .tools .btn { flex: 1 1 0; min-width: 0; }
+      .keepopen { margin: 0 0 8px; font-size: 11.5px; color: var(--muted-foreground); }
       .engine { font-size: 11px; color: var(--muted-foreground); margin: 0; padding: 9px 0 0; }
       /* Hit areas, not paint: an invisible 24x24 box centred on each small control. */
       input[type="checkbox"][role="switch"] { position: relative; }
@@ -57,12 +61,17 @@
     <main>
       <section class="grp act">
         <div class="status" id="status">…</div>
+        <p class="keepopen" id="keepOpen" hidden data-i18n="engineKeepOpen">Keep this browser open until the download finishes.</p>
         <!-- Label, variant and action are the page's state (./state.ts); until the page
              has answered there is nothing honest to put on it. -->
         <button id="action" class="btn w-full" data-variant="outline" data-size="sm" type="button" disabled></button>
         <button id="localFileSettings" class="btn w-full" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
         <!-- The local engine kept crashing: the in-browser engine, beside Retry (./main.ts). -->
         <button id="switchEngine" class="btn w-full" data-variant="outline" data-size="sm" type="button" hidden data-i18n="engineSwitchToInBrowser">Switch to the in-browser engine</button>
+        <div class="tools">
+          <button id="openReader" class="btn" data-variant="ghost" data-size="sm" type="button" data-i18n="popupPdfReader">PDF reader</button>
+          <button id="analyzeText" class="btn" data-variant="ghost" data-size="sm" type="button" data-i18n="pasteTitle">Analyze text</button>
+        </div>
       </section>
 
       <section class="grp">

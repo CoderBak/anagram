@@ -9,15 +9,15 @@
 .component-settings .component-notice { color:var(--foreground); border-left:3px solid var(--border); padding-left:10px; }
 .component-settings .component-update { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:12px; border:1px solid var(--border); border-radius:8px; }
 .component-settings .component-error { color:var(--destructive); }
-.component-settings progress { width:100%; height:12px; accent-color:var(--primary); }
-.component-settings .component-details { font-size:12px; color:var(--muted-foreground); }
-.component-settings .component-details summary { cursor:pointer; min-height:24px; }
-.component-settings .component-details pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:6px 0 0; }
-.component-settings .component-fold { border-top:1px solid var(--border); padding-top:10px; }
-.component-settings .component-fold > summary { cursor:pointer; min-height:28px; display:flex; align-items:center; font-size:13px; font-weight:600; color:var(--foreground); }
-.component-settings .component-fold > :not(summary) { margin-top:10px; }
-.component-settings .component-fold .field > label { font-size:13px; }
-.component-settings .component-fold .field > select { width:180px; }
+.component-settings .engine-bar-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.component-settings .engine-percent { min-width:3.2ch; font-size:13px; font-weight:600; text-align:right; font-variant-numeric:tabular-nums; color:var(--foreground); }
+.component-settings .engine-progress { margin-top:-4px; font-variant-numeric:tabular-nums; }
+.component-settings .component-inline { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; }
+.component-settings .component-inline:not(:has(> :not([hidden]))) { display:none; }
+.component-settings .inline-field { display:inline-flex; align-items:center; gap:6px; }
+.component-settings .inline-field label { font-size:13px; color:var(--muted-foreground); }
+.component-settings .inline-field select { width:auto; }
+.component-settings .component-details { max-height:6.5em; overflow:auto; font:12px/1.5 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 .component-settings .component-dialog { max-width:min(480px,calc(100vw - 32px)); padding:24px; border:1px solid var(--border); border-radius:12px; color:var(--foreground); background:var(--card); }
 .component-settings .component-dialog::backdrop { background:rgb(0 0 0 / .4); }
 .component-settings .component-dialog h3 { margin:0; font-size:16px; font-weight:600; }
