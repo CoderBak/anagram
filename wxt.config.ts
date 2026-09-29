@@ -125,6 +125,15 @@ const CSP = [
   "base-uri 'none'",
 ].join("; ");
 
+// The dark tile at every size scripts/icons.mjs renders: it reads on light and dark toolbars.
+const TOOLBAR_ICONS = {
+  16: "icons/icon-16.png",
+  32: "icons/icon-32.png",
+  48: "icons/icon-48.png",
+  96: "icons/icon-96.png",
+  128: "icons/icon-128.png",
+};
+
 // WXT config: manifest keys, permissions, targets.
 // Icons are committed as PNGs under public/icons/ and copied into the build as-is
 // (scripts/icons.mjs renders them from assets/*.svg).
@@ -174,6 +183,17 @@ export default defineConfig({
       if (wxt.config.command === "serve") return;
       if (TEST_GRANT_ALL) manifest.host_permissions = [...ALL_SITES];
       else delete manifest.host_permissions;
+      // Firefox's MV2 button is built from the popup page, not from `action` above: its icon
+      // is set here. "light" is the icon for themes with light text (dark toolbars), "dark"
+      // for themes with dark text (light toolbars) - MDN, browser_action theme_icons.
+      if (manifest.browser_action) {
+        manifest.browser_action.default_icon = TOOLBAR_ICONS;
+        manifest.browser_action.theme_icons = [16, 32].map((size) => ({
+          light: `icons/icon-light-${size}.png`,
+          dark: `icons/icon-${size}.png`,
+          size,
+        }));
+      }
     },
   },
   manifest: ({ browser }) => {
@@ -272,35 +292,12 @@ export default defineConfig({
           use_dynamic_url: true,
         },
       ],
-      icons: {
-        16: "icons/icon-16.png",
-        32: "icons/icon-32.png",
-        48: "icons/icon-48.png",
-        96: "icons/icon-96.png",
-        128: "icons/icon-128.png",
-      },
+      icons: TOOLBAR_ICONS,
       action: {
         default_popup: "popup/index.html",
         default_title: productName,
         // The dark tile reads on light and dark toolbars alike.
-        default_icon: {
-          16: "icons/icon-16.png",
-          32: "icons/icon-32.png",
-          48: "icons/icon-48.png",
-          96: "icons/icon-96.png",
-          128: "icons/icon-128.png",
-        },
-        // Firefox only: "light" is the icon for themes with light text (dark toolbars), "dark"
-        // for themes with dark text (light toolbars) - MDN, browser_action theme_icons.
-        ...(browser === "firefox"
-          ? {
-              theme_icons: [16, 32].map((size) => ({
-                light: `icons/icon-light-${size}.png`,
-                dark: `icons/icon-${size}.png`,
-                size,
-              })),
-            }
-          : {}),
+        default_icon: TOOLBAR_ICONS,
       },
     };
   },

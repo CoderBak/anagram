@@ -55,3 +55,17 @@ describe("the shipping manifest's icons", () => {
     }
   });
 });
+
+describe("the Firefox manifest's toolbar button", () => {
+  const OUT = join(ROOT, "output", "firefox-mv2");
+  const built = existsSync(join(OUT, "manifest.json")) ? statSync(join(OUT, "manifest.json")).mtimeMs : 0;
+  const ready = built > 0 && statSync(join(ROOT, "wxt.config.ts")).mtimeMs <= built;
+  it.skipIf(!ready)("shows the dark tile, and the light tile on themes with light text (dark toolbars)", () => {
+    const m = JSON.parse(readFileSync(join(OUT, "manifest.json"), "utf8")) as {
+      browser_action: { default_icon: Record<string, string>; theme_icons: { light: string; dark: string; size: number }[] };
+    };
+    expect(m.browser_action.default_icon["16"]).toBe("icons/icon-16.png");
+    expect(m.browser_action.theme_icons).toEqual([16, 32].map((size) => ({ light: `icons/icon-light-${size}.png`, dark: `icons/icon-${size}.png`, size })));
+    for (const t of m.browser_action.theme_icons) for (const f of [t.light, t.dark]) expect(existsSync(join(OUT, f)), f).toBe(true);
+  });
+});
