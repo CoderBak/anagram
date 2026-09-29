@@ -11,6 +11,10 @@ local component and the installer all carry the same version.
 
 - The local engine's installer downloads the model from hf-mirror.com when huggingface.co cannot be reached (mainland China, for one); every file is still checked against its pinned SHA-256.
 
+### Fixed
+
+- In the PDF reader a paragraph's verdict chip stands on the paragraph's last line again: it was placed against the page's outer edge instead of the page itself, up to 9 px off (half a line on a paper's tight leading, beside the next paragraph), and a left column's chip went to the far margin beside the right column's text; it now goes to the margin on the column's own side.
+
 ## [0.8.0] — 2026-09-29
 
 One extension with two engines. Where the local engine is faster (Apple Silicon Macs,

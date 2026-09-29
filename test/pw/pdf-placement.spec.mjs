@@ -1,21 +1,30 @@
 // Where the reader draws a paragraph's chip and underline: on the paragraph's own lines.
 //
-// A chip stands on the row of the last line of its paragraph. The chip layer is the page's
-// padding box, inside pdf.js's 9 px transparent border, and the chip's place is a share of it:
-// measured from the border box the chip was up to 9 px off, and on the tight leading of a
-// paper that is half a line, beside the next paragraph. The fixture is one page of two narrow
-// columns whose paragraphs end near the top and near the bottom of the page, read through
-// Zotero's structure and through the reflow, at 100% and at page width.
+// A chip stands beside the last line of its paragraph. On a page of two columns there is no
+// room for it in the gutter, and the page's right margin is the left column's only across
+// the right column's lines: a left paragraph's chip drawn there stands beside another
+// paragraph's text. The fixture is one such page (test/pdf-fixture.mjs buildColumnsPdf), read
+// through Zotero's structure and through the reflow; the two papers the bug was reported on
+// (arXiv 2507.01297 and 2004.04906) are checked too when they are in
+// ~/anagram-bench/pdf-placement/ (a plain download of https://arxiv.org/pdf/<id>), and
+// skipped when they are not. They are never in the repository.
 //
 //   npx playwright test pdf-placement
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { test as base, expect, BADGE_SEL } from "./kit.mjs";
+import { fakeScore } from "../fake-native.mjs";
 import { buildColumnsPdf, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
 
+const REAL = join(homedir(), "anagram-bench", "pdf-placement");
+const PAPERS = ["2507.01297", "2004.04906"];
 const { pdf: COLUMNS_PDF, paragraphs: COLUMNS } = buildColumnsPdf();
 
 const test = base.extend({
   pdfs: async ({ pages }, use) => {
     const files = { "/columns.pdf": COLUMNS_PDF };
+    for (const id of PAPERS) if (existsSync(join(REAL, `${id}.pdf`))) files[`/${id}.pdf`] = readFileSync(join(REAL, `${id}.pdf`));
     pages.serve(files);
     await use({ url: pages.url });
   },
@@ -90,7 +99,7 @@ async function settle(page, count, structure) {
 }
 
 for (const mode of ["structure", "reflow"]) {
-  test(`PDF reader, ${mode}: on a page of two narrow columns each chip stands on its paragraph's last line and every underline lies on its own lines, at 100% and at page width`, async ({ context, pdfs, storage }) => {
+  test(`PDF reader, ${mode}: on a page of two narrow columns each chip stands beside its own paragraph's last line and every underline lies on its own lines, at 100% and at page width`, async ({ context, pdfs, storage }) => {
     if (mode === "reflow") await storage.set({ pdfStructure: false });
     const page = await openPdfInReader(context, pdfs.url("/columns.pdf"));
     await settle(page, COLUMNS.length, mode === "structure");
@@ -106,9 +115,10 @@ for (const mode of ["structure", "reflow"]) {
         if (m.chips.length !== COLUMNS.length) failures.push(`${m.chips.length} chips`);
         for (const p of COLUMNS) {
           const last = lines.find((l) => l.text === p.lines.at(-1));
-          if (!last) { failures.push(`${p.tag}: its last line is not on the page`); continue; }
-          const off = Math.min(...m.chips.map((c) => Math.abs(c.cy - (last.top + last.bottom) / 2)));
-          if (!(off <= 3)) failures.push(`${p.tag}: the nearest chip is ${Math.round(off)} px off its last line`);
+          const chip = m.chips.find((c) => c.nearLine === p.lines.at(-1));
+          if (!last || !chip) { failures.push(`${p.tag}: no chip beside its last line`); continue; }
+          if (Math.abs(chip.cy - (last.top + last.bottom) / 2) > 3) failures.push(`${p.tag}: chip ${Math.round(chip.cy - (last.top + last.bottom) / 2)} px off its last line`);
+          if (m.chips.filter((c) => c.nearLine === p.lines.at(-1)).length !== 1) failures.push(`${p.tag}: more than one chip`);
         }
         // Every underline lies on the line whose words it marks (only the flagged sentences
         // are underlined, and the fixture's scores decide which).
@@ -121,5 +131,89 @@ for (const mode of ["structure", "reflow"]) {
         return failures;
       }, { message: `${where}: chips and underlines on their paragraphs' lines` }).toEqual([]);
     }
+  });
+}
+
+/** A verdict as its chip writes it: ".35" or "1.0". */
+const written = (score) => (score >= 1 ? "1.0" : score.toFixed(2).slice(1));
+
+/**
+ * Which of a page's chips stand beside the last line of their own paragraph. The fixture host
+ * scores a text by a function of the text alone, so a chip's score names the paragraphs it
+ * can be (`fakeScore`), and where that is one paragraph it is found on the page by its last twelve characters,
+ * in the page's text without the citation marks the reader drops before it sends one. A chip
+ * whose paragraph is found and does not end on its nearest line is beside something else;
+ * a chip whose score names several paragraphs, or whose paragraph is not found (a formula,
+ * a paragraph cut in windows or across pages), is not judged.
+ */
+function judge(m, sentTexts, number) {
+  const p = m.pages.find((q) => q.number === number);
+  const owner = [];
+  p.text.forEach((t, k) => { for (let c = 0; c < t.length; c++) owner.push(k); });
+  const whole = p.text.join("");
+  const dropped = new Set();
+  for (const cite of whole.matchAll(/\[[\d,\u2013-]+\]/g)) for (let c = cite.index; c < cite.index + cite[0].length; c++) dropped.add(c);
+  const kept = Array.from({ length: whole.length }, (_, c) => c).filter((c) => !dropped.has(c));
+  const flat = kept.map((c) => whole[c]).join("");
+  const endLine = (text) => {
+    const tail = text.replace(/\s+/g, "").slice(-12);
+    const i = tail.length < 8 ? -1 : flat.indexOf(tail);
+    return i < 0 || flat.indexOf(tail, i + 1) >= 0 ? null : p.spanLine[owner[kept[i + tail.length - 1]]];
+  };
+  const byScore = new Map();
+  for (const text of new Set(sentTexts)) {
+    const key = written(fakeScore(text).score);
+    byScore.set(key, [...(byScore.get(key) ?? []), text]);
+  }
+  const judged = { chips: 0, wrong: [] };
+  for (const chip of m.chips.filter((c) => c.page === number)) {
+    // Scores are two digits, so several paragraphs share one: only a score that names a
+    // single paragraph tells whose chip this is.
+    const named = byScore.get(chip.score) ?? [];
+    const ends = named.length === 1 ? named.map(endLine).filter((e) => e !== null) : [];
+    if (!ends.length) continue;
+    judged.chips++;
+    if (!ends.includes(chip.nearLineIndex)) judged.wrong.push(`p${number} ${chip.score}: "${(chip.nearLine ?? "").slice(-40)}"`);
+  }
+  return judged;
+}
+
+/**
+ * The two papers, when they were downloaded, through Zotero's structure and through the
+ * reflow: at 100% on every page and at page width on the first four, the chips stand beside
+ * the last lines of their own paragraphs.
+ */
+for (const id of PAPERS) for (const mode of ["structure", "reflow"]) {
+  test(`PDF reader, ${mode}: the chips of arXiv ${id} stand beside the ends of their paragraphs`, async ({ context, pdfs, storage, nativeHost }) => {
+    test.skip(!existsSync(join(REAL, `${id}.pdf`)), `${id}.pdf is not in ${REAL}`);
+    test.setTimeout(300_000);
+    if (mode === "reflow") await storage.set({ pdfStructure: false });
+    const mark = nativeHost.textMark();
+    const page = await openPdfInReader(context, pdfs.url(`/${id}.pdf`));
+    await (mode === "structure" ? readerRead(page, { timeout: 60_000 }) : readerReady(page, { timeout: 60_000 }));
+    const count = await page.evaluate(() => window.PDFViewerApplication.pdfDocument.numPages);
+    const total = { chips: 0, wrong: [] };
+    for (const [scale, last] of [["1", count], ["page-width", Math.min(count, 4)]]) {
+      await page.evaluate((s) => { window.PDFViewerApplication.pdfViewer.currentScaleValue = s; }, scale);
+      for (let n = 1; n <= last; n++) {
+        await page.evaluate((k) => { window.PDFViewerApplication.page = k; }, n);
+        await page.waitForFunction((k) => window.PDFViewerApplication.pdfViewer.getPageView(k - 1)?.renderingState === 3 && !!document.querySelector(`#viewer .page[data-page-number="${k}"] .textLayer span`), n, { timeout: 30_000 });
+        // The page's chips are all up: none pending, and the same number twice running.
+        let seen = -1;
+        await expect.poll(async () => {
+          const m = await measure(page);
+          const now = m.chips.filter((c) => c.page === n).length;
+          const steady = m.pending === 0 && now === seen;
+          seen = now;
+          return steady;
+        }, { message: `page ${n} at ${scale}: chips settled`, intervals: [400] }).toBe(true);
+        const got = judge(await measure(page), nativeHost.textsSince(mark), n);
+        total.chips += got.chips; total.wrong.push(...got.wrong);
+      }
+    }
+    const message = `arXiv ${id}, ${mode}: ${total.chips} chips judged`;
+    expect.soft(total.chips, message).toBeGreaterThan(20);
+    // A few in a hundred may be a paragraph the reading sent in another shape than the page shows it (an appendix of examples).
+    expect.soft(total.wrong.length, `${message}: beside something else than their paragraph's last line: ${total.wrong.join(" | ")}`).toBeLessThanOrEqual(Math.ceil(total.chips * 0.05));
   });
 }
