@@ -1,8 +1,9 @@
 // test/node/scale.test.ts — the word, the colour and the doubt a verdict is shown with.
 import { describe, expect, it } from "vitest";
+import { inGamut, lrgb, oklab, parse } from "culori";
 import type { ScoreResult } from "../../lib/contract";
 import { band, isFlagged } from "../../lib/render/band";
-import { HUES, levelOf, scaleColor, scaleColorCss, scaleHue, scaleStep, SCALE_STEPS, SCORE_CUTS, scoreRange, spread } from "../../lib/render/scale";
+import { HUES, levelOf, scaleChroma, scaleColor, scaleColorCss, scaleHue, scaleLightness, scaleStep, SCALE_STEPS, SCORE_CUTS, scoreRange, spread } from "../../lib/render/scale";
 
 const result = (percent: number[]): ScoreResult => {
   const probs = percent.map((p) => p / 100);
@@ -79,6 +80,57 @@ describe("the colour", () => {
         expect(Math.abs(l! - jl!)).toBeLessThanOrEqual(0.0005 + 1e-9);
         expect(Math.abs(c! - jc!)).toBeLessThanOrEqual(0.0005 + 1e-9);
         expect(Math.abs(h! - jh!)).toBeLessThanOrEqual(0.05 + 1e-9);
+      }
+    }
+  });
+
+  it("stays inside sRGB the whole way, and at its edge where chroma is highest", () => {
+    // The limit at a lightness and hue, found by bisection on culori's gamut test.
+    const limit = (l: number, h: number): number => {
+      let lo = 0, hi = 0.4;
+      for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2;
+        if (inGamut("rgb")({ mode: "oklch", l, c: mid, h })) lo = mid; else hi = mid;
+      }
+      return lo;
+    };
+    for (const dark of [false, true]) {
+      const name = dark ? "dark" : "light";
+      let closest = 0;
+      for (let i = 0; i <= 100; i++) {
+        const s = i / 100;
+        const c = scaleChroma(s, dark), edge = limit(scaleLightness(s, dark), scaleHue(s));
+        expect(c, `${name} ${s}`).toBeLessThanOrEqual(edge);
+        closest = Math.max(closest, c / edge);
+      }
+      // At each quarter step the chroma is within a third of what sRGB allows at that lightness and hue.
+      for (const s of [0, 0.25, 0.5, 0.75, 1]) {
+        expect(scaleChroma(s, dark) / limit(scaleLightness(s, dark), scaleHue(s)), `${name} ${s}`).toBeGreaterThan(0.65);
+      }
+      expect(closest).toBeGreaterThan(0.97);
+    }
+  });
+
+  it("keeps a quarter of the scale apart for a reader with protanopia or deuteranopia", () => {
+    // Machado, Oliveira and Fernandes 2009, full severity, on linear sRGB.
+    const MACHADO = {
+      protanopia: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
+      deuteranopia: [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.01182, 0.04294, 0.968881]],
+    } as const;
+    const simulate = (css: string, kind: keyof typeof MACHADO) => {
+      const c = lrgb(parse(css)!);
+      const v = [c.r, c.g, c.b];
+      const [r, g, b] = MACHADO[kind].map((row) => Math.min(1, Math.max(0, row[0] * v[0]! + row[1] * v[1]! + row[2] * v[2]!)));
+      return oklab({ mode: "lrgb", r: r!, g: g!, b: b! });
+    };
+    for (const [dark, least] of [[false, 7.8], [true, 6.0]] as const) {
+      for (const kind of ["protanopia", "deuteranopia"] as const) {
+        const seen = [0, 0.25, 0.5, 0.75, 1].map((s) => simulate(scaleColor(s, dark), kind));
+        for (let i = 1; i < seen.length; i++) {
+          const a = seen[i - 1]!, b = seen[i]!;
+          const d = 100 * Math.hypot(a.l - b.l, a.a - b.a, a.b - b.b);
+          expect(d, `${dark ? "dark" : "light"} ${kind} step ${i}`).toBeGreaterThanOrEqual(least);
+        }
       }
     }
   });

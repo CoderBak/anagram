@@ -62,7 +62,7 @@ function underline(color: string): string[] {
     "text-decoration-line: underline",
     "text-decoration-style: solid",
     `text-decoration-color: ${color}`,
-    "text-decoration-thickness: 1.5px",
+    "text-decoration-thickness: 2px",
     "text-underline-offset: 3px",
     // Descenders cut a page's own underlines; ours would look like the page's own if it
     // did not, and a skipped mark is a mark a reader has to hunt for.

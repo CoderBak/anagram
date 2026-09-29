@@ -166,7 +166,17 @@ export function installProbe() {
 
   // ---- colour ---------------------------------------------------------------------
   const parse = (str) => {
-    const m = String(str).match(/rgba?\(([^)]+)\)/);
+    let m = String(str).match(/rgba?\(([^)]+)\)/);
+    if (!m && /^(color|oklab|oklch|lab|lch)\(/.test(String(str))) {
+      // A colour the page mixed (color-mix, oklch): the canvas turns it into sRGB.
+      const ctx = (parse.canvas ??= document.createElement("canvas")).getContext("2d", { willReadFrequently: true });
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = "#000";
+      ctx.fillStyle = str;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+      return { r, g, b, a: a / 255 };
+    }
     if (!m) return null;
     const p = m[1].split(/[,/\s]+/).filter(Boolean).map(Number);
     return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
