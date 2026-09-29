@@ -597,6 +597,7 @@ local component and the installer all carry the same version.
 - A forum's list of site notices over every thread (XenForo's and vBulletin's "If this is your first visit…", "Please be sure to read the rules", a scam alert) is no longer read beside the posts; a box named `notices` that holds a paragraph, such as a documentation theme's call-out, still is.
 - Legal fine print is also recognised by a box named for the legal text it is (`copy-legal`, `game_area_legal`, `legal-text`), such as the footnotes under a price list or a game's licence terms; a law firm's `legal-services` section is still read.
 - The PDF reader finds TeX's ℓ in its own run: Zotero reads it as an "l", and where the glyph stood left of its run it was looked for in the word before it, so "the areal ℓ in place of" read "the areall in place of", a word of its own that no formula rule could take out. On the benchmark's development papers the scored text that is not prose fell from 3.45% to 3.44%.
+- The PDF reader leaves out the sub- and superscripts that TeX sets in the text's face, and the letter they stand under: "the proton injection luminosity L_inj" read "luminosity L inj", "above T_N" read "above T N". A word whose letters are all set at a script's size (an ordinal's "th" excepted), and the single letter before it, are formula; a number, a unit or a year is never touched. On the benchmark's development papers the scored text that is not prose fell from 3.44% to 3.33%, and the reader's own reflow, which reads the same way, from 16.29% to 16.22%.
 
 ## [0.7.0] — 2026-09-26
 

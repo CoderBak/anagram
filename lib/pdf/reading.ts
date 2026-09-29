@@ -216,6 +216,10 @@ const OPERATOR = new Set([
 ]);
 /** A token set this much smaller than its block is a formula's sub- or superscript. */
 const SCRIPT_SIZE = 0.8;
+/** A script's baseline stands this share of the body's size off the line's own. */
+const SCRIPT_OFFSET = 0.1;
+/** ...and at most this far: a token of another line, whose text the reflow ran into this one, is no base. */
+const SCRIPT_REACH = 0.7;
 /** The relations TeX sets a thick space after inside a formula. */
 const RELATION = /^[=<>≤≥≈∼≃≅≡∝≲≳≪≫≠∈]$/u;
 /** A gap narrower than this share of the size, between two runs, is no space at all:
@@ -558,12 +562,50 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
     const name = letters(t);
     return any && (name.length <= 3 || OPERATOR.has(name) || /\p{L}\(/u.test(t.at.map((i) => pieces[i]!.ch).join("")));
   };
-  const drop = tokens.map((t, k) => t.math || alone(k) || variable(k) || formulaFace(t));
+  /** A word whose every letter is set at a sub- or superscript's size: the "inj" of "L_inj",
+   *  the "max" of "T_max", with whatever closes it ("bayesian),"). Not the ordinal's "th" of
+   *  "16th", which is the text's. */
+  const small = (t: Token): boolean => {
+    const at = t.at.filter((i) => LETTER.test(pieces[i]!.ch));
+    return at.length > 0 && at.every((i) => faces[i] !== null && faces[i]!.h <= body * SCRIPT_SIZE && !afterSpace(i))
+      && !/^(?:st|nd|rd|th)+$/u.test(at.map((i) => pieces[i]!.ch).join(""));
+  };
+  /** The baseline of the text a token stands in: that of the nearest token, in a chain of tokens
+   *  set against each other on the line, that is set at the body's size. */
+  const mainBaseline = (k: number): number | null => {
+    for (const step of [-1, 1]) {
+      let last = tokens[k]!;
+      for (let j = k + step; j >= 0 && j < tokens.length; j += step) {
+        const next = tokens[j]!;
+        if (!(step < 0 ? beside(next, last) : beside(last, next))) break;
+        const face = next.at.map((i) => faces[i]).find((f) => f !== null && f !== undefined);
+        if (face && face.h > body * SCRIPT_SIZE) return face.y;
+        last = next;
+      }
+    }
+    return null;
+  };
+  /** A script: small, and set off the baseline of the words beside it, a sub- or a superscript
+   *  and not small print on the line's own (a dictionary's "Peele, ii. 235"). */
+  const lowered = (k: number): boolean => {
+    const t = tokens[k]!;
+    if (!small(t)) return false;
+    const main = mainBaseline(k);
+    const own = faces[t.at.find((i) => LETTER.test(pieces[i]!.ch))!]!;
+    const off = main === null ? 0 : Math.abs(own.y - main);
+    return off >= SCRIPT_OFFSET * body && off <= SCRIPT_REACH * body;
+  };
+  /** One letter and its punctuation: the "T" of "T_N", whose script is set beside it. */
+  const single = (t: Token): boolean => t.at.filter((i) => LETTER.test(pieces[i]!.ch)).length === 1 && t.at.every((i) => /^[\p{L}\p{P}\p{M}\p{Lm}\p{Sk}]$/u.test(pieces[i]!.ch));
+  /** A script the letter before it carries: "N" of "T N", whose "T" is the text's italic. */
+  const carried = (k: number): boolean => k > 0 && lowered(k) && single(tokens[k - 1]!) && beside(tokens[k - 1]!, tokens[k]!);
+  const drop = tokens.map((t, k) => t.math || alone(k) || variable(k) || formulaFace(t) || (count(t) >= 2 && lowered(k)) || carried(k));
   for (let i = 1; i < tokens.length; i++) {
     if (drop[i - 1] && withFormula(tokens[i]!) && !written(tokens[i]!) && !typedAfter(i) && beside(tokens[i - 1]!, tokens[i]!)) drop[i] = true;
   }
   for (let i = tokens.length - 2; i >= 0; i--) {
-    if (drop[i + 1] && (withFormula(tokens[i]!) || applied(i)) && !written(tokens[i]!) && !closes(tokens[i]!) && !referenced(i) && beside(tokens[i]!, tokens[i + 1]!)) drop[i] = true;
+    const base = single(tokens[i]!) && lowered(i + 1) && drop[i + 1];
+    if (drop[i + 1] && (withFormula(tokens[i]!) || applied(i) || base) && !written(tokens[i]!) && !closes(tokens[i]!) && !referenced(i) && beside(tokens[i]!, tokens[i + 1]!)) drop[i] = true;
   }
 
   // ---- the text ----

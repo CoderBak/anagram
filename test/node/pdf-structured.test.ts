@@ -601,6 +601,50 @@ describe("structuredBlocks — formulas", () => {
     expectRunsToMatch(blocks[0]!, pages);
   });
 
+  it("leaves out a word set in a script's size, and the letter it stands under: T_max, L_inj, T_N", () => {
+    // Times sets the letter in its italic and the subscript in the same text face, small: no
+    // formula token stands beside it, so only its size says it is a script. What closes it stays.
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_ital: "NimbusRomNo9L-ReguItal", f_math: "BXJUHM+CMMI10" };
+    const line = setLine(fonts);
+    line.put("the resistance peaks at", "f_text");
+    line.put("T", "f_ital", 1);
+    line.put("max", "f_text", CW, 7);
+    line.put("near 50 K, and the luminosity", "f_text");
+    line.put("L", "f_ital", 1);
+    line.put("inj,", "f_text", CW, 7);
+    line.put("falls above", "f_text");
+    line.put("T", "f_ital", 1);
+    line.put("N", "f_text", CW, 7);
+    line.put("by 3%.", "f_text");
+    expect(line.read()).toBe("the resistance peaks at near 50 K, and the luminosity, falls above by 3%.");
+  });
+
+  it("keeps the text's own small words and single letters: an ordinal, a lone letter, numbers, units, years", () => {
+    const fonts = { f_text: "NimbusRomNo9L-Regu", f_ital: "NimbusRomNo9L-ReguItal", f_math: "BXJUHM+CMMI10" };
+    const same = setLine(fonts);
+    same.put("Measured on the 16", "f_text", 0);
+    same.put("th", "f_text", CW, 7);
+    same.put("of May at Tokyo", "f_text");
+    same.put("a", "f_text", CW, 7);
+    same.put("in place B near 50 K, the value of p was 0.05 in 2023 (Smith, 2023) at 20 mS cm", "f_text");
+    expect(same.read()).toBe("Measured on the 16th of May at Tokyo a in place B near 50 K, the value of p was 0.05 in 2023 (Smith, 2023) at 20 mS cm");
+
+    // Small print on the line's own baseline is no script: a glossary's reference after its entry.
+    const parts = [["To pluck a rose is to go to the house of ease", 10], ["(Peele, ii. 235)", 7], ["and hold it for a while, said the glossary of old words.", 10]] as const;
+    const items: PdfTextItem[] = [];
+    const runs: (number | number[])[][] = [];
+    let x = 72;
+    for (const [text, size] of parts) {
+      const d = drawn(1, { text, x, y: 100, font: "f_text", size });
+      items.push(d.item);
+      runs.push(d.run);
+      x += text.length * CW + CW;
+    }
+    const entry = { text: parts.map(([t]) => t).join(" "), anchor: { textMap: JSON.stringify(runs) } };
+    const glossary = structuredBlocks(structure([paragraph(1, [entry])]), [pageText(1, items, fonts)]);
+    expect(glossary[0]!.text).toBe(entry.text);
+  });
+
   it("keeps a number the text writes beside a formula, as arXiv's HTML does", () => {
     // TeX sets a formula's decimal point and comma in its mathematics face, so a number
     // whose point or comma is in the text face is the text's ("11.3 $\mu$m"), and so is one
