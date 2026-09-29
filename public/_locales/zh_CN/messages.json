@@ -533,9 +533,6 @@
   "engineOneClickWhat": {
     "message": "在浏览器内运行，无需安装其他程序。"
   },
-  "engineOneClickCost": {
-    "message": "每段约 $1 毫秒 · 内存最多 $2 GB"
-  },
   "engineOneClickButton": {
     "message": "设置（下载 $1）"
   },
@@ -543,10 +540,10 @@
     "message": "终端"
   },
   "engineTerminalWhat": {
-    "message": "在终端中运行一条命令安装本地引擎。更快，也更省内存。"
+    "message": "在终端中运行一条命令安装本地引擎。"
   },
   "engineTerminalWhatWindows": {
-    "message": "在 PowerShell 中运行一条命令安装本地引擎。更快，也更省内存。"
+    "message": "在 PowerShell 中运行一条命令安装本地引擎。"
   },
   "engineTerminalWhatNvidia": {
     "message": "在终端中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
@@ -554,14 +551,8 @@
   "engineTerminalWhatNvidiaWindows": {
     "message": "在 PowerShell 中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
   },
-  "engineTerminalCost": {
-    "message": "每段约 $1 毫秒 · 内存约 $2 GB"
-  },
   "engineTerminalButton": {
     "message": "使用本地引擎"
-  },
-  "engineMeasured": {
-    "message": "速度和内存在 M4 Mac 上测得。"
   },
   "engineTight": {
     "message": "Anagram 评分时，这台电脑可能会变慢。"
@@ -657,7 +648,7 @@
     "message": "在你的显卡上运行（WebGPU）。"
   },
   "engineOnCpu": {
-    "message": "在处理器上运行，比显卡慢得多。如果浏览器设置中关闭了硬件加速，开启后 Anagram 可能就能使用显卡。"
+    "message": "在处理器上运行。在浏览器设置中开启硬件加速，Anagram 或许就能使用显卡。"
   },
   "engineNetworkLost": {
     "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"

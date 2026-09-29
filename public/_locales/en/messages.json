@@ -683,10 +683,6 @@
     "message": "Runs inside the browser. Nothing else to install.",
     "description": "Setup page, in-browser engine card: what it is."
   },
-  "engineOneClickCost": {
-    "message": "About $1 ms a paragraph · up to $2 GB of memory",
-    "description": "Setup page, in-browser engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."
-  },
   "engineOneClickButton": {
     "message": "Set up ($1 download)",
     "description": "Setup page, in-browser engine card: its button. $1 is the size of the one-time download."
@@ -696,11 +692,11 @@
     "description": "Setup page: title of the card for the local engine, installed with one command in a terminal."
   },
   "engineTerminalWhat": {
-    "message": "Installs the local engine with one command in Terminal. Faster, and lighter on memory.",
+    "message": "Installs the local engine with one command in Terminal.",
     "description": "Setup page, local engine card on macOS and Linux: what it is."
   },
   "engineTerminalWhatWindows": {
-    "message": "Installs the local engine with one command in PowerShell. Faster, and lighter on memory.",
+    "message": "Installs the local engine with one command in PowerShell.",
     "description": "Setup page, local engine card on Windows: what it is."
   },
   "engineTerminalWhatNvidia": {
@@ -711,17 +707,9 @@
     "message": "Installs the local engine with one command in PowerShell. It runs on your NVIDIA graphics card.",
     "description": "The terminal card on Windows beside an NVIDIA GPU."
   },
-  "engineTerminalCost": {
-    "message": "About $1 ms a paragraph · about $2 GB of memory",
-    "description": "Setup page, local engine card: its measured speed and memory. $1 is milliseconds, $2 gigabytes."
-  },
   "engineTerminalButton": {
     "message": "Use the local engine",
     "description": "Setup page, local engine card: its button. It asks the browser to let Anagram talk to the engine, then shows the install command."
-  },
-  "engineMeasured": {
-    "message": "Speed and memory measured on an M4 Mac.",
-    "description": "Setup page: under the engine cards, where the numbers on them come from."
   },
   "engineTight": {
     "message": "This computer may slow down while Anagram scores.",
@@ -848,7 +836,7 @@
     "description": "In-browser edition, engine ready: where the model runs, in plain words."
   },
   "engineOnCpu": {
-    "message": "Runs on your processor, which is much slower than a graphics card. If hardware acceleration is off in your browser's settings, turning it on may let Anagram use the graphics card.",
+    "message": "Runs on your processor. Turning on hardware acceleration in your browser's settings may let Anagram use the graphics card.",
     "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
   },
   "engineNetworkLost": {

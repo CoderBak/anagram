@@ -8,7 +8,6 @@
 .engine-choice-card[data-recommended] { border:2px solid var(--primary); padding:13px; }
 .engine-choice-card h3 { margin:0; font-size:15px; font-weight:600; color:var(--foreground); }
 .engine-choice-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
-.engine-choice-card .engine-cost { color:var(--foreground); font-variant-numeric:tabular-nums; }
 .engine-choice-card .btn { margin-top:auto; width:100%; white-space:normal; height:auto; min-height:36px; padding-block:6px; text-align:center; }
 .engine-choice .engine-note, .engine-tight { font-size:12.5px; }
 .engine-choice .engine-error { color:var(--destructive); }

@@ -62,8 +62,6 @@ import { TEST_PDF } from "./pdf-fixture.mjs";
 import { DOWNLOAD_BYTES, DOWNLOAD_BYTES_FP16, modelServer, realFiles } from "./webengine/model-server.mjs";
 import { STATES, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { LID } from "../scripts/webengine.mjs";
-/** The numbers the choice describes the engines by (lib/device.ts MEASURED, measured on an M4). */
-const MEASURED = { inbrowser: { ms: 92, gb: 2.5 }, native: { ms: 43, gb: 1.8 } };
 
 /** A device with no choice: the in-browser engine, set up from install. */
 const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
@@ -237,11 +235,12 @@ for (const lang of ["en", "zh-CN"]) {
     });
     check(`${lang} choice: an Apple Silicon Mac is offered both engines, the in-browser one highlighted`, offered && seen.title === w("engineChooseTitle") &&
       seen.highlighted && seen.filled && seen.outline && !seen.panel, JSON.stringify(seen));
-    check(`${lang} choice: each card says what it is, its speed and its memory`,
-      seen.oneClick.includes(w("engineOneClickWhat")) && seen.oneClick.includes(w("engineOneClickCost", MEASURED.inbrowser.ms, MEASURED.inbrowser.gb)) &&
+    check(`${lang} choice: each card says what it is, and quotes no speed or memory`,
+      seen.oneClick.includes(w("engineOneClickWhat")) &&
       seen.oneClick.includes(w("engineOneClickButton", size(DOWNLOAD_BYTES))) && seen.oneClick.includes(w("engineRecommended")) &&
-      seen.terminal.includes(w("engineTerminalWhat")) && seen.terminal.includes(w("engineTerminalCost", MEASURED.native.ms, MEASURED.native.gb)) &&
-      seen.terminal.includes(w("engineTerminalButton")), JSON.stringify(seen));
+      seen.terminal.includes(w("engineTerminalWhat")) &&
+      seen.terminal.includes(w("engineTerminalButton")) && !/\bms\b|memory|faster|毫秒|内存|更快/i.test(`${seen.oneClick} ${seen.terminal}`) &&
+      !(await setup.evaluate(() => !!document.querySelector(".engine-cost, .engine-choice > .engine-note"))), JSON.stringify(seen));
     await sleep(3000);
     check(`${lang} choice: nothing downloads before a pick, and no engine is in use`, server.requests.length === 0 && (await engineOf(setup)) === null,
       JSON.stringify(server.requests.slice(0, 3)));
@@ -313,8 +312,8 @@ for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"
       await sleep(2000);
       const seen = await setup.evaluate(() => ({
         terminal: document.querySelector('.engine-choice-card[data-engine="native"]')?.innerText.replace(/\s+/g, " ").trim() ?? "",
-        figures: [...document.querySelectorAll(".engine-choice .engine-cost, .engine-choice > .engine-note")].filter((el) => !el.hidden).map((el) => el.textContent) }));
-      check("NVIDIA on Windows: the choice, the local engine said to run on the NVIDIA card, and no M4 figures", seen.terminal.includes(w("engineTerminalWhatNvidiaWindows")) &&
+        figures: [...document.querySelectorAll(".engine-choice > .engine-note")].filter((el) => !el.hidden).map((el) => el.textContent) }));
+      check("NVIDIA on Windows: the choice, the local engine said to run on the NVIDIA card, and no figures", seen.terminal.includes(w("engineTerminalWhatNvidiaWindows")) &&
         seen.figures.length === 0 && server.requests.length === 0, JSON.stringify(seen));
     } else if (want === "cannot") {
       const said = await until(() => textOf(setup, ".engine-cannot"), 15000);
