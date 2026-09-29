@@ -59,8 +59,8 @@ off until you switch it on again.
 - A chip after each paragraph shows the score. Hover it for where the score sits on the
   scale, the four-way breakdown and the word count. Non-English text gets a grey chip
   with the language code.
-- The chip's dot and the underline share one colour scale, pale for human writing and
-  dark red for AI-generated text. The word follows the number: Human below .17, Lightly
+- The chip's dot and the underline share one colour scale, from a soft green for human
+  writing through amber to red for AI-generated text. The word follows the number: Human below .17, Lightly
   edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
   word is likely right; the less likely, the thinner the ring the dot becomes.
 - Professionally edited human writing, such as news and magazine articles, often reads

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScoreResult } from "../../lib/contract";
 import { band, isFlagged } from "../../lib/render/band";
-import { levelOf, scaleColor, scaleStep, SCALE_STEPS, SCORE_CUTS, scoreRange, spread } from "../../lib/render/scale";
+import { HUES, levelOf, scaleColor, scaleColorCss, scaleHue, scaleStep, SCALE_STEPS, SCORE_CUTS, scoreRange, spread } from "../../lib/render/scale";
 
 const result = (percent: number[]): ScoreResult => {
   const probs = percent.map((p) => p / 100);
@@ -51,6 +51,34 @@ describe("the colour", () => {
       for (let i = 1; i < steps.length; i++) {
         if (dark) expect(steps[i]).toBeGreaterThan(steps[i - 1]!);
         else expect(steps[i]).toBeLessThan(steps[i - 1]!);
+      }
+    }
+  });
+
+  it("runs green through amber to red, the hue falling with every step", () => {
+    expect(scaleHue(0)).toBe(HUES.human);
+    expect(scaleHue(0.5)).toBe(HUES.middle);
+    expect(scaleHue(1)).toBe(HUES.ai);
+    const hues = Array.from({ length: SCALE_STEPS + 1 }, (_, i) => scaleHue(i / SCALE_STEPS));
+    for (let i = 1; i < hues.length; i++) expect(hues[i]).toBeLessThan(hues[i - 1]!);
+  });
+
+  it("paints the same colour in a stylesheet as in script", () => {
+    // The stylesheet's calc() with the score put in, min() and max() as Math's.
+    const evaluate = (css: string, s: number): number[] => {
+      const body = css.replaceAll("var(--s, 0)", String(s)).replace(/^oklch\(/, "").replace(/\)$/, "");
+      const parts = body.match(/calc\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/g)!;
+      return parts.map((p) => Function(`"use strict"; return ${p.slice(4).replaceAll("min(", "Math.min(").replaceAll("max(", "Math.max(")};`)() as number);
+    };
+    for (const dark of [false, true]) {
+      for (let i = 0; i <= SCALE_STEPS; i++) {
+        const s = i / SCALE_STEPS;
+        const [l, c, h] = evaluate(scaleColorCss(dark), s);
+        const [, jl, jc, jh] = /oklch\(([\d.]+) ([\d.]+) ([\d.]+)/.exec(scaleColor(s, dark))!.map(Number);
+        // scaleColor rounds lightness and chroma to three places and the hue to one.
+        expect(Math.abs(l! - jl!)).toBeLessThanOrEqual(0.0005 + 1e-9);
+        expect(Math.abs(c! - jc!)).toBeLessThanOrEqual(0.0005 + 1e-9);
+        expect(Math.abs(h! - jh!)).toBeLessThanOrEqual(0.05 + 1e-9);
       }
     }
   });

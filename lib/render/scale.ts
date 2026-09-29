@@ -8,10 +8,11 @@
 // The most likely bucket used to pick the word; with the probabilities spread out it
 // flipped on a one-point change and could contradict the number next to it.
 //
-// The colour is the number itself on one continuous ramp — one hue, light to dark (a
-// magnitude, not a category), so .49 and .51 look alike, lightness alone still orders
-// the scale for a reader who sees no hue, and human text carries the quietest mark on
-// the page. Dark surfaces run the same ramp from dim to bright.
+// The colour is the number itself on one continuous ramp: green through amber to red,
+// read at a glance, with the hue, lightness and chroma all moving with the score, so .49
+// and .51 look alike. Lightness falls the whole way (rises on a dark surface), so a reader
+// who cannot tell red from green still sees the order, and the word is always beside it;
+// the human end is a soft, low-chroma green, the quietest mark on the page.
 import type { ScoreResult } from "../contract";
 import { BUCKET_COUNT } from "../contract";
 
@@ -28,15 +29,28 @@ export function levelOf(score: number): number {
 
 // ---- colour ---------------------------------------------------------------------------
 
-const HUE = 25;
-/** OKLCH lightness and chroma at score 0 and at score 1; both move linearly between. */
+/** OKLCH hue: green at score 0, amber at the middle, red at 1, linear in each half. */
+export const HUES = { human: 145, middle: 70, ai: 25 } as const;
+/**
+ * OKLCH lightness and chroma at score 0 and at score 1; both move linearly between. Every
+ * colour on both ramps is inside sRGB. Simulated for protanopia and deuteranopia, a quarter
+ * of the scale apart is at least 7.8 (light) and 6.0 (dark) OKLab ×100: the dark ramp spans
+ * more lightness and less chroma than the light one because reds darken for protanopes.
+ */
 const RAMP = {
-  light: { l0: 0.76, l1: 0.44, c0: 0.045, c1: 0.16 },
-  dark: { l0: 0.5, l1: 0.74, c0: 0.045, c1: 0.15 },
+  light: { l0: 0.76, l1: 0.44, c0: 0.07, c1: 0.16 },
+  dark: { l0: 0.44, l1: 0.78, c0: 0.07, c1: 0.12 },
 } as const;
 
 function clamp01(x: number): number {
   return Number.isFinite(x) ? Math.min(Math.max(x, 0), 1) : 0;
+}
+
+/** The score's hue, in degrees: green through amber to red. */
+export function scaleHue(score: number): number {
+  const s = clamp01(score);
+  const { human, middle, ai } = HUES;
+  return s <= 0.5 ? human + (middle - human) * (s / 0.5) : middle + (ai - middle) * ((s - 0.5) / 0.5);
 }
 
 /** The score's colour, as a CSS oklch() — with `alpha`, a tint of it. */
@@ -45,24 +59,29 @@ export function scaleColor(score: number, dark: boolean, alpha = 1): string {
   const s = clamp01(score);
   const l = r.l0 + (r.l1 - r.l0) * s;
   const c = r.c0 + (r.c1 - r.c0) * s;
-  return `oklch(${l.toFixed(3)} ${c.toFixed(3)} ${HUE}${alpha < 1 ? ` / ${alpha}` : ""})`;
+  return `oklch(${l.toFixed(3)} ${c.toFixed(3)} ${scaleHue(s).toFixed(1)}${alpha < 1 ? ` / ${alpha}` : ""})`;
 }
 
 /**
  * The same colour for a stylesheet, reading the score from a custom property, so one
- * rule serves every chip and the page's light or dark surface picks the ramp.
+ * rule serves every chip and the page's light or dark surface picks the ramp. The hue's
+ * two halves are written with min() and max(), which is scaleHue for a score in 0–1.
  */
 export function scaleColorCss(dark: boolean, variable = "--s"): string {
   const r = dark ? RAMP.dark : RAMP.light;
+  const s = `var(${variable}, 0)`;
+  const { human, middle, ai } = HUES;
   return (
-    `oklch(calc(${r.l0} + ${(r.l1 - r.l0).toFixed(3)} * var(${variable}, 0)) ` +
-    `calc(${r.c0} + ${(r.c1 - r.c0).toFixed(3)} * var(${variable}, 0)) ${HUE})`
+    `oklch(calc(${r.l0} + ${(r.l1 - r.l0).toFixed(3)} * ${s}) ` +
+    `calc(${r.c0} + ${(r.c1 - r.c0).toFixed(3)} * ${s}) ` +
+    `calc(${human} - ${(2 * (human - middle)).toFixed(1)} * min(${s}, 0.5) - ${(2 * (middle - ai)).toFixed(1)} * max(${s} - 0.5, 0)))`
   );
 }
 
-/** The whole ramp as a left-to-right gradient (the card's scale). */
+/** The whole ramp as a left-to-right gradient (the card's scale), with stops along the hue's path. */
 export function scaleGradient(dark: boolean): string {
-  return `linear-gradient(to right in oklch, ${scaleColor(0, dark)}, ${scaleColor(1, dark)})`;
+  const stops = [0, 0.25, 0.5, 0.75, 1].map((s) => `${scaleColor(s, dark)} ${s * 100}%`);
+  return `linear-gradient(to right in oklch, ${stops.join(", ")})`;
 }
 
 /**
