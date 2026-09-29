@@ -5,6 +5,12 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Added
+
+- The local engine's installer downloads the model from hf-mirror.com when huggingface.co cannot be reached (mainland China, for one); every file is still checked against its pinned SHA-256.
+
 ## [0.8.0] — 2026-09-29
 
 One extension with two engines. Where the local engine is faster (Apple Silicon Macs,
