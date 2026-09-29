@@ -11,6 +11,12 @@ local component and the installer all carry the same version.
 
 - The local engine's installer downloads the model from hf-mirror.com when huggingface.co cannot be reached (mainland China, for one); every file is still checked against its pinned SHA-256.
 
+### Changed
+
+- The setup page and Settings are one compact page and one list each, with fewer words and no folds. The setup page puts where Anagram reads (all sites, PDFs) first, then the engine and its download, then how to read a verdict and the model's licence notice. The download shows a rounded striped bar with its percentage, one line of bytes, time left and speed, and asks you to keep the browser open while it runs. The engine choice no longer quotes speeds or memory.
+- Settings drops the Scope setting (analysis is always the whole page, and the main-content extractor with it), the report and debug switches, the shortcuts list, the engine's configuration list and benchmark, and every heading and fold. The PDF reader and Analyze text moved to the popup.
+- Verdict colours use the highest chroma sRGB allows, from a vivid green through amber to red; the chip's dot is larger, the chip is tinted with its colour and the underline is thicker. The card no longer explains the number and says only "Only English text is scored." for other languages. No message or status line uses a middle dot.
+
 ## [0.8.0] — 2026-09-29
 
 One extension with two engines. Where the local engine is faster (Apple Silicon Macs,
