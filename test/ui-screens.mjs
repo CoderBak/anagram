@@ -123,4 +123,41 @@ for (const [lang, tag] of LANGS) {
     });
   }
 }
+
+// The count badge on the ball, close up at 1, 12 and 99+ (the cap): the numbers are set the way
+// setCount writes them, and the ball is shot at 3x.
+if (wanted("badge")) {
+  const [lang] = LANGS[0];
+  for (const scheme of SCHEMES) {
+    await run(undefined, lang, async (ctx) => {
+      const site = await serveHtml({ "/chips.html": chipsHtml(scheme === "dark") });
+      try {
+        await waitForRegistration(ctx.sw);
+        const page = await ctx.context.newPage();
+        await page.setViewportSize({ width: 900, height: 900 });
+        await page.emulateMedia({ colorScheme: scheme });
+        const cdp = await ctx.context.newCDPSession(page);
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 900, height: 900, deviceScaleFactor: 3, mobile: false });
+        await page.goto(site.url("/chips.html"));
+        await page.waitForFunction((sel) => document.querySelectorAll(sel).length >= 4 && [...document.querySelectorAll(sel)].every((h) => h.shadowRoot?.querySelector(".pill.scored")), BADGE_SEL, { timeout: 20000 });
+        // A hostile page style: the badge must not take any of it.
+        await page.addStyleTag({ content: "* { font-family: 'Times New Roman', serif !important; font-style: italic !important; letter-spacing: 3px !important; text-transform: uppercase !important; }" });
+        await page.mouse.move(5, 5);
+        const shots = [];
+        for (const text of ["1", "12", "99+"]) {
+          await page.evaluate((text) => { document.getElementById("anagram-fab").shadowRoot.querySelector(".count").textContent = text; }, text);
+          await page.waitForTimeout(300);
+          const box = await page.locator("#anagram-fab .stack").boundingBox();
+          shots.push((await page.screenshot({ clip: { x: box.x - 12, y: box.y - 12, width: box.width + 24, height: box.height + 24 } })).toString("base64"));
+        }
+        const sheet = await ctx.context.newPage();
+        await sheet.setViewportSize({ width: 700, height: 240 });
+        await sheet.setContent(`<body style="margin:0;display:flex;gap:16px;padding:12px;background:${scheme === "dark" ? "#0d1117" : "#fff"}">${shots.map((b) => `<img style="height:198px" src="data:image/png;base64,${b}">`).join("")}</body>`);
+        await sheet.screenshot({ path: join(out, `badge-${scheme}.png`), fullPage: true });
+        await sheet.close();
+        await page.close();
+      } finally { await site.close(); }
+    });
+  }
+}
 console.log("screenshots in", out);

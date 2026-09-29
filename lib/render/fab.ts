@@ -258,11 +258,18 @@ const FAB_CSS = `
   background: #dc2626;
   color: #fff;
   appearance: none;
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: normal;
+  /* Set out in full: the host's "all: initial" leaves the UA's default (serif) face here, and
+     a button brings its own font from the UA sheet. The same stack as the ball's chips. */
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  text-transform: none;
+  -webkit-font-smoothing: antialiased;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer; /* opens the flagged-paragraphs panel */
 }
@@ -894,7 +901,9 @@ export function createFab(opts: {
       countEl.setAttribute("aria-label", t("countDownAria"));
       return;
     }
-    countEl.textContent = String(flagged);
+    // The bubble is 18 px tall: three digits would stretch it, so it stops at "99+" (the
+    // accessible name and the panel's title carry the real number).
+    countEl.textContent = flagged > 99 ? "99+" : String(flagged);
     announceCount(flagged);
     countEl.title = t("countTitle");
     countEl.setAttribute("aria-label", tn("countAria", flagged));

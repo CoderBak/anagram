@@ -347,6 +347,16 @@ test("the ball is the icon, not a letter: the light tile on a light page, the da
   expect(await ball(), "the ball on a page treated as dark shows the dark tile").toMatchObject({ shown: ["logo-dark"] });
 });
 
+test("the count badge sets its own type: the UI sans-serif at weight 600 with tabular digits, whatever the page styles", async ({ fixtures: page }) => {
+  await page.addStyleTag({ content: "* { font-family: 'Times New Roman', serif !important; font-style: italic !important; text-transform: uppercase !important; }" });
+  const type = await page.evaluate(() => {
+    const cs = getComputedStyle(document.getElementById("anagram-fab").shadowRoot.querySelector(".count"));
+    return { family: cs.fontFamily, weight: cs.fontWeight, style: cs.fontStyle, digits: cs.fontVariantNumeric, transform: cs.textTransform, align: cs.textAlign };
+  });
+  expect(type.family, "the badge's face is the UI stack, not the UA's serif").toMatch(/^ui-sans-serif, /);
+  expect({ weight: type.weight, style: type.style, digits: type.digits, transform: type.transform, align: type.align }, "the badge's own type settings").toEqual({ weight: "600", style: "normal", digits: "tabular-nums", transform: "none", align: "center" });
+});
+
 test("the ball: dragged, it snaps to the left edge; left alone, it tucks half away and comes back under the pointer", async ({ fixtures: page }) => {
   await pointAtBall(page); // untuck first: a tucked ball sits half off-screen
   await expect.poll(() => tucked(page), { message: "the ball comes out under the pointer" }).toBe(false);
