@@ -17,6 +17,8 @@ export interface Glyph {
   y1: number;
   x2: number;
   y2: number;
+  /** The first glyph of a run of Zotero's glyph map: another run of the page begins here. */
+  start?: true;
 }
 
 /** A gap wider than this share of the glyph height is a word space (lib/pdf/reflow.ts). */

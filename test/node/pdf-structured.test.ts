@@ -1456,6 +1456,52 @@ describe("structuredBlocks — a manuscript with numbered lines", () => {
     for (const b of blocks) expectRunsToMatch(b, pages);
   });
 
+  it("finds the numbers of lines whose text Zotero drew where the number ends: the tab between them folded out", () => {
+    // pdf.js has the number, a run of white space, then the text at 72; Zotero's fork takes the
+    // space's width out of the text, which starts where the number ends, and its text has no
+    // space there either: "84The …", "85 …". Only the run of the text says it is a run of its own.
+    const folded = (n: number, line: { text: string; x: number }, y: number, page = 1): Line => {
+      const num = String(n);
+      const a = drawn(page, { text: num, x: 54 - num.length * CW, y });
+      const b = drawn(page, { text: line.text, x: line.x, y, drift: 54 - line.x });
+      return { items: [a.item, b.item], run: [a.run, b.run], text: `${num}${line.text}` };
+    };
+    const both = [...LINES.slice(0, 7), ...LINES];
+    const set = both.map((l, i) => folded(84 + i, l, 100 + i * PITCH));
+    const pages = [pageText(1, set.flatMap((l) => l.items))];
+    const blocks = structuredBlocks(structure([asList(set)]), pages);
+    expect(blocks.map((b) => b.text)).toEqual([...PARAGRAPHS.slice(0, 2), ...PARAGRAPHS]);
+    for (const b of blocks) expectRunsToMatch(b, pages);
+
+    // A page of fewer lines, a figure's and its caption, joins the column its neighbour found.
+    const short = LINES.slice(0, 4).map((l, i) => folded(100 + i, l, 100 + i * PITCH, 2));
+    const two = structuredBlocks(structure([asList(set), asList(short)], 2), [pageText(1, set.flatMap((l) => l.items)), pageText(2, short.flatMap((l) => l.items))]);
+    expect(two.map((b) => b.text).join(" ")).not.toMatch(/\b10[0-3]\p{L}/u);
+    expect(two.at(-1)!.text).toBe(PARAGRAPHS[0]);
+
+    // Fewer numbers than a page of prose holds are an algorithm's or a list's: they stay.
+    const few = LINES.slice(0, 5).map((l, i) => folded(1 + i, l, 100 + i * PITCH));
+    const listing = structuredBlocks(structure([asList(few)]), [pageText(1, few.flatMap((l) => l.items))]);
+    expect(listing.map((b) => b.text.slice(0, 4))).toEqual(few.map((l) => l.text.slice(0, 4)));
+
+    // A list of numbered questions, its full stop set in a run of its own against the number,
+    // is a list: the numbers stay, and so do the questions.
+    const questions = Array.from({ length: 9 }, (_, i) => {
+      const num = String(i + 1);
+      const a = drawn(1, { text: num, x: 54 - CW, y: 400 + i * 2 * PITCH });
+      const b = drawn(1, { text: `. What is question number ${i + 1} about the patent system?`, x: 60, y: 400 + i * 2 * PITCH, drift: 54 - 60 });
+      return { items: [a.item, b.item], run: [a.run, b.run], text: `${num} . What is question number ${i + 1} about the patent system?` } as Line;
+    });
+    const asked = structuredBlocks(structure([asList(questions)]), [pageText(1, questions.flatMap((l) => l.items))]);
+    expect(asked.map((b) => b.text.slice(0, 12))).toEqual(questions.map((l) => l.text.slice(0, 12)));
+
+    // A number that is a word's own stays: no column of them counting on, nothing to strip.
+    const prose = drawn(1, { text: "2023", x: 72, y: 300 });
+    const text = drawn(1, { text: "was the year the value of p rose to 0.05 in the second trial of the study (Smith, 2023)", x: 72 + 4 * CW, y: 300 });
+    const kept = structuredBlocks(structure([paragraph(1, [{ text: "2023was the year the value of p rose to 0.05 in the second trial of the study (Smith, 2023)", anchor: { textMap: JSON.stringify([prose.run, text.run]) } }])]), [pageText(1, [prose.item, text.item])]);
+    expect(kept[0]!.text).toBe("2023was the year the value of p rose to 0.05 in the second trial of the study (Smith, 2023)");
+  });
+
   it("finds the paragraphs of numbered lines set ragged right by their indents", () => {
     // Every line stops short of the margin by a word or two, and many of them are followed
     // by a line opening with a capital or a bracket: only the indent opens a paragraph.

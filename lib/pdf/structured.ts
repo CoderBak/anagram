@@ -118,9 +118,10 @@ export function glyphsOf(textMap: string | undefined): Glyph[] {
       pos += width;
     }
     if (header & SOFT_HYPHEN) positions.pop();
-    for (const [a, b] of positions) {
-      out.push(vertical ? { page, x1: minX, y1: a, x2: maxX, y2: b } : { page, x1: a, y1: minY, x2: b, y2: maxY });
-    }
+    positions.forEach(([a, b], k) => {
+      const at = vertical ? { page, x1: minX, y1: a, x2: maxX, y2: b } : { page, x1: a, y1: minY, x2: b, y2: maxY };
+      out.push(k === 0 ? { ...at, start: true } : at);
+    });
   }
   return out;
 }
@@ -830,6 +831,19 @@ function touching(a: Glyph, b: Glyph): boolean {
 /** Two pieces set against each other in one text node; a new node is another run. */
 const glued = (a: Piece | undefined, b: Piece | undefined): boolean => !!a?.glyph && !!b?.glyph && !b.opens && touching(a.glyph, b.glyph);
 
+/**
+ * Two pieces set against each other, unless a word begins a run of Zotero's glyph map there:
+ * where a line's number and its text are parted by white space in a tab or a run of spaces,
+ * Zotero's fork folds the space's width out of the text, which then starts exactly where the
+ * number ends ("21As the basic", "32smallholder", "372020-2050"), and only the run says the
+ * two are apart. A full stop or a bracket after a number is the number's own ("1.").
+ */
+const within = (a: Piece | undefined, b: Piece | undefined): boolean => glued(a, b) && !(b!.glyph!.start === true && /^[\p{L}\p{N}]$/u.test(b!.ch));
+
+/** The numbers a run alone parts from their text found a column of line numbers only on a
+ *  page that holds this many of them; elsewhere they join a column found. */
+const FOLDED_MIN = 16;
+
 /** Where down the page a glyph's middle is: PDF space grows upward. */
 const down = (g: Glyph): number => -(g.y1 + g.y2) / 2;
 
@@ -839,25 +853,34 @@ const down = (g: Glyph): number => -(g.y1 + g.y2) / 2;
  * its line among every glyph of the page, in a column of such numbers counting on.
  */
 function lineNumberPieces(texts: Piece[][]): Set<Piece> {
-  const marks: (NumberMark & { run: Piece[] })[] = [];
+  const marks: (NumberMark & { run: Piece[]; folded: boolean })[] = [];
   for (const pieces of texts) {
     for (let i = 0; i < pieces.length; i++) {
       const g = pieces[i]!.glyph;
       if (!g || !DIGIT.test(pieces[i]!.ch)) continue;
       let j = i + 1;
-      while (j < pieces.length && DIGIT.test(pieces[j]!.ch) && glued(pieces[j - 1], pieces[j])) j++;
+      while (j < pieces.length && DIGIT.test(pieces[j]!.ch) && within(pieces[j - 1], pieces[j])) j++;
       const run = pieces.slice(i, j);
       const text = run.map((p) => p.ch).join("");
-      if (BARE_NUMBER.test(text) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[j - 1], pieces[j])) {
+      if (BARE_NUMBER.test(text) && !glued(pieces[i - 1], pieces[i]) && !within(pieces[j - 1], pieces[j])) {
         const glyphs = run.map((p) => p.glyph!);
+        // Set against the text by Zotero's glyphs, and parted from it only by the run.
+        let k = i + 1;
+        while (k < pieces.length && DIGIT.test(pieces[k]!.ch) && glued(pieces[k - 1], pieces[k])) k++;
+        const folded = !(BARE_NUMBER.test(pieces.slice(i, k).map((p) => p.ch).join("")) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[k - 1], pieces[k]));
         marks.push({
           page: g.page, x1: Math.min(...glyphs.map((q) => q.x1)), x2: Math.max(...glyphs.map((q) => q.x2)),
-          y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run,
+          y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run, folded,
         });
       }
       i = j - 1;
     }
   }
+  // A page of numbered prose holds this many lines at least; an algorithm's, a list's or a
+  // table's numbers, which the run alone parts from their text, are fewer, and found nothing.
+  const foldedOn = new Map<number, number>();
+  for (const m of marks) if (m.folded) foldedOn.set(m.page, (foldedOn.get(m.page) ?? 0) + 1);
+  for (const m of marks) if (m.folded && foldedOn.get(m.page)! < FOLDED_MIN) m.weak = true;
   if (!mayHoldColumn(marks)) return new Set();
   // Where each mark stands on its line, among every glyph of its page; and what else each
   // printed line of the pages holds, from where it starts to where it ends.
@@ -872,14 +895,22 @@ function lineNumberPieces(texts: Piece[][]): Set<Piece> {
       const list = byPage.get(row.page) ?? [];
       byPage.set(row.page, list);
       let x1 = Infinity, x2 = -Infinity, weight = 0;
+      /** Where the row's own number ended, while its text has not begun. */
+      let number: Glyph | null = null;
+      /** The text starts where the number ends, in the run after it: the space between them
+       *  was folded out, and the text stands at least a space further right. */
+      let folded = 0;
       for (const p of row.pieces) {
         if (!p.glyph) continue;
         list.push(p.glyph);
-        if (inMark.has(p)) continue;
+        if (inMark.has(p)) { number = p.glyph; continue; }
+        if (number && weight === 0 && p.glyph.start && /^[\p{L}\p{N}]$/u.test(p.ch) && sameLine(number, p.glyph) && Math.abs(p.glyph.x1 - number.x2) <= (p.glyph.y2 - p.glyph.y1) * TOUCH) folded = p.glyph.y2 - p.glyph.y1;
         x1 = Math.min(x1, p.glyph.x1);
         x2 = Math.max(x2, p.glyph.x2);
         weight++;
       }
+      x1 += folded;
+      x2 += folded;
       if (weight > 0) content.push({ page: row.page, x1, x2, y: (row.top + row.bottom) / 2, weight });
     }
   }
