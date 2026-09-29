@@ -1264,6 +1264,17 @@ describe("structuredBlocks — the document", () => {
       expect(read([title, lead, middle, right, left])).toEqual(["Title", "Lead", "Left", "Middle", "Right"]);
     });
 
+    it("reads a headline set across two columns before both, and does not take it for the top of the right one", () => {
+      // The headline reaches over half of the right column's width, which is enough for the
+      // paragraph under it to look like the headline's column; Zotero read the right column's
+      // paragraphs, then the left one's.
+      const set = placed("KickerOverTwoColumnsOfText", 40, 60);
+      const kicker = { ...set, block: { ...set.block, type: "heading" } };
+      const right1 = placed("Right1", 200, 100, 3), right2 = placed("Right2", 200, 200, 3);
+      const left1 = placed("Left1", 40, 100, 3), left2 = placed("Left2", 40, 200, 3);
+      expect(read([kicker, right1, right2, left1, left2])).toEqual(["KickerOverTwoColumnsOfText", "Left1", "Left2", "Right1", "Right2"]);
+    });
+
     it("keeps Zotero's order of a paper's page: the left column, then the right, around a float", () => {
       const a = placed("A", 60, 80, 10), b = placed("B", 60, 500, 10), c = placed("C", 320, 80, 10), d = placed("D", 320, 500, 10);
       expect(read([a, b, c, d])).toEqual(["A", "B", "C", "D"]);

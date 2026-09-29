@@ -715,6 +715,10 @@ function boxOf(block: SdtBlock): { page: number; box: number[]; spans: boolean }
 
 const shared = (a1: number, a2: number, b1: number, b2: number): number => Math.min(a2, b2) - Math.max(a1, b1);
 const inColumn = (a: number[], b: number[]): boolean => shared(a[0]!, a[2]!, b[0]!, b[2]!) >= SHARED * Math.min(a[2]! - a[0]!, b[2]! - b[0]!);
+/** A block under a headline is in the headline's column when it shares this much of its own width
+ *  with it: a headline set across two columns is no part of the right one. */
+const HEADLINE_SHARED = 0.8;
+const inHeadline = (a: number[], b: number[]): boolean => shared(a[0]!, a[2]!, b[0]!, b[2]!) >= HEADLINE_SHARED * Math.min(a[2]! - a[0]!, b[2]! - b[0]!);
 const inBand = (a: number[], b: number[]): boolean => shared(a[1]!, a[3]!, b[1]!, b[3]!) >= SHARED * Math.min(a[3]! - a[1]!, b[3]! - b[1]!);
 /** `a` is to be read before `b`: above it in its column, or left of it in its band. */
 const readsBefore = (a: number[], b: number[]): boolean =>
@@ -724,7 +728,7 @@ const readsBefore = (a: number[], b: number[]): boolean =>
  *  keeps the markers after it; a bibliography entry, a barrier, a block that goes on to the
  *  next page and one with no rects end the stretch of a page that can move. */
 function readInColumns(out: (Reading | Marker)[]): (Reading | Marker)[] {
-  interface Item { parts: (Reading | Marker)[]; box: number[] }
+  interface Item { parts: (Reading | Marker)[]; box: number[]; heading: boolean }
   const result: (Reading | Marker)[] = [];
   let stretch: Item[] = [];
   let page = -1;
@@ -743,20 +747,20 @@ function readInColumns(out: (Reading | Marker)[]): (Reading | Marker)[] {
     if (!at) { flush(); result.push(r); page = -1; continue; }
     if (at.page !== page) flush();
     page = at.page;
-    stretch.push({ parts: [r], box: at.box });
+    stretch.push({ parts: [r], box: at.box, heading: r.kind === "heading" });
     if (at.spans) { flush(); page = -1; }
   }
   flush();
   return result;
 
-  function orderRuns<T extends { box: number[] }>(items: T[]): T[] {
+  function orderRuns<T extends { box: number[]; heading: boolean }>(items: T[]): T[] {
     if (items.length < 3) return items;
     // Runs: each block below the one before it, in its column.
     const runs: { items: T[]; box: number[] }[] = [];
     for (const item of items) {
       const run = runs[runs.length - 1];
       const last = run?.items[run.items.length - 1];
-      if (run && last && item.box[3]! <= last.box[1]! + ORDER_SLACK && inColumn(item.box, last.box)) {
+      if (run && last && item.box[3]! <= last.box[1]! + ORDER_SLACK && (last.heading ? inHeadline : inColumn)(item.box, last.box)) {
         run.items.push(item);
         run.box = [Math.min(run.box[0]!, item.box[0]!), Math.min(run.box[1]!, item.box[1]!), Math.max(run.box[2]!, item.box[2]!), Math.max(run.box[3]!, item.box[3]!)];
       } else runs.push({ items: [item], box: [...item.box] });
