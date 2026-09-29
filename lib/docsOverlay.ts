@@ -28,7 +28,6 @@ import { loadPurify } from "./lazy";
 import { messageLocale, t } from "./i18n";
 import { MARK_ATTR } from "./types";
 import { highlightSheets } from "./render/highlight";
-import { adoptSheets } from "./dom/shadow";
 
 export const DOCS_OVERLAY_ID = "anagram-docs-overlay";
 
@@ -310,7 +309,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     docStyle = document.createElement("style");
     docStyle.textContent = doc.css;
     // The underline rules must exist in this tree scope too.
-    adoptSheets(shadow, [overlaySheet(), ...highlightSheets()]);
+    shadow.adoptedStyleSheets = [overlaySheet(), ...highlightSheets()];
 
     const ovl = document.createElement("div");
     ovl.className = "ovl";
