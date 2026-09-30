@@ -197,7 +197,7 @@ export default defineConfig({
     },
   },
   manifest: ({ browser }) => {
-    const productName = browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
+    const productName = browser === "safari" ? "Anagram" : browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
     // Two engines, chosen at run time (lib/backend/engines.ts). The in-browser one runs in an
     // offscreen document (Chrome; Firefox's background page has a DOM of its own) and keeps
     // the model in the extension's storage, which the browser must not evict. Its download
@@ -205,8 +205,8 @@ export default defineConfig({
     // ships in the package (lib/webengine/pin.ts). Native Messaging reaches the local engine
     // and is asked for only when the person picks it; the test build requires it, for the
     // suites that drive the fake host.
-    const engine = [...(browser === "firefox" ? [] : ["offscreen"]), "unlimitedStorage", ...(TEST_GRANT_ALL ? ["nativeMessaging"] : [])];
-    const optionalNative = TEST_GRANT_ALL ? [] : ["nativeMessaging"];
+    const engine = [...(browser === "chrome" ? ["offscreen"] : []), "unlimitedStorage", ...(TEST_GRANT_ALL || browser === "safari" ? ["nativeMessaging"] : [])];
+    const optionalNative = TEST_GRANT_ALL || browser === "safari" ? [] : ["nativeMessaging"];
     return {
       name: productName,
       // The browser's own UI language picks the folder under public/_locales; English is

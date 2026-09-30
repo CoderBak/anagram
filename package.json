@@ -9,6 +9,8 @@
     "dev": "node scripts/vendor.mjs && wxt",
     "build": "node scripts/vendor.mjs && wxt build",
     "build:firefox": "node scripts/vendor.mjs && wxt build -b firefox",
+    "build:safari": "node scripts/buildSafari.mjs",
+    "test:safari": "node test/safari-stdio.mjs && vitest run test/node/safariPort.test.ts",
     "build:test": "node scripts/buildTest.mjs --all",
     "zip": "node scripts/vendor.mjs && wxt zip",
     "typecheck": "wxt prepare && tsc --noEmit",

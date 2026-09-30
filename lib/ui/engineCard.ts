@@ -129,7 +129,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     panel?.destroy();
     panelHost.replaceChildren();
     panelHost.hidden = false;
-    const crashAction = !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
+    const crashAction = import.meta.env.BROWSER !== "safari" && !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
     engineTier = null;
     panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply) => {
       if (reply.kind === "ok" && next === "inbrowser") { const before = engineTier; engineTier = reply.snapshot.tier ?? null; if (engineTier !== before) paintTight(); }
@@ -206,7 +206,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   }
 
   async function paintSwitch(): Promise<void> {
-    if (!settings || !engine) { switchButton.hidden = deleteLeftover.hidden = true; return; }
+    if (import.meta.env.BROWSER === "safari" || !settings || !engine) { switchButton.hidden = deleteLeftover.hidden = true; return; }
     const d = await device();
     const current = engine;
     // To the in-browser engine where the device runs it; to the local one where it installs.

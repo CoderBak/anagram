@@ -51,7 +51,7 @@ const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 export default defineBackground(() => {
   // A native port can keep this worker alive. Preserve an available extension
   // update for Settings rather than interrupting analysis with an automatic reload.
-  browser.runtime.onUpdateAvailable.addListener((details) => {
+  browser.runtime.onUpdateAvailable?.addListener((details) => {
     void browser.storage.local.set({ [EXTENSION_UPDATE_KEY]: details.version });
   });
   const router = createRouter(getScoreClient());
@@ -433,6 +433,7 @@ export default defineBackground(() => {
       case ACTIONS.GET_ENGINE:
         return {engine:await engineTransport().current()};
       case ACTIONS.SET_ENGINE: {
+        if (import.meta.env.BROWSER === "safari" && msg.engine !== "native") return {ok:false,error:"unsupported_engine"} satisfies SetEngineReply;
         // The local engine only once Native Messaging is granted: the page asked in its click.
         if (msg.engine === "native" && !(await nativeGranted())) return {ok:false,error:"permission"} satisfies SetEngineReply;
         // The tier the setup page decided for the in-browser engine; a different one than the

@@ -27,6 +27,7 @@ export async function nativeGranted(): Promise<boolean> {
  * yet, and the setup page decides.
  */
 export async function activeEngine(): Promise<Engine | null> {
+  if (import.meta.env.BROWSER === "safari") return "native";
   const chosen = await engineChoice.getValue().catch(() => null);
   if (chosen && ENGINES.includes(chosen)) return chosen;
   return (await nativeGranted()) ? "native" : null;
