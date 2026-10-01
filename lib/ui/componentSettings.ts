@@ -160,7 +160,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const storageChanged = (changes: Record<string, { newValue?: unknown }>, area: string): void => {
     if (area === "local" && "extensionUpdatePending" in changes) paintExtensionUpdate(changes.extensionUpdatePending.newValue);
   };
-  browser.runtime.onUpdateAvailable.addListener(updateAvailable);
+  browser.runtime.onUpdateAvailable?.addListener(updateAvailable);
   browser.storage.onChanged.addListener(storageChanged);
   void browser.storage.local.get("extensionUpdatePending").then((value) => paintExtensionUpdate(value.extensionUpdatePending)).catch(() => undefined);
 
@@ -351,6 +351,6 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   return { refresh: () => run(), destroy() {
     destroyed = true; controller?.abort(); if (timer !== undefined) clearTimeout(timer);
     if (dialog.open) dialog.close(); document.removeEventListener("visibilitychange", visibility);
-    browser.runtime.onUpdateAvailable.removeListener(updateAvailable); browser.storage.onChanged.removeListener(storageChanged);
+    browser.runtime.onUpdateAvailable?.removeListener(updateAvailable); browser.storage.onChanged.removeListener(storageChanged);
   } };
 }
