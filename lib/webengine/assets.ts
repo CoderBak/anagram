@@ -8,6 +8,7 @@ import type { PublicPath } from "wxt/browser";
 import { LID_PATH, pin } from "./pin";
 import type { TierChoice } from "./tier";
 import type { WorkerInit } from "./worker";
+import { IS_SAFARI } from "../surface";
 
 const url = (path: string): string => browser.runtime.getURL(path as PublicPath);
 
@@ -18,7 +19,8 @@ export function workerInit(choice?: TierChoice | null): Omit<WorkerInit, "type">
   return {
     pin: pin(url(LID_PATH), choice?.tier === "fp16" ? "fp16" : "fp32"),
     // Where FP16 fails to run and FP32 fits the device, FP32 takes its place (lib/webengine/engine.ts).
-    ...(choice?.tier === "fp16" && choice.fallback ? { fallback: pin(url(LID_PATH), "fp32") } : {}),
+    ...(choice?.tier === "fp16" && choice.fallback && !IS_SAFARI ? { fallback: pin(url(LID_PATH), "fp32") } : {}),
+    ...(IS_SAFARI ? { gpuOnly: true } : {}),
     assets: {
       ort: url("/vendor/engine/ort.jspi.min.mjs"),
       mjs: url("/vendor/engine/ort-wasm-simd-threaded.jspi.mjs"),

@@ -10,6 +10,7 @@ import { t } from "../i18n";
 import { settings } from "../settings/settings";
 import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../pdf/fileAccess";
 import { bindConfirmedToggle } from "./confirmedToggle";
+import { FILE_URL_ACCESS_SUPPORTED } from "../surface";
 import "./rows.css";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -53,6 +54,17 @@ export function mountPdfRows(host: HTMLElement): void {
     line.hidden = !bad;
   };
   bindConfirmedToggle(autoInput, settings.autoOpenPdfs, failedIn(autoError));
+  if (!FILE_URL_ACCESS_SUPPORTED) {
+    state.remove();
+    localLabel.removeAttribute("for");
+    turnOn.textContent = t("safariOpenPdf");
+    turnOn.hidden = false;
+    turnOn.removeAttribute("aria-describedby");
+    turnOn.addEventListener("click", () => void browser.tabs.create({ url: browser.runtime.getURL("/reader.html") }));
+    steps.textContent = t("safariLocalPdfNote");
+    steps.hidden = false;
+    return;
+  }
   const failed = failedIn(localError);
 
   let generation = 0;

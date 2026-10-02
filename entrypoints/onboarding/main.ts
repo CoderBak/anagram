@@ -11,6 +11,7 @@ import { messageLocale } from "../../lib/i18n";
 import { mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
+import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { scaleColorCss, scaleGradient } from "../../lib/render/scale";
 import "../../lib/ui/rows.css";
 
@@ -31,6 +32,7 @@ if (messageLocale() === "zh-CN") {
 const where = document.getElementById("where")!;
 mountSiteAccess(where, { hint: true });
 mountPdfRows(where);
+mountToolbarGuide(document.getElementById("toolbarGuide")!);
 mountEngineCard({
   title: document.getElementById("engineTitle")!,
   panelHost: document.getElementById("componentSettings")!,

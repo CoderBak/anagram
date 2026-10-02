@@ -54,9 +54,9 @@ const numOf = (page, id) => page.locator(`#${id} ${BADGE_SEL} .num`).textContent
 const cardOf = (page, id) => page.locator(`#${id} ${BADGE_SEL} .card`).textContent();
 const hasMark = (texts, marker) => texts.some((t) => t.includes(marker));
 
-test("the page is read: a chip on every unit, the ball, the underlines, and no marker attribute in the page's own DOM", async ({ selftest: page }) => {
+test("the page is read: a chip on every unit, underlines, no floating button, and no marker attribute in the page's own DOM", async ({ selftest: page }) => {
   expect.soft(await page.locator(BADGE_SEL).count(), "badges rendered across the page").toBeGreaterThanOrEqual(11);
-  await expect.soft(page.locator("#anagram-fab"), "floating toggle present").toHaveCount(1);
+  await expect.soft(page.locator("#anagram-fab"), "no floating toolbar on the page").toHaveCount(0);
   expect.soft((await marked(page)).length, "underlines present").toBeGreaterThan(0);
   for (const id of ["human", "aiwrap", "quote"]) await expect.soft(chipsIn(page, id), "human/ai/quote/div-EN/div-ZH badged").toHaveCount(1);
   await expect.soft(chipsIn(page, "divbased"), "human/ai/quote/div-EN/div-ZH badged").toHaveCount(2);
@@ -210,13 +210,13 @@ test("the page changing under the reader: a pushState swap, a removed paragraph,
   await expect(all, "rapid insert: every added paragraph badged").toHaveCount(beforeAdd + RAPID);
 });
 
-test("the ball hides every chip and shows them again", async ({ selftest: page }) => {
+test("the toolbar control hides every chip and shows them again", async ({ selftest: page, tell }) => {
   const visible = () => page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((h) => getComputedStyle(h).display !== "none").length, BADGE_SEL);
-  const clickFab = () => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector("button.fab")?.click());
+  const toggleMarks = () => tell(page, { action: "toggleOverlay" });
   const shown = await visible();
   expect(shown, "toggle hides + re-shows badges").toBeGreaterThan(0);
-  await clickFab();
+  await toggleMarks();
   await expect.poll(visible, { message: "toggle hides + re-shows badges" }).toBe(0);
-  await clickFab();
+  await toggleMarks();
   await expect.poll(visible, { message: "toggle hides + re-shows badges" }).toBe(shown);
 });

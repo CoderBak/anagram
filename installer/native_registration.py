@@ -69,14 +69,21 @@ def owned_home(home: Path, require_owner=False) -> Path:
 
 
 def validate_selection(browser, extension_id, language):
-    if browser not in ("chrome", "firefox") or language not in ("en", "zh_CN"):
-        raise ValueError("Browser must be chrome/firefox and language en/zh_CN")
+    if browser not in ("chrome", "firefox", "safari") or language not in ("en", "zh_CN"):
+        raise ValueError("Browser must be chrome/firefox/safari and language en/zh_CN")
     if (browser == "chrome" and not re.fullmatch("[a-p]{32}", extension_id)) or (
-            browser == "firefox" and extension_id != FIREFOX_ID):
+            browser == "firefox" and extension_id != FIREFOX_ID) or (
+            browser == "safari" and not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?: \([A-Za-z0-9-]+\))?", extension_id)):
         raise ValueError("Invalid extension ID; use the exact ID shown by Anagram setup")
 
 
 def manifest_path(home, user_home, browser, platform):
+    if browser == "safari":
+        if platform != "darwin":
+            raise ValueError("Safari's local engine requires macOS")
+        # The containing app provides Safari's bridge. This owned receipt is used
+        # for update/uninstall; Safari does not read Chrome/Firefox host manifests.
+        return home / "native" / "safari.json"
     if platform == "win32":
         return home / "native" / browser / (HOST + ".json")
     if platform == "darwin":
@@ -211,7 +218,7 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
     platform = platform or sys.platform
     value = inventory(home, user_home, platform)
     target = manifest_path(home, user_home, browser, platform)
-    safe_path(target, home if platform == "win32" else user_home)
+    safe_path(target, home if platform == "win32" or browser == "safari" else user_home)
     launcher = launcher_path(home, platform)
     safe_path(launcher, home)
     if not (home / "app/native_host.py").is_file():
@@ -220,6 +227,8 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
     manifest = {"name": HOST, "description": "Anagram local model component", "path": str(launcher), "type": "stdio"}
     manifest["allowed_origins" if browser == "chrome" else "allowed_extensions"] = [
         "chrome-extension://" + extension_id + "/" if browser == "chrome" else extension_id]
+    if browser == "safari":
+        manifest = {"schema_version": 1, "browser": "safari", "extension_id": extension_id, "home": str(home)}
     data = encoded(manifest)
     changed_files = []
     changed_keys = []
@@ -239,13 +248,13 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
         before = target.read_bytes() if target.exists() else None
         if before is not None and (old is None or hashlib.sha256(before).hexdigest() != old["sha256"]):
             raise ValueError("A different or modified native registration already exists; refusing to replace it")
-        if platform != "win32":
+        if platform != "win32" and browser != "safari":
             # A browser invokes this absolute path. No system Python, shell profile,
             # inherited PYTHONPATH, or stdout logging participates in host startup.
             python = shlex.quote(str(home / "venv/bin/python"))
             script = "#!/bin/sh\nexec " + python + " -I -u " + shlex.quote(str(home / "app/native_host.py")) + " --home " + shlex.quote(str(home)) + ' "$@"\n'
             write(launcher, script.encode(), 0o700)
-        elif not launcher.is_file():
+        elif platform == "win32" and not launcher.is_file():
             raise ValueError("Compiled Windows native launcher is missing")
         write(target, data)
         if platform == "win32":
@@ -289,7 +298,7 @@ def unregister(home, *, user_home=None, platform=None, registry=None):
     # Preflight every path/key before deleting any registration.
     for entry in value["registrations"]:
         target = Path(entry["manifest"])
-        safe_path(target, home if platform == "win32" else user_home)
+        safe_path(target, home if platform == "win32" or entry["browser"] == "safari" else user_home)
         if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() != entry["sha256"]:
             raise ValueError("Registration was modified after installation; refusing to delete it")
         if platform == "win32":
@@ -456,7 +465,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=["register", "unregister", "update", "uninstall"])
     parser.add_argument("--home", required=True, type=Path)
-    parser.add_argument("--browser", choices=["chrome", "firefox"])
+    parser.add_argument("--browser", choices=["chrome", "firefox", "safari"])
     parser.add_argument("--extension-id")
     parser.add_argument("--language", default="en", choices=["en", "zh_CN"])
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)

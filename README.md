@@ -28,13 +28,21 @@ Nothing you read leaves your machine.
 Apple Silicon Macs are the tested platform. Linux and Windows installers exist but have
 not been exercised on real machines. Firefox 153+ has a build but is not the focus.
 
+The Safari version targets **Mac computers with Safari 27+**. It shares the recommended
+**One click** browser setup and optional **Terminal** engine with Chrome and Firefox.
+The browser engine needs a compatible WebGPU adapter and uses a pinned engine tab;
+the separate engine needs a full Safari app build and an Apple Silicon Mac. Build and
+real-Mac verification instructions are in [Development](docs/DEVELOPMENT.md#safari).
+Safari runtime verification is pending.
+
 ## Use
 
 Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
-(AI-generated). Hover it for the four-way breakdown. The floating ball counts and
-lists paragraphs that read as AI-generated. PDFs open in a
-built-in reader. Google Docs get a reading view. Settings covers site access, marks,
-cache and the engine.
+(AI-generated). Hover it for the four-way breakdown. Pin Anagram beside the address bar
+using the browser-specific guide in setup. Its toolbar popup lists flagged paragraphs,
+jumps to them, and controls page marks. On Google Docs, choose **Analyze document**
+from the popup to open the reading view. PDFs open in a built-in reader. Settings
+covers site access, marks, cache and the engine, and includes the pinning guide.
 
 ## Develop
 

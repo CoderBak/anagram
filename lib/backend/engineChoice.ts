@@ -2,6 +2,7 @@
 // the pages alike; no transport in here.
 import { browser } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
+import { IS_SAFARI } from "../surface";
 
 export type Engine = "native" | "inbrowser";
 export const ENGINES: readonly Engine[] = ["native", "inbrowser"];
@@ -45,5 +46,8 @@ export async function chooseEngine(engine: Engine, setup?: "now" | "auto", tier?
  * the browsers honour a request only inside the person's gesture.
  */
 export function requestNative(): Promise<boolean> {
-  try { return browser.permissions.request(NATIVE_PERMISSION).catch(() => false); } catch { return Promise.resolve(false); }
+  try {
+    // Safari declares this permission for its containing app at install time.
+    return (IS_SAFARI ? browser.permissions.contains(NATIVE_PERMISSION) : browser.permissions.request(NATIVE_PERMISSION)).catch(() => false);
+  } catch { return Promise.resolve(false); }
 }

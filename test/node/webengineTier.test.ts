@@ -49,14 +49,15 @@ const session = (candidate: Candidate): LoadedSession => ({
 const engines: Engine[] = [];
 afterEach(async () => { for (const e of engines.splice(0)) await e.close(); });
 
-function make(options: { tier?: "fp32" | "fp16"; fallback?: boolean; failing?: string[]; store?: MemoryStore } = {}) {
+function make(options: { tier?: "fp32" | "fp16"; fallback?: boolean; failing?: string[]; store?: MemoryStore; gpuOnly?: boolean; noGpu?: boolean } = {}) {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES);
   const tier = options.tier ?? "fp16";
   const engine = new Engine({
     pin: pinOf(tier), ...(options.fallback ? { fallback: pinOf("fp32") } : {}), assets: { ort: "x", mjs: "x", wasm: "x" }, version: "9.9.9",
-    store, transport: server.fetch, retryWaits: [0], probe,
+    store, transport: server.fetch, retryWaits: [0], gpuOnly: options.gpuOnly,
+    probe: options.noGpu ? async () => [cpu(true)] : probe,
     createSession: async (candidate) => {
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("Program Gather requires f16"); }
       log.push(`create ${candidate.id}`);
@@ -77,6 +78,30 @@ const settled = async (e: Engine, states = ["ready", "error"]) => {
 };
 
 describe("the pin of each tier", () => {
+  it("Safari refuses to download without WebGPU even when a CPU runtime is available", async () => {
+    const m = make({ tier: "fp32", gpuOnly: true, noGpu: true });
+    expect(await status(m.engine)).toMatchObject({ state: "error", error: { code: "webgpu_unavailable" } });
+    await expect(m.engine.handle("models.download", {})).rejects.toMatchObject({ code: "webgpu_unavailable" });
+    await m.engine.handle("engine.resume", {});
+    expect(m.server.requests).toEqual([]);
+    expect(m.log).toEqual([]);
+  });
+
+  it("Safari never falls back to a CPU session after FP32 fails on WebGPU", async () => {
+    const m = make({ tier: "fp32", gpuOnly: true, failing: ["webgpu:fp32"] });
+    await m.engine.handle("models.download", {});
+    expect(await settled(m.engine)).toMatchObject({ state: "error" });
+    expect(m.log).toEqual(["fail webgpu:fp32"]);
+    await expect(m.engine.handle("runtime.config", { id: "wasm:fp32" })).rejects.toMatchObject({ code: "invalid_request" });
+  });
+
+  it("Safari ignores a stale FP32 fallback pin when FP16 fails", async () => {
+    const m = make({ tier: "fp16", gpuOnly: true, fallback: true, failing: ["webgpu:fp16"] });
+    await m.engine.handle("models.download", {});
+    expect(await settled(m.engine)).toMatchObject({ state: "error", error: { code: "cannot_run" } });
+    expect(m.log).toEqual(["fail webgpu:fp16"]);
+    expect(m.server.requests.some((request) => request.url.endsWith("/model.onnx"))).toBe(false);
+  });
   it("offers the FP16 file from the same revision and URL form, by its pinned size and hash", () => {
     const [model] = pinnedFiles("fp16");
     expect(model).toMatchObject({ name: "model_fp16.onnx", size_bytes: 711_340_748, sha256: "a0da0f46c5026489c37137b5f455e092e09ac48eafd031bec6f05433c5c2ec01" });

@@ -1,0 +1,7 @@
+:root { color-scheme: light dark; }
+body { margin: 0; font: 17px/1.6 system-ui, sans-serif; background: light-dark(#f7f7f5, #161817); color: light-dark(#242825, #e8ece9); }
+.safari-engine { max-width: 38rem; margin: 12vh auto; padding: 2rem; }
+.safari-engine h1 { font-size: 2rem; line-height: 1.2; }
+.safari-engine nav { display: flex; flex-wrap: wrap; gap: 1rem 2rem; margin-top: 2rem; }
+.safari-engine a { color: light-dark(#126441, #82dab1); text-underline-offset: .2em; }
+.safari-engine a:focus-visible { outline: 2px solid currentColor; outline-offset: 5px; border-radius: 2px; }

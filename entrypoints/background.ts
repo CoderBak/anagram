@@ -30,6 +30,8 @@ import { ensureInjected, installAccess } from "../lib/access/worker";
 import { documentAuthority } from "../lib/access/authority";
 import { applyCacheMode, invalidateAndNotify } from "../lib/access/cacheControls";
 import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } from "../lib/access/messages";
+import { sendTabControl } from "../lib/messaging/tabControl";
+import type { ControlMessage } from "../lib/messaging/protocol";
 import { commentHost } from "../lib/access/commentFrames";
 import { READER_PAGE, readerQuery } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
@@ -329,10 +331,9 @@ export default defineBackground(() => {
 
   // Keyboard commands, forwarded to the active tab. The message reaches every frame;
   // which of them may act on it is the content script's own rule (the overlay is
-  // per-frame, the panel and the flagged walk belong to the top frame).
-  const COMMAND_ACTIONS: Record<string, string> = {
+  // per-frame; the flagged walk belongs to the top frame).
+  const COMMAND_ACTIONS: Record<string, ControlMessage["action"]> = {
     "toggle-overlay": ACTIONS.TOGGLE_OVERLAY,
-    "open-panel": ACTIONS.OPEN_PANEL,
     "next-flagged": ACTIONS.NEXT_FLAGGED,
     "prev-flagged": ACTIONS.PREV_FLAGGED,
   };
@@ -345,7 +346,7 @@ export default defineBackground(() => {
       // A command grants `activeTab`, so the overlay toggle answers on a page the user
       // has granted nothing for as well.
       void ensureInjected(tabId).then(() =>
-        browser.tabs.sendMessage(tabId, { action }).catch(() => undefined),
+        sendTabControl(tab, { action } as ControlMessage).catch(() => undefined),
       );
     });
   });
@@ -433,7 +434,6 @@ export default defineBackground(() => {
       case ACTIONS.GET_ENGINE:
         return {engine:await engineTransport().current()};
       case ACTIONS.SET_ENGINE: {
-        if (import.meta.env.BROWSER === "safari" && msg.engine !== "native") return {ok:false,error:"unsupported_engine"} satisfies SetEngineReply;
         // The local engine only once Native Messaging is granted: the page asked in its click.
         if (msg.engine === "native" && !(await nativeGranted())) return {ok:false,error:"permission"} satisfies SetEngineReply;
         // The tier the setup page decided for the in-browser engine; a different one than the
@@ -494,6 +494,8 @@ export default defineBackground(() => {
     }
   }
   browser.runtime.onMessage.addListener((message:unknown,sender,sendResponse) => {
+    // Addressed extension-page controls are answered by that reader, not the worker.
+    if (message && typeof message === "object" && "readerTabId" in message) return;
     void handleMessage(message,sender).then(sendResponse,()=>sendResponse({ok:false,error:"request_failed"}));
     return true;
   });

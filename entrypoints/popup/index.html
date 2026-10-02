@@ -7,7 +7,7 @@
     <title data-i18n="popupTitle">Anagram</title>
     <style>
       /* Layout only — colours, type and controls come from Basecoat (Vega). */
-      html { width: 300px; }
+      html { width: 360px; max-height: 600px; overflow-y: auto; }
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.45; }
       header.hdr { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
       header.hdr img { width: 34px; height: 34px; margin: -2px; }
@@ -34,6 +34,18 @@
       .tools .btn { flex: 1 1 0; min-width: 0; }
       .keepopen { margin: 0 0 8px; font-size: 11.5px; color: var(--muted-foreground); }
       .engine { font-size: 11px; color: var(--muted-foreground); margin: 0; padding: 9px 0 0; }
+      .report h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+      .report-coverage { margin: 5px 0; color: var(--muted-foreground); font-size: 11.5px; overflow-wrap: anywhere; }
+      .report-list { list-style: none; padding: 0; margin: 6px 0 0; max-height: 210px; overflow-y: auto; overscroll-behavior: contain; }
+      .report-result { display: flex; gap: 9px; width: 100%; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; text-align: start; font: inherit; font-size: 12px; cursor: pointer; }
+      .report-result:hover { background: var(--muted); }
+      .report-result:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+      .report-result > span:last-child { overflow-wrap: anywhere; }
+      .report-score { flex: 0 0 30px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--destructive); }
+      .report-pages { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; font-size: 11px; }
+      .report-comment { display: flex; gap: 8px; align-items: center; font-size: 11.5px; }
+      .report-comment span { flex: 1; }
+      .toolbar-help { display: block; margin: 8px 0 0; padding: 2px 0; border: 0; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer; }
       /* Hit areas, not paint: an invisible 24x24 box centred on each small control. */
       input[type="checkbox"][role="switch"] { position: relative; }
       input[type="checkbox"][role="switch"]::after {
@@ -66,6 +78,7 @@
       <section class="grp act">
         <div class="status" id="status">…</div>
         <p class="keepopen" id="keepOpen" hidden data-i18n="engineKeepOpen">Keep this browser open until the download finishes.</p>
+        <button id="pageAction" class="btn w-full" data-size="sm" type="button" hidden></button>
         <!-- Label, variant and action are the page's state (./state.ts); until the page
              has answered there is nothing honest to put on it. -->
         <button id="action" class="btn w-full" data-variant="outline" data-size="sm" type="button" disabled></button>
@@ -100,7 +113,16 @@
         </div>
       </section>
 
+      <section class="grp" id="marksRow" hidden>
+        <div class="field" data-orientation="horizontal">
+          <label for="marksVisible" data-i18n="popupMarksVisible">Show marks on this page</label>
+          <input id="marksVisible" type="checkbox" role="switch" data-size="sm" />
+        </div>
+      </section>
+      <section class="grp report" id="pageReport" aria-labelledby="reportTitle" hidden></section>
+
       <p class="engine" id="backend" hidden></p>
+      <button id="toolbarHelp" class="toolbar-help" type="button" data-i18n="toolbarPinHelp">How to keep Anagram in the toolbar</button>
     </main>
 
     <script type="module" src="./main.ts"></script>

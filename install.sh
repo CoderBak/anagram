@@ -67,7 +67,9 @@ case "$BROWSER" in
   chrome) [ "${#EXTENSION_ID}" -eq 32 ] || die "Chrome extension ID must contain 32 a-p characters / Chrome 扩展 ID 必须为 32 位 a-p 字符"
           case "$EXTENSION_ID" in *[!a-p]*) die "invalid Chrome extension ID / Chrome 扩展 ID 无效" ;; esac ;;
   firefox) [ "$EXTENSION_ID" = anagram@coderbak.dev ] || die "Firefox extension ID must be anagram@coderbak.dev" ;;
-  *) die "Use the installation command from Anagram setup (ANAGRAM_BROWSER=chrome|firefox and exact extension ID) / 请使用扩展设置页中的安装命令" ;;
+  safari) [ "$(uname -s)" = Darwin ] || die "Safari's local engine requires macOS / Safari 本地引擎需要 macOS"
+          printf '%s\n' "$EXTENSION_ID" | LC_ALL=C grep -Eq '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+( \([A-Za-z0-9-]+\))?$' || die "invalid Safari extension ID / Safari 扩展 ID 无效" ;;
+  *) die "Use the installation command from Anagram setup (ANAGRAM_BROWSER=chrome|firefox|safari and exact extension ID) / 请使用扩展设置页中的安装命令" ;;
 esac
 
 TMP=""
@@ -367,7 +369,7 @@ run_uv cache clean --quiet 2>/dev/null || remove_ours "$ANAGRAM_HOME/cache"
 mkdir -p "$ANAGRAM_HOME/cache"
 
 # ---------------------------------------------------------------- 4. exact user-level native host registration
-step 6 "$(tr_msg 'Registering the local component for this extension only' '正在为当前扩展注册本地组件')"
+step 6 "$(tr_msg 'Preparing the local component connection' '正在准备本地组件连接')"
 clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" "$ANAGRAM_HOME/app/native_registration.py" register \
   --home "$ANAGRAM_HOME" --browser "$BROWSER" --extension-id "$EXTENSION_ID" --language "$INSTALL_LANG"
 rm -f "$INSTALL_LOCK/swapping"

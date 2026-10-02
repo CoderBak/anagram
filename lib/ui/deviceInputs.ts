@@ -7,6 +7,7 @@ import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { TIERS, type DeviceInputs } from "../device";
 import { storedModelBytes } from "../webengine/autoSetup";
+import { safariBridge } from "../backend/safariBridge";
 
 interface GpuAdapterLike {
   limits: { maxStorageBufferBindingSize: number; maxBufferSize: number };
@@ -61,14 +62,20 @@ async function testDevice(): Promise<Partial<DeviceInputs>> {
 
 export async function readDeviceInputs(): Promise<DeviceInputs> {
   const nav = navigator as Navigator & NavigatorExtras;
-  const [ua, gpu, storage, stored] = await Promise.all([
+  const [ua, gpu, storage, stored, bridge] = await Promise.all([
     within(nav.userAgentData?.getHighEntropyValues(["platform", "architecture"]), 2000),
     adapter(nav),
     within(navigator.storage?.estimate(), 2000),
     storedModelBytes(),
+    safariBridge(),
   ]);
   const inputs: DeviceInputs = {
-    browser: import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
+    browser: import.meta.env.BROWSER === "safari" ? "safari" : import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
+    nativeBridge: bridge !== null,
+    ...(import.meta.env.BROWSER === "safari" ? { webRuntime:
+      typeof (WebAssembly as unknown as { Suspending?: unknown }).Suspending === "function" &&
+      typeof (WebAssembly as unknown as { promising?: unknown }).promising === "function" &&
+      typeof navigator.storage?.getDirectory === "function" } : {}),
     platform: ua?.platform, architecture: ua?.architecture, navigatorPlatform: navigator.platform,
     gpu, webgl: webgl(), storage: storage ? { quota: storage.quota, usage: storage.usage } : undefined, stored,
   };

@@ -2,9 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- The offscreen document that hosts the in-browser scoring engine (lib/webengine/).
          Its worker fetches the pinned model files once, so connect-src stays the manifest's.
-         Chrome's only: Firefox's background page hosts the worker itself. -->
+         Chrome offscreen document or Safari engine tab; Firefox hosts the worker itself. -->
     <meta name="manifest.exclude" content="['firefox']" />
     <title>Anagram engine</title>
   </head>

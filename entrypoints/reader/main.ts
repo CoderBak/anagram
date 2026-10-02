@@ -122,7 +122,7 @@ async function startAnalysis(owned: number): Promise<void> {
   setRangeLocator((unit, spans) => currentSource.ranges(unit, spans));
   let answered = false;
   orchestrator = createOrchestrator(null, {
-    mountFab: true,
+    toolbarOwner: true,
     reportScopeNote: () => t("readerReportScope", scopeCount(), app.pdfDocument?.numPages ?? 0),
     collect: (_root, claim, options) => {
       if (answered) return [];
@@ -264,7 +264,7 @@ async function main(): Promise<void> {
       else failure("read");
     } catch { failure("read"); }
   });
-  analyze.addEventListener("click", () => { started = true; orchestrator?.rescan(); orchestrator?.openPanel(); });
+  analyze.addEventListener("click", () => { started = true; orchestrator?.rescan(); });
   app = await startViewer();
   app.eventBus.on("textlayerrendered", (event) => { void rendered(event.source); });
   // Upstream find replaces text nodes inside item spans; rebuild ownership after its listeners finish.
@@ -296,24 +296,43 @@ window.addEventListener("pageshow", (event) => {
   resumeAfterPageShow = false;
 });
 
-browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse): undefined => {
-  const msg = message as ControlMessage;
-  if (!msg || typeof msg !== "object") return;
+const ownTab = browser.tabs.getCurrent();
+browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse): true | undefined => {
+  const msg = message as ControlMessage & { readerTabId?: number };
+  if (!msg || typeof msg !== "object" || sender.id !== browser.runtime.id) return;
+  if (sender.tab && sender.url?.split(/[?#]/, 1)[0] !== browser.runtime.getURL("/popup.html")) return;
+  // Runtime messages reach every extension page. Only the addressed reader may answer;
+  // cache invalidation is the one broadcast shared by all open readers.
+  if (msg.action === ACTIONS.CACHE_CLEARED) { orchestrator?.forgetCached(); return; }
+  if (!Number.isInteger(msg.readerTabId)) return;
+  void ownTab.then((tab) => {
+    if (tab?.id !== msg.readerTabId) return;
+    handleControl(msg, sendResponse);
+  });
+  return true;
+});
+
+function handleControl(msg: ControlMessage, sendResponse: (response?: unknown) => void): void {
   const live = orchestrator;
   switch (msg.action) {
     case ACTIONS.RESCAN: case ACTIONS.ANALYZE_PAGE: started = true; live?.rescan(); break;
     case ACTIONS.SET_ENABLED: started = msg.value; if (msg.value) live?.start(); else live?.stop(); break;
     case ACTIONS.GET_TAB_STATE: {
       const state: TabState = {enabled: started, hostname: location.hostname, scored: live?.scoredCount() ?? 0,
-        flagged: live?.flaggedCount() ?? 0, unsupported: live?.unsupportedCount() ?? 0, unavailable: live?.unavailableCount() ?? 0};
-      sendResponse(state); break;
+        flagged: live?.flaggedCount() ?? 0, unsupported: live?.unsupportedCount() ?? 0, unavailable: live?.unavailableCount() ?? 0,
+        ...(live && typeof msg.reportOffset === "number" ? { report: live.pageReport(msg.reportOffset) } : {})};
+      sendResponse(state); return;
     }
-    case ACTIONS.TOGGLE_OVERLAY: live?.toggle(); break;
-    case ACTIONS.OPEN_PANEL: live?.openPanel(); break;
+    case ACTIONS.TOGGLE_OVERLAY:
+      if (live) { started = true; live.toggle(); }
+      break;
+    case ACTIONS.JUMP_TO_RESULT: sendResponse({ ok: started && !!live?.jumpToResult(msg.documentId, msg.id) }); return;
     case ACTIONS.NEXT_FLAGGED: live?.jumpFlagged(1); break;
     case ACTIONS.PREV_FLAGGED: live?.jumpFlagged(-1); break;
     case ACTIONS.RETRY_BACKEND: live?.retryBackend(); break;
     case ACTIONS.CACHE_CLEARED: live?.forgetCached(); break;
     case ACTIONS.TEARDOWN: started = false; live?.stop(); break;
+    default: sendResponse({ ok: false }); return;
   }
-});
+  sendResponse({ ok: true });
+}

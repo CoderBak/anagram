@@ -79,6 +79,26 @@ class RegistrationTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.register(browser,extension,language=language)
         self.assertFalse((self.home / reg.INVENTORY).exists())
 
+    def test_safari_receipt_stays_in_home_without_browser_registration(self):
+        entry = self.register('safari', 'dev.coderbak.Anagram.Extension (TEAM123)', 'darwin')
+        path = Path(entry['manifest'])
+        self.assertEqual(path, self.home / 'native/safari.json')
+        self.assertEqual(json.loads(path.read_text())['browser'], 'safari')
+        self.assertFalse((self.user / 'Library').exists())
+        self.assertFalse((self.home / 'bin/anagram-native').exists())
+        self.unregister('darwin')
+        self.assertFalse(path.exists())
+
+    def test_safari_refuses_other_platforms_and_foreign_receipt_cleanup(self):
+        with self.assertRaisesRegex(ValueError, 'macOS'):
+            self.register('safari', 'dev.coderbak.Anagram.Extension', 'linux')
+        entry = self.register('safari', 'dev.coderbak.Anagram.Extension', 'darwin')
+        path = Path(entry['manifest'])
+        path.write_text('another owner')
+        with self.assertRaisesRegex(ValueError, 'modified'):
+            self.unregister('darwin')
+        self.assertEqual(path.read_text(), 'another owner')
+
     def test_foreign_manifest_not_overwritten(self):
         path = reg.manifest_path(self.home,self.user,'chrome','linux')
         path.parent.mkdir(parents=True); path.write_text('foreign')

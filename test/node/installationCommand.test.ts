@@ -16,6 +16,12 @@ describe("native installation command", () => {
     expect(installationCommand("linux", "firefox", "anagram@coderbak.dev", "0.4.0", "zh_CN")?.command)
       .toContain("ANAGRAM_BROWSER='firefox' ANAGRAM_LANG='zh_CN'");
   });
+  it("uses Safari's containing-app identity and safely quotes a custom engine home", () => {
+    const result = installationCommand("mac", "safari", "dev.coderbak.Anagram.Extension (TEAM123)", "0.8.2", "en", "/tmp/Anagram's engine")!;
+    expect(result.command).toContain("ANAGRAM_BROWSER='safari'");
+    expect(result.command).toContain("ANAGRAM_EXTENSION_ID='dev.coderbak.Anagram.Extension (TEAM123)'");
+    expect(result.command).toContain("ANAGRAM_HOME='/tmp/Anagram'\\''s engine'");
+  });
   it("passes the matching Windows parameters instead of a POSIX command", () => {
     const result = installationCommand("win", "chrome", chromeId, "0.4.0", "zh_CN")!;
     expect(result.platform).toBe("windows");
@@ -29,6 +35,8 @@ describe("native installation command", () => {
     ["win", "firefox", "other@example.com", "0.4.0"],
     ["linux", "chrome", chromeId, "0.4.0';bad"],
     ["android", "chrome", chromeId, "0.4.0"],
+    ["win", "safari", "dev.coderbak.Anagram.Extension", "0.8.2"],
+    ["mac", "safari", "dev.coderbak.Anagram';bad", "0.8.2"],
   ] as const)("refuses unsupported platform or shell-bearing identifiers", (os, browser, id, version) => {
     expect(installationCommand(os, browser, id, version, "en")).toBeNull();
   });

@@ -5,6 +5,9 @@ Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) first. User instructions overrid
 - Work on `dev`. Routine commits use `[skip ci]`. Never enable, dispatch or rely on
   GitHub Actions and never push a version tag as part of ordinary development.
 - Chrome on Apple Silicon macOS is the primary target. Keep the Firefox build compiling.
+- Safari targets Mac computers only. Its recommended in-browser engine uses WebGPU, with
+  no CPU fallback. Full app builds also offer the separate native engine on supported Macs;
+  temporary extensions have no native bridge. Keep setup and engine switching shared.
 - One extension carries two engines (docs/DEVELOPMENT.md, Engines). The local engine scores
   over Native Messaging over stdio only; the in-browser engine (an offscreen document running
   ONNX Runtime Web) exists by the user's decision. Never score over HTTP or any remote

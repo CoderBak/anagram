@@ -296,9 +296,9 @@ describe("the English each bundle carries", () => {
     });
 
     it("expands a plural from its base, which is the only name tn() is given", () => {
-      const { keys } = keysUsedBy([entry("lib", "render", "fab.ts")], EN);
-      expect(keys).toContain("countAria_one");
-      expect(keys).toContain("countAria_other");
+      const { keys } = keysUsedBy([entry("entrypoints", "popup", "main.ts")], EN);
+      expect(keys).toContain("popupAnalyzed_one");
+      expect(keys).toContain("popupAnalyzed_other");
     });
 
     it("reports a key the code asks for that no message file has", () => {

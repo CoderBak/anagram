@@ -1,6 +1,6 @@
 # Development
 
-Anagram is a Chrome extension (WXT, TypeScript) and a Python Native Messaging host.
+Anagram is a browser extension (WXT, TypeScript) and a Python Native Messaging host.
 Content scripts extract prose, the background worker authorizes and batches requests,
 and one of two engines scores them with EditLens: the same model inside the browser, or
 the local engine under `~/.anagram` (Engines, below). There is no HTTP service anywhere.
@@ -17,7 +17,7 @@ Work on `dev`; `main` holds the published README only.
 | Scoring router and cache | `lib/backend/router.ts`, `lib/backend/swCache.ts`, `lib/backend/nativeTransport.ts` |
 | Page capture and scheduling | `entrypoints/content.ts`, `lib/capture/orchestrator.ts`, `lib/capture/scheduler.ts`, `lib/dom/walker.ts` |
 | Sites the walk cannot read (Google Drive's preview, pdf.js viewers) | `lib/surfaces/` (an on-demand chunk; fixtures in `test/fixtures/surfaces/`) |
-| In-page rendering | `lib/render/scale.ts` (score to word, colour, doubt), `lib/render/badge.ts` (chips, card), `lib/render/fab.ts` (ball, panel), `lib/render/highlight.ts` |
+| In-page rendering | `lib/render/scale.ts` (score to word, colour, doubt), `lib/render/badge.ts` (chips, card), `lib/render/highlight.ts` |
 | Setup, popup, settings | `entrypoints/onboarding/`, `entrypoints/popup/`, `entrypoints/options/`; the engine panels and the rows they share are in `lib/ui/` (`engineCard.ts`, `inBrowserEngine.ts`, `componentSettings.ts`, `siteAccess.ts`, `pdfRows.ts`) |
 | PDF reader | `entrypoints/reader/`, `lib/pdf/structured.ts` (Zotero's structure onto pdf.js's text layer), `lib/pdf/reflow.ts` (the fallback), `lib/pdf/reading.ts` (what of either one's paragraphs is read), `lib/pdf/handoff.ts`, `vendor/pdfjs/`, `vendor/document-worker/` (pinned by `scripts/documentWorker.mjs`) |
 | Native host: protocol, ownership, lifecycle | `anagramd/native_host.py`, `anagramd/native_component.py` |
@@ -110,6 +110,87 @@ Every suite uses temporary homes and temporary browser profiles. Never point a t
 the real `~/.anagram`. Fixture scores are a pure function of the text and say nothing
 about model quality. `test/native-real.py` and `test/editlens-parity.py` are the
 real-model checks; they need existing verified weights and `(cd anagramd && uv sync --frozen)`.
+
+## Safari
+
+The Safari target is macOS only, Safari 27+ (WebAssembly JSPI). It uses the same setup
+cards and Settings switch as Chrome and Firefox: recommended **One click** in the browser,
+and optional **Terminal** for the separate engine on Apple Silicon Macs. Setup probes the
+containing app without starting Python; temporary extensions and browser-only wrappers
+have no XPC service, so they offer only the browser engine. Declaring `nativeMessaging`
+does not select an engine. It is required in Safari, optional in Chrome/Firefox.
+
+The browser engine checks the GPU and storage before downloading. It uses WebGPU without
+a CPU fallback; FP16 is still chosen only where FP32 does not fit. A pinned extension tab
+owns its worker while the service worker sleeps (`lib/webengine/safariTab.ts`). Local PDFs
+use the reader's file picker because Safari cannot grant `file://` access.
+
+The native bridge (`native/safari/`) routes request/reply Native Messaging through XPC to
+the existing Python stdio host. Connections are scoped to Safari profiles; switching to
+the browser engine closes the native connection and its child. The installer records
+Safari inside the component home, without creating Chrome/Firefox host registrations.
+
+```sh
+npm run build:safari       # output/safari-mv3; does not launch Safari
+npm run zip:safari         # Safari web resources ZIP under output/
+npm run build:safari:app    # full local app with both engine paths; requires macOS/Xcode
+npm run safari:project     # browser-only Xcode wrapper under dist/safari
+```
+
+Full app packaging generates a fresh project under `output/safari-app-*/`, archives it,
+embeds the XPC service, signs locally, and prints the resulting app path. It never installs
+or launches the app. The default is ad-hoc signing; set `ANAGRAM_APPLE_TEAM` and optionally
+`ANAGRAM_SIGNING_IDENTITY` for a configured signing identity. No provisioning updates are
+requested. Both the old converter/project.pbxproj and new packager/project.xcproj are
+supported, with the extension's bundle ID explicitly prefixed by the app's ID.
+
+The optional separate engine normally uses `~/.anagram`. To use a dedicated test home,
+create an empty directory and set `ANAGRAM_SAFARI_HOME` to its absolute path when building
+the app; its installer command will use that same home. Development builds keep the public
+installer Copy button disabled: the next release must contain this updated installer and
+component archive before the version-pinned command can be enabled. For an existing test
+engine, point the app at its home. For a fresh install before publishing, create matching
+release assets in a disposable checkout (`npm run release` replaces that checkout's
+`dist/`), then run its `install.sh` with `ANAGRAM_BROWSER=safari`,
+`ANAGRAM_EXTENSION_ID=dev.coderbak.Anagram.Extension`, `ANAGRAM_HOME` set to the same test
+home, and `ANAGRAM_RELEASE_URL=file:///absolute/path/to/that/dist`.
+
+`safari:project` only generates the browser-engine wrapper. It preserves existing Xcode
+files; use `node scripts/safari.mjs --output dist/safari-next` for a new destination.
+An ordinary Xcode Run of this generated project does not embed the optional XPC service;
+use `build:safari:app` when verifying both engines, and rerun it after source changes.
+[Apple's packaging instructions](https://developer.apple.com/documentation/safariservices/packaging-a-web-extension-for-safari)
+cover the generated app and extension targets.
+
+Real-Mac verification is pending. On a dedicated test Mac, run `npm run build:safari:app`,
+open the app at the printed path, and enable Anagram in Safari's Extensions settings.
+For ad-hoc development builds, enable Safari's developer option to allow unsigned
+extensions. Then verify:
+
+1. A fresh full-app install offers the shared One click / Terminal cards on Apple Silicon.
+   One click downloads the pinned model and reaches Ready on WebGPU. A temporary extension
+   offers only the browser engine. Unsupported adapters do not start a browser download.
+2. Analyze an English article once, grant/revoke a site, and inspect paragraph chips,
+   the toolbar result list, shortcuts, and settings in English and Chinese. Pin Anagram
+   using the setup guide, reopen that guide from the popup, and use **Analyze document**
+   on Google Docs. No floating button should appear on webpages.
+3. Switch to another tab while scoring; allow the background to sleep; restart Safari;
+   duplicate or close the engine tab. The next request recovers with one worker receiving
+   requests, and cancelling a request does not affect another one.
+4. Pause/resume a download, restart Safari during it, delete the model from Settings,
+   and verify idle unload followed by a new score. An unavailable or lost GPU reports an
+   error without starting a CPU provider.
+5. Open an online PDF and a local PDF through the picker, use the Google Docs reader and
+   Analyze text page, and confirm scoring still works offline after setup.
+6. On Apple Silicon, use a separate test engine home to check Terminal setup, native
+   scoring, and switching both ways in Settings. Leaving native mode must stop its Python
+   process; leaving browser mode must close its engine tab. Check native update/removal
+   and repeat the setup and switching checks in Chrome and Firefox with test profiles.
+
+Record Mac/GPU, macOS/Safari versions, model tier, and any Safari extension-console error.
+No runtime tests, model inference, or installation should be run in the developer's
+local environment for this Safari work; final runtime testing is performed by the user
+on real test computers.
 
 ## Release
 

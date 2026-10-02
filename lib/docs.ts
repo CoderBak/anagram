@@ -3,9 +3,9 @@
 // The Docs EDITOR renders text to <canvas> — there is no DOM text to walk, and no
 // extension can fix that without the gated Annotated Canvas API. Immersive
 // Translate's answer (adopted here): every document also ships a static-HTML
-// "mobilebasic" view. On editor pages the FAB offers "Reading view", which swaps
-// the tab to /mobilebasic where the normal pipeline just works; there, the FAB
-// offers the way back.
+// "mobilebasic" view. The toolbar popup offers "Analyze document" on editor pages. It opens
+// a reading overlay from that HTML, with /mobilebasic navigation as a fallback.
+// The toolbar also offers the way back to the editor.
 //
 // Round-trip details verified against a real doc:
 // - Docs now have TABS (/edit?tab=t.0). The tab param is forwarded to mobilebasic

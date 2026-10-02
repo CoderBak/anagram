@@ -50,7 +50,10 @@ export class EngineHost implements NativePort {
     worker.onmessage = (event: MessageEvent<WorkerReply>) => {
       if (this.worker !== worker) return;
       const message = event.data;
-      if (message.type === "ready") {
+      if (message.type === "failed") {
+        this.error = { message: message.message };
+        this.disconnect();
+      } else if (message.type === "ready") {
         this.ready = true;
         const queued = this.queue;
         this.queue = [];

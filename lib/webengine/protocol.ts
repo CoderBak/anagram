@@ -20,6 +20,8 @@ export const ENGINE_OPERATIONS = [
 export type EngineOperation = typeof ENGINE_OPERATIONS[number];
 /** The name of the runtime port between the background and the offscreen document. */
 export const ENGINE_PORT = "anagram-engine";
+export const ENGINE_READY = "anagram-engine-ready";
+export const ENGINE_FAILED = "anagram-engine-failed";
 /** anagramd/native_host.py's limits. */
 export const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 export const MAX_RESPONSE_BYTES = 1024 * 1024 - 1024;

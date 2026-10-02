@@ -4,6 +4,14 @@
 
 ## Install
 
+**Safari on Mac:** the Safari build requires Safari 27+. **One click** uses WebGPU inside
+the browser; keep its pinned Anagram engine tab open while analyzing. A full Safari app
+build also offers the optional **Terminal** engine on Apple Silicon, with the same Settings
+switch as Chrome and Firefox. Temporary extensions offer only the browser engine, which
+requires a compatible GPU and never falls back to CPU inference. Open local PDFs with the
+reader's file picker. This version is awaiting real-Mac verification; see
+[Development](DEVELOPMENT.md#safari) for packaging and verification steps.
+
 Get the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases)
 (Chrome 137 or later). Extract it to a folder you will keep. Open `chrome://extensions`,
 turn on Developer mode, click **Load unpacked** and pick that folder. Do not move the folder
@@ -96,15 +104,18 @@ off until you switch it on again.
   adds is skipped. On review pages each customer review is read by itself, never with
   another one, and the reviewer's name, stars, date and "Helpful" row are left out.
 - Text in a frame is read where Anagram may read the frame, an EPUB reader's chapters
-  included. Its chips are in the frame; the ball's list covers the page itself.
-- The floating ball shows or hides marks. Its counter shows how many paragraphs read as
-  AI-generated and opens their list, titled with how many were flagged of how many were read, which can
-  jump to each one. The list stays open while you use the page; close it with ×, Escape or
-  the ball. Its second line counts what was too short to score and what was scored under
-  75 words, which is less reliable.
+  included. Its chips are in the frame; the toolbar popup's list covers the page itself.
+- Pin Anagram beside the address bar for quick access. Setup shows instructions for
+  Chrome, Firefox or Safari; **How to keep Anagram in the toolbar** in the popup opens
+  them again in Settings.
+- Click the toolbar icon to show or hide page marks, rescan, and see flagged paragraphs.
+  The list shows how many were flagged out of how many were read, plus coverage notes
+  for short, non-English, pending and unavailable text. Click a result to jump to it;
+  the popup closes so you can read the paragraph. Open it again to continue through
+  the list. The toolbar icon's badge shows the flagged count.
 - Right-click a selection to score just that text. Alt+Shift+P toggles Anagram on the
-  page, Alt+Shift+L opens the list, Alt+Shift+J and K walk flagged paragraphs.
-- PDFs open in Anagram's reader from the popup, the floating ball or a right-click on a
+  page, Alt+Shift+L opens the toolbar popup, Alt+Shift+J and K walk flagged paragraphs.
+- PDFs open in Anagram's reader from the popup or a right-click on a
   link; the popup's **PDF reader** opens it empty, and **Analyze text** opens a page for
   pasted text. You can also drop a file into the reader. Local PDFs need "Allow access to
   file URLs" on the extension's page in `chrome://extensions`; the setup page and Settings
@@ -112,7 +123,8 @@ off until you switch it on again.
   reading of each page; a moment later Zotero's document engine has worked out the
   paragraphs, leaving out captions, footnotes and reference lists, and the chips are
   redrawn on those. Past 300 pages every page is read by the quick reading alone.
-  Google Docs get a reading view from the floating ball.
+  On Google Docs, choose **Analyze document** in the toolbar popup to open the reading
+  view. The popup also offers **Close reading view** or **Back to editor**.
 
 ## Settings
 

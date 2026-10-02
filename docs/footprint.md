@@ -142,7 +142,6 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `mergeShorts` | group short paragraphs to reach the minimum length |
 | `minWords` | the minimum length in words: 25, 50, 75, 100 or 150 |
-| `fabPos` | where the user dragged the ball, per hostname |
 
 ### IndexedDB `anagram-scores`
 

@@ -1,6 +1,6 @@
 // lib/backend/setupFeed.ts — the in-browser engine's download, pushed to whoever shows it.
 //
-// The popup and the in-page panel say how far the model's download has got (EngineSetup,
+// The popup shows model download progress and paused pages wait for completion (EngineSetup,
 // lib/backend/engineSetup.ts). Each asks the background once (GET_BACKEND_STATUS); when the
 // answer is a running download, the background follows it for them: it reads the engine's
 // status every FOLLOW_MS and tells each of them every new figure (ACTIONS.ENGINE_SETUP), so
@@ -12,7 +12,7 @@
 // waits too, at WAITING_MS, until it closes (a push it cannot take drops it).
 import type { EngineSetup } from "../messaging/protocol";
 
-/** Who is told: one frame of a tab (the panel), or the extension's pages (the popup). */
+/** Who is told: one paused frame of a tab, or the extension's pages (the popup). */
 export type SetupListener = { tabId: number; frameId: number; documentId?: string } | "pages";
 
 /** How often a running download is read while somebody shows it. */

@@ -2,7 +2,7 @@
 //
 // Built by scripts/webengine.mjs into vendor/engine/worker.min.mjs and started by
 // lib/webengine/host.ts from an offscreen document (Chrome) or the background page
-// (Firefox). It imports no extension API: everything it needs to know — the pin, the
+// (Firefox), or Safari's pinned tab. It imports no extension API: everything it needs to know — the pin, the
 // runtime's URLs, the extension version — arrives in the first message. Requests are
 // the native host's envelopes and are answered with its replies, concurrently, each
 // under its own id; a request that is not one is refused as the host refuses it. When
@@ -19,9 +19,11 @@ export interface WorkerInit {
   type: "init"; pin: EngineInit["pin"]; fallback?: EngineInit["fallback"]; assets: EngineInit["assets"]; version: string | null; idle?: boolean;
   /** The engine's own suites only (test/webengine/harness.mjs): a software WebGPU adapter counts as a GPU. */
   softwareGpu?: boolean;
+  /** Safari supports WebGPU inference only, including after a failed GPU session. */
+  gpuOnly?: boolean;
 }
 export type WorkerMessage = WorkerInit | { type: "request"; request: unknown };
-export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" };
+export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" } | { type: "failed"; message: string };
 
 let engine: Engine | null = null;
 const pending = new Set<string>();
@@ -57,13 +59,13 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     void (async () => {
       const store = await OpfsStore.open();
       engine = new Engine({
-        pin: message.pin, fallback: message.fallback, assets: message.assets, version: message.version, store, idle: message.idle === true,
+        pin: message.pin, fallback: message.fallback, assets: message.assets, version: message.version, store, idle: message.idle === true, gpuOnly: message.gpuOnly === true,
         onIdle: () => post({ type: "idle" }),
         ...(message.softwareGpu === true ? { probe: (tier) => probeRuntimes({ softwareGpu: true, tier }) } : {}),
       });
       await engine.start();
       post({ type: "ready" });
-    })();
+    })().catch((error: unknown) => post({ type: "failed", message: `The engine could not start: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000) }));
     return;
   }
   if (message.type === "request") {

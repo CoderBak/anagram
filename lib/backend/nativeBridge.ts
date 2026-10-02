@@ -56,5 +56,6 @@ export async function handleNativePageMessage(
       }
     }
     return reply;
-  } catch (e) { return error(e instanceof NativeTransportError ? e.code : "native_unavailable", "Local component is not connected",503); }
+  } catch (e) { return error(e instanceof NativeTransportError ? e.code : "native_unavailable",
+    e instanceof NativeTransportError ? e.message.slice(0, 2000) : "The engine is not connected",503); }
 }

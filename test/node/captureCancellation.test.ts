@@ -13,7 +13,6 @@ const calls = vi.hoisted(() => ({
   session: "first", units: [] as Unit[],
   caches: [] as ScoreCache[],
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
-  panels: [] as { scopeNote?: () => string }[],
 }));
 vi.mock("../../lib/capture/langGate", async (original) => ({
   ...await original<typeof import("../../lib/capture/langGate")>(), detectUnsupported: calls.detect,
@@ -41,10 +40,6 @@ vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({
   remove: calls.remove, teardownAll() {}, resetTheme() {},
 })}));
-vi.mock("../../lib/render/fab", () => ({createFab: (options: {panel: { scopeNote?: () => string }}) => {
-  calls.panels.push(options.panel);
-  return {setCount() {}, setBackendDown() {}, unmount() {}, mount() {}, setActive() {}};
-}}));
 vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {},
   refreshHighlightTheme() {},
@@ -64,7 +59,7 @@ const unit = {id: "unit", text, order: 0} as Unit;
 beforeEach(() => {
   fakeBrowser.reset();
   vi.spyOn(fakeBrowser.runtime, "getManifest").mockReturnValue({manifest_version: 3, version: "0.4.1", name: "Anagram"});
-  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.panels.length = 0;
+  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0;
   calls.detect.mockReset(); calls.request.mockReset(); calls.main.mockReset();
   calls.detect.mockResolvedValue(null);
   calls.message.mockReset(); calls.message.mockResolvedValue(undefined);
@@ -82,7 +77,7 @@ beforeEach(() => {
 afterEach(() => {vi.unstubAllGlobals();});
 
 async function page() {
-  const controller = createOrchestrator(null, {mountFab: false});
+  const controller = createOrchestrator(null, {toolbarOwner: false});
   controller.start();
   // Settings resolve before the real orchestrator completes its first empty collect.
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -141,12 +136,36 @@ describe("capture cancellation across language detection and replies", () => {
       expect(cache.size()).toBe(0);
     } finally {controller.stop();}
   });
-  it("hands the panel a virtual document's coverage limit", async () => {
+  it("hands the popup a virtual document's coverage limit", async () => {
     const {controller: original} = await page();
     const controller = createOrchestrator(null, {reportScopeNote: () => "PDF scope: 2 of 30 rendered pages; incomplete document."});
     try {
-      expect(calls.panels.at(-1)!.scopeNote!()).toBe("PDF scope: 2 of 30 rendered pages; incomplete document.");
+      expect(controller.pageReport().scopeNote).toBe("PDF scope: 2 of 30 rendered pages; incomplete document.");
     } finally {controller.stop(); original.stop();}
+  });
+
+  it("rejects a toolbar action after the action or document changed", async () => {
+    const {controller} = await page();
+    const run = vi.fn();
+    try {
+      controller.setPageAction("Read document", run);
+      const first = controller.pageReport();
+      expect(first.pageAction?.enabled).toBe(true);
+      expect(controller.runPageAction("another document", first.pageAction!.id)).toBe(false);
+      controller.setPageAction("Loading document");
+      expect(controller.runPageAction(first.documentId, first.pageAction!.id)).toBe(false);
+      const loading = controller.pageReport();
+      expect(loading.pageAction?.enabled).toBe(false);
+      expect(controller.runPageAction(loading.documentId, loading.pageAction!.id)).toBe(false);
+      controller.setPageAction("Close reading view", run);
+      const current = controller.pageReport();
+      expect(controller.runPageAction(current.documentId, current.pageAction!.id)).toBe(true);
+      expect(run).toHaveBeenCalledTimes(1);
+      controller.stop();
+      expect(controller.runPageAction(current.documentId, current.pageAction!.id)).toBe(false);
+      expect(controller.jumpToResult(current.documentId, "missing")).toBe(false);
+      expect(run).toHaveBeenCalledTimes(1);
+    } finally {controller.stop();}
   });
 });
 

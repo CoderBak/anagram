@@ -12,8 +12,7 @@
     "description": "Store listing description. The name stays 'Anagram'."
   },
   "cmdOpenPanel": {
-    "message": "Open the flagged-paragraphs list",
-    "description": "Keyboard command, Alt+Shift+L."
+    "message": "Open Anagram in the toolbar"
   },
   "cmdNextFlagged": {
     "message": "Go to the next flagged paragraph",
@@ -1282,5 +1281,77 @@
   "popupPdfReader": {
     "message": "PDF reader",
     "description": "Popup: secondary button that opens the PDF reader."
+  },
+  "safariEngineTitle": {
+    "message": "Anagram for Safari"
+  },
+  "safariEngineTabNote": {
+    "message": "Keep the Anagram engine tab open while analyzing pages. Safari runs the WebGPU engine in this pinned tab. Closing it interrupts analysis; the next request opens it again."
+  },
+  "safariEnginePrivacy": {
+    "message": "Text is scored on this Mac. The model downloads once; page text is never sent to a server. Model memory is released when the engine is idle."
+  },
+  "safariEngineSetup": {
+    "message": "Set up Anagram"
+  },
+  "safariEngineSettings": {
+    "message": "Open settings"
+  },
+  "safariBrowserRequired": {
+    "message": "Anagram for Safari requires Safari 27 or later on a Mac, with WebAssembly JSPI and browser file storage available. Update Safari, then reopen setup."
+  },
+  "safariWebGpuRequired": {
+    "message": "The in-browser engine needs a hardware WebGPU adapter that can run the model. This Mac does not currently offer a compatible adapter. It cannot run this engine on the CPU."
+  },
+  "safariLocalPdfNote": {
+    "message": "Open the PDF reader and choose or drop a PDF from this Mac. Safari does not allow Anagram to read file:// tabs directly."
+  },
+  "safariOpenPdf": {
+    "message": "Choose a PDF"
+  },
+  "toolbarPinTitle": {
+    "message": "Keep Anagram in your toolbar"
+  },
+  "toolbarPinHelp": {
+    "message": "How to keep Anagram in the toolbar"
+  },
+  "toolbarPinIntro": {
+    "message": "Keep the Anagram icon beside the address bar for quick access on pages such as Google Docs."
+  },
+  "toolbarExtensionsMenu": {
+    "message": "Click the Extensions button (puzzle piece) beside the address bar."
+  },
+  "toolbarChromePin": {
+    "message": "Find Anagram and click the pin beside it."
+  },
+  "toolbarFirefoxPin": {
+    "message": "Open the menu beside Anagram (gear or three dots), then choose Pin to Toolbar."
+  },
+  "toolbarSafariEnable": {
+    "message": "In Safari → Settings → Extensions, make sure Anagram is enabled."
+  },
+  "toolbarSafariCustomize": {
+    "message": "Choose View → Customize Toolbar from the menu bar."
+  },
+  "toolbarSafariDrag": {
+    "message": "Drag the Anagram icon beside the address field, then click Done. If it is already there, you are ready."
+  },
+  "toolbarPinUse": {
+    "message": "On Google Docs, click Anagram → Analyze document to open the reading view. Open Anagram again to see results and page controls."
+  },
+  "popupMarksVisible": {
+    "message": "Show marks on this page"
+  },
+  "popupReportRange": {
+    "message": "$1–$2 of $3"
+  },
+  "popupResultsPrevious": {
+    "message": "Previous"
+  },
+  "popupResultsNext": {
+    "message": "Next"
+  },
+  "popupPageActionFailed": {
+    "message": "The page changed or is no longer available. Reopen Anagram and try again."
   }
 }

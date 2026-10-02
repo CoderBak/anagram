@@ -46,7 +46,7 @@ final class ScoringService: NSObject, AnagramScoring {
         if process != nil { return }
         let child = Process()
         child.executableURL = home.appendingPathComponent("venv/bin/python")
-        child.arguments = ["-I", home.appendingPathComponent("app/native_host.py").path, "--home", home.path]
+        child.arguments = ["-I", "-u", home.appendingPathComponent("app/native_host.py").path, "--home", home.path]
         child.environment = ["HOME": NSHomeDirectory(), "PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"]
         let stdin = Pipe(), stdout = Pipe()
         child.standardInput = stdin

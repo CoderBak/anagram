@@ -197,14 +197,16 @@ export default defineConfig({
     },
   },
   manifest: ({ browser }) => {
-    const productName = browser === "safari" ? "Anagram" : browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
+    const safari = browser === "safari";
+    const productName = safari ? "Anagram for Safari" : browser === "firefox" ? "Anagram for Firefox" : "Anagram for Chrome";
     // Two engines, chosen at run time (lib/backend/engines.ts). The in-browser one runs in an
-    // offscreen document (Chrome; Firefox's background page has a DOM of its own) and keeps
+    // offscreen document (Chrome), a background page (Firefox), or a pinned tab (Safari), and keeps
     // the model in the extension's storage, which the browser must not evict. Its download
     // needs no host: Hugging Face answers it with CORS headers, and the language identifier
     // ships in the package (lib/webengine/pin.ts). Native Messaging reaches the local engine
-    // and is asked for only when the person picks it; the test build requires it, for the
-    // suites that drive the fake host.
+    // and is asked for when the person picks it in Chrome/Firefox. Safari declares it
+    // for the containing-app bridge, but engine choice remains explicit. Test builds
+    // require it for the suites that drive the fake host.
     const engine = [...(browser === "chrome" ? ["offscreen"] : []), "unlimitedStorage", ...(TEST_GRANT_ALL || browser === "safari" ? ["nativeMessaging"] : [])];
     const optionalNative = TEST_GRANT_ALL || browser === "safari" ? [] : ["nativeMessaging"];
     return {
@@ -237,7 +239,9 @@ export default defineConfig({
               },
             },
           }
-        : {
+        : safari ? {
+            browser_specific_settings: { safari: { strict_min_version: "27.0" } },
+          } : {
             // Native Messaging, optional: Chrome 137 accepts it so, and an update keeps the
             // grant a release that required it had (test/inbrowser.mjs).
             optional_permissions: optionalNative,
@@ -258,7 +262,7 @@ export default defineConfig({
           suggested_key: { default: "Alt+Shift+P" },
           description: "__MSG_cmdToggleOverlay__",
         },
-        "open-panel": {
+        [browser === "firefox" ? "_execute_browser_action" : "_execute_action"]: {
           suggested_key: { default: "Alt+Shift+L" },
           description: "__MSG_cmdOpenPanel__",
         },
@@ -275,7 +279,7 @@ export default defineConfig({
       ...(TEST_GRANT_ALL ? { host_permissions: [...ALL_SITES] } : {}),
       // OPTIONAL (Chrome MV3; Firefox MV2 carries them in optional_permissions above):
       // "all sites", which the onboarding page and the options page ask for in one click.
-      optional_host_permissions: TEST_GRANT_ALL ? ["file:///*"] : [...ALL_SITES, "file:///*"],
+      optional_host_permissions: [...(TEST_GRANT_ALL ? [] : ALL_SITES), ...(safari ? [] : ["file:///*"])],
       // Only content-script imports are web accessible. Reader assets stay private;
       // Chrome rotates these chunk URLs per session to prevent stable-ID probing.
       web_accessible_resources: [
@@ -284,12 +288,12 @@ export default defineConfig({
             "vendor/purify.min.mjs",
             "vendor/diagnostics.min.mjs",
             "vendor/surfaces.min.mjs",
-            // The floating ball's icon on a light and on a dark page (lib/render/logo.ts).
+            // The Google Docs reading bar's icon on a light and on a dark page (lib/render/logo.ts).
             "icons/icon-96.png",
             "icons/icon-light-96.png",
           ],
           matches: ["<all_urls>"],
-          use_dynamic_url: true,
+          ...(!safari ? { use_dynamic_url: true } : {}),
         },
       ],
       icons: TOOLBAR_ICONS,

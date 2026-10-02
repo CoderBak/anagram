@@ -25,6 +25,7 @@ import { readDeviceInputs } from "./deviceInputs";
 import * as nativePanel from "./componentSettings";
 import * as inBrowserPanel from "./inBrowserEngine";
 import { formatSize } from "./size";
+import { IS_SAFARI } from "../surface";
 import "./engineCard.css";
 
 export interface EngineCardOptions {
@@ -108,6 +109,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
 
   panelHost.before(choice, cannot);
   panelHost.after(tight, switchError);
+  const safariNote = element("p", t("safariEngineTabNote"), "engine-note");
+  safariNote.hidden = true;
+  if (IS_SAFARI) panelHost.before(safariNote);
 
   let engine: Engine | null = null;
   let decision: Decision | null = null;
@@ -124,12 +128,13 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
 
   function show(next: Engine): void {
     engine = next;
+    safariNote.hidden = !IS_SAFARI || next !== "inbrowser";
     choice.hidden = cannot.hidden = true;
     setTitle(next === "native" ? "componentTitle" : "engineTitle");
     panel?.destroy();
     panelHost.replaceChildren();
     panelHost.hidden = false;
-    const crashAction = import.meta.env.BROWSER !== "safari" && !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
+    const crashAction = !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
     engineTier = null;
     panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply) => {
       if (reply.kind === "ok" && next === "inbrowser") { const before = engineTier; engineTier = reply.snapshot.tier ?? null; if (engineTier !== before) paintTight(); }
@@ -150,12 +155,13 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
 
   function showChoice(d: Decision): void {
     engine = null;
+    safariNote.hidden = true;
     panel?.destroy(); panel = undefined;
     panelHost.replaceChildren(); panelHost.hidden = true;
     tight.hidden = switchError.hidden = true;
     if (d.offer === "cannot-run") {
       setTitle("engineCannotTitle");
-      cannot.textContent = t("engineCannotRun");
+      cannot.textContent = t(d.reason === "browser" ? "safariBrowserRequired" : d.reason === "webgpu" ? "safariWebGpuRequired" : "engineCannotRun");
       cannot.hidden = false; choice.hidden = true;
     } else {
       // Where the model does not fit but the local engine installs: one way to run it.
@@ -206,7 +212,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   }
 
   async function paintSwitch(): Promise<void> {
-    if (import.meta.env.BROWSER === "safari" || !settings || !engine) { switchButton.hidden = deleteLeftover.hidden = true; return; }
+    if (!settings || !engine) { switchButton.hidden = deleteLeftover.hidden = true; return; }
     const d = await device();
     const current = engine;
     // To the in-browser engine where the device runs it; to the local one where it installs.

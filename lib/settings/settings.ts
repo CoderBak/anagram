@@ -29,13 +29,6 @@ export const settings = {
   // up to (lib/dom/text.ts has the choices). Read through minWordsOf, which answers a value
   // that is not one of them with the default.
   minWords: storage.defineItem<number>("local:minWords", { fallback: DEFAULT_MIN_WORDS }),
-  // FAB position per host: bottom offset + snapped side. Legacy entries carry
-  // only {r,b} (pre-snap free positions) — side is derived from r on restore.
-  fabPos: storage.defineItem<
-    Record<string, { r: number; b: number; side?: "left" | "right" }>
-  >("local:fabPos", {
-    fallback: {},
-  }),
 };
 
 /** The minimum length as a floor, the default when storage holds something else or nothing. */

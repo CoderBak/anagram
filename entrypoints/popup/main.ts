@@ -30,9 +30,15 @@ import type { BackendStatus, ControlMessage, EngineSetup, TabState } from "../..
 import { looksLikePdfUrl, READER_PAGE } from "../../lib/pdf/source";
 import { PDF_TAB_SCRIPTS_RUN } from "../../lib/surface";
 import { getFileAccess } from "../../lib/pdf/fileAccess";
+import { FILE_URL_ACCESS_SUPPORTED } from "../../lib/surface";
 import { chooseEngine } from "../../lib/backend/engineChoice";
 import { decide } from "../../lib/device";
 import { readDeviceInputs } from "../../lib/ui/deviceInputs";
+import { detectDocsPage } from "../../lib/docs";
+import { commentHost } from "../../lib/access/commentFrames";
+import { sendTabControl } from "../../lib/messaging/tabControl";
+import type { PageReport } from "../../lib/capture/pageReport";
+import { mountReport } from "./report";
 
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
@@ -44,6 +50,31 @@ const switchEngineEl = document.getElementById("switchEngine") as HTMLButtonElem
 const keepOpenEl = document.getElementById("keepOpen") as HTMLElement;
 const openReaderEl = document.getElementById("openReader") as HTMLButtonElement;
 const analyzeTextEl = document.getElementById("analyzeText") as HTMLButtonElement;
+const pageActionEl = document.getElementById("pageAction") as HTMLButtonElement;
+const marksEl = document.getElementById("marksVisible") as HTMLInputElement;
+let currentTab: { id?: number; url?: string } | undefined;
+let docsEditor = false;
+let report: PageReport | null = null;
+let offset = 0;
+let statusRequest = 0;
+let pageControlFailed = false;
+const paintReport = mountReport(document.getElementById("pageReport")!, {
+  jump: (documentId, id) => void runPageControl({ action: ACTIONS.JUMP_TO_RESULT, documentId, id }),
+  page: (next) => { offset = next; void refreshStatus(currentTab?.id); },
+  allow: (origin) => {
+    void browser.tabs.create({ url: `${browser.runtime.getURL("/options.html")}#comments=${encodeURIComponent(commentHost(origin))}` });
+    window.close();
+  },
+});
+
+async function runPageControl(message: ControlMessage): Promise<void> {
+  pageControlFailed = false;
+  const reply = await sendTabControl(currentTab, message).catch(() => undefined) as { ok?: boolean } | undefined;
+  if (reply?.ok) { window.close(); return; }
+  await refreshStatus(currentTab?.id);
+  pageControlFailed = true;
+  paint();
+}
 // The one segmented control left is a Basecoat tab list (buttons with aria-selected).
 const displayModeEls = segButtons("displayMode");
 
@@ -84,10 +115,10 @@ function hostOf(url: string | undefined): string {
   }
 }
 
-function sendToTab(tabId: number | undefined, msg: ControlMessage): void {
-  if (tabId == null) return;
+function sendToTab(tabId: number | undefined, msg: ControlMessage): Promise<unknown> {
+  if (tabId == null) return Promise.resolve(undefined);
   // The content script may not be present (e.g. chrome:// pages) — swallow rejections.
-  void browser.tabs.sendMessage(tabId, msg).catch(() => undefined);
+  return sendTabControl(currentTab, msg).catch(() => undefined);
 }
 
 function checkSeg(els: HTMLButtonElement[], value: string): void {
@@ -143,7 +174,7 @@ function countsLine(state: TabState): Node[] {
 function paint(): void {
   if (!asked) return;
   lead = popupLead(facts);
-  (document.getElementById("localFileSettings") as HTMLButtonElement).hidden = lead.status !== "fileAccess";
+  (document.getElementById("localFileSettings") as HTMLButtonElement).hidden = lead.status !== "fileAccess" || !FILE_URL_ACCESS_SUPPORTED;
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down || lead.status === "crashed");
   switchEngineEl.hidden = !(lead.status === "crashed" && canSwitch);
@@ -172,7 +203,7 @@ function paint(): void {
       statusEl.textContent = t("popupEngineCrashed");
       break;
     case "fileAccess":
-      statusEl.textContent = t("popupFileAccessNeeded");
+      statusEl.textContent = t(FILE_URL_ACCESS_SUPPORTED ? "popupFileAccessNeeded" : "safariLocalPdfNote");
       break;
     case "setup": {
       const setup = facts.setup!;
@@ -194,9 +225,25 @@ function paint(): void {
   openReaderEl.hidden = lead.action === "openReader";
 
   actionEl.textContent = t(lead.action === "setup" ? setupLabel(facts.setup!) : ACTION_LABEL[lead.action]);
+  if (docsEditor && (lead.action === "analyze" || lead.action === "rescan")) actionEl.textContent = t("actionAnalyzeDocument");
+  const pageAction = facts.tab?.translated ? null : report?.pageAction;
+  pageActionEl.hidden = !pageAction;
+  pageActionEl.textContent = pageAction?.label ?? "";
+  pageActionEl.disabled = !pageAction?.enabled;
+  // Docs actions replace the ordinary rescan; the editor itself paints text on a canvas.
+  actionEl.hidden = !!pageAction && (docsEditor && (lead.action === "analyze" || lead.action === "rescan") || lead.action === "readPdf");
+  if (!pageAction || lead.primary && !actionEl.hidden) pageActionEl.dataset.variant = "outline";
+  else delete pageActionEl.dataset.variant;
+  document.getElementById("marksRow")!.hidden = !counts || !report;
+  marksEl.checked = report?.visible ?? true;
+  paintReport(counts && !facts.tab?.translated ? report : null);
   actionEl.disabled = false;
   if (lead.primary) delete actionEl.dataset.variant;
   else actionEl.dataset.variant = "outline";
+  if (pageControlFailed) {
+    statusEl.hidden = false;
+    statusEl.textContent = t("popupPageActionFailed");
+  }
 }
 
 /** The setup button's words: start it, watch it, or carry on with it. */
@@ -243,7 +290,7 @@ async function refreshBackend(probe = false): Promise<void> {
 }
 
 // While the in-browser engine's model downloads the worker pushes each new figure here, as it
-// does to the in-page panel (lib/backend/setupFeed.ts); whatever follows the download is asked for.
+// does to running pages (lib/backend/setupFeed.ts); whatever follows the download is asked for.
 browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse): undefined => {
   const pushed = message as { action?: unknown; setup?: EngineSetup | null } | null;
   if (pushed?.action !== ACTIONS.ENGINE_SETUP || sender.tab) return;
@@ -296,30 +343,29 @@ async function refreshSite(host: string): Promise<void> {
 }
 
 /**
- * Ask the page what it is doing. A site nothing has been granted for holds no content
- * script to ask — that is not an error and not an unsupported page, it is simply Anagram
- * being off, which is what the button below then offers to change for this one page.
+ * Ask even on ungranted sites: a one-shot run can have a script there already.
+ * No response simply means Anagram is off and the popup can offer one-shot analysis.
  */
 async function refreshStatus(tabId: number | undefined): Promise<void> {
-  // There is nobody to ask on a site nothing has been granted for, and asking anyway
-  // would only cost the popup a rejection to swallow.
-  const canAsk = tabId != null && !(facts.pattern !== null && !granted);
-  facts.tab = null;
-  counts = null;
-  if (canAsk) {
+  const request = ++statusRequest;
+  let state: TabState | undefined;
+  if (tabId != null) {
     try {
-      const state = (await browser.tabs.sendMessage(tabId, {
+      state = (await sendTabControl(currentTab, {
         action: ACTIONS.GET_TAB_STATE,
+        reportOffset: offset,
       })) as TabState | undefined;
-      if (!state) throw new Error("no state");
-      // A response MIME type also identifies PDFs whose URL has no filename extension.
-      if (state.pdf && facts.pattern) facts.pdfTab = true;
-      facts.tab = { enabled: state.enabled, translated: state.translated === true };
-      counts = state.enabled ? state : null;
     } catch {
       /* no content script there, or the page tore it down — Anagram is not running */
     }
   }
+  if (request !== statusRequest) return;
+  // A one-shot analysis can be running without a persistent site grant.
+  if (state?.pdf && facts.pattern) facts.pdfTab = true;
+  facts.tab = state ? { enabled: state.enabled, translated: state.translated === true } : null;
+  counts = state?.enabled ? state : null;
+  if (report?.documentId !== state?.report?.documentId) { offset = 0; pageControlFailed = false; }
+  report = state?.report ?? null;
   asked = true;
   paint();
 }
@@ -333,6 +379,8 @@ async function init(): Promise<void> {
   localizePage();
   followSystemTheme();
   const tab = await activeTab();
+  currentTab = tab;
+  try { docsEditor = !!tab?.url && detectDocsPage(new URL(tab.url))?.kind === "editor"; } catch { /* restricted URL */ }
   const host = hostOf(tab?.url);
   facts.hasTab = tab != null;
   facts.pattern = sitePattern(tab?.url);
@@ -385,8 +433,17 @@ async function init(): Promise<void> {
   });
 
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
+  marksEl.addEventListener("change", () => {
+    void sendToTab(tab?.id, { action: ACTIONS.TOGGLE_OVERLAY }).then(() => refreshStatus(tab?.id));
+  });
+  pageActionEl.addEventListener("click", () => {
+    if (!report?.pageAction?.enabled) return;
+    pageActionEl.disabled = true;
+    void runPageControl({ action: ACTIONS.RUN_PAGE_ACTION, documentId: report.documentId, id: report.pageAction.id });
+  });
 
   actionEl.addEventListener("click", () => {
+    pageControlFailed = false;
     switch (lead.action) {
       case "analyze":
         // A page Anagram is off for — by a rule, or because nothing was ever granted for
@@ -431,6 +488,10 @@ async function init(): Promise<void> {
         window.close();
         return;
       case "rescan":
+        if (docsEditor) {
+          if (tab?.id != null) void browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId: tab.id });
+          window.close(); return;
+        }
         sendToTab(tab?.id, { action: ACTIONS.RESCAN });
         counts = null; // "Rescanning…" until the page reports again
         paint();
@@ -462,12 +523,24 @@ async function init(): Promise<void> {
   gearEl.addEventListener("click", () => {
     void browser.runtime.openOptionsPage();
   });
+  document.getElementById("toolbarHelp")!.addEventListener("click", () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#toolbar-guide" });
+    window.close();
+  });
   (document.getElementById("localFileSettings") as HTMLButtonElement).addEventListener("click", () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#local-pdfs" });
   });
 
-  void refreshStatus(tab?.id);
+  await refreshStatus(tab?.id);
   void refreshBackend();
+  // Refresh only while this popup is open, with no overlapping page requests.
+  let ticks = 0;
+  const poll = async (): Promise<void> => {
+    await refreshStatus(tab?.id);
+    if (++ticks % 5 === 0) await refreshBackend();
+    window.setTimeout(() => void poll(), 1000);
+  };
+  window.setTimeout(() => void poll(), 1000);
 }
 
 void init();

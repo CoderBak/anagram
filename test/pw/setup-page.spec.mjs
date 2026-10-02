@@ -5,7 +5,7 @@
 // What is judged here is the shape the user asked for, not the engine (test/inbrowser.mjs
 // drives that): permissions come first on the setup page; no card quotes a speed or a memory
 // figure; "Keep this browser open" shows only while the in-browser download runs, on the setup
-// page, in Settings and in the popup; Settings has no headings and no folds and no Scope; the
+// page, in Settings and in the popup; Settings keeps its controls unfolded, with a separate toolbar guide; the
 // popup carries the PDF reader and Analyze text. The engine's states are scripted into each
 // page (test/webengine/scripted-engine.mjs) on the device builds (test/pw/devices.mjs).
 import { join } from "node:path";
@@ -29,6 +29,16 @@ async function openScripted(extension, path, state, options = {}, viewport = { w
 
 test.describe("the setup page", () => {
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
+
+  test("teaches toolbar pinning and keeps the guide reachable from Settings", async ({ extension }) => {
+    const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
+    await expect(page.locator("#toolbarGuide")).toContainText("Google Docs");
+    await expect(page.locator("#toolbarGuide li")).toHaveCount(2);
+    await expect(page.locator("#toolbarGuide")).toContainText("pin beside it");
+    await page.goto(extension.url("options.html") + "#toolbar-guide");
+    await expect(page.locator("#toolbar-guide")).toHaveAttribute("open", "");
+    await expect(page.locator("#toolbarGuide")).toContainText("Analyze document");
+  });
 
   test("puts where it reads above the engine, and both above how to read a verdict", async ({ extension }) => {
     const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
@@ -121,18 +131,18 @@ test.describe("the setup page", () => {
 test.describe("Settings", () => {
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
-  test("is one list: no headings, no folds, no Scope, no shortcuts, no report or debug switches", async ({ extension }) => {
+  test("keeps settings unfolded, with only the toolbar guide collapsible", async ({ extension }) => {
     const page = await openScripted(extension, "options.html", "ready_gpu");
     await painted(page);
     const seen = await page.evaluate(() => ({
       headings: [...document.querySelectorAll("h2, h3")].filter((h) => !h.closest("dialog") && h.getClientRects().length > 0).length,
-      folds: document.querySelectorAll("details, summary").length,
+      folds: document.querySelectorAll("details:not(#toolbar-guide)").length,
       ids: ["analysisScope", "debug", "openReader"].filter((id) => document.getElementById(id)),
       labels: [...document.querySelectorAll(".group-label")].map((el) => el.textContent),
       text: document.body.innerText,
     }));
     expect(seen.headings, "no section headings").toBe(0);
-    expect(seen.folds, "no folds").toBe(0);
+    expect(seen.folds, "no settings hidden in folds").toBe(0);
     expect(seen.ids, "Scope, the two report switches, Debug logging and the PDF reader are gone").toEqual([]);
     expect(seen.labels).toEqual(["Engine", "Sites", "PDFs", "Marks", "Length", "Cache"]);
     expect(seen.text).not.toMatch(/Shortcuts|Alt\s*\+\s*Shift|Scope|Include passage|Include page title|Debug logging|Analyze text/);
@@ -163,7 +173,7 @@ test.describe("the popup", () => {
 
   test("says to keep the browser open only while the model downloads", async ({ extension }) => {
     for (const [state, shown] of [["downloading", true], ["paused", false], ["needed", false]]) {
-      const page = await openScripted(extension, "popup.html", state, {}, { width: 300, height: 600 });
+      const page = await openScripted(extension, "popup.html", state, {}, { width: 360, height: 600 });
       await page.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
       expect(await page.locator("#keepOpen").isVisible(), state).toBe(shown);
       await page.close();
@@ -175,7 +185,7 @@ test.describe("the popup", () => {
     pages.serve({ "/plain.html": "<!doctype html><html><head><meta charset=\"utf-8\"><title>plain</title></head><body><p>Nothing to read.</p></body></html>" });
     await page.goto(pages.url("/plain.html"), { waitUntil: "load" });
     const popup = await context.newPage();
-    await popup.setViewportSize({ width: 300, height: 600 });
+    await popup.setViewportSize({ width: 360, height: 600 });
     await scriptEngine(popup, "ready_gpu");
     await popup.goto(extension.url("popup.html"), { waitUntil: "load" });
     await page.bringToFront();
@@ -202,7 +212,7 @@ test.describe("the popup", () => {
   });
 
   test("on a page nothing can run on, the one action is the reader and it is not offered twice", async ({ extension }) => {
-    const popup = await openScripted(extension, "popup.html", "ready_gpu", {}, { width: 300, height: 600 });
+    const popup = await openScripted(extension, "popup.html", "ready_gpu", {}, { width: 360, height: 600 });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
     expect(await popup.locator("#action").textContent()).toBe("Read a PDF file…");
     expect(await popup.locator("#openReader").isHidden()).toBe(true);

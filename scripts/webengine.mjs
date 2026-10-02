@@ -96,7 +96,7 @@ export async function vendorWebEngine(root) {
     bundle: true,
     format: "esm",
     minify: true,
-    target: ["chrome110", "firefox128"],
+    target: ["chrome110", "firefox128", "safari27"],
     outfile: join(out, "worker.min.mjs"),
     logLevel: "error",
     metafile: true,

@@ -52,7 +52,7 @@ export interface BadgeLayer {
   setVisible(visible: boolean): void;
   /** Forget cached background verdicts (site theme toggled; used by Rescan). */
   resetTheme(): void;
-  /** Briefly pulse a badge (triage-panel jump target). */
+  /** Briefly pulse a badge (toolbar result jump target). */
   flash(id: string): void;
   teardownAll(): void;
 }
@@ -522,7 +522,6 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       // tabindex="-1": the chip host is aria-hidden on purpose (see the header), so a
       // focusable button inside it would be a tab stop that announces nothing at all —
       // one per pinned card. This action is a pointer affordance; the keyboard route to
-      // the same text is "Copy report" in the triage panel, which is properly exposed.
       `<div class="actions"><button type="button" tabindex="-1" class="act copy">${t("cardCopyText")}</button></div>` +
       (foot ? `<div class="foot">${foot}</div>` : "") +
       `<span class="caret"></span>`;

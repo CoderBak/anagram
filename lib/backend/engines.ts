@@ -10,6 +10,7 @@ import { closeWebEngine, webEngineTransport } from "../webengine/client";
 import { NativeTransportError, type EngineTransport } from "./transport";
 import { ENGINES, NATIVE_PERMISSION, type Engine } from "./engineChoice";
 import type { NativeOperation, NativePayload, NativeReply } from "./nativeProtocol";
+import { IS_SAFARI } from "../surface";
 
 export { ENGINES, NATIVE_PERMISSION, type Engine } from "./engineChoice";
 
@@ -27,10 +28,11 @@ export async function nativeGranted(): Promise<boolean> {
  * yet, and the setup page decides.
  */
 export async function activeEngine(): Promise<Engine | null> {
-  if (import.meta.env.BROWSER === "safari") return "native";
   const chosen = await engineChoice.getValue().catch(() => null);
   if (chosen && ENGINES.includes(chosen)) return chosen;
-  return (await nativeGranted()) ? "native" : null;
+  // Safari declares nativeMessaging for the containing-app bridge, even when the
+  // browser engine is chosen. A permission is not an engine choice there.
+  return !IS_SAFARI && (await nativeGranted()) ? "native" : null;
 }
 
 /** Each engine's own transport, whichever is in use. */

@@ -18,14 +18,18 @@ function buildTarget(): string {
 
 const target = buildTarget();
 
+export const IS_SAFARI = target === "safari";
+/** Safari cannot grant extension access to file:// URLs; use the reader's file picker. */
+export const FILE_URL_ACCESS_SUPPORTED = !IS_SAFARI;
+
 /**
  * Does a content script run inside the browser's own PDF viewer? Chrome wraps the plugin
  * in an ordinary HTML document that content scripts ARE injected into — that outer
- * document is where the ball's "Analyze PDF" chip comes from. Firefox shows PDFs in its
+ * document is where the toolbar's "Analyze PDF" action comes from. Firefox shows PDFs in its
  * built-in pdf.js viewer, a privileged page no content script reaches, so nothing that
  * has to start from the PDF tab itself can exist there.
  */
-export const PDF_TAB_SCRIPTS_RUN = target !== "firefox";
+export const PDF_TAB_SCRIPTS_RUN = target !== "firefox" && !IS_SAFARI;
 
 /**
  * Does the browser's own page translation relabel the page's language — set `<html lang>` to

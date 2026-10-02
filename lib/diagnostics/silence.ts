@@ -258,10 +258,9 @@ export function surveyPage(opts: { running: boolean; max: number; minWords?: num
   };
 }
 
-/** Every chip on the page, our own floating ball excluded (it shares the marker). */
+/** Every chip on the page, including accessible shadow roots. */
 function countChips(): number {
-  let n = 0;
-  for (const host of document.querySelectorAll(CHIP_SEL)) if (host.id !== "anagram-fab") n++;
+  let n = document.querySelectorAll(CHIP_SEL).length;
   for (const el of document.querySelectorAll("*")) {
     const sr = el.shadowRoot;
     if (sr) n += sr.querySelectorAll(CHIP_SEL).length;

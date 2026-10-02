@@ -31,6 +31,9 @@ export const test = base.extend({
         const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
         if (!tab) return { found: false };
         try {
+          if (url.split(/[?#]/, 1)[0] === chrome.runtime.getURL("/reader.html")) {
+            return { found: true, reply: await chrome.runtime.sendMessage({ ...message, readerTabId: tab.id }) };
+          }
           return { found: true, reply: await chrome.tabs.sendMessage(tab.id, message) };
         } catch {
           return { found: true, reply: null }; // most of these are answered by nobody

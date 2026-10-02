@@ -277,6 +277,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (!problem && crashed) problem = t("componentEngineCrashed");
     // The lighter model failed here and the full one does not fit: the setup page's "cannot run".
     if (!problem && s?.stage === "error" && snapshot?.error?.code === "cannot_run") problem = t("engineCannotRun");
+    if (!problem && s?.stage === "error" && snapshot?.error?.code === "webgpu_unavailable") problem = t("safariWebGpuRequired");
     if (!problem && s) problem = failureText(s) || (s.stage === "error" ? t("engineLoadFailed") : "");
     if (!problem && !s && everConnected) problem = t("engineUnavailable");
     error.textContent = problem; error.hidden = !problem;

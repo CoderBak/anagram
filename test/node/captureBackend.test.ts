@@ -10,7 +10,7 @@ import type { UnitVerdict } from "../../lib/capture/windows";
 import { createOrchestrator } from "../../lib/capture/orchestrator";
 
 const calls = vi.hoisted(() => ({
-  request: vi.fn(), message: vi.fn(), pause: vi.fn(), resume: vi.fn(), down: vi.fn(),
+  request: vi.fn(), message: vi.fn(), pause: vi.fn(), resume: vi.fn(),
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
 }));
 vi.mock("../../lib/capture/langGate", async (original) => ({
@@ -31,7 +31,6 @@ vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
   start() {}, stop() {}, observeUnit() {}, observeRoot() {}, dropUnit() {}, reobserve() {},
 })}));
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({remove() {}, teardownAll() {}, resetTheme() {}})}));
-vi.mock("../../lib/render/fab", () => ({createFab: () => ({setCount() {}, setBackendDown: calls.down, unmount() {}, mount() {}, setActive() {}})}));
 vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {}, refreshHighlightTheme() {},
 }));
@@ -73,12 +72,11 @@ afterEach(() => {vi.useRealTimers(); vi.unstubAllGlobals();});
 
 /** A page whose batch met a down engine, and what its next probe hears: `status`. */
 async function pausedPage(status: BackendStatus) {
-  const controller = createOrchestrator(null, {mountFab: false});
+  const controller = createOrchestrator(null, {toolbarOwner: false});
   controller.start(); await settle();
   await calls.sends[0]!([unit], "viewport");
   expect(calls.pause).toHaveBeenCalled();
-  expect(calls.down).toHaveBeenCalledWith(true);
-  calls.pause.mockClear(); calls.resume.mockClear(); calls.down.mockClear();
+  calls.pause.mockClear(); calls.resume.mockClear();
   calls.message.mockImplementation(async (m: {action: string}) => m.action === "getBackendStatus" ? status : undefined);
   // The page's own recheck of a down engine, every five seconds.
   await vi.advanceTimersByTimeAsync(5000); await settle();
@@ -87,11 +85,10 @@ async function pausedPage(status: BackendStatus) {
 }
 
 describe("a page paused while the engine was down", () => {
-  it("goes on as soon as the engine is loading its model, and the panel stops saying it is down", async () => {
+  it("goes on as soon as the engine is loading its model, and stops polling", async () => {
     const controller = await pausedPage(STATUS.loading!);
     try {
       expect(calls.resume).toHaveBeenCalled();
-      expect(calls.down).toHaveBeenLastCalledWith(false);
       // Back: the page stops asking.
       calls.message.mockClear();
       await vi.advanceTimersByTimeAsync(15_000); await settle();
@@ -103,10 +100,9 @@ describe("a page paused while the engine was down", () => {
     const controller = await pausedPage(STATUS.down!);
     try {
       expect(calls.resume).not.toHaveBeenCalled();
-      expect(calls.down).toHaveBeenLastCalledWith(true, false, undefined, false);
       await vi.advanceTimersByTimeAsync(5000); await settle();
       expect(calls.resume).not.toHaveBeenCalled();
-      // Once as it went down (the panel says at once when setup is why), then every five seconds.
+      // Once as it went down (the first probe follows the failed batch), then every five seconds.
       expect(calls.message.mock.calls.filter(([m]) => m.action === "getBackendStatus")).toHaveLength(3);
     } finally {controller.stop();}
   });

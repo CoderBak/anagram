@@ -1,5 +1,6 @@
 // lib/messaging/protocol.ts — action constants + typed envelope shapes.
 import type { ModelInfo, ScoreBatchRequest, ScoreResult, TokenCounts } from "../contract";
+import type { PageReport } from "../capture/pageReport";
 
 export const ACTIONS = {
   SCORE_BATCH: "scoreBatch",
@@ -14,8 +15,10 @@ export const ACTIONS = {
   UPDATE_BADGE: "updateBadge",
   /** SW (keyboard command) → content: show/hide the overlay. */
   TOGGLE_OVERLAY: "toggleOverlay",
-  /** SW (keyboard command) → content (top frame): open the triage panel, focus it. */
-  OPEN_PANEL: "openPanel",
+  /** Popup → top frame / reader: jump to a result in this document. */
+  JUMP_TO_RESULT: "jumpToResult",
+  /** Popup → top frame: invoke its current document action, such as Google Docs reading. */
+  RUN_PAGE_ACTION: "runPageAction",
   /** SW (keyboard command) → content (top frame): go to the next flagged paragraph. */
   NEXT_FLAGGED: "nextFlagged",
   /** SW (keyboard command) → content (top frame): go to the previous flagged paragraph. */
@@ -83,7 +86,7 @@ export const ACTIONS = {
    *  cannot ask the browser for a site, so the worker opens the settings page, where the
    *  reader's click can. */
   OPEN_COMMENT_ACCESS: "openCommentAccess",
-  /** content (top frame) / reader → SW: the panel's button when no engine is set up yet, or
+  /** content (top frame) / reader → SW: a setup action when no engine is set up yet, or
    *  the in-browser one is not. A content script cannot open an extension page, so the worker
    *  opens setup. */
   OPEN_ENGINE_SETUP: "openEngineSetup",
@@ -183,6 +186,8 @@ export interface SetEnabledMessage {
 /** popup → content: ask the content script for its current state. */
 export interface GetTabStateMessage {
   action: typeof ACTIONS.GET_TAB_STATE;
+  /** Include one page of the flagged list only when the popup asks for it. */
+  reportOffset?: number;
 }
 
 /** content → popup (response to GET_TAB_STATE). */
@@ -200,6 +205,7 @@ export interface TabState {
   unsupported: number;
   /** Units left with a degraded "Unavailable" verdict — analyzed is what remains. */
   unavailable: number;
+  report?: PageReport;
 }
 
 /** popup/SW → content: tear down all badges and observers. */
@@ -218,9 +224,16 @@ export interface ToggleOverlayMessage {
   action: typeof ACTIONS.TOGGLE_OVERLAY;
 }
 
-/** SW → content: open the flagged-paragraphs panel and focus it (keyboard command). */
-export interface OpenPanelMessage {
-  action: typeof ACTIONS.OPEN_PANEL;
+export interface JumpToResultMessage {
+  action: typeof ACTIONS.JUMP_TO_RESULT;
+  documentId: string;
+  id: string;
+}
+
+export interface RunPageActionMessage {
+  action: typeof ACTIONS.RUN_PAGE_ACTION;
+  documentId: string;
+  id: number;
 }
 
 /** SW → content: walk to the next/previous flagged paragraph (keyboard commands). */
@@ -336,7 +349,8 @@ export type ControlMessage =
   | GetTabStateMessage
   | TeardownMessage
   | ToggleOverlayMessage
-  | OpenPanelMessage
+  | JumpToResultMessage
+  | RunPageActionMessage
   | NextFlaggedMessage
   | PrevFlaggedMessage
   | AnalyzeSelectionMessage

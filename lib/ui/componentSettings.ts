@@ -10,6 +10,7 @@ import { runtimeReady } from "../backend/runtimeClient";
 import { formatSize } from "./size";
 import { progressBar } from "./progressBar";
 import { installationCommand } from "./installationCommand";
+import { safariBridge } from "../backend/safariBridge";
 import { ACTIONS, type BackendStatus } from "../messaging/protocol";
 import "./componentSettings.css";
 
@@ -164,9 +165,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   browser.storage.onChanged.addListener(storageChanged);
   void browser.storage.local.get("extensionUpdatePending").then((value) => paintExtensionUpdate(value.extensionUpdatePending)).catch(() => undefined);
 
-  void browser.runtime.getPlatformInfo().then((platform) => {
-    const instruction = installationCommand(platform.os, import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
-      browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en");
+  void Promise.all([browser.runtime.getPlatformInfo(), safariBridge()]).then(([platform, bridge]) => {
+    const instruction = installationCommand(platform.os, import.meta.env.BROWSER === "safari" ? "safari" : import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
+      browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en", bridge?.home);
     if (destroyed) return;
     if (!instruction) { intro.textContent = t("componentUnsupportedPlatform"); commandBox.hidden = installActions.hidden = releaseNotice.hidden = true; return; }
     intro.textContent = t(instruction.platform === "windows" ? "componentInstallIntroWindows" : "componentInstallIntro");

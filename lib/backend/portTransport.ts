@@ -75,6 +75,7 @@ export class PortTransport implements EngineTransport {
   private pending = new Map<string, Pending>();
   private sequence = 0;
   private retryAt = 0;
+  private connectionError: string | undefined;
   private prefix = Math.random().toString(36).slice(2);
   private disconnectListeners = new Set<() => void>();
   /** When each recent death happened; a score answered forgets them. */
@@ -97,10 +98,10 @@ export class PortTransport implements EngineTransport {
 
   private connectPort(): NativePort {
     if (this.port) return this.port;
-    if (Date.now() < this.retryAt) throw new NativeTransportError("native_unavailable", "Local component is not connected");
+    if (Date.now() < this.retryAt) throw new NativeTransportError("native_unavailable", this.connectionError ?? this.messages.cannotStart);
     let port: NativePort;
     try { port = this.connect(); }
-    catch { this.retryAt = Date.now() + RECONNECT_MS; throw new NativeTransportError("native_unavailable", this.messages.cannotStart); }
+    catch { this.connectionError = this.messages.cannotStart; this.retryAt = Date.now() + RECONNECT_MS; throw new NativeTransportError("native_unavailable", this.messages.cannotStart); }
     this.port = port;
     this.answered = false;
     this.working.clear();
@@ -150,6 +151,7 @@ export class PortTransport implements EngineTransport {
     const outstanding = this.working.size > 0 || [...this.pending.values()].some((request) => request.port === null);
     if (this.answered && outstanding) { this.crashed(port); return; }
     this.stopRestart();
+    this.connectionError = message;
     this.retryAt = Date.now() + RECONNECT_MS;
     this.rejectAll(new NativeTransportError("native_unavailable", message));
     this.notifyDisconnect();

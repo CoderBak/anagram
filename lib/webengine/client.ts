@@ -6,7 +6,7 @@
 // cannot start workers, and dies after thirty idle seconds, which no 1.4 GB model should
 // follow), reached through a runtime port named ENGINE_PORT; the document is created on
 // the first request and kept. On Firefox the background page is a document already, so
-// it hosts the worker itself. Either way the transport speaks the native host's contract,
+// it hosts the worker itself. Safari uses a pinned engine tab. Each transport speaks the native host's contract,
 // and lib/backend/nativeScoreClient.ts and nativeClient.ts need no change.
 import { browser } from "#imports";
 import { PortTransport, type NativePort } from "../backend/portTransport";
@@ -16,6 +16,8 @@ import { EngineHost } from "./host";
 import { ENGINE_PORT } from "./protocol";
 import { tierQuery } from "./tier";
 import { engineTierChoice } from "./tierStore";
+import { IS_SAFARI } from "../surface";
+import { closeSafariEngine, safariEnginePort, safariEngineRunning } from "./safariTab";
 
 const OFFSCREEN_PATH = "/engine.html";
 /** The overall bound on a request that waits for the model to load: about five minutes. */
@@ -95,15 +97,16 @@ class WebEngineTransport extends PortTransport {
   constructor() {
     // A score waits for a loading model, which takes minutes on the processor, for at most as long as
     // the engine itself does (its WAKE_TIMEOUT_MS, 285 s) and a little more, so its answer is the one heard.
-    super(() => (offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: async () => workerInit(await engineTierChoice.getValue().catch(() => null)) })),
+    super(() => (IS_SAFARI ? safariEnginePort() : offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: async () => workerInit(await engineTierChoice.getValue().catch(() => null)) })),
       { cannotStart: "The in-browser engine could not be started", loadWaitMs: LOAD_WAIT_MS });
   }
   protected override lastError(): string | undefined { return browser.runtime.lastError?.message; }
 }
 
-/** Whether the engine's offscreen document is there (Chrome), so that asking the engine
- *  something cannot start it; false where there is none, or no such API (Firefox). */
+/** Whether the engine document exists (Chrome offscreen document or Safari tab), so
+ *  a warm-up can reuse it; false where no separate document exists (Firefox). */
 export async function webEngineRunning(): Promise<boolean> {
+  if (IS_SAFARI) return safariEngineRunning();
   const api = offscreenApi();
   try { return !!api?.hasDocument && (await api.hasDocument()); } catch { return false; }
 }
@@ -126,6 +129,7 @@ export function webEngineTransport(): EngineTransport {
  */
 export async function closeWebEngine(): Promise<void> {
   instance?.close("native_unavailable", "The engine was switched");
+  if (IS_SAFARI) { await closeSafariEngine(); return; }
   const api = offscreenApi() as (OffscreenApi & { closeDocument?(): Promise<void> }) | undefined;
   try {
     await creating?.catch(() => undefined);

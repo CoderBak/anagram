@@ -1,7 +1,7 @@
 // lib/render/logo.ts — the icon as an <img>, for the parts of a page Anagram draws itself
-// (the floating ball, the Google Docs overlay's bar). The PNGs under public/icons/ are web
+// (the Google Docs overlay's bar). The PNGs under public/icons/ are web
 // accessible (wxt.config.ts); the extension's own scheme is not subject to a page's CSP, so
-// a strict img-src cannot blank the ball.
+// a strict img-src cannot blank the reading bar's icon.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 

@@ -16,7 +16,11 @@
 /** What a page can learn about the device without asking the person. */
 export interface DeviceInputs {
   /** Which browser this build is for. */
-  browser: "chrome" | "firefox";
+  browser: "chrome" | "firefox" | "safari";
+  /** Safari is capability-gated before downloading the model. */
+  webRuntime?: boolean;
+  /** A packaged Safari app has an XPC bridge; a temporary extension does not. */
+  nativeBridge?: boolean;
   /** `navigator.userAgentData.getHighEntropyValues(["platform", "architecture"])`: "macOS",
    *  "Windows", "Linux", "Chrome OS"…, and "arm" or "x86". Chrome only. */
   platform?: string;
@@ -46,7 +50,7 @@ export type Reason =
   /** auto-inbrowser */
   | "intel-mac" | "no-nvidia" | "no-installer"
   /** the in-browser engine does not fit; terminal-only where the local engine installs */
-  | "memory" | "disk";
+  | "memory" | "disk" | "browser" | "webgpu";
 
 export interface Decision {
   offer: Offer;
@@ -130,6 +134,7 @@ function machineOf(i: DeviceInputs, os: Os): Machine {
  *  arm64). A Mac whose kind nobody could tell is given the benefit of the doubt: the
  *  installer itself says so on an Intel one. */
 function nativeInstalls(os: Os, machine: Machine, i: DeviceInputs): boolean {
+  if (i.browser === "safari" && (os !== "mac" || i.nativeBridge !== true)) return false;
   if (os === "mac") return machine !== "intel-mac";
   if (os === "windows") return i.architecture !== "arm";
   return os === "linux";
@@ -176,6 +181,8 @@ export function decide(i: DeviceInputs): Decision {
   const machine = machineOf(i, os);
   const native = nativeInstalls(os, machine, i);
   const base = { os, machine, native, tight: false, tier: null, path: null, fallback: null };
+  if (i.webRuntime === false || (i.browser === "safari" && os !== "mac")) return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "browser" };
+  if (i.browser === "safari" && !i.gpu) return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "webgpu" };
   const fits = affordable(i);
   if (!fits.tier) {
     // Nothing is downloaded where the model does not fit, and nothing is ever scored
@@ -183,9 +190,12 @@ export function decide(i: DeviceInputs): Decision {
     const choiceDevice = native && (machine === "apple-silicon" || machine === "nvidia");
     return { ...base, offer: choiceDevice ? "terminal-only" : "cannot-run", reason: fits.short ?? "memory" };
   }
+  if (i.browser === "safari" && (fits.tier.id === "fp32" ? i.gpu?.fits !== true : i.gpu?.fitsFp16 !== true || i.gpu?.f16 !== true)) {
+    return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "webgpu" };
+  }
   // FP16 runs on the graphics card only; FP32 there when the adapter can bind it, else on the processor.
   const path: "webgpu" | "cpu" = fits.tier.id === "fp16" || (i.gpu && i.gpu.fits !== false) ? "webgpu" : "cpu";
-  const inBrowser = { ...base, path, tight: fits.tight, tier: fits.tier.id, fallback: fits.fallback };
+  const inBrowser = { ...base, path, tight: fits.tight, tier: fits.tier.id, fallback: i.browser === "safari" ? null : fits.fallback };
   if (native && machine === "apple-silicon") return { ...inBrowser, offer: "choice", reason: "apple-silicon" };
   if (native && machine === "nvidia") return { ...inBrowser, offer: "choice", reason: "nvidia" };
   const reason = machine === "intel-mac" ? "intel-mac" : os === "windows" || os === "linux" ? "no-nvidia" : "no-installer";

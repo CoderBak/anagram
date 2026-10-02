@@ -25,11 +25,22 @@ import type { CacheCountReply } from "../../lib/messaging/protocol";
 import { mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
+import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
 import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
 
 const log = createLogger("options");
+mountToolbarGuide(document.getElementById("toolbarGuide")!);
+const toolbarGuide = document.getElementById("toolbar-guide") as HTMLDetailsElement;
+function showToolbarGuide(): void {
+  if (location.hash !== "#toolbar-guide") return;
+  toolbarGuide.open = true;
+  toolbarGuide.scrollIntoView({ block: "start" });
+  toolbarGuide.querySelector("summary")?.focus({ preventScroll: true });
+}
+window.addEventListener("hashchange", showToolbarGuide);
+showToolbarGuide();
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const underlineEl = document.getElementById("underline") as HTMLSelectElement;

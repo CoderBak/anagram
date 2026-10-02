@@ -34,7 +34,7 @@ const test = base.extend({
 // arrive and are analyzed, and none of the overlay's own chrome is rebuilt. A failed re-read
 // must leave the snapshot on screen and give the button back. A real document needs an
 // account, and nothing here is about Google's own markup.
-test("the Docs reading overlay re-reads the document in place, and a failed re-read leaves the snapshot on screen", async ({ context, page }) => {
+test("the Docs reading overlay re-reads the document in place, and a failed re-read leaves the snapshot on screen", async ({ context, page, tell }) => {
   const EDITOR = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refresh fixture - Google Docs</title></head>
 <body><canvas width="600" height="400"></canvas></body></html>`;
   const mobilebasic = (v) => docsReadingHtml([PARA(`DOCVERSION${v}ONE`), PARA(`DOCVERSION${v}TWO`)], v);
@@ -68,9 +68,10 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
   const refresh = () => page.evaluate(() => document.getElementById("anagram-docs-overlay").shadowRoot.querySelector("#anagram-ovl-refresh").click());
 
   await page.goto("https://docs.google.com/document/d/ANAGRAMREFRESHFIXTURE/edit", { waitUntil: "load" });
-  const action = page.locator("#anagram-fab #anagram-action");
-  await expect(action).toHaveText("Analyze document");
-  await action.click();
+  const report = async () => (await tell(page, { action: "getTabState", reportOffset: 0 }))?.report;
+  await expect.poll(async () => (await report())?.pageAction?.label).toBe("Analyze document");
+  const current = await report();
+  expect(await tell(page, { action: "runPageAction", documentId: current.documentId, id: current.pageAction.id })).toEqual({ ok: true });
   const rereads = "the Docs reading overlay re-reads the document in place";
   await expect.poll(overlay, { message: `${rereads} (opened)` }).toMatchObject({ v1: true, chips: 2 });
 

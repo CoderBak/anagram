@@ -30,6 +30,14 @@ function host() {
 }
 
 describe("EngineHost", () => {
+  it("disconnects pending requests when browser storage or worker startup fails", () => {
+    const { h, disconnects } = host();
+    h.postMessage({ id: "a" });
+    FakeWorker.all[0]!.emit({ type: "failed", message: "Browser storage is unavailable" });
+    expect(disconnects()).toBe(1);
+    expect(h.error?.message).toBe("Browser storage is unavailable");
+    expect(FakeWorker.all[0]!.terminated).toBe(true);
+  });
   it("queues requests until the engine is up, then passes replies on", () => {
     const { h, replies } = host();
     h.postMessage({ id: "a" });

@@ -1,6 +1,6 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-09-28. Applies to the Anagram browser extension and to the local engine
+Last updated: 2026-10-01. Applies to the Anagram browser extension and to the local engine
 it can install on your computer. The extension scores with one of two engines, both on
 your computer:
 
@@ -13,6 +13,12 @@ The setup page picks the in-browser engine by itself, or, on a computer where th
 engine is clearly faster, lets you choose; Settings switches between them. Choosing the
 device is done in the browser from what it reports about itself (platform, graphics
 adapter, memory, free storage) and is not sent anywhere.
+
+The Safari version is Mac-only. Its in-browser engine uses WebGPU without a CPU fallback.
+Full Safari app builds also offer the separate local engine on supported Macs, reached
+through the app's Native Messaging handler and an XPC service that starts the stdio host.
+Safari requires the Native Messaging permission in the app build; declaring it does not
+choose or start the local engine. Temporary extensions offer only the browser engine.
 
 **The short version.** Anagram reads the text of pages you allow it to read, scores it on
 your own computer and shows the score next to the paragraph. Page text never leaves your
@@ -28,7 +34,7 @@ The full inventory of network calls, address literals and storage keys is in
 
 - **Paragraph text on sites you granted.** Anagram installs with access to no site.
   You grant sites from the popup or Settings and can revoke them there or at
-  `chrome://extensions`. Open pages stop immediately when a grant is withdrawn. An e-book
+  the browser's extension settings. Open pages stop immediately when a grant is withdrawn. An e-book
   reader that shows its books from a second address — Google Play Books, Libby, VitalSource
   Bookshelf — is asked for together with that address, in the same browser prompt, because
   the book is in a frame from there. In Chrome, frames a granted page writes itself (srcdoc,
@@ -57,15 +63,17 @@ The full inventory of network calls, address literals and storage keys is in
 To the engine you use, and to nothing else. The scoring request carries paragraph IDs and
 text only: no URL, no cookies, no account data.
 
-- **The in-browser engine** is inside the extension itself: a hidden extension page (the
-  background page in Firefox) running ONNX Runtime Web on the model files stored in your
+- **The in-browser engine** is inside the extension itself: a hidden extension page in
+  Chrome, the background page in Firefox, or a pinned engine tab in Safari, running
+  ONNX Runtime Web on the model files stored in your
   browser. When it is set up, the extension downloads the pinned model files from Hugging
   Face (`huggingface.co` and its file CDN under `hf.co`), once; fastText's language-ID file
   ships inside the extension. Those requests carry normal download metadata and never page
   text; after them, scoring needs no network.
-- **The local engine** is reached over the browser's Native Messaging pipe. It is registered
-  for your exact extension ID and accepts a fixed list of operations, never file paths or
-  commands from a page. Inference runs from files on disk in Hugging Face offline mode.
+- **The local engine** is reached over Native Messaging: a registered pipe in Chrome and
+  Firefox, or the containing app's XPC-to-stdio bridge in Safari. It accepts a fixed list
+  of operations, never file paths or commands from a page. Inference runs from files on
+  disk in Hugging Face offline mode. Safari connections are separated by browser profile.
 
 Deciding what to read happens inside the browser, with code that ships in the extension.
 The PDF reader finds a document's paragraphs
@@ -85,7 +93,7 @@ carry normal download metadata and never page text.
 ## What is stored
 
 - **Settings** in `chrome.storage.local`: switches, per-site rules, marking style, scope,
-  cache mode, the ball's position. Nothing is synced.
+  cache mode. Nothing is synced.
 - **The score cache** in IndexedDB, keyed by the model identity plus a 53-bit hash of the
   normalized text. No text is stored. Rows expire after 30 days, the store is capped at
   20 000 rows, and **Clear cached verdicts** in Settings empties it. **Memory only** mode
@@ -95,8 +103,9 @@ carry normal download metadata and never page text.
   storage: page, zoom and layout for recent documents. No text or password.
 - **The local engine** under `~/.anagram` (macOS/Linux) or `%LOCALAPPDATA%\Anagram`
   (Windows): the runtime, model files, the saved configuration and registration records.
-  A small registration manifest also lives in the browser's user-level
-  NativeMessagingHosts location. Nothing from your browsing is written there.
+  Chrome and Firefox also have a small manifest in their user-level NativeMessagingHosts
+  location; Safari keeps its installation receipt inside the engine folder. Nothing from
+  your browsing is written there.
 - **The in-browser engine's model files**, about 1.4 GB, in the extension's own storage in
   your browser profile. Nothing from your browsing is written with them. They stay when you
   switch to the local engine until you delete them there, in Settings.
@@ -111,14 +120,15 @@ carry normal download metadata and never page text.
 | --- | --- |
 | `offscreen` (Chrome) | Run the in-browser engine in a hidden extension page. |
 | `unlimitedStorage` | Keep the in-browser engine's model files without the browser evicting them. |
-| `nativeMessaging` (optional) | Talk to the local engine. Asked for only when you pick it. |
+| `nativeMessaging` (optional, Chrome/Firefox) | Talk to the local engine. Asked for only when you pick it. |
+| `nativeMessaging` (Safari) | Check the containing app's bridge and talk to the local engine only when you choose it. |
 | `storage` | The settings above. |
 | `activeTab` | One-off actions on the page in front of you. |
 | `contextMenus` | The right-click entries. |
 | `scripting` | Inject the packaged content script into granted sites or the one-off tab, and on granted sites the page-context script described above. |
 | `webNavigation`, `webRequest` | Recognize PDF navigations. Reading still requires a grant. |
 | `https://*/*`, `http://*/*` (optional) | The sites you choose. Never held at install. |
-| `file:///*` (optional) | Open a local PDF already in a tab. Picking a file needs no grant. |
+| `file:///*` (optional, Chrome/Firefox) | Open a local PDF already in a tab. Picking a file needs no grant; Safari uses the picker. |
 
 ## Removal
 

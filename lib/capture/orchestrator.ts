@@ -1,6 +1,6 @@
 import { cancelDocumentSession, documentSessionId, sendDocumentMessage } from "../access/session";
 // lib/capture/orchestrator.ts — ties walker + observers + scheduler + cache +
-// messaging + renderer + the floating toggle into the live capture→annotate loop.
+// messaging + renderer + toolbar reporting into the live capture→annotate loop.
 //
 // v2 ownership model: every text node of a live unit is CLAIMED in a WeakMap
 // (node → owning unit). Re-scans skip runs whose exact node-set is already owned;
@@ -38,7 +38,7 @@ import {
   setHighlightsVisible,
   refreshHighlightTheme,
 } from "../render/highlight";
-import { createFab, type Fab, type PanelCounts } from "../render/fab";
+import { REPORT_PAGE_SIZE, reportOffset, type PageReport, type ReportCounts } from "./pageReport";
 import { t } from "../i18n";
 import { band, isFlagged } from "../render/band";
 import { settings } from "../settings/settings";
@@ -102,14 +102,14 @@ const HYDRATION_MAX_MS = 2500;
 const navigationApi = (): EventTarget => (window as unknown as { navigation: EventTarget }).navigation;
 
 export interface Orchestrator {
-  /** Begin capture: initial scan + observers + scheduler + floating toggle. Idempotent. */
+  /** Begin capture: initial scan + observers + scheduler. Idempotent. */
   start(): void;
-  /** Full teardown: disconnect observers, bump epoch, remove all badges + the toggle, and
+  /** Full teardown: disconnect observers, bump epoch, remove all badges, and
    *  have the worker drop what it was still scoring for this run. */
   stop(): void;
   /** Force a fresh full scan (popup "Rescan"): drop everything, re-collect. */
   rescan(): void;
-  /** Toggle the overlay's visibility (the floating button). First call also scans. */
+  /** Toggle paragraph marks from the toolbar or keyboard. First call also scans. */
   toggle(): void;
   /** Number of units that have rendered a badge (popup GET_TAB_STATE). */
   scoredCount(): number;
@@ -119,9 +119,12 @@ export interface Orchestrator {
   unsupportedCount(): number;
   /** Number of units left with a degraded "Unavailable" verdict (popup GET_TAB_STATE). */
   unavailableCount(): number;
-  /** Configure the FAB's secondary action chip (Google Docs reading view etc.). */
-  setFabAction(label: string | null, onAction?: () => void, opts?: { attention?: boolean }): void;
-  /** Popup/panel "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
+  /** Document-specific action shown in the toolbar (Google Docs reading view etc.). */
+  setPageAction(label: string | null, onAction?: () => void): void;
+  pageReport(offset?: number): PageReport;
+  runPageAction(documentId: string, id: number): boolean;
+  jumpToResult(documentId: string, id: string): boolean;
+  /** Popup "Retry": re-probe the daemon now; re-queue every "Unavailable" unit. */
   retryBackend(): void;
   /** The worker's push while the in-browser engine's model downloads; false when this page no
    *  longer shows the download. */
@@ -129,8 +132,6 @@ export interface Orchestrator {
   /** Drop the per-tab verdict cache and leave the page exactly as it is (options →
    *  "Clear cached verdicts"): the next scan or Rescan asks the backend again. */
   forgetCached(): void;
-  /** Keyboard command: open the triage panel and hand it the focus. */
-  openPanel(): void;
   /** Keyboard command: scroll to the next (1) / previous (-1) flagged paragraph. */
   jumpFlagged(dir: 1 | -1): void;
 }
@@ -156,9 +157,9 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
 };
 
 export interface OrchestratorOptions {
-  /** Mount the floating toggle. False in subframes — one FAB per TAB, in the top frame. */
-  mountFab?: boolean;
-  /** Reader-specific coverage shown beside the panel counts. */
+  /** The top frame owns the tab's toolbar count; subframes only draw paragraph marks. */
+  toolbarOwner?: boolean;
+  /** Reader-specific coverage shown beside the popup counts. */
   reportScopeNote?: () => string;
   /**
    * Where the units come from, when they do not come from a DOM walk. The PDF reader
@@ -189,7 +190,7 @@ export function createOrchestrator(
   _ctx: ContentScriptContext | null,
   opts: OrchestratorOptions = {},
 ): Orchestrator {
-  const mountFab = opts.mountFab ?? true;
+  const toolbarOwner = opts.toolbarOwner ?? true;
   const cache: ScoreCache = createScoreCache();
   const badges: BadgeLayer = createBadgeLayer({ place: opts.placeBadge });
 
@@ -198,7 +199,7 @@ export function createOrchestrator(
    * Prose the walk found and left unread — under the evidence floor, with nobody of its
    * voice to join — kept as the FIRST text node of each such stretch. A node, not a
    * tally: a re-scan of the same subtree reports the same stretches again, and counting
-   * them twice would inflate the panel's "short" the longer a reader stayed on a feed.
+   * them twice would inflate the popup's "short" the longer a reader stayed on a feed.
    * Entries leave when the node is taken into a unit (the reader opened a "see more" and
    * it now has neighbours) or when the DOM lets it go (purgeDisconnected).
    */
@@ -254,7 +255,7 @@ export function createOrchestrator(
   let flaggedCursor: string | null = null;
 
   /**
-   * Units in the order a reader meets them — what the panel lists, the next/previous
+   * Units in the order a reader meets them — what the popup lists, the next/previous
    * commands walk, the report numbers and the prefetch follows. A walked page is asked
    * where each unit stands (inPageOrder); units that come from `opts.collect` are already
    * numbered in their document's own order, which only the reader knows.
@@ -272,30 +273,45 @@ export function createOrchestrator(
     return readingOrder(units).map((unit) => ({ unit, v: verdictsById.get(unit.id)! }));
   }
 
-  const fab: Fab = createFab({
-    onToggle: () => toggle(),
-    onRetry: () => retryBackend(),
-    onSetup: () => void sendDocumentMessage({ action: ACTIONS.OPEN_ENGINE_SETUP }).catch(() => undefined),
-    panel: {
-      entries: () =>
-        flaggedInOrder().map(({ unit, v: { result: r } }, i) => ({
-          id: unit.id,
-          score: r.score,
-          band: band(r),
-          snippet: unit.text.slice(0, 70),
-          order: i,
-        })),
-      counts: panelCounts,
-      onJump: jumpTo,
-      scopeNote: opts.reportScopeNote,
-      commentOrigins: () => commentOffer,
-      // Nothing is asked for here: the worker opens the settings page at the offer, where
-      // the reader's own click can ask the browser for the site.
-      onAllowComments: (origin) =>
-        void sendDocumentMessage({ action: ACTIONS.OPEN_COMMENT_ACCESS, origin }).catch(() => undefined),
-      onOpen: () => refreshCommentOffer(),
-    },
-  });
+  let pageAction: { id: number; label: string; run?: () => void } | null = null;
+  let actionRevision = 0;
+  let lastCommentRefresh = 0;
+  const reportDocumentId = (): string => `${session}:${captureGeneration}`;
+
+  function pageReport(requestedOffset = 0): PageReport {
+    if (Date.now() - lastCommentRefresh > 5000) {
+      lastCommentRefresh = Date.now();
+      refreshCommentOffer();
+    }
+    const flagged = flaggedInOrder();
+    const offset = reportOffset(requestedOffset, flagged.length);
+    return {
+      documentId: reportDocumentId(), visible, counts: reportCounts(),
+      total: flagged.length, offset,
+      entries: flagged.slice(offset, offset + REPORT_PAGE_SIZE).map(({ unit, v: { result } }) => ({
+        id: unit.id, score: result.score, band: band(result), snippet: unit.text.slice(0, 140),
+      })),
+      scopeNote: opts.reportScopeNote?.() ?? "", commentOrigins: commentOffer,
+      pageAction: pageAction ? { id: pageAction.id, label: pageAction.label, enabled: !!pageAction.run } : null,
+    };
+  }
+
+  function setPageAction(label: string | null, run?: () => void): void {
+    pageAction = label ? { id: ++actionRevision, label, run } : null;
+  }
+
+  function runPageAction(documentId: string, id: number): boolean {
+    if (documentId !== reportDocumentId() || pageAction?.id !== id || !pageAction.run) return false;
+    pageAction.run();
+    return true;
+  }
+
+  function jumpToResult(documentId: string, id: string): boolean {
+    if (documentId !== reportDocumentId() || !unitsById.get(id)?.container.isConnected) return false;
+    if (!visible) setVisible(true);
+    jumpTo(id);
+    return true;
+  }
 
   /**
    * The coverage line's numbers. "Read" is verdicts the model really gave, so an outage
@@ -304,7 +320,7 @@ export function createOrchestrator(
    * "lessReliable" counts the verdicts on texts under the model's 75-word training minimum,
    * the ones whose card says "Short text: less reliable" (shortTextNote, lib/render/coverage.ts).
    */
-  function panelCounts(): PanelCounts {
+  function reportCounts(): ReportCounts {
     let read = 0;
     let notEnglish = 0;
     let unavailable = 0;
@@ -326,13 +342,13 @@ export function createOrchestrator(
   /**
    * Comment threads this page shows in frames of a site nobody has granted (Disqus,
    * Facebook's comments plugin — lib/access/commentFrames.ts): no script runs in those
-   * frames, so the panel says so and offers to allow the site. Asked when the page is first
-   * read and whenever the panel opens, because such a frame is usually put in late.
+   * frames, so the popup says so and offers to allow the site. Asked when the page is first
+   * read and whenever the popup opens, because such a frame is usually put in late.
    */
   let commentOffer: readonly string[] = [];
   let commentAsked = 0;
   function refreshCommentOffer(): void {
-    if (!mountFab || opts.collect || !started) return;
+    if (!toolbarOwner || opts.collect || !started) return;
     const origins = commentOriginsIn(document);
     const asked = ++commentAsked;
     if (origins.length === 0) {
@@ -348,10 +364,9 @@ export function createOrchestrator(
   function setCommentOffer(next: readonly string[]): void {
     if (next.join(" ") === commentOffer.join(" ")) return;
     commentOffer = next;
-    fab.refreshPanel();
   }
 
-  /** Centre a unit in the viewport and pulse its chip (panel rows and the
+  /** Centre a unit in the viewport and pulse its chip (popup rows and the
    *  next/previous-flagged commands land the same way). */
   function jumpTo(id: string): void {
     const unit = unitsById.get(id);
@@ -391,10 +406,6 @@ export function createOrchestrator(
           : ([...list].reverse().find((u) => mid(u) < ref - 4) ?? list[list.length - 1]!);
     }
     jumpTo(target.id);
-  }
-
-  function openPanel(): void {
-    if (started && mountFab) fab.openPanel(true);
   }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */
@@ -749,9 +760,8 @@ export function createOrchestrator(
     if (backendDown) return;
     backendDown = true;
     syncDispatch();
-    fab.setBackendDown(true);
     if (downTimer === null) downTimer = setInterval(() => void checkBackend(false), DOWN_POLL_MS);
-    // The engine may be down for want of setup, which the panel says at once.
+    // The engine may be down for want of setup, which the popup says at once.
     void checkBackend(false);
     log.warn("scoring daemon not answering — dispatch paused, re-checking every", DOWN_POLL_MS, "ms");
   }
@@ -760,7 +770,6 @@ export function createOrchestrator(
     if (!backendDown) return;
     backendDown = false;
     stopDownPolling();
-    fab.setBackendDown(false);
     syncDispatch();
     retryUnavailable();
     log.log("scoring daemon back");
@@ -790,9 +799,6 @@ export function createOrchestrator(
         // are all cache hits sends no request at all, so the probe is the only place
         // such a tab can ever notice.
         adoptBackend(s.model);
-      } else if (backendDown) {
-        // An engine that kept dying under its work is not merely "not ready": the panel says so.
-        fab.setBackendDown(true, s?.server.code === "engine_crashed", s?.setup, s?.engine === "inbrowser");
       }
     } catch {
       /* worker restarting — next tick */
@@ -833,7 +839,7 @@ export function createOrchestrator(
     }
     if (n > 0) {
       schedulePrefetch();
-      updateFab();
+      updateToolbar();
       log.log("re-queued", n, "unavailable units");
     }
   }
@@ -844,12 +850,11 @@ export function createOrchestrator(
     else retryUnavailable();
   }
 
-  /** The panel shows each figure of a running download as the worker pushes it
+  /** The worker pushes setup progress to paused pages
    *  (lib/backend/setupFeed.ts); whatever comes after the download is asked for at once. */
   function setupProgress(setup: EngineSetup | null): boolean {
     if (!started || frozen || !backendDown) return false;
-    if (setup?.state === "downloading") fab.setBackendDown(true, false, setup, true);
-    else void checkBackend(false);
+    if (setup?.state !== "downloading") void checkBackend(false);
     return true;
   }
 
@@ -883,7 +888,7 @@ export function createOrchestrator(
     // page that has still to hydrate that waits (see whenSafeToInsert). Scoring early
     // costs the page nothing, so the latency is bought back either way.
     whenSafeToInsert(() => paint(verdicts));
-    updateFab();
+    updateToolbar();
   }
 
   /** Put the verdicts on the page. Re-entrant: what it paints is decided when it runs, not
@@ -903,7 +908,7 @@ export function createOrchestrator(
     }
     badges.setVisible(visible);
     setHighlightsVisible(visible && highlightsEnabled);
-    updateFab();
+    updateToolbar();
   }
 
   /** Repaint everything under a new display mode (results are all cached). */
@@ -944,18 +949,16 @@ export function createOrchestrator(
     if (started) rescan();
   }
 
-  function updateFab(): void {
-    if (started && mountFab) fab.mount(); // re-mounts if the page wiped the host
+  function updateToolbar(): void {
     let flagged = 0;
     for (const v of verdictsById.values()) if (isFlagged(v.result)) flagged++;
-    fab.setCount(flagged);
     void notifyToolbarBadge(flagged);
   }
 
   /** Per-tab flagged count on the toolbar icon (top frame owns the tab's number). Settles
    *  once the worker has it, or could not be told. */
   function notifyToolbarBadge(flagged: number): Promise<void> {
-    if (!mountFab || flagged === lastBadgeSent) return Promise.resolve();
+    if (!toolbarOwner || flagged === lastBadgeSent) return Promise.resolve();
     lastBadgeSent = flagged;
     return sendDocumentMessage({ action: ACTIONS.UPDATE_BADGE, flagged })
       .then(() => undefined, () => undefined);
@@ -1068,7 +1071,7 @@ export function createOrchestrator(
       }
       queue = [...extra].filter((r) => !scanned.has(r));
     }
-    updateFab();
+    updateToolbar();
     // What a page costs us over time is the sum of THIS line: how many walks a mutation
     // burst turned into — the ones it PLANNED (bounded by MAX_SCAN_ROOTS) and the ones
     // stale claims added afterwards — and how long they took. A number that climbs with
@@ -1190,7 +1193,7 @@ export function createOrchestrator(
     const live = unitsById.size;
     purgeDisconnected();
     if (kind === "rewrite" && unitsById.size === live) {
-      updateFab();
+      updateToolbar();
       return;
     }
     scheduleUrlRefresh();
@@ -1205,7 +1208,7 @@ export function createOrchestrator(
       if (!started) return;
       purgeDisconnected();
       ingestUnits(collect(document.body, makeClaimFilter()));
-      updateFab();
+      updateToolbar();
       log.log("url change refresh", location.href);
     }, URL_REFRESH_DEBOUNCE_MS);
   }
@@ -1216,7 +1219,6 @@ export function createOrchestrator(
     visible = v;
     badges.setVisible(v);
     setHighlightsVisible(v && highlightsEnabled);
-    fab.setActive(v);
   }
 
   function toggle(): void {
@@ -1242,15 +1244,9 @@ export function createOrchestrator(
 
     watchInsertionGate();
     // The underline rules are a <style> in the page's own head, so they wait with the
-    // chips they paint; the ball is ours and goes up at once, outside anything a
-    // framework hydrates.
+    // chips they paint so neither interferes with framework hydration.
     whenSafeToInsert(registerHighlightStyles);
-    if (mountFab) {
-      fab.mount();
-      fab.setActive(true);
-    }
-    // The chrome goes up synchronously — callers treat start() as immediate — but
-    // nothing is COLLECTED until the user's own settings have been read: see boot().
+    // Nothing is COLLECTED until the user's own settings have been read: see boot().
     void boot(++bootSeq);
   }
 
@@ -1393,7 +1389,6 @@ export function createOrchestrator(
     stopDownPolling();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     backendDown = false;
-    fab.setBackendDown(false);
     commentOffer = [];
     commentAsked++;
     clearAllResults();
@@ -1401,7 +1396,6 @@ export function createOrchestrator(
     // page its own script wrote.
     restoreSplits();
     setHighlightsVisible(false);
-    fab.unmount();
     unwatchUrl();
     unwatchHighlights?.();
     unwatchHighlights = null;
@@ -1445,7 +1439,7 @@ export function createOrchestrator(
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
     ingestUnits(collect(document.body, makeClaimFilter()));
-    updateFab();
+    updateToolbar();
     log.log("rescan");
   }
 
@@ -1472,14 +1466,6 @@ export function createOrchestrator(
     return n;
   }
 
-  function setFabAction(
-    label: string | null,
-    onAction?: () => void,
-    opts?: { attention?: boolean },
-  ): void {
-    fab.setAction(label, onAction, opts);
-  }
-
   return {
     start,
     stop,
@@ -1489,11 +1475,13 @@ export function createOrchestrator(
     flaggedCount,
     unsupportedCount,
     unavailableCount,
-    setFabAction,
+    setPageAction,
+    pageReport,
+    runPageAction,
+    jumpToResult,
     retryBackend,
     setupProgress,
     forgetCached,
-    openPanel,
     jumpFlagged,
   };
 }

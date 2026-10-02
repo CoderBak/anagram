@@ -69,6 +69,8 @@ export interface EngineInit {
   /** Where `pin` is the FP16 model and FP32 fits the device too: what setup falls back to, on the
    *  processor, when FP16 does not run here. Without it that device cannot run the model. */
   fallback?: Pin;
+  /** Never offer or fall back to the CPU provider (Safari). */
+  gpuOnly?: boolean;
   assets: RuntimeAssets;
   /** The extension's version, reported as the component's. */
   version: string | null;
@@ -140,8 +142,17 @@ export class Engine {
   private get tier(): ModelTier { return this.pin.tier ?? "fp32"; }
 
   /** The runtimes this tier can use here. */
-  private probeFor(tier: ModelTier): Promise<Candidate[]> {
-    return (this.init.probe ?? ((t: ModelTier) => probeRuntimes({ tier: t })))(tier);
+  private async probeFor(tier: ModelTier): Promise<Candidate[]> {
+    const candidates = await (this.init.probe ?? ((t: ModelTier) => probeRuntimes({ tier: t })))(tier);
+    return this.init.gpuOnly ? candidates.filter((c) => c.device === "gpu") : candidates;
+  }
+
+  private gpuUnavailable(): boolean {
+    if (!this.init.gpuOnly || this.candidates.some((c) => c.available)) return false;
+    this.state = "error";
+    this.runtimeState = "error";
+    this.error = { code: "webgpu_unavailable", message: "Safari requires a compatible WebGPU adapter; CPU inference is disabled" };
+    return true;
   }
 
   // ---- lifecycle ------------------------------------------------------------------------------
@@ -156,6 +167,7 @@ export class Engine {
       this.idleTimer = setInterval(() => void this.unloadIfIdle(), IDLE_CHECK_MS);
       if (this.error) { this.state = "stopped"; return; }
       if (this.cannotRun) { this.state = "error"; this.error = CANNOT_RUN; return; }
+      if (this.gpuUnavailable()) return;
       if (await this.modelsPresent()) {
         if (this.settings.download_pending) this.settings.download_pending = false;
         await this.writeSettings();
@@ -326,7 +338,7 @@ export class Engine {
    */
   private async leaveFp16(): Promise<"fallback" | "stop"> {
     this.settings.fp16_failed = true;
-    const fallback = this.init.fallback;
+    const fallback = this.init.gpuOnly ? undefined : this.init.fallback;
     if (fallback) {
       this.pin = fallback;
       this.candidates = await this.probeFor(this.tier);
@@ -627,6 +639,10 @@ export class Engine {
       case "engine.resume": {
         checkPayloadKeys(payload);
         if (this.cannotRun) return { status: 200, data: this.status() };
+        if (this.init.gpuOnly) {
+          this.candidates = await this.probeFor(this.tier);
+          if (this.gpuUnavailable()) return { status: 200, data: this.status() };
+        }
         this.settings.engine_stopped = false;
         this.error = null;
         if (await this.modelsPresent()) {
@@ -659,6 +675,10 @@ export class Engine {
 
   private async startDownload() {
     if (this.cannotRun) return this.status();
+    if (this.init.gpuOnly) {
+      this.candidates = await this.probeFor(this.tier);
+      if (this.gpuUnavailable()) throw new EngineError("webgpu_unavailable", this.error!.message, 503);
+    }
     if (this.downloading) throw new EngineError("busy", "A model download is already running", 409);
     if (this.operation?.status === "running") throw new EngineError("not_ready", "Reconnect the native component after this operation", 503);
     this.settings = { ...this.settings, initialized: true, download_pending: true, download_paused: false, download_failed: false, models_deleted: false, engine_stopped: false };

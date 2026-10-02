@@ -1,7 +1,6 @@
 import { sendDocumentMessage } from "../lib/access/session";
 // entrypoints/content.ts — main content script.
-// Runs in EVERY frame (allFrames): the top frame gets the full experience (FAB,
-// Docs actions, popup state); subframes run a chrome-less pipeline so framed
+// Runs in EVERY frame (allFrames): the top frame gets the toolbar report, Docs actions, and popup state; subframes run a chrome-less pipeline so framed
 // article content (webmail readers, embedded posts) is scored too — gated on
 // frame size so ad slots and tracking pixels never pay for a walk.
 import { defineContentScript, browser } from "#imports";
@@ -84,7 +83,7 @@ function navigationType(): string {
  * This document already has a content script. The worker injects into tabs of a newly
  * granted origin and into a tab it has only `activeTab` for (lib/access/worker.ts), and
  * either can land on a page the registration has already reached — a second orchestrator
- * on the same document would mean two balls and two chips per paragraph. The flag lives
+ * on the same document would mean two chips per paragraph. The flag lives
  * in the isolated world, which every injection of this extension shares.
  */
 const ALREADY_RUNNING = "__anagramContentScript";
@@ -123,12 +122,12 @@ export default defineContentScript({
     if (!isTop && isConsentFrame(location, document)) return;
     world[ALREADY_RUNNING] = true;
     // Google Docs (top frame only): the editor is a canvas (no DOM text) — the
-    // FAB's action opens our in-tab analyzed reading overlay instead.
+    // toolbar action opens our in-tab analyzed reading overlay instead.
     const docs = isTop ? detectDocsPage(location) : null;
     // A PDF tab: Chrome wraps the plugin in an outer HTML document that content scripts
     // do run in, and that document holds a single <embed> and no text at all. So there
     // is nothing to scan here — the walk finds nothing and costs nothing — and the whole
-    // feature is the ball's action chip, which hands the file to our reader page.
+    // feature is the toolbar action, which hands the file to our reader page.
     const isPdf = isTop && !docs && document.contentType === "application/pdf";
     // A page that shows a document the walk cannot read — Google Drive's file preview, a PDF
     // in a pdf.js viewer — in a tab or embedded in another page's frame (lib/surfaces/).
@@ -140,7 +139,7 @@ export default defineContentScript({
       setMarkPainter(surface.painter);
     }
     const orchestrator = createOrchestrator(ctx, {
-      mountFab: isTop,
+      toolbarOwner: isTop,
       collect: surface?.collect,
       placeBadge: surface?.placeBadge,
     });
@@ -283,6 +282,7 @@ export default defineContentScript({
       }
     });
 
+    let openDocument: (() => void) | null = null;
     if (docs) {
       if (docs.kind === "editor") {
         // Classic flow — kept as the fallback and as the "Open as page" action.
@@ -303,7 +303,7 @@ export default defineContentScript({
         });
 
         const openOverlay = async (): Promise<void> => {
-          orchestrator.setFabAction(t("actionLoadingDocument"));
+          orchestrator.setPageAction(t("actionLoadingDocument"));
           const ok = await overlay.open();
           if (!ok) {
             // Same-origin fetch failed (offline, consent wall) — the navigation
@@ -311,14 +311,15 @@ export default defineContentScript({
             goToReadingPage();
             return;
           }
-          orchestrator.setFabAction(t("actionCloseReading"), () => overlay.close());
+          orchestrator.setPageAction(t("actionCloseReading"), () => overlay.close());
         };
 
+        openDocument = () => { void openOverlay(); };
+
         function setEditorAction(): void {
-          orchestrator.setFabAction(
+          orchestrator.setPageAction(
             t("actionAnalyzeDocument"),
             () => void openOverlay(),
-            { attention: true }, // the main toggle is useless on canvas — point here
           );
         }
         setEditorAction();
@@ -326,7 +327,7 @@ export default defineContentScript({
         // Organic /mobilebasic visit via our marker: apply reading typography and
         // offer the way back to the exact editor tab.
         if (isReadingMarked(location)) applyDocsReadingStyle();
-        orchestrator.setFabAction(t("actionBackToEditor"), () => {
+        orchestrator.setPageAction(t("actionBackToEditor"), () => {
           let target = editorUrl(docs.id);
           try {
             const saved = sessionStorage.getItem(DOCS_RETURN_KEY);
@@ -344,10 +345,9 @@ export default defineContentScript({
       serveTabPdfBytes();
       // The worker navigates the tab: an extension page the content script could reach
       // by itself would have to be web accessible, and the reader must not be.
-      orchestrator.setFabAction(
+      orchestrator.setPageAction(
         t("actionAnalyzePdf"),
         () => void sendDocumentMessage({ action: ACTIONS.OPEN_PDF_READER }).catch(() => undefined),
-        { attention: true }, // nothing on this page can be scored — point at the way out
       );
       // And "Open PDFs in Anagram", which is the same journey without the click. What this
       // page knows is reported; the worker decides (lib/pdf/route.ts), because the setting,
@@ -406,6 +406,11 @@ export default defineContentScript({
             return;
 
           case ACTIONS.ANALYZE_PAGE:
+            if (openDocument && !translated) {
+              if (!enabled) startOnce();
+              openDocument();
+              return;
+            }
             // "Analyze this page with Anagram". A page already being analyzed treats it as
             // a Rescan; a page Anagram is off for starts here and now — the frame gate
             // still decides for a subframe, and nothing is written to storage.
@@ -467,6 +472,7 @@ export default defineContentScript({
               flagged: orchestrator.flaggedCount(),
               unsupported: orchestrator.unsupportedCount(),
               unavailable: orchestrator.unavailableCount(),
+              ...(typeof msg.reportOffset === "number" ? { report: orchestrator.pageReport(msg.reportOffset) } : {}),
             };
             sendResponse(state);
             return; // synchronous response
@@ -482,12 +488,19 @@ export default defineContentScript({
             else if (!translated && frameGateOk()) orchestrator.toggle();
             return;
 
-          // The remaining keyboard commands are the PAGE's, not a frame's: the panel and
-          // the ball live in the top frame, and so does the walk through its verdicts.
-          case ACTIONS.OPEN_PANEL:
-            if (isTop && enabled) orchestrator.openPanel();
+          case ACTIONS.JUMP_TO_RESULT:
+            if (isTop) sendResponse({ ok: enabled && orchestrator.jumpToResult(msg.documentId, msg.id) });
             return;
 
+          case ACTIONS.RUN_PAGE_ACTION:
+            if (isTop) {
+              const ok = !translated && orchestrator.runPageAction(msg.documentId, msg.id);
+              if (ok && docs?.kind === "editor" && !enabled) startOnce();
+              sendResponse({ ok });
+            }
+            return;
+
+          // The flagged walk belongs to the top frame's report.
           case ACTIONS.NEXT_FLAGGED:
             if (isTop && enabled) orchestrator.jumpFlagged(1);
             return;

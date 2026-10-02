@@ -9,7 +9,7 @@
     "message": "显示每个段落经 AI 编辑的程度，全部在本机评分。"
   },
   "cmdOpenPanel": {
-    "message": "打开存疑段落列表"
+    "message": "打开工具栏中的 Anagram"
   },
   "cmdNextFlagged": {
     "message": "跳到下一个存疑段落"
@@ -977,5 +977,77 @@
   },
   "popupPdfReader": {
     "message": "PDF 阅读器"
+  },
+  "safariEngineTitle": {
+    "message": "Anagram Safari 版"
+  },
+  "safariEngineTabNote": {
+    "message": "分析网页时请保持 Anagram 引擎标签页打开。Safari 在此固定标签页中运行 WebGPU 引擎。关闭它会中断分析；下次请求时会重新打开。"
+  },
+  "safariEnginePrivacy": {
+    "message": "文本在此 Mac 上评分。模型只需下载一次，网页文本绝不会发送到服务器。引擎闲置时会释放模型占用的内存。"
+  },
+  "safariEngineSetup": {
+    "message": "设置 Anagram"
+  },
+  "safariEngineSettings": {
+    "message": "打开设置"
+  },
+  "safariBrowserRequired": {
+    "message": "Anagram Safari 版需要 Mac 上的 Safari 27 或更新版本，并支持 WebAssembly JSPI 和浏览器文件存储。请更新 Safari 后重新打开设置页面。"
+  },
+  "safariWebGpuRequired": {
+    "message": "浏览器内引擎需要能够运行模型的硬件 WebGPU 适配器。此 Mac 目前未提供兼容的适配器，无法改用 CPU 运行此引擎。"
+  },
+  "safariLocalPdfNote": {
+    "message": "请打开 PDF 阅读器，选择或拖入此 Mac 上的 PDF。Safari 不允许 Anagram 直接读取 file:// 标签页。"
+  },
+  "safariOpenPdf": {
+    "message": "选择 PDF"
+  },
+  "toolbarPinTitle": {
+    "message": "将 Anagram 固定到工具栏"
+  },
+  "toolbarPinHelp": {
+    "message": "如何将 Anagram 固定到工具栏"
+  },
+  "toolbarPinIntro": {
+    "message": "将 Anagram 图标放在地址栏旁，方便在 Google 文档等页面快速使用。"
+  },
+  "toolbarExtensionsMenu": {
+    "message": "点击地址栏旁的“扩展程序”按钮（拼图图标）。"
+  },
+  "toolbarChromePin": {
+    "message": "找到 Anagram，点击旁边的图钉按钮。"
+  },
+  "toolbarFirefoxPin": {
+    "message": "打开 Anagram 旁的菜单（齿轮或三个点），选择“固定到工具栏”。"
+  },
+  "toolbarSafariEnable": {
+    "message": "在 Safari → 设置 → 扩展中，确保已启用 Anagram。"
+  },
+  "toolbarSafariCustomize": {
+    "message": "在菜单栏中选择“显示 → 自定工具栏”。"
+  },
+  "toolbarSafariDrag": {
+    "message": "将 Anagram 图标拖到地址栏旁，然后点击“完成”。如果图标已在那里，就可以直接使用。"
+  },
+  "toolbarPinUse": {
+    "message": "在 Google 文档中，点击 Anagram → 分析文档，打开阅读视图。再次点击 Anagram，即可查看结果和页面控制。"
+  },
+  "popupMarksVisible": {
+    "message": "显示此页面的标记"
+  },
+  "popupReportRange": {
+    "message": "第 $1–$2 项，共 $3 项"
+  },
+  "popupResultsPrevious": {
+    "message": "上一页"
+  },
+  "popupResultsNext": {
+    "message": "下一页"
+  },
+  "popupPageActionFailed": {
+    "message": "页面已更改或无法访问。请重新打开 Anagram 后重试。"
   }
 }
