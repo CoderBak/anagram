@@ -257,6 +257,19 @@ export interface CollectOptions {
    * after the first scan would otherwise never be seen.
    */
   onShadowRoot?: (root: ShadowRoot) => void;
+  /**
+   * What changed, for a re-scan of a mutation burst: the walk does not go into a block that
+   * is a voice scope of its own (lib/dom/scope.ts) holding none of these nodes and standing
+   * in none, if an earlier walk read it as one (`scopesRead`). Nothing in a scope merges with
+   * what is outside it, and its units, owned already, would only be found again — a feed
+   * that appends a post re-walked every post before it, each time, slower with every page
+   * of the feed. A post that has only now become a scope (the third card of a list) is
+   * walked: what was read across it before it was one is read again.
+   */
+  changed?: readonly Node[];
+  /** The voice scopes walks have gone into, as blocks: the caller keeps it across walks
+   *  (`changed`). */
+  scopesRead?: WeakSet<Element>;
 }
 
 /** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
@@ -469,6 +482,20 @@ export function collectUnits(
   // A consent box known by what it holds can stand around a re-scan's root (its second tab).
   for (const banner of consentBanners) if (banner !== startEl && banner.contains(startEl)) return [];
   const pageText = pageTextSize(document);
+  /** The elements a re-scan was asked about (CollectOptions.changed). */
+  const changed = opts.changed?.flatMap((n) => {
+    const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
+    return el ? [el] : [];
+  }) ?? null;
+  /** A block that is a voice scope of its own: one a re-scan passes by where nothing in it
+   *  changed and an earlier walk read it as one; else one it goes into, and records. */
+  const passesBy = (el: Element): boolean => {
+    if (!opts.scopesRead || scopes.of(el) !== el) return false;
+    if (changed !== null && el !== startEl && opts.scopesRead.has(el) &&
+      !changed.some((c) => composedContains(el, c) || composedContains(c, el))) return true;
+    opts.scopesRead.add(el);
+    return false;
+  };
   const asm = createAssembler(scopes, opts.mergeShorts ?? true, opts.minWords ?? DEFAULT_MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
@@ -753,6 +780,12 @@ export function collectUnits(
     // display:none takes NO space: the text around it reads as one sentence, so it
     // must never close the run (hidden template spans, lazy content, <script>…).
     if (flow === "hidden") return;
+    // A post a re-scan has no business in (CollectOptions.changed): a block, as it would be.
+    if (flow !== "inline" && flow !== "contents" && passesBy(el)) {
+      closeRun();
+      lastRun = null;
+      return;
+    }
     if (tag === "BUTTON") {
       const label = (el.textContent ?? "").trim();
       if (isExpandLabel(label) && markCut(label, el)) {

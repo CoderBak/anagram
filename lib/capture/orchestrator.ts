@@ -303,6 +303,9 @@ export function createOrchestrator(
   let pendingJump: { page: number; text: string; until: number } | null = null;
   /** Text-node ownership: node → live unit. Recreated on stop/rescan. */
   let nodeOwner = new WeakMap<Text, Unit>();
+  /** The voice scopes walks have gone into (CollectOptions.scopesRead): a re-scan passes by
+   *  the ones nothing changed in. Recreated with the units. */
+  let scopesRead = new WeakSet<Element>();
 
   const session = newSessionId();
   const domain = location.hostname || "und";
@@ -667,11 +670,13 @@ export function createOrchestrator(
   }
 
   /** One walk under `root`: shadow roots it descends into become observer targets. */
-  function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip"): Unit[] {
+  function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip", changed?: readonly Node[]): Unit[] {
     const options: CollectOptions = {
       claimFilter,
       mergeShorts,
       minWords,
+      scopesRead,
+      ...(changed ? { changed } : {}),
       onShortText: (nodes) => {
         if (nodes[0]) shortTexts.add(nodes[0]);
       },
@@ -1286,13 +1291,19 @@ export function createOrchestrator(
     // 1) Purge units whose DOM went away entirely (released parts get re-scanned).
     purgeDisconnected(seedQueue);
 
-    // 2) Invalidate units whose text changed inside the dirty subtrees. A unit is
-    //    touched if any root intersects ANY of its parts, in either direction.
+    // 2) Invalidate units whose text changed: a unit's text changes only where something
+    //    changed inside one of its parts' containers, or around one. (The scan roots below
+    //    are wider — a whole feed, for a post appended to it — and every unit in a feed
+    //    read anew at every post grew with the feed.)
     const roots = computeScanRoots(nodes);
-    if (roots.length > 0) {
+    const bases = nodes.flatMap((n) => {
+      const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
+      return el?.isConnected ? [el] : [];
+    });
+    if (bases.length > 0) {
       for (const unit of [...unitsById.values()]) {
-        const touched = roots.some((r) =>
-          unit.parts.some((p) => r.contains(p.container) || p.container.contains(r)),
+        const touched = bases.some((b) =>
+          unit.parts.some((p) => b.contains(p.container) || p.container.contains(b)),
         );
         if (touched && currentTextOf(unit) !== unit.text) invalidateUnit(unit, seedQueue);
       }
@@ -1305,15 +1316,19 @@ export function createOrchestrator(
     let queue: Element[] = boundRoots(dedupeRoots([...roots, ...seedQueue]));
     // What the burst itself was reduced to, before the rounds that stale claims add.
     const planned = queue.length;
+    // The walks go only into the posts something changed in (CollectOptions.changed): the
+    // burst's nodes, and the containers invalidations released.
+    const changed: Node[] = [...nodes, ...seedQueue];
     for (let round = 0; round < 4 && queue.length > 0; round++) {
       const extra = new Set<Element>();
       const filter = makeClaimFilter(extra);
       for (const root of queue) {
         if (scanned.has(root) || !root.isConnected) continue;
         scanned.add(root);
-        ingestUnits(collect(root, filter));
+        ingestUnits(collect(root, filter, changed));
       }
       queue = [...extra].filter((r) => !scanned.has(r));
+      changed.push(...queue);
     }
     updateToolbar();
     // What a page costs us over time is the sum of THIS line: how many walks a mutation
@@ -1623,6 +1638,7 @@ export function createOrchestrator(
     pendingJump = null;
     shortTexts.clear();
     nodeOwner = new WeakMap();
+    scopesRead = new WeakSet();
   }
 
   function stop(): void {

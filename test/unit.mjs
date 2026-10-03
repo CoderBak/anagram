@@ -251,6 +251,40 @@ const results = await page.evaluate(() => {
   const skipped = PW.collectUnits(sandbox, { claimFilter: () => "skip" });
   check("claimFilter skip suppresses owned runs", skipped.length === 0);
 
+  // A re-scan of a feed that gained a post (CollectOptions.changed) goes into that post and
+  // into a post that changed, and no other: what it finds is what a walk of every post finds.
+  {
+    const post = (n) => `<article><p>${words(80 + n)} Post ${n} ends here.</p><p>${words(12)}</p></article>`;
+    sandbox.innerHTML = `<section>${[1, 2, 3, 4].map(post).join("")}</section>`;
+    const feed = sandbox.firstElementChild;
+    const read = new WeakSet();
+    const owned = new Set(PW.collectUnits(feed, { scopesRead: read }).flatMap((x) => x.parts.flatMap((p) => p.nodes)));
+    const claim = (nodes) => (nodes.every((n) => owned.has(n)) ? "skip" : "take");
+    feed.insertAdjacentHTML("beforeend", post(5));
+    const added = feed.lastElementChild;
+    const grown = feed.children[1];
+    grown.insertAdjacentHTML("beforeend", `<p>${words(80)} A later paragraph.</p>`);
+    const texts = (units) => units.map((x) => x.text).sort();
+    const full = PW.collectUnits(feed, { claimFilter: claim });
+    const partial = PW.collectUnits(feed, { claimFilter: claim, changed: [added, grown.lastElementChild], scopesRead: read });
+    check("a re-scan goes only into the posts that changed, and finds what a full one finds",
+      texts(partial).join("|") === texts(full).join("|") && partial.length >= 2 &&
+      partial.some((x) => x.text.includes("Post 5")) && partial.some((x) => x.text.includes("A later paragraph")),
+      JSON.stringify({ full: texts(full).map((t) => t.slice(-30)), partial: texts(partial).map((t) => t.slice(-30)) }));
+    // An untouched post holding a run nobody owns: a full walk takes it; this one, asked
+    // about another post, leaves it — what is in a post is read when the post changes.
+    const lonely = feed.children[0];
+    lonely.insertAdjacentHTML("beforeend", `<p>${words(80)} Nobody owns this.</p>`);
+    const elsewhere = PW.collectUnits(feed, { claimFilter: claim, changed: [added], scopesRead: read });
+    check("a re-scan does not go into a post it was not asked about",
+      !elsewhere.some((x) => x.text.includes("Nobody owns this")) && PW.collectUnits(feed, { claimFilter: claim }).some((x) => x.text.includes("Nobody owns this")),
+      JSON.stringify(texts(elsewhere).map((t) => t.slice(-30))));
+    // …unless no walk has read it as a post yet (a card that has only now made a list).
+    const unread = PW.collectUnits(feed, { claimFilter: claim, changed: [added], scopesRead: new WeakSet() });
+    check("a re-scan goes into a post no walk has read as one yet",
+      unread.some((x) => x.text.includes("Nobody owns this")), JSON.stringify(texts(unread).map((t) => t.slice(-30))));
+  }
+
   // ---- inline whitespace fidelity ------------------------------------------------------
   // Whitespace-only text nodes BETWEEN inline elements are the spaces between words.
   u = collect(`<p>${Array.from({ length: 80 }, (_, i) => `<span>${VOCAB[i % VOCAB.length]}</span>`).join(" ")}.</p>`);
@@ -2109,41 +2143,34 @@ const results = await page.evaluate(() => {
     check("clearing an ACTIVE unit leaves nothing behind in either set", marksOf(sandbox).length === 0, JSON.stringify(marksOf(sandbox)));
   }
 
-  // ---- how sure: the dot --------------------------------------------------------------
-  // No threshold: the chip's dot and the card's swatch are full when the verdict's word is
-  // likely right (lib/render/confidence.ts) and a thinner ring, in the same colour, the less
-  // likely it is, down to a line that stays visible.
+  // ---- how sure: the card ----------------------------------------------------------------
+  // The chip is its word's colour, filled, whatever the doubt (lib/render/badge.css.ts): no
+  // dot, no ring. Under one half the card says "Unsure: close to" the neighbouring word
+  // (lib/render/confidence.ts, unsureNote), and never puts a number on the doubt.
   {
     sandbox.innerHTML = `<p>${words(80)}</p>`;
     const [unit] = PW.collectUnits(sandbox);
     const layer = PW.createBadgeLayer();
-    const px = (value) => Number.parseFloat(value);
-    const ring = (el) => px((getComputedStyle(el).boxShadow.match(/([\d.]+)px inset/) ?? [, "NaN"])[1]);
     // From a sure human verdict to a split one, each less likely to be right than the last.
     const seen = [[0.98, 0.02, 0, 0], [0.8, 0.18, 0.02, 0], [0.55, 0.4, 0.04, 0.01], [0.35, 0.1, 0.1, 0.45]].map((probs) => {
       const verdict = PW.unitVerdict(unit.id, unit.text.length, [{ start: 0, end: unit.text.length, result: res(probs, { tokens: 302 }) }]);
       layer.render(unit, verdict);
       const root = sandbox.querySelector('[data-anagram="host"]').shadowRoot;
-      const dot = root.querySelector(".pill .dot");
-      const sw = root.querySelector(".card .sw");
       return {
-        doubt: (1 - PW.verdictConfidence(verdict)).toFixed(3),
-        tag: root.querySelector(".pill").style.getPropertyValue("--u"),
-        swTag: sw.style.getPropertyValue("--u"),
-        dot: [ring(dot), px(getComputedStyle(dot).width) / 2],
-        sw: [ring(sw), px(getComputedStyle(sw).width) / 2],
+        sure: PW.verdictConfidence(verdict).toFixed(3),
+        // The dot stays for the pending chip's breathing, and is not shown once scored.
+        dot: (() => { const dot = root.querySelector(".pill .dot"); return !!dot && getComputedStyle(dot).display !== "none"; })(),
+        unsure: root.querySelector(".card .unsure")?.textContent ?? "",
         card: root.querySelector(".card").textContent,
       };
     });
-    check("the chip and the card carry the verdict's doubt, and no card puts a number or a word on it",
-      seen.every((s) => s.tag === s.doubt && s.swTag === s.doubt && !/uncertain|split between|confiden/i.test(s.card)) &&
-      seen.every((s, i) => i === 0 || Number(s.doubt) > Number(seen[i - 1].doubt)), JSON.stringify(seen));
-    check("a word surely right is a nearly full dot; each likelier-wrong one is a thinner ring; the thinnest is still at least 1px",
-      seen.every((s) => s.dot.every(Number.isFinite) && s.sw.every(Number.isFinite)) &&
-      seen[0].dot[0] >= seen[0].dot[1] * 0.9 && seen[0].sw[0] >= seen[0].sw[1] * 0.9 &&
-      seen.every((s, i) => i === 0 || (s.dot[0] < seen[i - 1].dot[0] && s.sw[0] < seen[i - 1].sw[0])) &&
-      seen[3].dot[0] >= 1 && seen[3].sw[0] >= 1 && seen[3].dot[0] < seen[3].dot[1] / 2,
-      JSON.stringify(seen.map((s) => [s.doubt, s.dot, s.sw])));
+    check("a scored chip shows no dot: its word's colour is the whole of it",
+      seen.every((s) => !s.dot), JSON.stringify(seen.map((s) => s.dot)));
+    check("the card says Unsure, and the word it is close to, only where the word is likelier wrong than right, and never a number for it",
+      seen.every((s) => (Number(s.sure) < 0.5) === /^Unsure: close to \S/.test(s.unsure)) &&
+      seen.some((s) => s.unsure) && seen.some((s) => !s.unsure) &&
+      seen.every((s) => !/uncertain|split between|confiden|\d+(\.\d+)?% sure/i.test(s.card)),
+      JSON.stringify(seen.map((s) => [s.sure, s.unsure])));
     layer.teardownAll();
   }
 

@@ -24,6 +24,7 @@ local component and the installer all carry the same version.
 - The in-browser engine downloads the model from hf-mirror.com where Hugging Face cannot be reached (mainland China, for one), as the local engine already did, and the setup page says it is doing so. A download that gets no answer at all now gives up on a host after 20 seconds instead of waiting for the browser, and its failure no longer tells a person who is online to check that they are.
 - Both engines cut a request into passes of the model by length. A pass is padded to its longest paragraph, and where padding a short paragraph to a long one's width would cost more than another pass, the request is now cut there instead. On a computer that scores on its processor, a web page now sends one paragraph at a time, as the PDF reader does: each chip appears as soon as its paragraph is read, and nothing on screen waits behind a long request.
 - The PDF reader works out each paragraph's length and kind once, not again for every page it reads, and lets go of a paragraph's glyphs once all of its pages are read: reading a 300-page document in the background no longer pauses the page, and keeps far less in memory.
+- On a feed that keeps every post (Reddit, a forum), a new post no longer makes Anagram walk again every post above it: over two minutes of such a feed the extension took 40% less of the page's time, and its pauses of 50 ms or more fell from 52 to 3.
 
 ### Fixed
 
