@@ -235,7 +235,6 @@ class RuntimeController:
         self.idle_thread = None
         self.lock = threading.RLock()
         self.ready_condition = threading.Condition(self.lock)
-        self.idle_wake_thread = None
         self.cancel_event = threading.Event()
         self.thread = None
         self.started = False
@@ -327,21 +326,24 @@ class RuntimeController:
                 if not self._activate(candidate, expected_version=expected):
                     raise RuntimeUnavailable("Model files changed while the engine was unloaded; retry or choose a configuration")
             self._launch(resume)
-            self.idle_wake_thread = self.thread
             return True
 
     def wake_and_wait(self, timeout=25):
-        """Only score and token workers wait; status/health remain passive and responsive."""
+        """Only score and token workers wait; status/health remain passive and responsive.
+
+        A score that comes while the engine loads its model waits for it: woken from idle,
+        and as the runtime starts (the browser's first page starts the host, and asked
+        before the model was in, it went without scores until a poll seconds later)."""
         with self.ready_condition:
             self.wake()
-            target = self.idle_wake_thread
-            if self.state != "loading" or target is None or self.thread is not target:
+            target = self.thread
+            if self.state != "loading" or target is None or not target.is_alive():
                 return
             self.ready_condition.wait_for(
                 lambda: self.closed or self.cancel_event.is_set() or self.thread is not target or self.state != "loading",
                 timeout=timeout)
             if (self.closed or self.cancel_event.is_set() or self.thread is not target or self.state != "ready"):
-                raise RuntimeUnavailable("The idle engine is still loading or was stopped; retry when it is ready")
+                raise RuntimeUnavailable("The engine is still loading or was stopped; retry when it is ready")
 
     def _launch(self, work):
         self.cancel_event.clear()

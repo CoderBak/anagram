@@ -688,6 +688,38 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(restarted.status()["settings"], {"idle_unload_s": 60})
         self.assertEqual(restarted.status()["state"], "stopped")
 
+    def test_a_score_sent_while_the_host_starts_waits_for_the_model_and_health_says_it_is_loading(self):
+        # The browser's first page starts the host: its files are checked (half a second for
+        # the real weights), then the model is read in. Asked meanwhile, health says the engine
+        # is loading, which the extension does not take for down, and a score waits for it.
+        first = self.make()
+        self.first_run(first)
+        first.close()
+        checking, checked = threading.Event(), threading.Event()
+        def verify():
+            checking.set()
+            checked.wait(3)
+            return (self.home / "models/fixture").is_file()
+        component = self.make(verifier=verify)
+        component.start()
+        self.assertTrue(checking.wait(2))
+        with self.assertRaises(ComponentError) as error:
+            component.handle("health", {})
+        self.assertEqual((error.exception.code, error.exception.status), ("engine_loading", 503))
+        score = {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]}
+        answered = queue.Queue()
+        waiter = threading.Thread(target=lambda: answered.put(host.dispatch(component, request("score", payload=score))))
+        waiter.start()
+        time.sleep(0.1)
+        self.assertTrue(answered.empty(), "the score waits while the files are checked")
+        checked.set()
+        response = answered.get(timeout=5)
+        waiter.join(3)
+        self.assertEqual(response["status"], 200, response)
+        self.finish(component)
+        self.assertEqual(component.status()["state"], "ready")
+        self.assertEqual(component.handle("health", {})[0], 200)
+
     def test_tokens_count_what_the_model_sees_and_wake_an_idle_engine_like_score(self):
         component = self.make()
         self.first_run(component)

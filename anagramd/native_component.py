@@ -26,6 +26,8 @@ from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forg
 from safe_files import atomic_json, is_link, read_json, regular_stat
 
 HOST_NAME = "dev.coderbak.anagram"
+#: How often a score asked while the component starts looks again (NativeComponent._runtime).
+STARTING_POLL_S = 0.02
 STATE_DEFAULT = {"schema_version": 1, "initialized": False, "download_pending": False,
                  "download_paused": False, "download_failed": False,
                  "engine_stopped": False, "models_deleted": False, "idle_unload_s": 300,
@@ -485,17 +487,28 @@ class NativeComponent:
                     "settings": {"idle_unload_s": self.settings["idle_unload_s"]},
                     "operation": copy.deepcopy(self.operation)}
 
-    def _runtime(self):
-        with self.lock:
-            if (self.operation and self.operation["name"] == "update"
-                    and self.operation["status"] == "completed"):
-                # Settings may have closed while the updater was running. A
-                # later page scan must retire this old process without needing
-                # a lifecycle-status poll to discover the completed update.
-                raise ComponentError("component_updated", "The component was updated; reconnect to load the new version", 503)
-            if self.closed or self.state != "loading" or self.controller is None or self.runtime_draining:
+    def _runtime(self, wait=0.0):
+        """The runtime. Asked while the component starts — its model files checked before
+        the runtime begins — a score waits for it, up to `wait` seconds."""
+        deadline = time.monotonic() + wait
+        while True:
+            with self.lock:
+                if (self.operation and self.operation["name"] == "update"
+                        and self.operation["status"] == "completed"):
+                    # Settings may have closed while the updater was running. A
+                    # later page scan must retire this old process without needing
+                    # a lifecycle-status poll to discover the completed update.
+                    raise ComponentError("component_updated", "The component was updated; reconnect to load the new version", 503)
+                if not (self.closed or self.state != "loading" or self.controller is None or self.runtime_draining):
+                    return self.controller
+                starting = self._starting()
+            if not starting or time.monotonic() >= deadline:
                 raise ComponentError("not_ready", "The local engine is not ready; open component settings", 503)
-            return self.controller
+            time.sleep(STARTING_POLL_S)
+
+    def _starting(self):
+        """The component is checking its model files before the runtime starts."""
+        return self.state == "starting" and not self.closed
 
     @staticmethod
     def _payload(payload, allowed=(), required=()):
@@ -508,9 +521,18 @@ class NativeComponent:
             return 200, self.status()
         if op == "health":
             self._payload(payload)
+            with self.lock:
+                starting = self._starting()
+            # Loading — the files checked, the model read in — is not down: what is sent waits
+            # for it (the in-browser engine says the same, lib/webengine/engine.ts).
+            if starting:
+                raise ComponentError("engine_loading", "The local engine is loading its model; scoring waits for it", 503)
             controller = self._runtime()
-            if controller.snapshot()["state"] == "idle":
+            state = controller.snapshot()["state"]
+            if state == "idle":
                 raise ComponentError("engine_idle", "The engine was unloaded while idle; scoring will reload it", 503)
+            if state == "loading":
+                raise ComponentError("engine_loading", "The local engine is loading its model; scoring waits for it", 503)
             with controller.use_engine(activity=False) as engine:
                 return 200, engine.info()
         if op in ("score", "tokens"):
@@ -520,8 +542,9 @@ class NativeComponent:
                 request = (ScoreRequest if op == "score" else TokensRequest).model_validate(payload)
             except ValidationError as exc:
                 raise ComponentError("invalid_request", f"Invalid {op} request", 422) from exc
-            controller = self._runtime()
-            controller.wake_and_wait(timeout=self.score_wait_timeout)
+            began = time.monotonic()
+            controller = self._runtime(wait=self.score_wait_timeout)
+            controller.wake_and_wait(timeout=max(0.0, self.score_wait_timeout - (time.monotonic() - began)))
             with controller.use_engine() as engine:
                 if op == "tokens":
                     return 200, tokens_with_engine(request, engine)
