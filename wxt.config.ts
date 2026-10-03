@@ -32,6 +32,29 @@ const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
 
+/** In a dev build a page's link to a public file comes out as the dev server's
+ *  `/@fs/vendor/…`, which names no file: it is answered from public/ (the reader's PDF.js
+ *  viewer.css, without which the viewer does not start). And each page's own CSP lets it
+ *  reach the dev server's socket, as the manifest's does: otherwise every page logs a
+ *  violation to the extension's error list. */
+function publicLinksInDev() {
+  return {
+    name: "anagram:public-links-in-dev",
+    transformIndexHtml(html: string, ctx: { server?: { config: { server: { origin?: string; port?: number } } } }) {
+      const server = ctx.server?.config.server;
+      const socket = (server?.origin ?? `http://localhost:${server?.port ?? 3000}`).replace(/^http/, "ws");
+      // WXT hands a page through this twice: the source goes in once.
+      return html.includes(socket) ? html : html.replace(/(http-equiv="Content-Security-Policy" content="connect-src 'self')/u, `$1 ${socket}`);
+    },
+    configureServer(server: { middlewares: { use(handler: (req: { url?: string }, res: unknown, next: () => void) => void): void } }) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url?.startsWith("/@fs/vendor/")) req.url = req.url.slice("/@fs".length);
+        next();
+      });
+    },
+  };
+}
+
 function englishFallback() {
   let entries: string[] | undefined;
   let scanned: string[] = [];
@@ -153,7 +176,10 @@ export default defineConfig({
   vite: ({ command }) => ({
     // The test build reads a stand-in device (lib/ui/deviceInputs.ts); the shipping one has no such code.
     define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify(TEST_GRANT_ALL ? "1" : "") },
-    plugins: [englishFallback(), ...(command === "serve" ? [] : [thirdPartyNotices()])],
+    plugins: [englishFallback(), ...(command === "serve" ? [publicLinksInDev()] : [thirdPartyNotices()])],
+    // The extension's pages are cross-origin isolated (require-corp), and in a dev build their
+    // stylesheets come from the dev server: it has to say they may be embedded.
+    server: { headers: { "Cross-Origin-Resource-Policy": "cross-origin" } },
   }),
   hooks: {
     // AGPL: every copy of the extension carries the licence text, and the notices of the
@@ -162,6 +188,29 @@ export default defineConfig({
       for (const name of ["LICENSE", NOTICES_FILE]) files.push({ absoluteSrc: resolve(ROOT, name), relativeDest: name });
     },
     "build:before": () => shippedPackages.clear(),
+    // WXT's dev reloader refreshes every tab a content script may run on, which in an
+    // everyday browser with all sites granted is every tab, and does so whenever the
+    // background connects. Here a content-script change reloads the extension instead, once,
+    // and the background connecting reloads nothing: open tabs keep their page. Installed on
+    // every start, together with its flag: a changed config is a new module, and a reloader
+    // reading another start's flag would answer every connection with a reload, forever.
+    "server:started": (_wxt, server) => {
+      let connecting = false, pending = false;
+      // Runs before WXT adds its own listener for the same event, so the flag is up while
+      // that listener asks for the content scripts' reload.
+      server.ws.on("wxt:background-initialized", () => {
+        connecting = true;
+        queueMicrotask(() => (connecting = false));
+      });
+      server.reloadContentScript = () => {
+        if (pending || connecting) return;
+        pending = true;
+        queueMicrotask(() => {
+          pending = false;
+          server.reloadExtension();
+        });
+      };
+    },
     "build:done": (wxt) => {
       if (wxt.config.command === "serve") return;
       const gone = [...bundledPackages()]
@@ -180,7 +229,25 @@ export default defineConfig({
     // Production content scripts are registered only after a grant or user action.
     // Remove WXT's inferred hosts; its dev server manages its own registration.
     "build:manifestGenerated": (wxt, manifest) => {
-      if (wxt.config.command === "serve") return;
+      // A dev build loaded into an everyday browser reads only the sites granted to it, as a
+      // shipping build does: WXT's dev server keeps its own host but not the content script's
+      // <all_urls>, nor `tabs`. Its reloader's WebSocket needs a ws: source, which the
+      // connect-src's http: does not cover, and the pages' stylesheets (the reader's PDF.js
+      // viewer.css) and the images and fonts they name come from the dev server too, as WXT
+      // already allows their scripts to.
+      if (wxt.config.command === "serve") {
+        manifest.host_permissions = manifest.host_permissions?.filter((p: string) => p !== "<all_urls>");
+        manifest.permissions = manifest.permissions?.filter((p: string) => p !== "tabs");
+        const csp = manifest.content_security_policy;
+        if (typeof csp === "object" && csp.extension_pages && wxt.server) {
+          csp.extension_pages = csp.extension_pages
+            .replace("connect-src 'self'", `connect-src 'self' ${wxt.server.origin.replace(/^http/, "ws")}`)
+            .replace("style-src 'self'", `style-src 'self' ${wxt.server.origin}`)
+            .replace("img-src 'self'", `img-src 'self' ${wxt.server.origin}`)
+            .replace("font-src 'self'", `font-src 'self' ${wxt.server.origin}`);
+        }
+        return;
+      }
       if (TEST_GRANT_ALL) manifest.host_permissions = [...ALL_SITES];
       else delete manifest.host_permissions;
       // Firefox's MV2 button is built from the popup page, not from `action` above: its icon
