@@ -64,7 +64,7 @@ test.describe("a zh-CN browser", () => {
         sourceHref: document.getElementById("sourceCode")?.getAttribute("href") ?? "",
       })), { message: `${zh} (options)` })
       .toEqual({
-        lang: "zh-CN", engine: "引擎", componentStatus: "本地引擎，就绪", update: true, marks: "下划线",
+        lang: "zh-CN", engine: "引擎", componentStatus: "本地引擎：就绪", update: true, marks: "下划线",
         fabricatedCommand: false, source: "源代码（AGPL-3.0）", sourceHref: `https://github.com/CoderBak/anagram/tree/v${EXTENSION_VERSION}`,
       });
     await opts.close();
