@@ -257,11 +257,27 @@ describe("scoreDetached", () => {
     } finally {controller.stop();}
   });
 
-  it("gives the scheduler the lanes' own budgets where nobody asks otherwise", async () => {
-    const {controller} = await reader();
-    try {
-      expect(calls.budgets[0]).toEqual({viewport: 2400, near: 4000, background: 6000});
-    } finally {controller.stop();}
+  it("makes every batch one unit where the engine scores on the processor, as its status says, and not elsewhere", async () => {
+    const device = (name: string | undefined) => calls.message.mockImplementation(async (msg: {action?: string}) =>
+      msg?.action === "getBackendStatus" ? {active: "server", server: {ok: true, checkedAt: 0, device: name}} : undefined);
+    const now = () => {
+      const lanes = calls.budgets.at(-1) as Record<Lane, () => number>;
+      return {viewport: lanes.viewport(), near: lanes.near(), background: lanes.background()};
+    };
+    for (const [name, expected] of [
+      ["wasm", {viewport: 1, near: 1, background: 1}],
+      ["cpu", {viewport: 1, near: 1, background: 1}],
+      ["webgpu", {viewport: 2400, near: 4000, background: 6000}],
+      ["mps", {viewport: 2400, near: 4000, background: 6000}],
+      [undefined, {viewport: 2400, near: 4000, background: 6000}],
+    ] as const) {
+      device(name);
+      const {controller} = await reader();
+      try {
+        await settle();
+        expect(now(), String(name)).toEqual(expected);
+      } finally {controller.stop();}
+    }
   });
 });
 

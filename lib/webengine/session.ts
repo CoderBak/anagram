@@ -65,6 +65,13 @@ export const EMBEDDING_BYTES = 50265 * 1024 * 4;
  * batch.
  */
 export const SESSION_BATCH = { webgpu: 4, wasm: 8 } as const;
+/**
+ * What a pass costs beyond its tokens, in tokens, by provider (lib/webengine/scoring.ts
+ * passes). On an M4 at the product's shapes the GPU takes about 12 ms a pass and 0.5 ms a
+ * token, the CPU's eight threads about 110 ms and 2.7 ms: a pass of one text costs the CPU
+ * relatively more, and it pads a little more willingly.
+ */
+export const PASS_TOKENS = { webgpu: 24, wasm: 40 } as const;
 export const WEBGPU_ID = "webgpu:fp32";
 /** The FP16 tier's only configuration (lib/device.ts TIERS): ONNX Runtime upcasts FP16 on the
  *  processor and gains nothing, so it is never run there. It needs the adapter feature
@@ -213,6 +220,7 @@ export class Session implements Backend {
 
   get device(): "webgpu" | "wasm" { return this.info.candidate.device === "gpu" ? "webgpu" : "wasm"; }
   get batchSize(): number { return SESSION_BATCH[this.device]; }
+  get passTokens(): number { return PASS_TOKENS[this.device]; }
 
   async logits(inputIds: number[][], attentionMask: number[][], signal?: AbortSignal): Promise<Float32Array> {
     if (!this.session) throw new Error("session released");

@@ -998,6 +998,37 @@ class ProvenanceTests(unittest.TestCase):
                 self.assertEqual(len(reads), 2)
 
 
+class PassTests(unittest.TestCase):
+    """scoring.passes, which lib/webengine/scoring.ts mirrors case for case
+    (test/node/webengineText.test.ts)."""
+
+    def test_passes_cut_where_padding_costs_more_than_another_pass_and_least_in_all(self):
+        from scoring import passes
+        self.assertEqual([b - a for a, b in passes([100] * 35, 8)], [3, 8, 8, 8, 8])
+        self.assertEqual(passes([30, 500], 8), [(0, 1), (1, 2)])
+        self.assertEqual(passes([30, 40], 8), [(0, 2)])
+        self.assertEqual(passes([], 8), [])
+
+        def cheapest(w, limit, fixed, start=0):
+            if start == len(w):
+                return 0
+            return min(fixed + k * w[start + k - 1] + cheapest(w, limit, fixed, start + k)
+                       for k in range(1, min(limit, len(w) - start) + 1))
+
+        seed = 7
+        def random():
+            nonlocal seed
+            seed = seed * 48271 % 2147483647
+            return seed / 2147483647
+        for trial in range(200):
+            w = sorted(2 + int(random() * 510) for _ in range(1 + int(random() * 9)))
+            limit, fixed = 1 + int(random() * 5), (24, 40)[trial % 2]
+            spans = passes(w, limit, fixed)
+            self.assertTrue(all(1 <= b - a <= limit for a, b in spans))
+            self.assertEqual([k for a, b in spans for k in range(a, b)], list(range(len(w))))
+            self.assertEqual(sum(fixed + (b - a) * w[b - 1] for a, b in spans), cheapest(w, limit, fixed))
+
+
 class IsolatedBenchmarkTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

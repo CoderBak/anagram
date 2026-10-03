@@ -31,6 +31,8 @@
 //   typing to stop.
 // - Scope: a slow engine reads only around the page being read; the menu offers the rest.
 
+import { deviceKind } from "../backend/deviceKind";
+
 export type Speed = "fast" | "mid" | "slow";
 
 /** Milliseconds per thousand characters at or under which the engine is "fast" (a GPU: about
@@ -56,10 +58,8 @@ const SEED_MS_PER_K = 600;
 
 /** What the engine's device says of its pace, where it says something. */
 export function seedFor(device: string | undefined): number | null {
-  if (!device) return null;
-  if (/gpu|cuda|mps|metal|rocm|directml|dml/iu.test(device)) return 250;
-  if (/cpu|wasm/iu.test(device)) return 1000;
-  return null;
+  const kind = deviceKind(device);
+  return kind === "gpu" ? 250 : kind === "cpu" ? 1000 : null;
 }
 
 function classOf(msPerK: number): Speed {

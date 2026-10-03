@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { cleanText, pyStrip } from "../../lib/webengine/clean";
 import { demojize, removeEmoji } from "../../lib/webengine/emoji";
 import { Tokenizer } from "../../lib/webengine/tokenizer";
-import { countTokens, pad, pyRound, scoreTexts } from "../../lib/webengine/scoring";
+import { countTokens, pad, passes, pyRound, scoreTexts } from "../../lib/webengine/scoring";
 import { tinyTokenizerJson } from "../fixtures/webengine/tinyTokenizer.mjs";
 
 const tokenizer = () => new Tokenizer(tinyTokenizerJson() as never);
@@ -99,18 +99,46 @@ describe("scoring arithmetic", () => {
         return out;
       },
     };
-    const texts = Array.from({ length: 35 }, (_, i) => "the ".repeat(i + 1).trim());
+    // 35 texts of 3 to 37 tokens, given longest first.
+    const texts = Array.from({ length: 35 }, (_, i) => "the ".repeat(35 - i).trim());
     const results = await scoreTexts(backend, tokenizer(), texts);
-    expect(seen.map((b) => b.length)).toEqual([32, 3]);
+    // Shortest first, every pass at most the batch, and no text in two.
+    const widths = seen.flat().map((row) => row.filter((id) => id !== 1).length);
+    expect(widths).toEqual([...widths].sort((a, b) => a - b));
+    expect(seen.every((b) => b.length <= 32)).toBe(true);
+    expect(seen.flat()).toHaveLength(35);
     seen.length = 0;
     await scoreTexts({ ...backend, batchSize: 8 }, tokenizer(), texts);
-    expect(seen.map((b) => b.length)).toEqual([8, 8, 8, 8, 3]);
+    expect(seen.every((b) => b.length <= 8)).toBe(true);
+    expect(seen.flat()).toHaveLength(35);
     expect(results).toHaveLength(35);
-    expect(results[0]!.tokens).toBe(3);
-    expect(results[34]!.tokens).toBe(37);
-    expect(results[34]!.bucket).toBe(3);
-    expect(results[34]!.probs.reduce((a, b) => a + b)).toBeCloseTo(1, 3);
+    expect(results[34]!.tokens).toBe(3);
+    expect(results[0]!.tokens).toBe(37);
+    expect(results[0]!.bucket).toBe(3);
+    expect(results[0]!.probs.reduce((a, b) => a + b)).toBeCloseTo(1, 3);
     expect(results.every((r) => !r.truncated)).toBe(true);
+  });
+  it("cuts passes where padding costs more than another pass, and least in all", () => {
+    // Equal widths: as few passes as the batch allows, the short one first.
+    expect(passes(Array(35).fill(100), 8).map(([a, b]) => b - a)).toEqual([3, 8, 8, 8, 8]);
+    // A short text is not padded to a long one's width.
+    expect(passes([30, 500], 8)).toEqual([[0, 1], [1, 2]]);
+    expect(passes([30, 40], 8)).toEqual([[0, 2]]);
+    expect(passes([], 8)).toEqual([]);
+    // Least total cost, against every way to cut, on random sorted widths.
+    const cost = (w: number[], spans: [number, number][], fixed: number) => spans.reduce((sum, [a, b]) => sum + fixed + (b - a) * w[b - 1]!, 0);
+    const cheapest = (w: number[], limit: number, fixed: number, from = 0): number => from === w.length ? 0
+      : Math.min(...Array.from({ length: Math.min(limit, w.length - from) }, (_, k) => fixed + (k + 1) * w[from + k]! + cheapest(w, limit, fixed, from + k + 1)));
+    let seed = 7;
+    const random = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    for (let trial = 0; trial < 200; trial++) {
+      const w = Array.from({ length: 1 + Math.floor(random() * 9) }, () => 2 + Math.floor(random() * 510)).sort((a, b) => a - b);
+      const limit = 1 + Math.floor(random() * 5), fixed = [24, 40][trial % 2]!;
+      const spans = passes(w, limit, fixed);
+      expect(spans.every(([a, b]) => b - a >= 1 && b - a <= limit)).toBe(true);
+      expect(spans.flatMap(([a, b]) => Array.from({ length: b - a }, (_, k) => a + k))).toEqual(w.map((_, k) => k));
+      expect(cost(w, spans, fixed)).toBe(cheapest(w, limit, fixed));
+    }
   });
   it("truncates to the window, keeping the end token, and says so", async () => {
     const backend = { async logits(ids: number[][]) { expect(ids[0]).toHaveLength(512); expect(ids[0]![511]).toBe(2); return new Float32Array(4); } };

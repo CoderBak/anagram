@@ -30,6 +30,7 @@ import { readInWindows, requestSlices, unavailableResult, unitVerdict, type Unit
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, requestTokenCounts, contextAlive } from "../messaging/client";
 import { modelDim } from "../backend/router";
+import { deviceKind } from "../backend/deviceKind";
 import { createBadgeLayer, type BadgeLayer, type BadgeLayerOptions } from "../render/badge";
 import {
   setHighlight,
@@ -237,7 +238,8 @@ export interface OrchestratorOptions {
    *  of a paragraph read differently since, and is not counted. */
   documentTexts?: () => ReadonlySet<string> | null;
   /** Whether every batch is one unit, asked at each batch: the PDF reader's, where the engine
-   *  is not fast (lib/pdf/readAhead.ts). A pass pads its texts to the longest of them, and one
+   *  is not fast (lib/pdf/readAhead.ts). Without it, where the engine scores on the processor
+   *  (its status's device): a request there takes seconds and cannot be interrupted, and one
    *  paragraph at a time puts each chip up as soon as it is read. */
   oneUnitBatches?: () => boolean;
   /**
@@ -1029,6 +1031,7 @@ export function createOrchestrator(
         | BackendStatus
         | undefined;
       if (generation !== captureGeneration) return;
+      learnDevice(s);
       if (s?.active === "server" || s?.active === "idle" || s?.active === "loading") {
         leaveDown();
         // The daemon may have come back as a DIFFERENT model. A page whose paragraphs
@@ -1198,8 +1201,15 @@ export function createOrchestrator(
       .then(() => undefined, () => undefined);
   }
 
+  /** The engine scores on the processor (BackendStatus.server.device), as its status last said. */
+  let onProcessor = false;
+  function learnDevice(s: BackendStatus | undefined): void {
+    const kind = deviceKind(s?.server?.device);
+    if (kind) onProcessor = kind === "cpu";
+  }
+
   const scheduler: Scheduler = createScheduler<UnitVerdict>({
-    batchCharBudget: opts.oneUnitBatches ? laneBudgets(opts.oneUnitBatches) : BATCH_CHAR_BUDGET,
+    batchCharBudget: laneBudgets(opts.oneUnitBatches ?? (() => onProcessor)),
     maxInFlight: MAX_IN_FLIGHT,
     maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
     send,
@@ -1492,6 +1502,9 @@ export function createOrchestrator(
    * since been undone by a stop() or overtaken by a newer start().
    */
   async function boot(seq: number): Promise<void> {
+    // Where the engine scores decides how much a request carries; the settings don't wait for it.
+    void sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS })
+      .then((s) => { if (seq === bootSeq) learnDevice(s as BackendStatus | undefined); }, () => undefined);
     applySnapshot(await readSettings());
     if (seq !== bootSeq || !started) return; // stopped or restarted while we waited
 

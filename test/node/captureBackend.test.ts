@@ -102,8 +102,9 @@ describe("a page paused while the engine was down", () => {
       expect(calls.resume).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(5000); await settle();
       expect(calls.resume).not.toHaveBeenCalled();
-      // Once as it went down (the first probe follows the failed batch), then every five seconds.
-      expect(calls.message.mock.calls.filter(([m]) => m.action === "getBackendStatus")).toHaveLength(3);
+      // Once as it went down (the first probe follows the failed batch), then every five seconds
+      // (besides the one at start, which asks where the engine scores).
+      expect(calls.message.mock.calls.filter(([m]) => m.action === "getBackendStatus" && "probe" in m)).toHaveLength(3);
     } finally {controller.stop();}
   });
 });

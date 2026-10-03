@@ -2,8 +2,9 @@
 //
 // The same cleaning, tokenization, truncation, order, batching and rounding as the native
 // engine: texts are tokenized once, sorted by length, cut to the model's window with the
-// end-of-sequence token kept, padded on the right per batch, and the logits go through a
-// softmax to four probabilities rounded to four places. The forward pass itself is behind
+// end-of-sequence token kept, cut into passes where padding would cost more than another
+// pass (passes below), padded on the right per pass, and the logits go through a softmax to
+// four probabilities rounded to four places. The forward pass itself is behind
 // the `Backend` interface (lib/webengine/session.ts); everything else is here so that the
 // unit tests can drive it with a fake.
 import { BUCKET_COUNT } from "../contract";
@@ -14,6 +15,9 @@ import type { Tokenizer } from "./tokenizer";
 export const MAX_LENGTH = 512;
 /** Texts per forward pass when the backend does not say: the native engine's default. */
 export const BATCH_SIZE = 32;
+/** What a forward pass costs beyond its tokens, in tokens, when the backend does not say:
+ *  anagramd/scoring.py's PASS_TOKENS. */
+export const PASS_TOKENS = 24;
 export const N_BUCKETS = BUCKET_COUNT;
 
 export interface Backend {
@@ -21,6 +25,30 @@ export interface Backend {
   logits(inputIds: number[][], attentionMask: number[][], signal?: AbortSignal): Promise<Float32Array>;
   /** Texts per forward pass, when the backend bounds them (its memory grows with the batch). */
   batchSize?: number;
+  /** What a pass costs beyond its tokens, in tokens (passes). */
+  passTokens?: number;
+}
+
+/**
+ * scoring.passes: texts sorted by length, cut into forward passes of at most `limit` texts
+ * where padding the shorter ones to a longer one's width would cost more than another pass —
+ * the cuts with the least total cost (fixed + rows × width a pass), as [start, end) spans of
+ * `widths`. A pass is padded to its longest text: one pass of a 30-token text and a 500-token
+ * one costs 1,024 tokens, two cost 578. Of cuts that cost the same, the later passes are the
+ * fuller.
+ */
+export function passes(widths: readonly number[], limit: number, fixed = PASS_TOKENS): [number, number][] {
+  const n = widths.length;
+  const best: number[] = [0], cut: number[] = [0];
+  for (let end = 1; end <= n; end++) {
+    for (let start = Math.max(0, end - limit); start < end; start++) {
+      const cost = best[start]! + fixed + (end - start) * widths[end - 1]!;
+      if (best[end] === undefined || cost < best[end]!) { best[end] = cost; cut[end] = start; }
+    }
+  }
+  const spans: [number, number][] = [];
+  for (let end = n; end > 0; end = cut[end]!) spans.push([cut[end]!, end]);
+  return spans.reverse();
 }
 
 export interface Scored {
@@ -68,10 +96,10 @@ export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: 
   const eos = tokenizer.sepId;
   const order = [...allIds.keys()].sort((a, b) => lengths[a]! - lengths[b]!);
   const out: Scored[] = new Array(texts.length);
-  const batch = backend.batchSize ?? BATCH_SIZE;
-  for (let start = 0; start < order.length; start += batch) {
+  const widths = order.map((i) => Math.min(lengths[i]!, MAX_LENGTH));
+  for (const [start, end] of passes(widths, backend.batchSize ?? BATCH_SIZE, backend.passTokens ?? PASS_TOKENS)) {
     if (signal?.aborted) throw new Error("cancelled");
-    const chunk = order.slice(start, start + batch);
+    const chunk = order.slice(start, end);
     // `order`, and so every `i` below, holds the indices of `allIds` and `lengths`.
     const rows = chunk.map((i) => {
       const ids = allIds[i]!;

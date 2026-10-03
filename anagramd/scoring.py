@@ -7,6 +7,33 @@ import time
 
 import numpy as np
 
+#: What a forward pass costs beyond its tokens, in tokens: a pass of `rows` texts padded to
+#: `width` costs about PASS_TOKENS + rows × width. Fitted on an M4: MLX takes 4.3 ms a pass and
+#: 0.2 ms a token. lib/webengine/scoring.ts cuts the same way, with its own runtimes' figures.
+PASS_TOKENS = 24
+
+
+def passes(widths: list[int], limit: int, fixed: int = PASS_TOKENS) -> list[tuple[int, int]]:
+    """Cut texts sorted by length into forward passes of at most `limit` texts, where padding
+    the shorter ones to a longer one's width would cost more than another pass: the cuts with
+    the least total cost (fixed + rows × width a pass), as [start, end) spans of `widths`.
+
+    A pass is padded to its longest text: one pass of a 30-token text and a 500-token one
+    costs 1,024 tokens, two cost 578. Of cuts that cost the same, the later passes are the
+    fuller."""
+    n = len(widths)
+    best, cut = [0] + [None] * n, [0] * (n + 1)
+    for end in range(1, n + 1):
+        for start in range(max(0, end - limit), end):
+            cost = best[start] + fixed + (end - start) * widths[end - 1]
+            if best[end] is None or cost < best[end]:
+                best[end], cut[end] = cost, start
+    spans, end = [], n
+    while end:
+        spans.append((cut[end], end))
+        end = cut[end]
+    return spans[::-1]
+
 
 class Tokenizer:
     """The modelkit's tokenizer.json in the Rust tokenizers library, as transformers'
@@ -66,8 +93,9 @@ def score_texts(engine, texts: list[str], clean_text) -> list[dict]:
     with engine.lock:
         engine.last_wait_ms = (time.perf_counter() - waiting) * 1000
         started = time.perf_counter()
-        for start in range(0, len(order), engine.batch_size):
-            chunk = order[start:start + engine.batch_size]
+        widths = [min(lengths[i], engine.max_length) for i in order]
+        for start, end in passes(widths, engine.batch_size):
+            chunk = order[start:end]
             ids = [all_ids[i] if lengths[i] <= engine.max_length
                    else all_ids[i][:engine.max_length - 1] + [eos] for i in chunk]
             logits = np.asarray(engine._logits(ids), dtype=np.float32)
