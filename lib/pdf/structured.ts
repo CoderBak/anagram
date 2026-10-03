@@ -1248,6 +1248,10 @@ export interface StructuredOptions {
   /** Read EVERY block, whatever Zotero called it, and say what that was in `origin`:
    *  the benchmark's way of finding body text in blocks the reader leaves out. */
   everything?: boolean;
+  /** Every page the reader is given stays given (the PDF reader keeps the text of every page
+   *  it has read): a paragraph whose pages are all there is read for good, and its glyphs are
+   *  let go — at 300 pages they held 150 MB. */
+  pagesStay?: boolean;
 }
 
 /** A ReflowBlock that remembers what Zotero called it (StructuredOptions.everything). */
@@ -1256,12 +1260,15 @@ export interface StructuredBlock extends ReflowBlock {
 }
 
 /** A block as read from the structure, before any page has been seen. */
+/** Draft.seen of a block read for good (StructuredOptions.pagesStay). */
+const FINAL = "final";
+
 interface Draft {
   block: StructuredBlock;
   pieces: Piece[];
   /** 1-based pages the block's glyphs lie on. */
   pages: number[];
-  /** The last answer, and which of the block's pages were rendered when it was given. */
+  /** The last answer, and which of the block's pages (which text of each) it was given from. */
   seen: string | null;
   result: StructuredBlock | null;
   /** A display equation came after the block's last part. */
@@ -1282,8 +1289,9 @@ export interface StructuredReader {
   pagesOf(block: StructuredBlock): readonly number[];
 }
 
-export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
-  const everything = options.everything === true;
+/** The drafts and the vocabulary, in a scope of their own: the reader's closures then keep
+ *  neither the structure nor what was made on the way (39 MB at 300 pages). */
+function prepare(structure: SdtStructure, everything: boolean): { drafts: Draft[]; vocab: ReturnType<typeof vocabularyOf> } {
   const readings = readInColumns(readingsOf(structure.content, everything));
   const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
   // A bibliography is read only where the lines are numbered, and asked about then.
@@ -1346,7 +1354,21 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     for (const p of d.pieces) if (p.glyph) on.add(p.glyph.page + 1);
     d.pages = [...on].sort((a, b) => a - b);
   }
-  const vocab = vocabularyOf(drafts.map((d) => written(d.pieces)));
+  return { drafts, vocab: vocabularyOf(drafts.map((d) => written(d.pieces))) };
+}
+
+export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
+  const { drafts, vocab } = prepare(structure, options.everything === true);
+  const pagesStay = options.pagesStay === true;
+  /** Each page's text, by the object it came in: a page read again (one that could not be
+   *  read, then drawn) reads its blocks again. */
+  const serials = new WeakMap<PdfPageText, number>();
+  let serial = 0;
+  const serialOf = (p: PdfPageText): number => {
+    let n = serials.get(p);
+    if (n === undefined) serials.set(p, (n = ++serial));
+    return n;
+  };
   // A page's index, once per page's text: the reader passes every page it has the text of to
   // each call, and indexing them all again each time a page is drawn would be the cost.
   const indexed = new WeakMap<PdfPageText, PageIndex>();
@@ -1361,17 +1383,23 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     pagesOf: (block) => pagesOfResult.get(block) ?? [block.page],
     blocks(pages) {
       const pagesByNumber = new Map<number, PageIndex>();
-      for (const p of pages) pagesByNumber.set(p.page, indexOf(p));
+      const given = new Map<number, PdfPageText>();
+      for (const p of pages) { pagesByNumber.set(p.page, indexOf(p)); given.set(p.page, p); }
       const kinds = mathPagesOf(pagesByNumber);
       const out: StructuredBlock[] = [];
       for (const d of drafts) {
-        const seen = d.pages.filter((n) => pagesByNumber.has(n)).join(",");
+        // Read for good: its glyphs are gone, and its answer is the last.
+        if (d.pieces.length === 0 && d.seen === FINAL) { if (d.result) out.push(d.result); continue; }
+        const seen = d.pages.map((n) => { const p = given.get(n); return p ? serialOf(p) : "-"; }).join(",");
         if (d.seen !== seen) {
           const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, kinds);
           const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
           d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
           if (d.result) pagesOfResult.set(d.result, d.pages);
           d.seen = seen;
+          // Every page it lies on is there, each with text (an empty one may be a page that
+          // could not be read, and be read again): it reads as it ever will.
+          if (pagesStay && d.pages.every((n) => (given.get(n)?.items.length ?? 0) > 0)) { d.pieces = []; d.seen = FINAL; }
         }
         if (d.result) out.push(d.result);
       }

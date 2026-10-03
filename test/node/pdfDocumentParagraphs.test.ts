@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import type { PdfPageText, PdfTextItem, ReflowBlock } from "../../lib/pdf/reflow";
 import { createStructuredReader, type SdtBlock, type SdtStructure, type StructuredBlock } from "../../lib/pdf/structured";
-import { createPdfUnitSource, documentParagraphs, type DocumentParagraph } from "../../lib/pdf/units";
+import { createPdfUnitSource, documentParagraphs, planOf, type DocumentParagraph } from "../../lib/pdf/units";
 import type { Unit } from "../../lib/types";
 
 const WIDTH = 612;
@@ -151,6 +151,36 @@ describe("StructuredReader.pagesOf", () => {
   });
 });
 
+describe("StructuredReader with pagesStay", () => {
+  const texts = (blocks: StructuredBlock[]) => blocks.map((b) => b.text);
+
+  it("answers as without it, page by page, and keeps answering the same once a paragraph's pages are all in", () => {
+    const { structure, pages } = documentOf();
+    const plain = createStructuredReader(structure), lean = createStructuredReader(structure, { pagesStay: true });
+    for (const given of [[pages[0]!], [pages[0]!, pages[1]!], pages]) {
+      expect(texts(lean.blocks(given))).toEqual(texts(plain.blocks(given)));
+    }
+    const once = lean.blocks(pages), again = lean.blocks(pages);
+    expect(again).toEqual(once);
+    again.forEach((b, i) => expect(b).toBe(once[i])); // the same answers, not read again
+    expect(again.map((b) => lean.pagesOf(b))).toEqual([[1], [1], [1], [1, 2], [2], [3], [3]]);
+  });
+
+  it("reads a paragraph again when a page that could not be read comes in drawn, and only then for good", () => {
+    const { structure, pages } = documentOf();
+    const reader = createStructuredReader(structure, { pagesStay: true });
+    // Page 2 could not be read: the reader holds it as a page with no text (main.ts readPage).
+    const unread = { ...pages[1]!, items: [] };
+    const before = reader.blocks([pages[0]!, unread, pages[2]!]);
+    const carried = (blocks: StructuredBlock[]) => blocks.find((b) => b.text.startsWith(line(50).slice(0, 20)))!;
+    expect(new Set(carried(before).runs.map((r) => r.page))).toEqual(new Set([1]));
+    // Drawn, it comes in with its text: the paragraph over pages 1 and 2 is read again.
+    const after = reader.blocks(pages);
+    expect(new Set(carried(after).runs.map((r) => r.page))).toEqual(new Set([1, 2]));
+    expect(texts(after)).toEqual(texts(createStructuredReader(structure).blocks(pages)));
+  });
+});
+
 describe("documentParagraphs", () => {
   it("is the document's units once every page is drawn: the same texts, words, pages and order", () => {
     const { plan, units } = read([1, 2, 3]);
@@ -281,5 +311,31 @@ describe("documentParagraphs and blocks on no page", () => {
     expect(plan.map((p) => p.text)).toEqual([first, unread]);
     expect(plan.map((p) => p.order)).toEqual([0, 2]);
     expect(plan.map((p) => p.pages)).toEqual([[1], [2]]);
+  });
+});
+
+describe("planOf, kept with each block", () => {
+  const prose = Array.from({ length: 12 }, (_, i) => line(200 + i)).join(" ") + ".";
+  const block = (text: string): ReflowBlock => ({ kind: "paragraph", text, page: 3, runs: [], apart: false, columnBreak: false });
+
+  it("answers the same block again as it first did, and reads it afresh once anything it read changed", () => {
+    const b = block(prose);
+    const first = planOf([b], 75)[0]!;
+    expect(planOf([b], 75)[0]).toEqual(first);
+    expect(first.role).toBe("prose");
+    // Another floor, another role: a block set apart is read alone only above the floor.
+    const apart = { ...block(prose), apart: true };
+    expect(planOf([apart], 75)[0]!.role).toBe("apart");
+    expect(planOf([apart], 500)[0]!.role).toBe("barrier");
+    // Changed in place: its text, then its kind.
+    b.text = "Short.";
+    expect(planOf([b], 75)[0]!.words).toBe(1);
+    b.text = prose;
+    b.kind = "heading";
+    expect(planOf([b], 75)[0]!.role).toBe("barrier");
+    // The break before it is read each time, never kept.
+    b.kind = "paragraph";
+    b.columnBreak = true;
+    expect(planOf([b], 75)[0]!.barrierBefore).toBe(true);
   });
 });

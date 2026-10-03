@@ -168,7 +168,8 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
   try {
     const result = await readStructure(bytes, count, signal);
     if (owned !== generation) return false;
-    const reader = createStructuredReader(result);
+    // The reader keeps the text of every page it has read for as long as the document is open.
+    const reader = createStructuredReader(result, {pagesStay: true});
     await readAround(pages.keys(), owned);
     if (owned !== generation) return false;
     structure = reader;

@@ -148,13 +148,27 @@ function roleOf(block: ReflowBlock, words: number, floor: number): BlockRole {
   return role === "prose" ? "prose" : role === "aside" ? "skip" : "barrier";
 }
 
+/** A block's words, length and role, as they were last worked out, with what they were
+ *  worked out from: the structured reader hands back the same block for every paragraph
+ *  whose pages did not change, and counting words (Intl.Segmenter) for every block of a
+ *  300-page document each time a page is read was most of the read-ahead's main-thread time. */
+const planned = new WeakMap<ReflowBlock, {floor: number; text: string; kind: ReflowBlock["kind"]; page: number; apart: boolean; runsOn: boolean;
+  words: number; chars: number; role: BlockRole}>();
+
 /** The document's blocks as the grouping rules see them — word counts, lengths, roles and
  *  the breaks between them, and nothing of the page they were printed on. */
 export function planOf(blocks: readonly ReflowBlock[], floor: number): PlanBlock[] {
   return blocks.map((block) => {
-    const text = block.text.slice(0, MAX_UNIT_TEXT_CHARS);
-    const words = countWords(text);
-    return { words, chars: text.length, role: roleOf(block, words, floor), barrierBefore: block.columnBreak };
+    let known = planned.get(block);
+    if (!known || known.floor !== floor || known.text !== block.text || known.kind !== block.kind || known.page !== block.page ||
+      known.apart !== block.apart || known.runsOn !== !!block.runsOn) {
+      const text = block.text.slice(0, MAX_UNIT_TEXT_CHARS);
+      const words = countWords(text);
+      known = {floor, text: block.text, kind: block.kind, page: block.page, apart: block.apart, runsOn: !!block.runsOn,
+        words, chars: text.length, role: roleOf(block, words, floor)};
+      planned.set(block, known);
+    }
+    return { words: known.words, chars: known.chars, role: known.role, barrierBefore: block.columnBreak };
   });
 }
 

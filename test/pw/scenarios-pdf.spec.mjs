@@ -222,11 +222,20 @@ test("a thirty-page document read to the end: the menu counts every page read, n
   const menu = await popupOver(page);
   let shown;
   await expect.poll(async () => { shown = await menuReport(menu); return shown?.bands.reduce((a, b) => a + b, 0) ?? 0; }, { message: keeps }).toBeGreaterThanOrEqual(30 * 2);
-  expect.soft(shown.notes.join(" "), `${keeps}: every page is read, so no scope note`).not.toMatch(/Read \d+ of \d+ pages/);
-  const flagged = Number(shown.title?.match(/\((\d+)\//)?.[1] ?? 0);
+  // Every page read, the note that says how much of the document is goes (the last of the
+  // background reading may still be landing).
+  await expect.poll(async () => { shown = await menuReport(menu); return shown?.notes.join(" ") ?? ""; }, { message: `${keeps}: every page is read, so no scope note` })
+    .not.toMatch(/Reading the whole document|of the document read|Covers the \d+ pages/);
+  // The list and the icon are told apart, and a verdict read in the background can land
+  // between the two readings: they agree once it has.
   const tabId = await page.evaluate(async () => (await chrome.tabs.getCurrent())?.id);
-  const badge = await extension.sw.evaluate((tabId) => chrome.action.getBadgeText({ tabId }), tabId);
-  expect.soft(badge, `${keeps}: the toolbar icon counts what the list lists`).toBe(flagged > 0 ? String(flagged) : "");
+  let flagged = 0, badge = "";
+  await expect.poll(async () => {
+    shown = await menuReport(menu);
+    flagged = Number(shown?.title?.match(/\((\d+)\//)?.[1] ?? 0);
+    badge = await extension.sw.evaluate((tabId) => chrome.action.getBadgeText({ tabId }), tabId);
+    return badge === (flagged > 0 ? String(flagged) : "");
+  }, { message: `${keeps}: the toolbar icon counts what the list lists` }).toBe(true);
   test.skip(flagged === 0, "nothing flagged in this document under the fixture's scores: no row to follow");
   await menu.locator(".report-result").first().click();
   const back = "PDF reader: a row of the menu's list goes back to its page, which the viewer had let go";
