@@ -152,11 +152,11 @@ function watch(page, name, problems) {
   page.on("pageerror", (e) => problems.push(`${name}: ${e.message}`));
   page.on("console", (m) => { if (m.type() === "error") problems.push(`${name}: ${m.text()}`); });
 }
-/** What Settings puts in front of the stage ("In the browser, on the graphics card, Ready"), in both languages, longest first. */
+/** What Settings puts in front of the stage ("In the browser, on the graphics card: Ready"), in both languages, longest first. */
 const STATUS_PREFIXES = ["en", "zh-CN"].flatMap((lang) => {
   const m = (key) => MESSAGES[lang][key].message;
-  const sep = m("listSeparator");
-  return [`${m("engineWordsBrowser")}${sep}${m("engineWordsGpu")}${sep}`, `${m("engineWordsBrowser")}${sep}${m("engineWordsCpu")}${sep}`, `${m("engineWordsBrowser")}${sep}`, `${m("componentTitle")}${sep}`];
+  const sep = m("listSeparator"), colon = m("engineStatusSeparator");
+  return [`${m("engineWordsBrowser")}${sep}${m("engineWordsGpu")}${colon}`, `${m("engineWordsBrowser")}${sep}${m("engineWordsCpu")}${colon}`, `${m("engineWordsBrowser")}${colon}`, `${m("componentTitle")}${colon}`];
 });
 const rawStatusOf = (page) => page.evaluate(() => document.querySelector("#componentSettings .component-status")?.textContent ?? "");
 /** The stage the status line names, without Settings' words in front of it. */
@@ -652,7 +652,7 @@ for (const lang of ["en", "zh-CN"]) {
         !seen.installUi && !/curl|Invoke-RestMethod|install\.sh|Terminal|终端/.test(seen.text) &&
         ![w("componentUpdate"), w("componentUninstall")].some((label) => seen.text.includes(label)) && !/benchmark|基准/i.test(seen.text), seen.text.slice(0, 300));
       check(`${lang}: ${name} is cross-origin isolated (the manifest's keys)`, seen.isolated === true);
-      if (name === "options") check(`${lang}: Settings' engine row says it in words`, (await rawStatusOf(page)) === `${w("engineWordsBrowser")}${w("listSeparator")}${w("engineNotSetUp")}`, await rawStatusOf(page));
+      if (name === "options") check(`${lang}: Settings' engine row says it in words`, (await rawStatusOf(page)) === `${w("engineWordsBrowser")}${w("engineStatusSeparator")}${w("engineNotSetUp")}`, await rawStatusOf(page));
       if (name === "onboarding") {
         const reply = await engine(page, "status");
         check(`${lang}: a contract request reaches the in-browser engine through the offscreen document`,

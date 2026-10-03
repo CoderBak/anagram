@@ -147,7 +147,7 @@ test.describe("Settings", () => {
     expect(seen.ids, "Scope, the two report switches, Debug logging and the PDF reader are gone").toEqual([]);
     expect(seen.labels).toEqual(["Engine", "Sites", "PDFs", "Marks", "Length", "Cache"]);
     expect(seen.text).not.toMatch(/Shortcuts|Alt\s*\+\s*Shift|Scope|Include passage|Include page title|Debug logging|Analyze text/);
-    expect(seen.text, "the engine in words").toContain("In the browser, on the graphics card, Ready");
+    expect(seen.text, "the engine in words").toContain("In the browser, on the graphics card: Ready");
   });
 
   test("the engine row carries the switch, Delete model files and the idle unload inline; Keep open only while downloading", async ({ extension }) => {

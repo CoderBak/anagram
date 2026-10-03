@@ -896,7 +896,7 @@
     "description": "Cancel button in dialogs and for a running benchmark."
   },
   "componentIdleSetting": {
-    "message": "Unload after",
+    "message": "Free memory after",
     "description": "Label of the idle-unload select."
   },
   "componentIdleMinutes_one": {
@@ -1190,6 +1190,10 @@
   "listSeparator": {
     "message": ", ",
     "description": "Between the parts of a status line built in code, such as the popup's counts."
+  },
+  "engineStatusSeparator": {
+    "message": ": ",
+    "description": "Between an engine's name and its state in Settings' status line: \"Local engine: Ready\"."
   },
   "onbTagline": {
     "message": "Marks AI-written paragraphs as you read. Everything runs on this computer.",

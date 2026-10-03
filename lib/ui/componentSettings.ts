@@ -226,7 +226,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       const inUse = reply.code === "busy";
       retryable = !inUse && (everConnected || reply.kind === "invalid" || !!actionError);
       const said = t(scheduledCleanup || scheduledUpdate ? "componentSystemWindow" : awaitingUninstall ? "componentRemoving" : awaitingUpdate ? "componentUpdating" : inUse ? "componentInUse" : reply.kind === "invalid" || everConnected ? "componentNeedsAttention" : "componentNotInstalled");
-      summary.textContent = inSettings ? [t("componentTitle"), said].join(t("listSeparator")) : said;
+      summary.textContent = inSettings ? t("componentTitle") + t("engineStatusSeparator") + said : said;
       install.hidden = everConnected || awaitingUninstall || inUse;
       bar.el.hidden = percent.hidden = progressText.hidden = idleField.hidden = true;
       error.textContent = actionError; error.hidden = !actionError;
@@ -244,7 +244,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (awaitingUpdate && s.operation?.name !== "update" && !["updating", "stopped"].includes(s.state)) awaitingUpdate = false;
     const downloading = ["running", "paused", "failed"].includes(s.download.status);
     const label = completedUninstallReceipt ? t("componentCleanupDone") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
-    summary.textContent = inSettings && !completedUninstallReceipt ? [t("componentTitle"), label].join(t("listSeparator")) : label;
+    summary.textContent = inSettings && !completedUninstallReceipt ? t("componentTitle") + t("engineStatusSeparator") + label : label;
     install.hidden = true;
     idleField.hidden = !s.settings;
     if (s.settings) {

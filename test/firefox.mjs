@@ -91,7 +91,7 @@ await sleep(1200);
 const versionText = await optionsPage.evaluate(() => `${document.getElementById("version")?.textContent ?? ""}|${document.querySelector("#componentSettings .component-status")?.textContent ?? ""}`);
 check(
   "options page renders and shows the version and the engine's status (background page reachable)",
-  /^v\d+\.\d+\.\d+\|Local engine, Ready$/.test(versionText),
+  /^v\d+\.\d+\.\d+\|Local engine: Ready$/.test(versionText),
   versionText,
 );
 

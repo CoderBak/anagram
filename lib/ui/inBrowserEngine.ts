@@ -237,7 +237,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     const label = t(stageKeys[stage.stage]);
     if (!inSettings) return label;
     const where = stage.stage === "ready" ? (stage.device === "cpu" ? t("engineWordsCpu") : stage.device === "gpu" ? t("engineWordsGpu") : "") : "";
-    return [t("engineWordsBrowser"), where, label].filter(Boolean).join(t("listSeparator"));
+    return [t("engineWordsBrowser"), where].filter(Boolean).join(t("listSeparator")) + t("engineStatusSeparator") + label;
   }
 
   function repaint(): void {

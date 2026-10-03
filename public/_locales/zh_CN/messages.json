@@ -697,7 +697,7 @@
     "message": "取消"
   },
   "componentIdleSetting": {
-    "message": "空闲后卸载"
+    "message": "空闲多久后释放内存"
   },
   "componentIdleMinutes_one": {
     "message": "$1 分钟"
@@ -917,6 +917,10 @@
   },
   "listSeparator": {
     "message": "，"
+  },
+  "engineStatusSeparator": {
+    "message": "：",
+    "description": "Between an engine's name and its state in Settings' status line: \"Local engine: Ready\"."
   },
   "onbTagline": {
     "message": "阅读时标出 AI 写的段落。一切都在这台电脑上运行。"

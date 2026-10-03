@@ -25,8 +25,8 @@ const readCard = (page) =>
   page.evaluate(() => {
     const txt = (sel) => document.querySelector(sel)?.textContent ?? null;
     return {
-      // Settings puts the engine's name in front of the stage ("Local engine, Ready").
-      status: txt("#componentSettings .component-status")?.replace(/^Local engine, /, "") ?? null,
+      // Settings puts the engine's name in front of the stage ("Local engine: Ready").
+      status: txt("#componentSettings .component-status")?.replace(/^Local engine: /, "") ?? null,
       access: txt("#accessState"),
       install: document.getElementById("install")?.hidden === false ? txt("#install-cmd") : null,
       primary: document.getElementById("component-primary")?.hidden === false ? txt("#component-primary") : null,
