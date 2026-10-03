@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -155,6 +156,19 @@ assert not {'torch', 'mlx', 'onnxruntime'} & set(sys.modules)
         self.assertTrue(found["onnx"]["cpu"]["available"])
         self.assertIn(("run", "CPUExecutionProvider"), ort.calls)
         self.assertTrue(ort.telemetry_disabled)
+
+    def test_onnxruntime_is_loaded_with_its_telemetry_already_off(self):
+        # ORT_DISABLE_TELEMETRY is read once, as ONNX Runtime initializes: it must be set by then.
+        seen = {}
+        def load(name):
+            if name == "onnxruntime":
+                seen["telemetry"] = os.environ.get("ORT_DISABLE_TELEMETRY")
+                return FakeOrt()
+            return FakeTorch()
+        with patch.dict(os.environ, {"ORT_DISABLE_TELEMETRY": "0"}), \
+                patch.object(model_plan.importlib, "import_module", side_effect=load):
+            discover_hardware()
+        self.assertEqual(seen["telemetry"], "1")
 
     def test_mps_reports_working_only_after_sync_and_result(self):
         torch, ort = FakeTorch(mps=True), FakeOrt()

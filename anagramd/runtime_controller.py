@@ -22,8 +22,10 @@ when that is not installed), until it is chosen again.
 from __future__ import annotations
 
 import copy
+import importlib
 import json
 import math
+import os
 import statistics
 import threading
 import time
@@ -66,6 +68,18 @@ class RuntimeFailure(Exception):
 STARTUP_CRASH_LIMIT = 2
 PASSED_OVER = ("Stopped the engine unexpectedly twice while starting; Anagram uses another "
                "configuration until you choose this one again")
+
+
+def import_onnxruntime():
+    """ONNX Runtime with its telemetry off. Since 1.30 it sends usage events to Microsoft on
+    macOS and Linux too, and keeps a device identifier in the user's home, unless
+    ORT_DISABLE_TELEMETRY is set before it initializes: disable_telemetry_events() alone
+    leaves the uploader running and the first events sent."""
+    os.environ["ORT_DISABLE_TELEMETRY"] = "1"
+    ort = importlib.import_module("onnxruntime")
+    if hasattr(ort, "disable_telemetry_events"):
+        ort.disable_telemetry_events()
+    return ort
 
 
 def error_text(error) -> str:

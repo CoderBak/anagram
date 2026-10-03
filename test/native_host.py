@@ -262,7 +262,7 @@ class Component:
                      'home': os.environ.get('HOME'), 'token': os.environ.get('HF_TOKEN'),
                      'cache': {name: os.environ.get(name) for name in
                                ('HF_HOME','HF_HUB_CACHE','HF_TOKEN_PATH','TORCH_HOME','XDG_CACHE_HOME','TMPDIR')},
-                     'offline': os.environ.get('HF_HUB_OFFLINE')}
+                     'offline': os.environ.get('HF_HUB_OFFLINE'), 'ort_telemetry_off': os.environ.get('ORT_DISABLE_TELEMETRY')}
     def close(self): pass
 native_component.NativeComponent = Component
 sys.argv = ['native_host.py', '--home', sys.argv[2]]
@@ -275,13 +275,16 @@ native_host.main()
             result = subprocess.run([sys.executable, "-I", "-c", code, str(DAEMON), str(home)],
                                     input=frame(request()), capture_output=True, cwd=launch, check=True,
                                     env={**os.environ, "HF_HOME": str(launch), "TORCH_HOME": str(launch),
-                                         "TMPDIR": str(launch), "HF_TOKEN": "fixture-secret", "HF_HUB_OFFLINE": "0"})
+                                         "TMPDIR": str(launch), "HF_TOKEN": "fixture-secret", "HF_HUB_OFFLINE": "0",
+                                         "ORT_DISABLE_TELEMETRY": "0"})
             data = replies(result.stdout)[0]["data"]
             self.assertEqual(data["cwd"], str(home.resolve()))
             self.assertEqual(data["tmp"], str(home.resolve() / "cache/tmp"))
             self.assertEqual(data["home"], os.environ.get("HOME"))
             self.assertIsNone(data["token"])
             self.assertEqual(data["offline"], "1")
+            # ONNX Runtime's telemetry is off whatever the launcher said, before anything loads it.
+            self.assertEqual(data["ort_telemetry_off"], "1")
             self.assertTrue(all(Path(value).is_relative_to(home.resolve()) for value in data["cache"].values()))
             self.assertTrue((home / "dependency-session").is_file())
             self.assertEqual(list(launch.iterdir()), [])

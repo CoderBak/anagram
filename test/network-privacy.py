@@ -44,6 +44,30 @@ class NetworkPrivacyTests(unittest.TestCase):
         self.assertTrue(library_imports)
         self.assertLess(policy.end_lineno, min(library_imports))
 
+    def test_onnx_runtime_loads_only_with_its_telemetry_off(self):
+        # ONNX Runtime 1.30 sends usage events to Microsoft on macOS and Linux and keeps a
+        # device identifier in the home folder unless ORT_DISABLE_TELEMETRY is set before it
+        # initializes. Every load goes through runtime_controller.import_onnxruntime, which
+        # sets it first; nothing else imports the module.
+        loads = []
+        for path in sorted((ROOT / "anagramd").glob("*.py")):
+            tree = source(path.name)
+            for node in ast.walk(tree):
+                names = ([entry.name for entry in node.names] if isinstance(node, ast.Import)
+                         else [node.module or ""] if isinstance(node, ast.ImportFrom) else
+                         [node.args[0].value] if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                                                  and node.func.attr == "import_module" and node.args
+                                                  and isinstance(node.args[0], ast.Constant)) else [])
+                if any(str(name).split(".")[0] == "onnxruntime" for name in names):
+                    loads.append((path.name, node.lineno))
+        tree = source("runtime_controller.py")
+        helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "import_onnxruntime")
+        self.assertEqual([name for name, _ in loads], ["runtime_controller.py"])
+        self.assertTrue(helper.lineno <= loads[0][1] <= helper.end_lineno)
+        first = helper.body[1]  # after the docstring
+        self.assertEqual(ast.unparse(first), "os.environ['ORT_DISABLE_TELEMETRY'] = '1'")
+        self.assertLess(first.lineno, loads[0][1])
+
     def test_every_transformers_load_requires_local_files_and_forbids_remote_code(self):
         calls = []
         for name in INFERENCE:
@@ -110,10 +134,11 @@ class InBrowserEnginePrivacyTests(unittest.TestCase):
 
     def test_the_engine_addresses_only_the_download_hosts(self):
         # Page text never leaves the browser: any address the engine writes down is one
-        # of the model's download hosts, and never a loopback or other inference server.
+        # of the model's download hosts (Hugging Face, or hf-mirror.com where Hugging Face
+        # cannot be reached), and never a loopback or other inference server.
         # Comment lines are the attributions THIRD_PARTY_NOTICES.md requires of the
         # adapted code (test/node/notices.test.ts) and name nothing the code reaches.
-        allowed = re.compile(r"^https://(huggingface\.co|[\w.-]+\.hf\.co)/")
+        allowed = re.compile(r"^https://(huggingface\.co|[\w.-]+\.hf\.co|hf-mirror\.com)/")
         sources = web_engine_sources()
         self.assertTrue(sources, "No in-browser engine source was inspected")
         for path in sources:

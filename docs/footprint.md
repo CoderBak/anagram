@@ -51,7 +51,12 @@ download host for those files, contacted only when huggingface.co is unreachable
 missing file or a checksum mismatch never triggers it.
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
-notice compares versions locally; it does not poll GitHub.
+notice compares versions locally; it does not poll GitHub. ONNX Runtime, which the component
+imports to probe the hardware (and to score, where it is the engine), has telemetry of its
+own, on by default on macOS and Linux since 1.30: events to `mobile.events.data.microsoft.com`
+and a device identifier under the home folder. The component sets `ORT_DISABLE_TELEMETRY=1`
+before ONNX Runtime loads (`anagramd/runtime_controller.py`, `import_onnxruntime`), which keeps
+it from starting either.
 
 The PDF reader starts one Web Worker per open document (`lib/pdf/structureWorker.ts`,
 running the vendored Zotero document-worker, `vendor/document-worker/`). The worker's own

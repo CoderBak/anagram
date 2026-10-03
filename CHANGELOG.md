@@ -25,6 +25,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The local engine let ONNX Runtime 1.30 send its own usage telemetry to Microsoft and keep a device identifier in your home folder, though Anagram has no telemetry: ONNX Runtime now loads with its telemetry switched off before it starts, and creates neither.
 - Refreshing the PDF reader keeps its document: it is read again from its source, in a tab that already showed it.
 - Scrolling the PDF reader no longer takes the chips off pages that stay drawn.
 - The PDF reader no longer reads a figure's caption as body text after a paragraph the figure cut off ("…are projected to" at the foot of one page, the figure and its caption at the head of the next).

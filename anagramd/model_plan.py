@@ -15,7 +15,7 @@ import platform
 import re
 import threading
 
-from runtime_controller import error_text
+from runtime_controller import error_text, import_onnxruntime
 
 ARTIFACT_PATHS = {
     "safetensors": "model.safetensors",
@@ -161,9 +161,7 @@ def discover_hardware():
         mlx_info.update(error=message, gpu=_status(error=message))
 
     try:
-        ort = importlib.import_module("onnxruntime")
-        if hasattr(ort, "disable_telemetry_events"):
-            ort.disable_telemetry_events()
+        ort = import_onnxruntime()
         ort_info.update(available=True, version=str(ort.__version__), providers=list(ort.get_available_providers()))
         if "CPUExecutionProvider" in ort_info["providers"]:
             try:

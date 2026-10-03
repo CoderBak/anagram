@@ -270,8 +270,10 @@ def configure_environment(home):
     os.environ["HF_TOKEN_PATH"] = str(token)
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
         os.environ.pop(name, None)
+    # ONNX Runtime reads ORT_DISABLE_TELEMETRY once, as it initializes: set before anything
+    # here, or a helper started from here, could load it (runtime_controller.import_onnxruntime).
     for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE",
-                 "HF_HUB_DISABLE_TELEMETRY", "HF_HUB_DISABLE_IMPLICIT_TOKEN"):
+                 "HF_HUB_DISABLE_TELEMETRY", "HF_HUB_DISABLE_IMPLICIT_TOKEN", "ORT_DISABLE_TELEMETRY"):
         os.environ[name] = "1"
     # tempfile may have cached the launcher's directory before configuration.
     tempfile.tempdir = None

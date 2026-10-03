@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from runtime_controller import Candidate, RuntimeController, RuntimeFailure, error_text
+from runtime_controller import Candidate, RuntimeController, RuntimeFailure, error_text, import_onnxruntime
 from model_plan import candidate_catalog, candidate_spec, discover_hardware, mlx_thread
 from safe_files import sha256_file
 from scoring import Tokenizer, score_texts
@@ -162,10 +162,8 @@ def require_classifier(model_dir, n_buckets):
 class OnnxEditLens:
     def __init__(self, model_dir, candidate, max_length, batch_size, lid, api):
         import emoji
-        import onnxruntime as ort
 
-        if hasattr(ort, "disable_telemetry_events"):
-            ort.disable_telemetry_events()
+        ort = import_onnxruntime()
 
         self.emoji, self.lid = emoji, lid
         self.max_length, self.batch_size = max_length, batch_size
