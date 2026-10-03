@@ -44,13 +44,13 @@ export function mountReport(host: HTMLElement, hooks: {
   jump(documentId: string, id: string): void;
   page(offset: number): void;
   allow(origin: string): void;
-}): (report: PageReport | null) => void {
+}): (report: PageReport | null, engineAway?: boolean) => void {
   let previous = "";
   let previousPage = "";
-  return (report) => {
+  return (report, engineAway = false) => {
     host.hidden = !report;
     if (!report) { previous = ""; host.replaceChildren(); return; }
-    const key = JSON.stringify(report);
+    const key = JSON.stringify([report, engineAway]);
     if (key === previous) return;
     previous = key;
     const focused = host.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.focus : undefined;
@@ -70,8 +70,8 @@ export function mountReport(host: HTMLElement, hooks: {
       ...(c.short ? [t("panelCovShort", c.short)] : []),
       ...(c.lessReliable ? [t("panelCovLessReliable", c.lessReliable, MODEL_MIN_WORDS)] : []),
       ...(c.notEnglish ? [t("panelCovNotEnglish", c.notEnglish)] : []),
-      ...(c.pending ? [t("panelCovPending", c.pending)] : []),
-      ...(c.unavailable ? [t("panelCovUnavailable", c.unavailable)] : []),
+      ...(c.pending && !engineAway ? [t("panelCovPending", c.pending)] : []),
+      ...(c.unavailable && !engineAway ? [t("panelCovUnavailable", c.unavailable)] : []),
     ].join(t("listSeparator"));
     coverage.hidden = !coverage.textContent;
     const scope = document.createElement("p");

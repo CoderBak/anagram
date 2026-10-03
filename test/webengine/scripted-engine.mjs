@@ -53,6 +53,16 @@ export const STATES = {
 };
 
 /** What the background says about the engine while it is in `state` (entrypoints/background.ts). */
+/** Why a download failed, as the background tells the toolbar menu (lib/webengine/download.ts
+ *  failureKind, through lib/backend/engineSetup.ts). */
+function failureOf(message) {
+  if (/not enough free disk space/.test(message ?? "")) return "storage";
+  if (/Checksum or size mismatch|larger than its pinned size/.test(message ?? "")) return "damaged";
+  if (/answered \S+ with status \d+/.test(message ?? "")) return "server";
+  if (/network request for|connection for \S+ was lost|Incomplete download|unexpected range|sent no body/.test(message ?? "")) return "network";
+  return "other";
+}
+
 export function backendFor(name, { crashed = false, engine = "inbrowser" } = {}) {
   const s = STATES[name];
   const up = s.state === "ready" && !crashed;
@@ -60,7 +70,7 @@ export function backendFor(name, { crashed = false, engine = "inbrowser" } = {})
   const setup = crashed || engine === "native" ? undefined
     : s.download.status === "running" ? { state: "downloading", percent }
     : s.download.status === "paused" ? { state: "paused", percent }
-    : s.download.status === "failed" ? { state: "failed", percent }
+    : s.download.status === "failed" ? { state: "failed", percent, failure: failureOf(s.download.error) }
     : s.state === "needs_models" ? { state: "needed", percent: 0 }
     : s.state === "loading" ? { state: "loading", percent: 100 } : null;
   return up

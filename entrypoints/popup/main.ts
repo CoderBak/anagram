@@ -249,7 +249,9 @@ function paint(): void {
   actionEl.hidden = !!pageAction && (docsEditor && (lead.action === "analyze" || lead.action === "rescan") || lead.action === "readPdf");
   if (!pageAction || lead.primary && !actionEl.hidden) pageActionEl.dataset.variant = "outline";
   else delete pageActionEl.dataset.variant;
-  paintReport(counts && !facts.tab?.translated ? report : null);
+  // While no engine can score, what waits for one or found none is the status line's to say.
+  const engineAway = lead.status === "setup" || lead.status === "daemon" || lead.status === "crashed";
+  paintReport(counts && !facts.tab?.translated ? report : null, engineAway);
   actionEl.disabled = false;
   if (lead.primary) delete actionEl.dataset.variant;
   else actionEl.dataset.variant = "outline";
