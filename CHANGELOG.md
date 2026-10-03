@@ -5,6 +5,16 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Changed
+
+- The in-browser engine downloads the model from hf-mirror.com where Hugging Face cannot be reached (mainland China, for one), as the local engine already did, and the setup page says it is doing so. A download that gets no answer at all now gives up on a host after 20 seconds instead of waiting for the browser, and its failure no longer tells a person who is online to check that they are.
+
+### Fixed
+
+- With the in-browser engine the toolbar menu said "Local engine needs an update": the engine, in its offscreen document, could not read the extension's version and reported none.
+
 ## [0.8.2] — 2026-09-29
 
 A pre-release with the new icon, a leaner floating panel and a cleaner count badge.

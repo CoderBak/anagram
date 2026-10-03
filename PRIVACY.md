@@ -67,8 +67,9 @@ text only: no URL, no cookies, no account data.
   Chrome, the background page in Firefox, or a pinned engine tab in Safari, running
   ONNX Runtime Web on the model files stored in your
   browser. When it is set up, the extension downloads the pinned model files from Hugging
-  Face (`huggingface.co` and its file CDN under `hf.co`), once; fastText's language-ID file
-  ships inside the extension. Those requests carry normal download metadata and never page
+  Face (`huggingface.co` and its file CDN under `hf.co`), once, or, only when `huggingface.co`
+  cannot be reached, from `hf-mirror.com`, a public mirror of the same repositories, each file
+  checked against its pinned SHA-256; fastText's language-ID file ships inside the extension. Those requests carry normal download metadata and never page
   text; after them, scoring needs no network.
 - **The local engine** is reached over Native Messaging: a registered pipe in Chrome and
   Firefox, or the containing app's XPC-to-stdio bridge in Safari. It accepts a fixed list

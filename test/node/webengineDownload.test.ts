@@ -1,6 +1,6 @@
 // test/node/webengineDownload.test.ts — resumable, verified downloads into the engine's store.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { downloadFile, DownloadFailed, DownloadPaused, failureKind, outOfSpace, secure, verifyFile } from "../../lib/webengine/download";
+import { downloadFile, DownloadFailed, DownloadPaused, failureKind, mirrorOf, outOfSpace, secure, verifyFile } from "../../lib/webengine/download";
 import { sha256Hex } from "../../lib/webengine/sha256";
 import { MemoryStore, OpfsStore } from "../../lib/webengine/storage";
 import { fakeServer, FullDisk } from "./webengineFake";
@@ -50,6 +50,71 @@ describe("model download", () => {
     expect(server.requests[2]!.range).toBe("bytes=700-");
     expect(await store.read("model.bin")).toEqual(FILE);
     expect(await store.size("model.bin.part")).toBeNull();
+  });
+
+  describe("where Hugging Face cannot be reached", () => {
+    const HF = "https://huggingface.co/x/resolve/r/model.bin";
+    const MIRROR = "https://hf-mirror.com/x/resolve/r/model.bin";
+    const pinned = (name = "model.bin") => ({ ...entry(), name, url: HF.replace("model.bin", name), mirrors: [MIRROR.replace("model.bin", name)] });
+    /** Hugging Face as a blocked network has it: `how` it fails; the mirror serves the files. */
+    const blocked = (server: ReturnType<typeof fakeServer>, how: "refused" | "silent" | number) => (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (new URL(url).hostname !== "huggingface.co") return server.fetch(url, init);
+      server.requests.push({ url, range: new Headers(init?.headers).get("Range") });
+      if (how === "refused") throw new TypeError("Failed to fetch");
+      if (how === "silent") return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }));
+      return new Response(null, { status: how });
+    }) as typeof fetch;
+
+    it("downloads from hf-mirror.com, says so, and starts the session's next file there", async () => {
+      const store = new MemoryStore();
+      const server = fakeServer({ "/x/resolve/r/model.bin": FILE, "/x/resolve/r/tokenizer.json": FILE });
+      const notices: string[] = [];
+      const route: { mirror?: boolean } = {};
+      await downloadFile(store, pinned(), { transport: blocked(server, "refused"), route, onNotice: (m) => notices.push(m), ...NO_WAIT });
+      expect(await store.read("model.bin")).toEqual(FILE);
+      expect(server.requests.map((r) => new URL(r.url).hostname)).toEqual(["huggingface.co", "hf-mirror.com"]);
+      expect(notices).toEqual(["Hugging Face is unreachable; downloading from hf-mirror.com"]);
+      expect(mirrorOf(notices[0])).toBe("hf-mirror.com");
+      expect(route.mirror).toBe(true);
+      server.requests.length = 0;
+      await downloadFile(store, pinned("tokenizer.json"), { transport: blocked(server, "refused"), route, ...NO_WAIT });
+      expect(server.requests.map((r) => new URL(r.url).hostname)).toEqual(["hf-mirror.com"]);
+    });
+
+    it("takes a host that answers nothing for unreachable after the connect timeout", async () => {
+      const store = new MemoryStore();
+      const server = fakeServer({ "/x/resolve/r/model.bin": FILE });
+      await downloadFile(store, pinned(), { transport: blocked(server, "silent"), connectTimeout: 20, ...NO_WAIT });
+      expect(await store.read("model.bin")).toEqual(FILE);
+      expect(server.requests.map((r) => new URL(r.url).hostname)).toEqual(["huggingface.co", "hf-mirror.com"]);
+    });
+
+    it("tries the mirror on a 5xx, not on a 404: a missing file is missing on the mirror too", async () => {
+      const server = fakeServer({ "/x/resolve/r/model.bin": FILE });
+      await downloadFile(new MemoryStore(), pinned(), { transport: blocked(server, 503), ...NO_WAIT });
+      expect(server.requests.map((r) => new URL(r.url).hostname)).toEqual(["huggingface.co", "hf-mirror.com"]);
+      const missing = fakeServer({ "/x/resolve/r/model.bin": FILE });
+      expect(failureKind(await failure(downloadFile(new MemoryStore(), pinned(), { transport: blocked(missing, 404), ...NO_WAIT })))).toBe("server");
+      expect(missing.requests.map((r) => new URL(r.url).hostname)).toEqual(["huggingface.co"]);
+    });
+
+    it("resumes a connection lost mid-file on the same host, carrying the part across a later switch", async () => {
+      const store = new MemoryStore();
+      const server = fakeServer({ "/x/resolve/r/model.bin": FILE }, { cutAfter: 350 });
+      let calls = 0;
+      // Hugging Face serves 350 bytes, then stops answering at all.
+      const transport = (async (input: string | URL | Request, init?: RequestInit) => {
+        if (new URL(String(input)).hostname === "huggingface.co" && calls++ > 0) { server.requests.push({ url: String(input), range: null }); throw new TypeError("Failed to fetch"); }
+        if (new URL(String(input)).hostname === "hf-mirror.com") server.options.cutAfter = undefined;
+        return server.fetch(input, init);
+      }) as typeof fetch;
+      await downloadFile(store, pinned(), { transport, ...NO_WAIT });
+      expect(await store.read("model.bin")).toEqual(FILE);
+      expect(server.requests.map((r) => [new URL(r.url).hostname, r.range])).toEqual([
+        ["huggingface.co", null], ["huggingface.co", null], ["hf-mirror.com", "bytes=350-"],
+      ]);
+    });
   });
 
   it("pauses on abort and keeps the part for the next attempt", async () => {

@@ -666,6 +666,10 @@
     "message": "about $1 h $2 min left",
     "description": "In-browser edition: the download's estimated time left; $1 is hours, $2 minutes."
   },
+  "engineFromMirror": {
+    "message": "from $1: Hugging Face could not be reached",
+    "description": "Setup page, beside the download progress: the model comes from a mirror (hf-mirror.com) because huggingface.co did not answer. $1 = the mirror host."
+  },
   "engineRetrying": {
     "message": "connection interrupted, trying again…",
     "description": "In-browser edition: after the download progress, while a lost connection is retried by itself."
@@ -695,7 +699,7 @@
     "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
   },
   "engineNetworkLost": {
-    "message": "The connection was lost. Check that you're online, then click Retry: the download continues where it stopped.",
+    "message": "The download could not reach Hugging Face or its mirror hf-mirror.com. Check your connection or proxy, then click Retry: the download continues where it stopped.",
     "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
   },
   "engineDiskFull": {

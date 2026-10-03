@@ -257,6 +257,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       percent.textContent = `${percentOf(counting.received, total)}%`;
       const parts = [t("engineProgress", formatSize(counting.received), formatSize(total))];
       if (counting.stage === "downloading") {
+        if (counting.mirror) parts.push(t("engineFromMirror", counting.mirror));
         if (counting.retrying) parts.push(t("engineRetrying"));
         else {
           const rate = speed.perSecond;

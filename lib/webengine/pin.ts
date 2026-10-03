@@ -2,7 +2,8 @@
 //
 // anagramd/modelkit.json names the Hugging Face redistribution of EditLens by repository
 // and commit, with the size and SHA-256 of every file; anagramd/download_modelkit.py
-// fetches each as https://huggingface.co/<repository>/resolve/<revision>/<path>. The browser
+// fetches each as https://huggingface.co/<repository>/resolve/<revision>/<path>, and from
+// hf-mirror.com under the same path where Hugging Face cannot be reached. The browser
 // engine downloads two of them, the ONNX graph (FP32, or the modelkit's FP16 one on the few
 // devices where FP32 does not fit, lib/device.ts TIERS) and the tokenizer, from there; nothing
 // else is ever fetched. The third file it needs, fastText's lid.176.ftz, ships inside the
@@ -16,7 +17,14 @@ export interface PinnedFile {
   size_bytes: number;
   sha256: string;
   url: string;
+  /** Other addresses of the same bytes, tried in order where `url`'s host cannot be reached
+   *  (lib/webengine/download.ts). The pinned SHA-256 still decides what is kept. */
+  mirrors?: string[];
 }
+
+/** download_modelkit.MIRROR_HOST: Hugging Face's repositories under the same paths, for where
+ *  huggingface.co cannot be reached (mainland China, for one). */
+export const MIRROR_HOST = "hf-mirror.com";
 
 /** The model's precision: FP32 everywhere it fits, FP16 (on WebGPU only) where it does not. */
 export type ModelTier = "fp32" | "fp16";
@@ -52,7 +60,8 @@ export function pinnedFiles(tier: ModelTier = "fp32"): PinnedFile[] {
     if (!name) continue;
     // download_modelkit.py: quote(name, safe="/") on the path.
     const path = entry.path.split("/").map(encodeURIComponent).join("/");
-    files.push({ name, size_bytes: entry.size_bytes, sha256: entry.sha256, url: `https://huggingface.co/${modelkit.repository}/resolve/${modelkit.revision}/${path}` });
+    const at = `${modelkit.repository}/resolve/${modelkit.revision}/${path}`;
+    files.push({ name, size_bytes: entry.size_bytes, sha256: entry.sha256, url: `https://huggingface.co/${at}`, mirrors: [`https://hf-mirror.com/${at}`] });
   }
   if (files.length !== Object.keys(names).length) throw new Error("anagramd/modelkit.json no longer lists a file the browser engine needs");
   return files;

@@ -219,6 +219,34 @@ describe("the engine's lifecycle", () => {
     expect(seen.at(-1)).toMatchObject({ status: "running", bytes_received: 250, detail: null });
   });
 
+  it("downloads both files from hf-mirror.com where Hugging Face is blocked, and says so all the way", async () => {
+    const mirror = fakeServer(FILES, { stallAfter: 300 });
+    const hosts: string[] = [];
+    const mirrored = pin();
+    for (const file of mirrored.files) Object.assign(file, { url: `https://huggingface.co/${file.name}`, mirrors: [`https://hf-mirror.com/${file.name}`] });
+    const engine = new Engine({
+      pin: mirrored, assets: ASSETS, version: "9.9.9", store: new MemoryStore(), retryWaits: [0],
+      transport: (async (url: string, init?: RequestInit) => {
+        hosts.push(new URL(url).hostname);
+        if (new URL(url).hostname === "huggingface.co") throw new TypeError("Failed to fetch");
+        return mirror.fetch(url, init);
+      }) as typeof fetch,
+      createSession: async (candidate, model) => fakeSession(candidate, model, []), probe: async () => candidates(),
+    });
+    engines.push(engine);
+    await engine.handle("models.download", {});
+    type Download = { status: string; bytes_received: number; detail: string | null };
+    let last: Download | undefined;
+    for (let i = 0; i < 400 && last?.bytes_received !== 300; i++) {
+      last = ((await engine.handle("status", {})).data as { download: Download }).download;
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    // Bytes keep coming from the mirror, and the notice stays: it is where they come from.
+    expect(last).toMatchObject({ status: "running", bytes_received: 300, detail: "Hugging Face is unreachable; downloading from hf-mirror.com" });
+    expect(setupStage(parseComponent((await engine.handle("status", {})).data)!)).toMatchObject({ stage: "downloading", mirror: "hf-mirror.com", retrying: false });
+    expect(hosts).toEqual(["huggingface.co", "hf-mirror.com"]);
+  });
+
   it("reports a failed download and retries it on request", async () => {
     const m = track(make({ server: { status: 500 } }));
     await m.engine.handle("models.download", {});

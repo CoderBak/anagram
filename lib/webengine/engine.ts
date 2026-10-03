@@ -6,7 +6,7 @@
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
 import type { ScoreResult } from "../contract";
-import { downloadFile, DownloadFailed, DownloadPaused, noRoomFor, outOfSpace, readPackaged, verifyFile } from "./download";
+import { downloadFile, DownloadFailed, DownloadPaused, mirrorOf, noRoomFor, outOfSpace, readPackaged, verifyFile } from "./download";
 import { FastText } from "./fasttext";
 import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES, modelFileName, type ModelTier, type Pin, type PinnedFile } from "./pin";
 import { CONTRACT_VERSION, EngineError, checkPayloadKeys, parseScorePayload, parseTokensPayload, type EngineOperation } from "./protocol";
@@ -270,23 +270,30 @@ export class Engine {
   private async runDownload(signal: AbortSignal): Promise<void> {
     const total = this.download.total_bytes;
     let received = 0;
+    // A mirror that worked for one file is where the next one starts (download.ts), and while
+    // bytes come from it the setup page says so: its notice outlives a retry's.
+    const route: { mirror?: boolean } = {};
+    let viaMirror: string | null = null;
     try {
       await this.dropOtherFiles();
       for (const file of this.pin.files) {
-        this.download = { ...this.download, phase: "downloading", file: file.name, detail: null };
+        this.download = { ...this.download, phase: "downloading", file: file.name, detail: viaMirror };
         if (this.settings.verified[file.name] === file.sha256 && (await this.store.size(file.name)) === file.size_bytes) {
           received += file.size_bytes;
           this.download = { ...this.download, bytes_received: received };
           continue;
         }
         await downloadFile(this.store, file, {
-          signal, transport: this.init.transport, retryWaits: this.init.retryWaits,
+          signal, transport: this.init.transport, retryWaits: this.init.retryWaits, route,
           onProgress: (bytes) => {
             const now = Math.min(total, received + bytes);
             // Bytes arriving again end a retry's notice.
-            this.download = { ...this.download, bytes_received: now, detail: now > this.download.bytes_received ? null : this.download.detail };
+            this.download = { ...this.download, bytes_received: now, detail: now > this.download.bytes_received ? viaMirror : this.download.detail };
           },
-          onNotice: (message) => { this.download = { ...this.download, detail: message }; },
+          onNotice: (message) => {
+            if (mirrorOf(message)) viaMirror = message;
+            this.download = { ...this.download, detail: message };
+          },
         });
         this.settings.verified[file.name] = file.sha256;
         await this.writeSettings();

@@ -516,6 +516,9 @@
   "engineLeftHours": {
     "message": "剩余约 $1 小时 $2 分钟"
   },
+  "engineFromMirror": {
+    "message": "无法连接 Hugging Face，正从 $1 下载"
+  },
   "engineRetrying": {
     "message": "连接中断，正在重试…"
   },
@@ -538,7 +541,7 @@
     "message": "在处理器上运行。在浏览器设置中开启硬件加速，Anagram 或许就能使用显卡。"
   },
   "engineNetworkLost": {
-    "message": "网络连接已中断。请确认已联网，然后点击“重试”，下载会从中断处继续。"
+    "message": "下载无法连接 Hugging Face 及其镜像 hf-mirror.com。请检查网络或代理设置，然后点击“重试”，下载会从中断处继续。"
   },
   "engineDiskFull": {
     "message": "磁盘可用空间不足。请至少腾出 $1，然后点击“重试”。"

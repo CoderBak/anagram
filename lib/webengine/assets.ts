@@ -16,6 +16,8 @@ const url = (path: string): string => browser.runtime.getURL(path as PublicPath)
 export function workerInit(choice?: TierChoice | null): Omit<WorkerInit, "type"> {
   let version: string | null = null;
   try { version = browser.runtime.getManifest().version; } catch { /* outside an extension */ }
+  // An offscreen document has no getManifest: the background put the version in its address.
+  version ??= typeof location === "undefined" ? null : new URLSearchParams(location.search).get("version");
   return {
     pin: pin(url(LID_PATH), choice?.tier === "fp16" ? "fp16" : "fp32"),
     // Where FP16 fails to run and FP32 fits the device, FP32 takes its place (lib/webengine/engine.ts).

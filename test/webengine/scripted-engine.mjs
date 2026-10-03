@@ -38,6 +38,8 @@ export const STATES = {
   // The lighter model (FP16) downloading: the line that says so beside the progress.
   lighter: snapshot({ tier: "fp16", state: "downloading", download: download({ status: "running", bytes_received: TOTAL_FP16 * 0.45, total_bytes: TOTAL_FP16, phase: "downloading", file: "model_fp16.onnx" }), storage: { models_bytes: TOTAL_FP16 * 0.45 } }),
   retrying: snapshot({ state: "downloading", download: download({ status: "running", bytes_received: TOTAL * 0.45, total_bytes: TOTAL, phase: "downloading", file: "model.onnx", detail: "Retrying model.onnx in 5 s" }), storage: { models_bytes: TOTAL * 0.45 } }),
+  // Hugging Face unreachable: the files come from hf-mirror.com, and the line beside the progress says so.
+  mirror: snapshot({ state: "downloading", download: download({ status: "running", bytes_received: TOTAL * 0.45, total_bytes: TOTAL, phase: "downloading", file: "model.onnx", detail: "Hugging Face is unreachable; downloading from hf-mirror.com" }), storage: { models_bytes: TOTAL * 0.45 } }),
   paused: snapshot({ state: "paused", download: download({ status: "paused", bytes_received: TOTAL * 0.45, total_bytes: TOTAL, phase: "downloading", file: "model.onnx" }), storage: { models_bytes: TOTAL * 0.45 } }),
   network: failed("The connection for model.onnx was lost"),
   storage: failed("There is not enough free disk space for model.onnx"),

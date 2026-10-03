@@ -9,11 +9,12 @@
 import { parseComponent, type ComponentSnapshot } from "./nativeClient";
 import type { NativeReply } from "./nativeProtocol";
 import type { EngineSetup } from "../messaging/protocol";
-import { failureKind, type DownloadFailure } from "../webengine/download";
+import { failureKind, mirrorOf, type DownloadFailure } from "../webengine/download";
 
 export type SetupStage =
   | { stage: "needed" }
-  | { stage: "downloading"; received: number; total: number; retrying: boolean }
+  /** `mirror`: the host the files come from where Hugging Face could not be reached. */
+  | { stage: "downloading"; received: number; total: number; retrying: boolean; mirror: string | null }
   | { stage: "paused"; received: number; total: number }
   | { stage: "failed"; received: number; total: number; failure: DownloadFailure }
   | { stage: "loading" }
@@ -47,7 +48,10 @@ export function setupStage(s: ComponentSnapshot): SetupStage {
   // A download paused or failed before the browser restarted knows its flags but not its
   // bytes; what is on disk (the parts) says how far it got.
   const received = Math.min(total, Math.max(s.download.bytes_received, s.storage.models_bytes));
-  if (status === "running") return { stage: "downloading", received: s.download.bytes_received, total, retrying: !!s.download.detail };
+  if (status === "running") {
+    const mirror = mirrorOf(s.download.detail);
+    return { stage: "downloading", received: s.download.bytes_received, total, retrying: !!s.download.detail && !mirror, mirror };
+  }
   if (status === "paused" || s.state === "paused") return { stage: "paused", received, total };
   if (status === "failed") return { stage: "failed", received, total, failure: failureKind(s.download.error) };
   switch (s.state) {

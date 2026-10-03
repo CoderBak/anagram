@@ -34,10 +34,15 @@ describe("the stage setup is in", () => {
 
   it("follows a download with its bytes, and says when it is retrying", () => {
     const running = snapshot({ state: "downloading", download: { status: "running", bytes_received: TOTAL / 4, total_bytes: TOTAL, phase: "downloading", file: "model.onnx" } });
-    expect(setupStage(running)).toEqual({ stage: "downloading", received: TOTAL / 4, total: TOTAL, retrying: false });
+    expect(setupStage(running)).toEqual({ stage: "downloading", received: TOTAL / 4, total: TOTAL, retrying: false, mirror: null });
     expect(engineSetup(running)).toEqual({ state: "downloading", percent: 25 });
     const retrying = snapshot({ state: "downloading", download: { status: "running", bytes_received: 10, total_bytes: TOTAL, detail: "Retrying model.onnx in 5 s" } });
-    expect(setupStage(retrying)).toMatchObject({ stage: "downloading", retrying: true });
+    expect(setupStage(retrying)).toMatchObject({ stage: "downloading", retrying: true, mirror: null });
+  });
+
+  it("names the mirror the files come from where Hugging Face could not be reached, either engine's notice", () => {
+    const mirrored = snapshot({ state: "downloading", download: { status: "running", bytes_received: 10, total_bytes: TOTAL, detail: "Hugging Face is unreachable; downloading from hf-mirror.com" } });
+    expect(setupStage(mirrored)).toMatchObject({ stage: "downloading", retrying: false, mirror: "hf-mirror.com" });
   });
 
   it("counts what is on disk for a download paused or failed before this run of the browser", () => {

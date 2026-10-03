@@ -38,8 +38,10 @@ export async function ensureOffscreenDocument(): Promise<void> {
   if (api.hasDocument && (await api.hasDocument())) return;
   // The tier the setup page chose goes in the address: the document has no storage to read it from.
   const tier = tierQuery(await engineTierChoice.getValue().catch(() => null));
+  // So is the extension's version, which the engine reports as its own (assets.ts workerInit).
+  const version = `${tier ? "&" : "?"}version=${encodeURIComponent(browser.runtime.getManifest().version)}`;
   creating ??= api.createDocument({
-    url: OFFSCREEN_PATH + tier,
+    url: OFFSCREEN_PATH + tier + version,
     reasons: ["WORKERS"],
     justification: "Runs the EditLens scoring model in a Web Worker; a service worker cannot start workers and is unloaded when idle",
   }).catch((error: unknown) => {

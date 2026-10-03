@@ -9,15 +9,30 @@
 // pinned address, and follows the host's redirect to its storage. It is a CORS request, which
 // Hugging Face and its storage answer with the headers that let the extension read it (under
 // the pages' cross-origin isolation too), so the extension holds no permission for the host.
+//
+// Where the host cannot be reached at all — no answer, no byte, a 5xx — the file's mirrors are
+// tried next (hf-mirror.com, for where Hugging Face is blocked), as download_modelkit.py does:
+// the part carries across the switch, the hash decides what is kept, and a mirror that worked
+// is tried first for the rest of the session's files.
 import { Sha256 } from "./sha256";
 import type { FileStore } from "./storage";
-import type { PinnedFile } from "./pin";
+import { MIRROR_HOST, type PinnedFile } from "./pin";
 
 export class DownloadPaused extends Error {
   constructor() { super("Download paused"); this.name = "DownloadPaused"; }
 }
 export class DownloadFailed extends Error {
-  constructor(message: string, public readonly retryable = false) { super(message); this.name = "DownloadFailed"; }
+  /** `unreachable`: the host answered no byte — a network error, a timeout, a 5xx — so another
+   *  address of the file is worth trying. A lost connection, a 404 or a bad hash never is. */
+  constructor(message: string, public readonly retryable = false, public readonly unreachable = false) { super(message); this.name = "DownloadFailed"; }
+}
+
+/** The notice a switch to a mirror leaves, word for word download_modelkit's (the local engine's),
+ *  so the setup page reads both engines' alike (lib/backend/engineSetup.ts). */
+export const mirrorNotice = (host: string): string => `Hugging Face is unreachable; downloading from ${host}`;
+/** The mirror a notice names, or null. */
+export function mirrorOf(notice: string | null | undefined): string | null {
+  return /^Hugging Face is unreachable; downloading from (\S+)$/.exec(notice ?? "")?.[1] ?? null;
 }
 
 export interface DownloadOptions {
@@ -30,9 +45,15 @@ export interface DownloadOptions {
   transport?: typeof fetch;
   /** Waits between attempts, in ms. */
   retryWaits?: number[];
+  /** Shared by a session's downloads: set once a mirror has worked, so the next file starts there. */
+  route?: { mirror?: boolean };
+  /** How long a request may go without an answer before its host counts as unreachable, in ms. */
+  connectTimeout?: number;
 }
 
 const RETRY_WAITS = [2_000, 5_000, 15_000];
+/** A blocked host often answers nothing at all, and a browser waits minutes for that. */
+const CONNECT_TIMEOUT = 20_000;
 
 /** What stopped a download, in the terms the setup page explains it in (lib/ui/inBrowserEngine.ts):
  *  the connection, a full disk, the server's answer, bytes that were not the pinned ones. */
@@ -93,19 +114,31 @@ export async function readPackaged(entry: PinnedFile): Promise<Uint8Array> {
  * DownloadPaused when `signal` aborts (the part stays), DownloadFailed otherwise.
  */
 export async function downloadFile(store: FileStore, entry: PinnedFile, options: DownloadOptions = {}): Promise<void> {
-  const { signal, onProgress = () => {}, onNotice = () => {}, transport, retryWaits = RETRY_WAITS } = options;
+  const { signal, onProgress = () => {}, onNotice = () => {}, transport, retryWaits = RETRY_WAITS, route = {}, connectTimeout = CONNECT_TIMEOUT } = options;
   const part = `${entry.name}.part`;
   const paused = () => { if (signal?.aborted) throw new DownloadPaused(); };
   paused();
   if (!secure(entry.url)) throw new DownloadFailed("Model downloads require HTTPS");
+  const sources = [entry.url, ...(entry.mirrors ?? []).filter(secure)];
+  const hostOf = (url: string): string => new URL(url).hostname;
+  let source = route.mirror ? Math.max(0, sources.findIndex((url) => hostOf(url) === MIRROR_HOST)) : 0;
+  if (source > 0) onNotice(mirrorNotice(hostOf(sources[source]!)));
   for (let attempt = 0; ; attempt++) {
     try {
-      await attemptDownload(store, entry, part, transport, signal, onProgress);
+      await attemptDownload(store, { ...entry, url: sources[source]! }, part, transport, signal, onProgress, connectTimeout);
       return;
     } catch (error) {
       if (error instanceof DownloadPaused) throw error;
       // A full disk stays full however often it is asked, whichever write found it so.
       if (outOfSpace(error)) throw noRoomFor(entry.name);
+      // A host that answers nothing: the next address, at once, without spending a retry.
+      if (error instanceof DownloadFailed && error.unreachable && source < sources.length - 1) {
+        source++;
+        if (hostOf(sources[source]!) === MIRROR_HOST) route.mirror = true;
+        onNotice(mirrorNotice(hostOf(sources[source]!)));
+        attempt--;
+        continue;
+      }
       const retryable = error instanceof DownloadFailed ? error.retryable : true;
       const wait = retryWaits[attempt];
       if (!retryable || wait === undefined) {
@@ -122,7 +155,7 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
 }
 
 async function attemptDownload(store: FileStore, entry: PinnedFile, part: string, transport: typeof fetch | undefined,
-  signal: AbortSignal | undefined, onProgress: (bytes: number) => void): Promise<void> {
+  signal: AbortSignal | undefined, onProgress: (bytes: number) => void, connectTimeout: number): Promise<void> {
   const paused = () => { if (signal?.aborted) throw new DownloadPaused(); };
   // Already there, and the pinned bytes exactly.
   if ((await store.size(entry.name)) === entry.size_bytes) {
@@ -139,6 +172,9 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   }
   onProgress(offset);
   if (offset === entry.size_bytes) return finish(store, entry, part, hasher);
+  // Aborted only while no answer has come: once it has, the body streams for as long as it takes.
+  const connecting = new AbortController();
+  const timer = setTimeout(() => connecting.abort(), connectTimeout);
   const request: RequestInit = {
     method: "GET",
     mode: "cors",
@@ -147,12 +183,14 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
     credentials: "omit",
     referrerPolicy: "no-referrer",
     redirect: "follow",
-    signal,
+    signal: signal ? AbortSignal.any([signal, connecting.signal]) : connecting.signal,
   };
   const response = await (transport ? transport(entry.url, request) : fetch(entry.url, request)).catch((error: unknown) => {
+    if (signal?.aborted) throw new DownloadPaused();
+    if (connecting.signal.aborted) throw new DownloadFailed(`The network request for ${entry.name} timed out`, true, true);
     if ((error as { name?: string }).name === "AbortError") throw new DownloadPaused();
-    throw new DownloadFailed(`The network request for ${entry.name} failed`, true);
-  });
+    throw new DownloadFailed(`The network request for ${entry.name} failed`, true, true);
+  }).finally(() => clearTimeout(timer));
   paused();
   let resumed = false;
   if (response.status === 206) {
@@ -167,7 +205,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
     if (offset > 0) { await store.truncate(part, 0); offset = 0; hasher.reset(); onProgress(0); }
   } else {
     await response.body?.cancel().catch(() => {});
-    throw new DownloadFailed(`The server answered ${entry.name} with status ${response.status}`, response.status >= 500 || response.status === 429);
+    throw new DownloadFailed(`The server answered ${entry.name} with status ${response.status}`, response.status >= 500 || response.status === 429, response.status >= 500);
   }
   if (!response.body) throw new DownloadFailed(`The server sent no body for ${entry.name}`, true);
   const writer = await store.writer(part, resumed);

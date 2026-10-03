@@ -24,8 +24,9 @@ Native Messaging when the local engine is the one in use, which is outside `conn
 the local component runs with the user's ordinary OS privileges and is not sandboxed by
 browser CSP. The in-browser engine scores inside the browser (`lib/webengine/`), and its
 only requests are the one-time model downloads from Hugging Face (`lib/webengine/pin.ts`
-below), which answers them with CORS headers, so no host permission is held for them; the
-language-ID file ships in the package. Its engine page (`engine.html`, Chrome's offscreen
+below), which answers them with CORS headers, so no host permission is held for them, or from
+`hf-mirror.com` where huggingface.co answers nothing (a network error, no answer in 20 s, a
+5xx); the language-ID file ships in the package. Its engine page (`engine.html`, Chrome's offscreen
 document) keeps the manifest's `connect-src`: the worker it hosts is what performs those
 downloads, into the extension's own storage.
 
@@ -39,7 +40,7 @@ downloads, into the extension's own storage.
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (DOMPurify, the diagnostics chunk, the surfaces chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
-| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage), and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
+| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage) or, where huggingface.co is unreachable, the same paths on hf-mirror.com, and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
 | `lib/ui/deviceInputs.ts` | `fetch(` | the test build only (absent from the shipping bundles): reads the stand-in device a suite put beside the pages | `chrome-extension://<this extension>/test-device.json` |
 | `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` |
 
@@ -90,6 +91,7 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
 | `lib/webengine/pin.ts` | `https://huggingface.co/` | builds the pinned modelkit files' download addresses (`anagramd/modelkit.json`'s repository and revision), the native installer's |
+| `lib/webengine/pin.ts` | `https://hf-mirror.com/` | the same files' addresses on hf-mirror.com, a mirror of Hugging Face's repositories under the same paths, tried only where huggingface.co answers nothing (lib/webengine/download.ts) |
 | `lib/webengine/emoji.ts` | `https://github.com/carpedm20/emoji` | the attribution of the emoji tokenizer port, in a comment |
 | `lib/webengine/fasttext.ts` | `https://github.com/facebookresearch/fastText` | the attribution of the fastText prediction port, in a comment |
 | `lib/pdf/reading.ts` | `https://github.com/funstory-ai/BabelDOC` | the attribution of the formula-character rules adapted from BabelDOC, in a comment |
