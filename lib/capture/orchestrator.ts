@@ -49,12 +49,18 @@ const log = createLogger("orchestrator");
 
 // Per-lane batch sizes (chars): the viewport lane favours time-to-first-chip, the
 // background prefetch lane favours model throughput (see scheduler.ts).
-const BATCH_CHAR_BUDGET = { viewport: 2400, near: 4000, background: 6000 } as const;
-/** The lanes' budgets, or one unit a batch while `one` says so. */
+const BATCH_CHAR_BUDGET = { near: 4000, background: 6000 } as const;
+/** The lanes' budgets. On screen one unit a batch, always: each chip goes up as soon as its
+ *  paragraph is read, the first after one paragraph's pass rather than all of the screen's, and
+ *  a pass costs the engine little beyond its tokens (12 ms on an M4's GPU, a paragraph's tenth).
+ *  Off screen, one unit a batch too while `one` says so. */
 function laneBudgets(one: () => boolean): Record<Lane, () => number> {
-  const of = (lane: Lane) => () => (one() ? 1 : BATCH_CHAR_BUDGET[lane]);
-  return { viewport: of("viewport"), near: of("near"), background: of("background") };
+  const of = (lane: "near" | "background") => () => (one() ? 1 : BATCH_CHAR_BUDGET[lane]);
+  return { viewport: () => 1, near: of("near"), background: of("background") };
 }
+/** How soon the idle prefetch looks again for units the observers have still not placed (the
+ *  observers ask as they place them; Observers.placed gives up waiting after a second). */
+const PLACE_RETRY_MS = 1100;
 const MAX_IN_FLIGHT = 4;
 /** Background prefetch may hold at most this many of the in-flight slots. */
 const MAX_BACKGROUND_IN_FLIGHT = 1;
@@ -738,12 +744,17 @@ export function createOrchestrator(
       prefetchScheduled = false;
       if (!started || frozen) return;
       let n = 0;
-      const pending = readingOrder([...unitsById.values()].filter((u) => !u.isScored && !verdictsById.has(u.id)));
+      const unscored = [...unitsById.values()].filter((u) => !u.isScored && !verdictsById.has(u.id));
+      // What the observers have not placed yet is theirs: the screen goes in the viewport
+      // lane, a paragraph at a time (Observers.placed). Asked again once they have.
+      const pending = readingOrder(unscored.filter((u) => observers.placed(u)));
       for (const u of pending) {
         scheduler.enqueue(u, "background");
         if (++n >= PREFETCH_PASS) break;
       }
       if (n > 0) log.log("prefetch: queued", n, "of", pending.length, "unscored units");
+      // The observers ask for the rest as they place it (onPlaced); this is for any they never do.
+      if (pending.length < unscored.length) setTimeout(schedulePrefetch, PLACE_RETRY_MS);
     };
     const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
       .requestIdleCallback;
@@ -1235,6 +1246,9 @@ export function createOrchestrator(
     },
     onNear(unit) {
       scheduler.requeue(unit, "near");
+    },
+    onPlaced() {
+      schedulePrefetch();
     },
     onFar(unit) {
       scheduler.requeue(unit, "background");

@@ -41,11 +41,18 @@ export interface Observers {
   /** Place a unit again as if it had just been found: its batch was abandoned, and the one
    *  dispatch it gets was spent on it — the viewport observer lets an element go once seen. */
   reobserve(unit: Unit): void;
+  /** Both observers have said where the unit stands — on screen, near, or neither. Until
+   *  they have, the idle prefetch leaves it to them: the page's first screen, sent in a
+   *  background batch the moment the walk ended, waited for the batch's every paragraph,
+   *  and could not be moved to the viewport lane once out. A unit nothing observes is placed. */
+  placed(unit: Unit): boolean;
   start(): void;
   stop(): void;
 }
 
 const DRAIN_DEBOUNCE_MS = 250;
+/** How long the idle prefetch waits for the observers to place a unit (Observers.placed). */
+const PLACE_WAIT_MS = 1000;
 /** A trailing debounce alone never fires on a page that mutates continuously (live
  *  tickers, streaming chat): the drain is forced once dirt has waited this long. */
 const DRAIN_MAX_WAIT_MS = 1000;
@@ -84,6 +91,8 @@ export function createObservers(opts: {
   onNear(unit: Unit): void;
   /** A unit reported near or on screen before is beyond the prefetch margin now. */
   onFar?(unit: Unit): void;
+  /** Both observers have answered for some elements for the first time (Observers.placed). */
+  onPlaced?(): void;
   /** `quiet`: text that changed without changing shape — the text node that changed (for
    *  one the page replaced, the one that left) and the element it stood in. */
   onDirty(nodes: Node[], removed: Node[], quiet: Map<Text, Element>): void;
@@ -93,9 +102,14 @@ export function createObservers(opts: {
   const unitsByEl = new WeakMap<Element, Map<string, Unit>>();
   /** Per-unit latch: the zone last reported for it. Cleaned up in dropUnit. */
   const reported = new Map<string, Zone>();
-  /** What each observer last said about an element. */
-  let seen = new WeakMap<Element, { near: boolean; viewport: boolean }>();
+  /** What each observer last said about an element, and which have said anything (1 near,
+   *  2 viewport). */
+  let seen = new WeakMap<Element, { near: boolean; viewport: boolean; known: number }>();
   const attrScanAt = new WeakMap<Element, number>();
+  /** An element was placed in the batch of entries being noted. */
+  let placedSome = false;
+  /** When each element was first given to the observers (placed). */
+  const observedAt = new WeakMap<Element, number>();
 
   const dirty = new Set<Node>();
   const removed = new Set<Node>();
@@ -246,7 +260,10 @@ export function createObservers(opts: {
   function report(el: Element): void {
     const units = unitsByEl.get(el);
     const at = seen.get(el);
-    if (!units || units.size === 0 || !at) return;
+    // Placed once both observers have answered for it: their first answers come in one frame,
+    // in no fixed order, and the near one alone sent the first screen in a near batch of four
+    // paragraphs before the viewport one could say they were on screen.
+    if (!units || units.size === 0 || !at || at.known !== 3) return;
     const zone: Zone = at.viewport ? "viewport" : at.near ? "near" : "far";
     for (const unit of units.values()) {
       if (unit.isScored) continue;
@@ -262,11 +279,16 @@ export function createObservers(opts: {
   function note(entries: IntersectionObserverEntry[], key: "near" | "viewport"): void {
     for (const entry of entries) {
       const el = entry.target as Element;
-      const at = seen.get(el) ?? { near: false, viewport: false };
+      const at = seen.get(el) ?? { near: false, viewport: false, known: 0 };
       at[key] = entry.isIntersecting;
+      const was = at.known;
+      at.known |= key === "near" ? 1 : 2;
+      if (was !== 3 && at.known === 3) placedSome = true;
       seen.set(el, at);
       report(el);
     }
+    // Whatever the idle prefetch was waiting for the observers to place may go now.
+    if (placedSome) { placedSome = false; opts.onPlaced?.(); }
   }
 
   const ioNear = new IntersectionObserver((entries) => note(entries, "near"), {
@@ -294,6 +316,7 @@ export function createObservers(opts: {
       unitsByEl.set(el, units);
     }
     units.set(unit.id, unit);
+    if (!observedAt.has(el)) observedAt.set(el, performance.now());
     ioNear.observe(el); // observing an already-observed target is a no-op
     ioViewport.observe(el);
     // …so a unit joining an element the observers have already placed is placed with it.
@@ -386,7 +409,14 @@ export function createObservers(opts: {
     pendingRoots.clear();
   }
 
-  return { observeUnit, observeRoot, dropUnit, reobserve, start, stop };
+  function placed(unit: Unit): boolean {
+    const el = unit.topElement;
+    if (!el || !el.isConnected || !unitsByEl.get(el)?.has(unit.id)) return true;
+    // An observer answers within a frame or two; one that has not in a second never will.
+    return seen.get(el)?.known === 3 || performance.now() - (observedAt.get(el) ?? 0) > PLACE_WAIT_MS;
+  }
+
+  return { observeUnit, observeRoot, dropUnit, reobserve, placed, start, stop };
 }
 
 /**

@@ -23,6 +23,9 @@ const calls = vi.hoisted(() => ({
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
   renders: [] as ((verdicts: UnitVerdict[], epoch: number) => void)[],
   budgets: [] as unknown[],
+  enqueued: [] as [string, Lane][],
+  observerOptions: null as {onPlaced?: () => void} | null,
+  placed: (_unit: Unit): boolean => true,
 }));
 vi.mock("../../lib/capture/langGate", async (original) => ({
   ...await original<typeof import("../../lib/capture/langGate")>(), detectUnsupported: calls.detect,
@@ -42,10 +45,10 @@ vi.mock("../../lib/capture/cache", async (original) => {
 });
 vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send: typeof calls.sends[number]; render: typeof calls.renders[number]; batchCharBudget: unknown}) => {
   calls.sends.push(options.send); calls.renders.push(options.render); calls.budgets.push(options.batchCharBudget);
-  return {enqueue() {}, requeue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => calls.pending};
+  return {enqueue: (unit: Unit, lane: Lane) => calls.enqueued.push([unit.id, lane]), requeue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => calls.pending};
 }}));
-vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
-  start() {}, stop() {}, observeUnit() {}, observeRoot() {}, dropUnit() {}, reobserve() {},
+vi.mock("../../lib/capture/observers", () => ({createObservers: (options: {onPlaced?: () => void}) => (calls.observerOptions = options, {
+  start() {}, stop() {}, observeUnit() {}, observeRoot() {}, dropUnit() {}, reobserve() {}, placed: (unit: Unit) => calls.placed(unit),
 })}));
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({
   remove() {}, teardownAll() {}, resetTheme() {}, renderPending() {}, render() {}, placed: () => true, setVisible() {}, flash() {},
@@ -77,7 +80,7 @@ beforeEach(() => {
   calls.detect.mockReset(); calls.request.mockReset();
   calls.detect.mockResolvedValue(null);
   calls.message.mockReset(); calls.message.mockResolvedValue(undefined);
-  calls.session = "first"; calls.units = []; calls.pending = 0;
+  calls.session = "first"; calls.units = []; calls.pending = 0; calls.enqueued.length = 0; calls.placed = () => true;
   calls.request.mockImplementation(async (req: ScoreBatchRequest) => ({backend: "up", model: MODEL, results: req.blocks.map((block) => (
     block.text.startsWith("HUMAN")
       ? {id: block.id, bucket: 0, score: 0, probs: [1, 0, 0, 0]}
@@ -251,7 +254,7 @@ describe("scoreDetached", () => {
     try {
       const lanes = calls.budgets[0] as Record<Lane, () => number>;
       const now = () => ({viewport: lanes.viewport(), near: lanes.near(), background: lanes.background()});
-      expect(now()).toEqual({viewport: 2400, near: 4000, background: 6000});
+      expect(now()).toEqual({viewport: 1, near: 4000, background: 6000});
       one = true;
       expect(now()).toEqual({viewport: 1, near: 1, background: 1});
     } finally {controller.stop();}
@@ -267,9 +270,9 @@ describe("scoreDetached", () => {
     for (const [name, expected] of [
       ["wasm", {viewport: 1, near: 1, background: 1}],
       ["cpu", {viewport: 1, near: 1, background: 1}],
-      ["webgpu", {viewport: 2400, near: 4000, background: 6000}],
-      ["mps", {viewport: 2400, near: 4000, background: 6000}],
-      [undefined, {viewport: 2400, near: 4000, background: 6000}],
+      ["webgpu", {viewport: 1, near: 4000, background: 6000}],
+      ["mps", {viewport: 1, near: 4000, background: 6000}],
+      [undefined, {viewport: 1, near: 4000, background: 6000}],
     ] as const) {
       device(name);
       const {controller} = await reader();
@@ -447,5 +450,29 @@ describe("a drawn page let go", () => {
       expect(controller.knows(LINE)).toBe(false);
       expect(controller.pageReport().counts.read).toBe(0);
     } finally {controller.stop();}
+  });
+});
+
+describe("the idle prefetch", () => {
+  it("leaves to the observers what they have not placed yet, and takes it once they have", async () => {
+    vi.useFakeTimers();
+    try {
+      const unit = (id: string, order: number) => ({id, text: `${id} ${text("X")}`, wordCount: 60, order, parts: [], isScored: false, container: {isConnected: true}}) as unknown as Unit;
+      calls.units = [unit("top", 0), unit("middle", 1), unit("bottom", 2)];
+      const unplaced = new Set(["top", "middle"]);
+      calls.placed = (u) => !unplaced.has(u.id);
+      const {controller} = await reader();
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        // Only what the observers have placed (far down the page) goes in the background lane.
+        expect(calls.enqueued).toEqual([["bottom", "background"]]);
+        // The observers place the rest, and say so: the prefetch goes on at once.
+        unplaced.clear();
+        calls.observerOptions?.onPlaced?.();
+        await vi.advanceTimersByTimeAsync(0);
+        // (The scheduler takes a unit queued again as the one it holds.)
+        expect([...new Set(calls.enqueued.map(([id]) => id))].sort()).toEqual(["bottom", "middle", "top"]);
+      } finally {controller.stop();}
+    } finally {vi.useRealTimers();}
   });
 });
