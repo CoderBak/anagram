@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import type { PdfPageText, PdfTextItem, ReflowBlock } from "../../lib/pdf/reflow";
-import { createStructuredReader, type SdtBlock, type SdtStructure, type StructuredBlock } from "../../lib/pdf/structured";
+import { createStructuredReader, createStructuredReaderInSlices, type SdtBlock, type SdtStructure, type StructuredBlock } from "../../lib/pdf/structured";
 import { createPdfUnitSource, documentParagraphs, planOf, type DocumentParagraph } from "../../lib/pdf/units";
 import type { Unit } from "../../lib/types";
 
@@ -148,6 +148,20 @@ describe("StructuredReader.pagesOf", () => {
     const carried = blocks.find((b) => b.text.startsWith(line(50).slice(0, 20)))!;
     expect(reader.pagesOf(carried)).toEqual([1, 2]);
     expect(new Set(carried.runs.map((r) => r.page))).toEqual(new Set([1]));
+  });
+});
+
+describe("StructuredReader made in slices", () => {
+  it("is the reader made at once: the same blocks, page by page, at once or in slices", async () => {
+    const { structure, pages } = documentOf();
+    const atOnce = createStructuredReader(structure, { pagesStay: true });
+    const inSlices = await createStructuredReaderInSlices(structure, { pagesStay: true });
+    for (const given of [[pages[0]!], [pages[0]!, pages[1]!], pages]) {
+      const a = atOnce.blocks(given), b = await inSlices.blocksInSlices(given);
+      expect(b.map((x) => x.text)).toEqual(a.map((x) => x.text));
+      expect(b.map((x) => inSlices.pagesOf(x))).toEqual(a.map((x) => atOnce.pagesOf(x)));
+      expect(inSlices.blocks(given)).toEqual(b); // and answered at once after, the same
+    }
   });
 });
 

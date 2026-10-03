@@ -8,9 +8,9 @@ import { setHighlightSurface, setRangeLocator } from "../../lib/render/highlight
 import { extractPageText, nameFonts } from "../../lib/pdf/extract";
 import { readReflowed } from "../../lib/pdf/reading";
 import type { PdfPageText, ReflowBlock } from "../../lib/pdf/reflow";
-import { createStructuredReader, type StructuredBlock, type StructuredReader } from "../../lib/pdf/structured";
+import { createStructuredReaderInSlices, type StructuredBlock, type StructuredReader } from "../../lib/pdf/structured";
 import { readStructure } from "../../lib/pdf/structureWorker";
-import { createPdfUnitSource, documentParagraphs, type DocumentParagraph, type PdfUnitSource } from "../../lib/pdf/units";
+import { createPdfUnitSource, documentParagraphs, planInSlices, type DocumentParagraph, type PdfUnitSource } from "../../lib/pdf/units";
 import { createPacer, inScope, readingDistance, seedFor, takeBatch, type Pacer } from "../../lib/pdf/readAhead";
 import { DEFAULT_MIN_WORDS } from "../../lib/dom/text";
 import { pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
@@ -168,9 +168,15 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
   try {
     const result = await readStructure(bytes, count, signal);
     if (owned !== generation) return false;
-    // The reader keeps the text of every page it has read for as long as the document is open.
-    const reader = createStructuredReader(result, {pagesStay: true});
+    // Made, and every paragraph of the document read and planned a first time, a few
+    // milliseconds at a time (lib/slices.ts): at 300 pages that was half a second of the main
+    // thread in two pieces, as the reader started reading. The reader keeps the text of every
+    // page it has read for as long as the document is open.
+    const reader = await createStructuredReaderInSlices(result, {pagesStay: true});
+    if (owned !== generation) return false;
     await readAround(pages.keys(), owned);
+    if (owned !== generation) return false;
+    await planInSlices(await reader.blocksInSlices([...texts.values()].sort((a, b) => a.page - b.page)), reading.minWords);
     if (owned !== generation) return false;
     structure = reader;
     rebuild();

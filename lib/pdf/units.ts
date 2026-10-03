@@ -44,6 +44,7 @@ import {
 } from "../dom/text";
 import { groupBlocks, type BlockRole, type PlanBlock } from "../plan/group";
 import type { ReflowBlock, SourceRun } from "./reflow";
+import { finishInSlices } from "../slices";
 
 /** A stretch of a unit's text: offsets into `unit.text`, end exclusive. */
 export interface TextSpan {
@@ -171,6 +172,19 @@ export function planOf(blocks: readonly ReflowBlock[], floor: number): PlanBlock
     return { words: known.words, chars: known.chars, role: known.role, barrierBefore: block.columnBreak };
   });
 }
+
+/** planOf for every block, a few milliseconds at a time (lib/slices.ts), for what it keeps:
+ *  the first planning of a long document counts every word in it. */
+export function planInSlices(blocks: readonly ReflowBlock[], floor: number): Promise<void> {
+  return finishInSlices((function* () {
+    for (let at = 0; at < blocks.length; at += PLAN_SLICE) {
+      planOf(blocks.slice(at, at + PLAN_SLICE), floor);
+      yield;
+    }
+  })());
+}
+/** Blocks planned between two looks at the clock. */
+const PLAN_SLICE = 16;
 
 /** Strict per-paragraph mode, as the walker means it (CollectOptions.mergeShorts false):
  *  every block that clears the floor by itself, and nothing else. */

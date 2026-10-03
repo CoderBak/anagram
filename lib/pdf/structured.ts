@@ -30,6 +30,7 @@
 import { ACCENT, MARK_NUMBERS, assemble, indexPage, isSpace, mathPagesOf, sameLine, type Box, type Glyph, type Located, type PageIndex, type Piece, type Source } from "./reading";
 import { BARE_NUMBER, lineNumberMarks, mayHoldColumn, type NumberMark, type PageContent } from "./lineNumbers";
 import { SENTENCE_END, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
+import { finish, finishInSlices } from "../slices";
 
 export { isMathFont } from "./reading";
 
@@ -860,9 +861,10 @@ const down = (g: Glyph): number => -(g.y1 + g.y2) / 2;
  * digits set against each other, nothing set against them — that stands first or last on
  * its line among every glyph of the page, in a column of such numbers counting on.
  */
-function lineNumberPieces(texts: Piece[][]): Set<Piece> {
+function* lineNumberPieces(texts: Piece[][]): Generator<void, Set<Piece>> {
   const marks: (NumberMark & { run: Piece[]; folded: boolean })[] = [];
   for (const pieces of texts) {
+    yield;
     for (let i = 0; i < pieces.length; i++) {
       const g = pieces[i]!.glyph;
       if (!g || !DIGIT.test(pieces[i]!.ch)) continue;
@@ -897,6 +899,7 @@ function lineNumberPieces(texts: Piece[][]): Set<Piece> {
   const inMark = new Set<Piece>(marks.flatMap((m) => m.run));
   const content: PageContent[] = marks.map((m) => ({ page: m.page, x1: m.x1, x2: m.x2, y: m.y, weight: m.run.length, mark: m }));
   for (const pieces of texts) {
+    yield;
     if (!pieces.some((p) => p.glyph && pages.has(p.glyph.page))) continue;
     for (const row of rowsOf(pieces, inMark)) {
       if (!pages.has(row.page)) continue;
@@ -924,6 +927,7 @@ function lineNumberPieces(texts: Piece[][]): Set<Piece> {
   }
   for (const list of byPage.values()) list.sort((a, b) => down(a) - down(b));
   for (const m of marks) {
+    yield;
     const list = byPage.get(m.page)!;
     const own = new Set(m.run.map((p) => p.glyph));
     const g = m.run[0]!.glyph!;
@@ -1284,6 +1288,9 @@ interface Draft {
  */
 export interface StructuredReader {
   blocks(pages: readonly PdfPageText[]): StructuredBlock[];
+  /** The same, a few milliseconds at a time (lib/slices.ts): the first answer reads every
+   *  paragraph of the document. */
+  blocksInSlices(pages: readonly PdfPageText[]): Promise<StructuredBlock[]>;
   /** The 1-based pages a block of the last answer lies on, as the structure has it: the pages
    *  whose text the block needs before it reads as it will when they are all drawn. */
   pagesOf(block: StructuredBlock): readonly number[];
@@ -1291,22 +1298,30 @@ export interface StructuredReader {
 
 /** The drafts and the vocabulary, in a scope of their own: the reader's closures then keep
  *  neither the structure nor what was made on the way (39 MB at 300 pages). */
-function prepare(structure: SdtStructure, everything: boolean): { drafts: Draft[]; vocab: ReturnType<typeof vocabularyOf> } {
+function* prepare(structure: SdtStructure, everything: boolean): Generator<void, Drafted> {
   const readings = readInColumns(readingsOf(structure.content, everything));
+  yield;
   const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
   // A bibliography is read only where the lines are numbered, and asked about then.
-  const texts = readings.map((r) => (typeof r === "string" || r.kind === "reference" ? null : read(r)));
-  let numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  const texts: (Piece[] | null)[] = [];
+  for (const r of readings) {
+    texts.push(typeof r === "string" || r.kind === "reference" ? null : read(r));
+    yield;
+  }
+  let numbers = yield* lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
   if (numbers.size > 0) {
     readings.forEach((r, k) => { if (typeof r !== "string" && r.kind === "reference") texts[k] = read(r); });
-    numbers = lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+    yield;
+    numbers = yield* lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
   }
   // Numbered lines are read again as the paragraphs they make, and a caption among them is
   // told there, once its lines are one paragraph (numberedReadings).
   if (!everything) leaveOutCaptions(readings, structure.content, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
+  yield;
   const prepared = numbers.size > 0
     ? numberedReadings(readings, texts, numbers, everything)
     : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k] ?? [])));
+  yield;
   /** The draft each read path became, for the parts that continue it. */
   const byPath = new Map<string, Draft>();
   const drafts: Draft[] = [];
@@ -1314,6 +1329,7 @@ function prepare(structure: SdtStructure, everything: boolean): { drafts: Draft[
   /** The last paragraph read, still open for a continuation. */
   let open: Draft | null = null;
   for (const r of prepared) {
+    yield;
     if (r === "barrier") { barrier = true; open = null; continue; }
     if (r === "display" && open) open.display = true;
     if (r === "skip" || r === "display") continue;
@@ -1350,15 +1366,30 @@ function prepare(structure: SdtStructure, everything: boolean): { drafts: Draft[
     open = r.kind === "paragraph" ? draft : null;
   }
   for (const d of drafts) {
+    yield;
     const on = new Set<number>();
     for (const p of d.pieces) if (p.glyph) on.add(p.glyph.page + 1);
     d.pages = [...on].sort((a, b) => a - b);
   }
+  yield;
   return { drafts, vocab: vocabularyOf(drafts.map((d) => written(d.pieces))) };
 }
 
+/** What prepare() makes of a structure: the drafts of its blocks and their vocabulary. */
+interface Drafted { drafts: Draft[]; vocab: ReturnType<typeof vocabularyOf> }
+
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
-  const { drafts, vocab } = prepare(structure, options.everything === true);
+  return readerOf(finish(prepare(structure, options.everything === true)), options);
+}
+
+/** The same reader, made a few milliseconds at a time (lib/slices.ts): a 300-page document's
+ *  structure took a third of a second of the main thread in one piece, as the reader started
+ *  reading. */
+export async function createStructuredReaderInSlices(structure: SdtStructure, options: StructuredOptions = {}): Promise<StructuredReader> {
+  return readerOf(await finishInSlices(prepare(structure, options.everything === true)), options);
+}
+
+function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): StructuredReader {
   const pagesStay = options.pagesStay === true;
   /** Each page's text, by the object it came in: a page read again (one that could not be
    *  read, then drawn) reads its blocks again. */
@@ -1379,15 +1410,14 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
   };
   const pagesOfResult = new WeakMap<StructuredBlock, readonly number[]>();
 
-  return {
-    pagesOf: (block) => pagesOfResult.get(block) ?? [block.page],
-    blocks(pages) {
+  function* blocks(pages: readonly PdfPageText[]): Generator<void, StructuredBlock[]> {
       const pagesByNumber = new Map<number, PageIndex>();
       const given = new Map<number, PdfPageText>();
       for (const p of pages) { pagesByNumber.set(p.page, indexOf(p)); given.set(p.page, p); }
       const kinds = mathPagesOf(pagesByNumber);
       const out: StructuredBlock[] = [];
       for (const d of drafts) {
+        yield;
         // Read for good: its glyphs are gone, and its answer is the last.
         if (d.pieces.length === 0 && d.seen === FINAL) { if (d.result) out.push(d.result); continue; }
         const seen = d.pages.map((n) => { const p = given.get(n); return p ? serialOf(p) : "-"; }).join(",");
@@ -1404,7 +1434,12 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
         if (d.result) out.push(d.result);
       }
       return out;
-    },
+  }
+
+  return {
+    pagesOf: (block) => pagesOfResult.get(block) ?? [block.page],
+    blocks: (pages) => finish(blocks(pages)),
+    blocksInSlices: (pages) => finishInSlices(blocks(pages)),
   };
 }
 
