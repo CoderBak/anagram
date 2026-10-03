@@ -17,6 +17,9 @@ export const settings = {
   // off, the reader's own geometric reflow reads the pages instead. No setting in the UI:
   // a switch for the benchmark and for a machine where the worker misbehaves.
   pdfStructure: storage.defineItem<boolean>("local:pdfStructure", { fallback: true }),
+  // The reader reads the pages it has not drawn as well, in the background, at a pace set by
+  // how fast the engine is here (lib/pdf/readAhead.ts). Off, it reads the pages it draws.
+  pdfReadAhead: storage.defineItem<boolean>("local:pdfReadAhead", { fallback: true }),
   // Console logging (lib/log.ts). No setting in the UI: chrome.storage.local.set({ debug: true }) in devtools.
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
   // Filters rendering, not analysis: all units or only heavily edited / AI-generated ones.

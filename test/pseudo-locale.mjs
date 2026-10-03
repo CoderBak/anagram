@@ -3,13 +3,12 @@
 // A translation is rarely the length of the English it replaces, and a control laid out
 // for "Add" has to hold whatever the next language says there. This renders every page a
 // reader sees — setup (with and without an engine), settings (and its row that allows a
-// comment site), popup, the PDF reader's own chrome, chips, a chip's card, the ball's panel
-// (and its offer to allow that site), the choice between the two engines (and a refused
-// permission), the local engine alone, a device that cannot run the model, Settings' switch and
-// its offer to delete the in-browser engine's files, the offer of the in-browser engine when the
-// local one keeps crashing, and the in-browser engine's setup page in each state on the way to
-// Ready, its cancel confirmation, its popup and its panel offering setup — at 1280 and 400 px,
-// three times: in a
+// comment site), the toolbar menu, the PDF reader's own chrome, chips, a chip's card, the choice
+// between the two engines (and a refused permission), the local engine alone, a device that
+// cannot run the model, Settings' switch and its offer to delete the in-browser engine's files,
+// the offer of the in-browser engine when the local one keeps crashing, and the in-browser
+// engine's setup page in each state on the way to Ready, its cancel confirmation and its toolbar
+// menu — at 1280 and 400 px (the menu at its own 340), three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -59,7 +58,7 @@ function pseudoBuild(source = EXT, { siteOnly = true } = {}) {
   for (const entry of Object.values(messages)) entry.message = pseudo(entry.message);
   writeFileSync(file, JSON.stringify(messages));
   if (!siteOnly) return { dir, ext };
-  // Only the page's own site granted, as a reader's per-site grant leaves it: the panel's
+  // Only the page's own site granted, as a reader's per-site grant leaves it: the menu's
   // offer to allow a comment site, and the settings row it opens, are then on screen.
   const manifestFile = join(ext, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
@@ -123,7 +122,7 @@ function layoutFaults(scope) {
       // Words kept for a screen reader only (a 1 px box, clipped) are not drawn at all.
       const holder = n.parentElement.getBoundingClientRect(), hs = getComputedStyle(n.parentElement);
       if (holder.width < 2 || holder.height < 2 || hs.clipPath !== "none" || hs.visibility === "hidden") continue;
-      // A line cut with an ellipsis says so: the panel's excerpt of a paragraph, the Docs
+      // A line cut with an ellipsis says so: the menu's excerpt of a paragraph, the Docs
       // bar's document title. Only page text is drawn that way.
       if (hs.textOverflow === "ellipsis") continue;
       range.selectNodeContents(n);
@@ -139,9 +138,6 @@ function layoutFaults(scope) {
   };
   // A button whose label breaks onto a second line has outgrown its row.
   const ONE_LINE = 'button, [role="button"], [role="tab"], .btn, .pill';
-  // Drawn over one another on purpose: the flagged count sits on the ball's corner.
-  const DESIGNED = [[".fab", ".count"]];
-  const designed = (a, b) => DESIGNED.some(([x, y]) => (a.matches(x) && b.matches(y)) || (a.matches(y) && b.matches(x)));
   const faults = [];
   const W = document.documentElement.clientWidth, H = innerHeight;
   if (!scope && document.documentElement.scrollWidth > W + 1)
@@ -178,12 +174,10 @@ function layoutFaults(scope) {
         break;
       }
     }
-    // A ball left idle slides half off its edge on purpose (lib/render/fab.ts).
-    if (within(el, ".stack.tucked")) continue;
     if (!scrolled && (r.left < -1 || r.right > W + 1)) faults.push(`${describe(el)}: sticks out of the window at the side`);
     if (!scrolled && fixed && (r.top < -1 || r.bottom > H + 1)) faults.push(`${describe(el)}: sticks out of the window at the top or bottom`);
   }
-  // A fixed layer (the ball, its panel, a pinned card) lies over the page on purpose.
+  // A fixed layer (a pinned card) lies over the page on purpose.
   const layer = (el) => {
     for (let a = el; a; a = up(a)) if (getComputedStyle(a).position === "fixed") return a;
     return null;
@@ -193,7 +187,7 @@ function layoutFaults(scope) {
     for (let j = i + 1; j < controls.length; j++) {
       const a = controls[i], b = controls[j];
       if (!subject(a) && !subject(b)) continue;
-      if (contains(a, b) || contains(b, a) || labelled(a, b) || labelled(b, a) || designed(a, b) || layer(a) !== layer(b)) continue;
+      if (contains(a, b) || contains(b, a) || labelled(a, b) || labelled(b, a) || layer(a) !== layer(b)) continue;
       const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
       const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
       const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
@@ -242,6 +236,7 @@ ${["ITEM-16", "ITEM-111", "ITEM-149"].map((t) => `<p>${PARA(t)}</p>`).join("\n")
 
 const WIDE = { width: 1280, height: 900 };
 const NARROW = { width: 400, height: 800 };
+const POPUP = { width: 340, height: 600 };
 
 async function pages(context, extId, fixture, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
@@ -249,8 +244,8 @@ async function pages(context, extId, fixture, lang) {
   const componentReady = () =>
     page.waitForFunction(() => /(Ready|就绪)$/.test(document.querySelector("#componentSettings .component-status")?.textContent ?? ""), null, { timeout: 15000 }).catch(() => {});
 
-  // The popup is a fixed 300 px wide, whatever the window.
-  await page.setViewportSize({ width: 300, height: 600 });
+  // The popup is a fixed 340 px wide, whatever the window (entrypoints/popup/index.html).
+  await page.setViewportSize(POPUP);
   await page.goto(url("popup.html"), { waitUntil: "load" });
   await page.waitForFunction(() => document.getElementById("status")?.textContent !== "…", null, { timeout: 10000 }).catch(() => {});
   await check(page, lang, "popup");
@@ -261,7 +256,7 @@ async function pages(context, extId, fixture, lang) {
     await componentReady();
     await check(page, lang, "settings");
 
-    // Opened by the panel's offer to allow a comment site (lib/access/commentFrames.ts).
+    // Opened by the toolbar menu's offer to allow a comment site (lib/access/commentFrames.ts).
     await page.goto(url("options.html#comments=disqus.com"), { waitUntil: "load" });
     await page.locator("#comments:not([hidden])").waitFor({ timeout: 10000 }).catch(() => {});
     await check(page, lang, "settings, a comment site to allow");
@@ -281,8 +276,8 @@ async function pages(context, extId, fixture, lang) {
   }
   await fixture.resume();
 
-  // The reader: its own controls in the upstream toolbar, the picker, and the ball.
-  const READER_OWN = '#anagramAnalyze, #analysisScope, #original, #drop, #notice, [data-anagram]';
+  // The reader: its own controls in the upstream toolbar, the picker, and its chips.
+  const READER_OWN = '#anagramAnalyze, #original, #drop, #notice, [data-anagram]';
   for (const size of [WIDE, NARROW]) {
     await page.setViewportSize(size);
     await page.goto(url("reader.html"), { waitUntil: "load" });
@@ -294,27 +289,21 @@ async function pages(context, extId, fixture, lang) {
     await check(page, lang, "reader, reading", { scope: READER_OWN });
   }
 
-  // A web page with chips (all three AI-generated under the fixture's text-seeded scores, so
-  // the panel lists them), a chip's card pinned open, and the ball's panel open over it.
+  // A web page with chips (all three AI-generated under the fixture's text-seeded scores), and a
+  // chip's card pinned open.
   const OURS = "[data-anagram]";
   for (const size of [WIDE, NARROW]) {
     await page.setViewportSize(size);
     await page.goto(server.url("/article.html"), { waitUntil: "load" });
     await page.waitForFunction(
-      () => [...document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length >= 3,
+      () => [...document.querySelectorAll('[data-anagram="host"]')].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length >= 3,
       null,
       { timeout: 20000 },
     ).catch(() => {});
     await check(page, lang, "chips on a page", { scope: OURS });
-    await page.locator('[data-anagram="host"]:not(#anagram-fab) .pill').first().click().catch(() => {});
+    await page.locator('[data-anagram="host"] .pill').first().click().catch(() => {});
     await page.waitForFunction(() => [...document.querySelectorAll('[data-anagram="host"]')].some((h) => h.shadowRoot?.querySelector(".card.open")), null, { timeout: 10000 }).catch(() => {});
     await check(page, lang, "a chip's card", { scope: OURS });
-    // Unpinned, and the pointer off it, so the card does not stay up for the panel.
-    await page.locator('[data-anagram="host"]:not(#anagram-fab) .pill').first().click().catch(() => {});
-    await page.mouse.move(1, 1);
-    await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open"), null, { timeout: 10000 }).catch(() => {});
-    await check(page, lang, "panel", { scope: OURS });
   }
   await page.close();
 }
@@ -367,7 +356,7 @@ async function enginePages(context, extId, lang) {
     else record(`${lang}: settings, the switch and the files left behind at ${size.width} px`, false, "they never showed");
     await settings.close();
   }
-  const popup = await open("popup.html", { width: 300, height: 600 }, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
+  const popup = await open("popup.html", POPUP, async (p) => { await scriptEngine(p, "ready_gpu", { engine: "native", crashed: true }); await scriptDevice(p, DEVICES["apple-silicon"]); });
   if (await up(popup, "#switchEngine")) await check(popup, lang, "popup, the local engine crashing");
   else record(`${lang}: popup, the local engine crashing`, false, "the switch never showed");
   await popup.close();
@@ -387,9 +376,8 @@ async function seedLeftover(context, extId) {
 
 // ---- the in-browser engine's setup --------------------------------------------------------------
 
-/** The in-browser engine's panel in each state people meet on the way to Ready, scripted into
- *  the page (test/webengine/scripted-engine.mjs); the panel's notice is the real engine's: the
- *  download a fresh profile starts by itself, cancelled (runInBrowser). */
+/** The in-browser engine's setup in each state people meet on the way to Ready, scripted into
+ *  the page (test/webengine/scripted-engine.mjs), and the toolbar menu in those states. */
 async function inBrowserPages(context, extId, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
   const painted = (page) =>
@@ -402,7 +390,7 @@ async function inBrowserPages(context, extId, lang) {
     return page;
   };
   for (const size of [WIDE, NARROW]) {
-    for (const state of ["needed", "downloading", "paused", "network", "storage", "ready_gpu", "ready_cpu", "load_failed"]) {
+    for (const state of ["needed", "downloading", "mirror", "paused", "network", "storage", "ready_gpu", "ready_cpu", "load_failed"]) {
       // Waiting for Set up, with Save-Data on and too little room, is the longest the needed
       // state gets: the reason and the error over the button.
       const page = await scripted("onboarding.html", state, size, state === "needed" ? { saveData: true, estimate: { quota: 500e6, usage: 100e6 } } : {});
@@ -423,22 +411,11 @@ async function inBrowserPages(context, extId, lang) {
     await settings.close();
   }
   for (const state of ["needed", "downloading", "paused", "loading"]) {
-    const popup = await scripted("popup.html", state, { width: 300, height: 600 });
+    const popup = await scripted("popup.html", state, POPUP);
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 }).catch(() => {});
     await check(popup, lang, `in-browser popup, setup ${state}`);
     await popup.close();
   }
-  const page = await context.newPage();
-  for (const size of [WIDE, NARROW]) {
-    await page.setViewportSize(size);
-    await page.goto(server.url("/article.html"), { waitUntil: "load" });
-    await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 }).catch(() => {});
-    await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    const shown = await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open .pnotice button"), null, { timeout: 15000 }).then(() => true, () => false);
-    if (shown) await check(page, lang, "in-browser panel, setup needed", { scope: "[data-anagram]" });
-    else record(`${lang}: in-browser panel, setup needed at ${size.width} px`, false, "the panel's setup notice never showed");
-  }
-  await page.close();
 }
 
 async function runInBrowser(lang, launch) {

@@ -8,6 +8,7 @@
 // the SAME document — a second copy of this would drift the moment one of them changed.
 import http from "node:http";
 import { createHash } from "node:crypto";
+import { popupOver } from "./harness.mjs";
 
 // The document is built to exercise the reflow rules that matter: a running head and a
 // page number on both pages (dropped), a heading in larger type, a paragraph whose last
@@ -428,7 +429,6 @@ export const readerState = (page) =>
       spans: document.querySelectorAll("#viewer .textLayer span").length,
       measures: performance.getEntriesByType("measure").filter((m) => m.name.startsWith("anagram")).map((m) => `${m.name}@${Math.round(m.startTime + m.duration)}`),
       chips: [...document.querySelectorAll(sel)].filter((el) => el.shadowRoot?.querySelector(".pill")).length,
-      ball: !!document.getElementById("anagram-fab"),
       notice: document.getElementById("notice")?.textContent ?? null,
       visibility: document.visibilityState,
       at: Math.round(performance.now()),
@@ -452,17 +452,28 @@ export const pdfChips = (page, { timeout = 20000 } = {}) =>
     .then((handle) => handle.jsonValue())
     .catch(() => 0);
 
-/** The ball on a tab showing a PDF offers its way into the reader: the content script is
- *  up and has told the worker about the PDF. Resolves to the chip's label, or null. */
-export const pdfTabChip = (page, { timeout = 15000 } = {}) =>
-  page
-    .waitForFunction(
-      () => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action")?.textContent || false,
-      null,
-      { timeout },
-    )
-    .then((handle) => handle.jsonValue())
-    .catch(() => null);
+/** The toolbar menu over a tab showing a PDF offers the page's own way into the reader: the
+ *  content script is up there and has told the worker about the PDF. Resolves to the
+ *  button's label, or null; `click` presses it, and the menu is closed either way. */
+export async function pdfTabChip(page, { timeout = 15000, click = false } = {}) {
+  const menu = await popupOver(page).catch(() => null);
+  if (!menu) return null;
+  try {
+    const label = await menu
+      .waitForFunction(() => { const offer = document.getElementById("pageAction"); return (!offer.hidden && offer.textContent) || false; }, null, { timeout })
+      .then((handle) => handle.jsonValue());
+    if (click) {
+      // The menu closes itself once the page has taken the click.
+      await menu.locator("#pageAction").click();
+      await menu.waitForEvent("close", { timeout: 5000 }).catch(() => {});
+    }
+    return label;
+  } catch {
+    return null;
+  } finally {
+    await menu.close().catch(() => {});
+  }
+}
 
 /** Open through the authorized tab handoff; a reader `src` query never fetches bytes. */
 export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
@@ -472,19 +483,27 @@ export async function openPdfInReader(context, url, { timeout = 25000 } = {}) {
   return page;
 }
 
-/** The same, for a tab already sitting on a PDF: press the ball's chip and wait. */
+/**
+ * The same, for a tab already sitting on a PDF: what the toolbar popup's Analyze PDF does
+ * (the page's own ball no longer offers it), asked from a popup page for that tab, and wait.
+ */
 export async function handOverPdf(page, { timeout = 25000 } = {}) {
   if (new URL(page.url()).pathname === "/reader.html") return page;
-  await page
-    .waitForFunction(
-      () => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"),
-      null,
-      { timeout },
-    )
-    .catch(() => {});
-  await page
-    .evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click())
-    .catch(() => {});
+  const worker = page.context().serviceWorkers()[0];
+  if (worker) {
+    const popup = await page.context().newPage();
+    try {
+      await popup.goto(`chrome-extension://${new URL(worker.url()).host}/popup.html`);
+      await popup.evaluate(async (url) => {
+        const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
+        if (tab) await chrome.runtime.sendMessage({ action: "openPdfReader", url: tab.url, tabId: tab.id });
+      }, page.url());
+    } catch {
+      // The test that asked for the reader says what is missing when it is not there.
+    } finally {
+      await popup.close();
+    }
+  }
   await page.waitForURL(/reader\.html/, { timeout }).catch(() => {});
   return page;
 }

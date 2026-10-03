@@ -6,7 +6,7 @@
 // English article. And the English build is untouched by any of it.
 //
 //   npx playwright test scenarios-i18n
-import { test, expect, BADGE_SEL, PAGE, KEY_PARA, KEY_TAGS, chipsSettle, toggleCounter } from "./kit.mjs";
+import { test, expect, BADGE_SEL, PAGE, KEY_PARA, KEY_TAGS, chipsSettle, popupOver, menuReport } from "./kit.mjs";
 import { EXTENSION_VERSION } from "../fake-native.mjs";
 
 const ZH_PAGE = PAGE("Chinese UI fixture", KEY_TAGS.map((t, i) => `<p id="z${i + 1}">${KEY_PARA(t)}</p>`).join("\n"));
@@ -26,12 +26,12 @@ const firstCard = (page) =>
 test.describe("a zh-CN browser", () => {
   test.use({ uiLanguage: "zh-CN" });
 
-  test("a zh-CN browser gets a Chinese popup, options page, chip card, triage panel and menu entries", async ({ context, page, pages, extension }) => {
-    const zh = "a zh-CN browser gets a Chinese popup, options page, chip card, triage panel and menu entries";
+  test("a zh-CN browser gets a Chinese popup, options page, chip card, page report and menu entries", async ({ context, page, pages, extension }) => {
+    const zh = "a zh-CN browser gets a Chinese popup, options page, chip card, page report and menu entries";
     // The context menus are created with t(), and chrome.contextMenus cannot read a title
     // back, so the same lookup the worker made is asked for again.
     const menus = await extension.worker().evaluate(() => ["menuAnalyzeSelection", "menuAnalyzePage", "menuOpenPdf", "cmdOpenPanel"].map((k) => chrome.i18n.getMessage(k)));
-    expect.soft(menus, `${zh} (menus)`).toEqual(["用 Anagram 分析所选文本", "用 Anagram 分析本页", "用 Anagram 打开 PDF", "打开存疑段落列表"]);
+    expect.soft(menus, `${zh} (menus)`).toEqual(["用 Anagram 分析所选文本", "用 Anagram 分析本页", "用 Anagram 打开 PDF", "打开工具栏中的 Anagram"]);
 
     // The popup: plain text, an attribute, a group heading and the one action button, whose
     // label the page chooses. Opened as a tab it is its own active tab, a page nothing can
@@ -69,7 +69,7 @@ test.describe("a zh-CN browser", () => {
       });
     await opts.close();
 
-    // The in-page UI: a chip's card, the panel behind the ball.
+    // The in-page UI, a chip's card, and the toolbar menu's report on that page.
     pages.serve({ "/zh.html": ZH_PAGE });
     await page.goto(pages.url("/zh.html"), { waitUntil: "load" });
     await chipsSettle(page, 4);
@@ -78,22 +78,14 @@ test.describe("a zh-CN browser", () => {
     expect.soft(["人工撰写", "轻度 AI 编辑", "重度 AI 编辑", "AI 生成"], `${zh} (chip verdict)`).toContain(chip.verdict);
     expect.soft({ words: chip.words, copy: chip.copy }, `${zh} (chip card)`).toEqual({ words: "词数", copy: "复制原文" });
 
-    await toggleCounter(page);
-    const panel = () => page.evaluate(() => {
-      const sr = document.getElementById("anagram-fab").shadowRoot;
-      return {
-        lang: sr.querySelector(".stack")?.lang ?? "",
-        title: sr.querySelector(".phead h2")?.textContent ?? "",
-        cov: sr.querySelector(".pcov")?.textContent ?? null,
-        close: sr.querySelector(".pclose")?.getAttribute("aria-label") ?? "",
-        buttons: [...sr.querySelectorAll(".panel button")].filter((b) => !b.classList.contains("pitem")).map((b) => b.className),
-        text: sr.querySelector(".panel")?.textContent ?? "",
-      };
-    });
-    // The title is flagged out of read, the close button is named, and the Copy report and
-    // Turn off buttons are gone; with every paragraph read, there is no coverage line.
-    await expect.poll(panel, { message: `${zh} (panel)` }).toMatchObject({ lang: "zh-CN", title: "存疑段落（4/4）", close: "关闭", buttons: ["pclose"], cov: null });
-    expect.soft((await panel()).text, `${zh} (panel buttons)`).not.toMatch(/复制报告|关闭 localhost|在 localhost 关闭/);
+    const menu = await popupOver(page);
+    // The title is flagged out of read, each row is named in Chinese, and there are no Copy
+    // report and Turn off buttons; with every paragraph read, there is no coverage line.
+    await expect.poll(() => menuReport(menu), { message: `${zh} (report)` }).toMatchObject({ title: "存疑段落（4/4）", notes: [] });
+    const report = await menuReport(menu);
+    expect.soft(report.rows, `${zh} (report rows)`).toHaveLength(4);
+    for (const row of report.rows) expect.soft(row, `${zh} (report rows)`).toMatch(/^(重度 AI 编辑|AI 生成)，(0\.\d\d|1\.0)：\S/);
+    expect.soft(await menu.locator("#pageReport").textContent(), `${zh} (report buttons)`).not.toMatch(/复制报告|关闭 localhost|在 localhost 关闭/);
   });
 });
 

@@ -61,11 +61,16 @@ describe("Settings is one list", () => {
 describe("the setup page is one page", () => {
   const html = read("entrypoints", "onboarding", "index.html");
 
-  it("has no folds and puts where it reads before the engine", () => {
+  it("has no folds and numbers its steps: the engine, where it reads, the toolbar, then the marks", () => {
+    // The download is the step that takes longest and the one nothing works without, so it
+    // starts first; the three steps are on screen together, each turning into a tick when done.
     expect(html).not.toMatch(/<details|<summary/);
-    expect(html.indexOf('id="whereCard"')).toBeGreaterThan(0);
-    expect(html.indexOf('id="whereCard"')).toBeLessThan(html.indexOf('id="engineCard"'));
-    expect(html.indexOf('id="engineCard"')).toBeLessThan(html.indexOf('id="verdictCard"'));
+    const at = (id: string) => html.indexOf(`id="${id}"`);
+    expect(at("engineCard")).toBeGreaterThan(0);
+    expect(at("engineCard")).toBeLessThan(at("whereCard"));
+    expect(at("whereCard")).toBeLessThan(at("pinCard"));
+    expect(at("pinCard")).toBeLessThan(at("verdictCard"));
+    expect([...html.matchAll(/class="card step"/g)]).toHaveLength(3);
   });
 
   it("quotes no speed or memory for the engines", () => {

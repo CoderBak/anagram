@@ -1,7 +1,6 @@
 // The controls around the page: the setup page following the engine's lifecycle, clearing
 // cached verdicts, "Analyze this page" from the menu, the popup's button and the toggle
-// shortcut on a page Anagram is off for, the popup's one action per state, and the panel's
-// own "Turn off" on a site whose rule already says off.
+// shortcut on a page Anagram is off for, and the popup's one action per state.
 //
 //   npx playwright test scenarios-controls
 import { test, expect, BADGE_SEL, ABSENCE_MS, PARA, PAGE, chipCounts, chipsSettle } from "./kit.mjs";
@@ -222,7 +221,7 @@ test("the popup on a page being read offers Rescan and names the engine", async 
   await page.goto(pages.url("/popup-state.html"), { waitUntil: "load" });
   await chipsSettle(page, 3);
   const popup = await popupOver(context, extension, page);
-  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready, fake" });
+  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready" });
   const seen = await popupSays(popup);
   expect.soft(seen.status, `${ONE_ACTION} (running)`).toMatch(/paragraphs analyzed/);
   expect.soft(seen.filled, `${ONE_ACTION} (running)`).toBeLessThanOrEqual(1);

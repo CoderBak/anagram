@@ -17,8 +17,7 @@ import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
-import { DIST_CSS, distributionHtml, swatchHtml } from "./dist";
-import { verdictConfidence } from "./confidence";
+import { DIST_CSS, distributionHtml, swatchHtml, unsureNote } from "./dist";
 import { countWords } from "../dom/text";
 import { readMinWords } from "../settings/settings";
 import { isDarkPage } from "./theme";
@@ -38,7 +37,8 @@ const CARD_CSS = `
   color: #252525;
   z-index: 2147483647;
 }
-.head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
+/* The ✕ sits in the corner: the head's score stops short of it. */
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 5px; padding-right: 14px; }
 .verdict { font-weight: 700; font-size: 12px; }
 .verdict.band-unknown { color: #57606a; }
 .verdict.band-unsupported { color: #737373; }
@@ -48,7 +48,7 @@ const CARD_CSS = `
 .row .v { font-variant-numeric: tabular-nums; }
 .row.wins .k { flex: none; }
 .row.wins .v { text-align: right; }
-.short { color: #737373; font-style: italic; margin-bottom: 4px; }
+.short, .unsure { color: #737373; font-style: italic; margin-bottom: 4px; }
 .foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f0f0f0; color: #737373; font-size: 10px; }
 .close {
   position: absolute; top: 6px; right: 8px;
@@ -74,7 +74,7 @@ const CARD_CSS = `
   color: #fafafa;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
-:host(.pg-dark) .row .k, :host(.pg-dark) .short { color: #a3a3a3; }
+:host(.pg-dark) .row .k, :host(.pg-dark) .short, :host(.pg-dark) .unsure { color: #a3a3a3; }
 :host(.pg-dark) .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
 :host(.pg-dark) .verdict.band-unknown { color: #b9c0c8; }
 ` + DIST_CSS;
@@ -278,8 +278,9 @@ export async function analyzeSelection(): Promise<void> {
       const foot = b === "unknown" ? t("selFootUnavailable") : b === "unsupported" ? t("selFootUnsupported") : coverageNote(verdict, "selection", text).trim();
       card.innerHTML =
         closeBtn +
-        `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
+        `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r)}${bandLabel(b)}</span>` +
         `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
+        (!isNoVerdict(b) && unsureNote(verdict) ? `<div class="unsure">${unsureNote(verdict)}</div>` : "") +
         (short ? `<div class="short">${short}</div>` : "") +
         (isNoVerdict(b) ? "" : distributionHtml(r)) +
         (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)}, ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +

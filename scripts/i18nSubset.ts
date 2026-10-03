@@ -51,6 +51,10 @@ const TRIED = ["", ".ts", ".tsx", ".mts", ".js", ".mjs", "/index.ts", "/index.js
 
 /** `import … from "x"`, `import("x")`, `import "x"`, `export … from "x"`. */
 const SPECIFIER = /\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']|\bimport\s+["']([^"']+)["']/g;
+/** `import type … from "x"` and `export type … from "x"`: erased from the bundle, so what
+ *  they name is not in it — protocol.ts's type of the page report does not bring the
+ *  report's words into the background worker. */
+const TYPE_ONLY = /\b(?:import|export)\s+type\s[^;]*?\bfrom\s*["'][^"']+["']/g;
 /** A page's module scripts: `<script type="module" src="./main.ts">`. */
 const SCRIPT_SRC = /<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
 /** Any quoted bareword — the widest thing that could be naming a message. */
@@ -102,7 +106,7 @@ export function reachableSources(entries: string[], root: string): string[] {
       for (const m of text.matchAll(SCRIPT_SRC)) specs.push(m[1]!);
     } else if (CODE.test(file)) {
       // Each match is one of the three alternatives, and has its specifier.
-      for (const m of text.matchAll(SPECIFIER)) specs.push(m[1] ?? m[2] ?? m[3]!);
+      for (const m of text.replace(TYPE_ONLY, "").matchAll(SPECIFIER)) specs.push(m[1] ?? m[2] ?? m[3]!);
     }
     for (const spec of specs) {
       if (!spec.startsWith(".") && !spec.startsWith("/") && !ALIAS.test(spec)) continue;

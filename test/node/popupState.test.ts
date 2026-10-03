@@ -27,6 +27,14 @@ describe("what the popup leads with", () => {
     expect(lead({})).toEqual({ action: "rescan", primary: false, status: "counts" });
   });
 
+  it("treats Anagram's own reader as a page with no site: its results, or reading it on request", () => {
+    // The reader's address is no site's, so there is no pattern to grant; it answers for itself.
+    expect(lead({ pattern: null, tab: { enabled: true, reader: true } })).toEqual({ action: "rescan", primary: false, status: "counts" });
+    expect(lead({ pattern: null, tab: { enabled: false, reader: true } })).toEqual({ action: "analyze", primary: true, status: "off" });
+    // A scan: nothing to read on it, so neither a rescan nor a one-off run, only another file.
+    expect(lead({ pattern: null, tab: { enabled: false, reader: true, noText: true } })).toEqual({ action: "openReader", primary: false, status: "noText" });
+  });
+
   it("offers the one run that needs no permission on a page it is off for", () => {
     // Switched off by a rule: the content script is there and says so.
     expect(lead({ tab: { enabled: false } })).toEqual({

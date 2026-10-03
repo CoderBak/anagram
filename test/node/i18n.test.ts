@@ -171,9 +171,9 @@ describe("t()", () => {
 
   it("picks the singular only for one", () => {
     withoutExtension();
-    expect(tn("countAria", 1)).toBe("1 flagged paragraph — show list");
-    expect(tn("countAria", 2)).toBe("2 flagged paragraphs — show list");
-    expect(tn("countAria", 0)).toBe("0 flagged paragraphs — show list");
+    expect(tn("popupAnalyzed", 1)).toBe("1 paragraph analyzed");
+    expect(tn("popupAnalyzed", 2)).toBe("2 paragraphs analyzed");
+    expect(tn("popupAnalyzed", 0)).toBe("0 paragraphs analyzed");
   });
 
   it("prefers the platform's answer, and falls back when it has none", () => {
@@ -220,7 +220,7 @@ describe("t()", () => {
     Object.assign(host, { browser: undefined, chrome: { i18n: { getMessage: gone } } });
     expect(t("panelTitle")).toBe("Flagged paragraphs");
     expect(t("bandHeavy")).toBe("Heavily edited");
-    expect(tn("countAria", 3)).toBe("3 flagged paragraphs — show list");
+    expect(tn("popupAnalyzed", 3)).toBe("3 paragraphs analyzed");
     Object.assign(host, { browser: undefined, chrome: { i18n: { getMessage: () => "" } } });
     expect(t("cardScored")).toBe(EN.cardScored!.message);
     expect(messageLocale()).toBe("en");

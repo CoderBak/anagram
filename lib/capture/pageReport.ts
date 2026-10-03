@@ -9,6 +9,8 @@ export interface ReportEntry {
 
 export interface ReportCounts {
   read: number;
+  /** Of those read, how many in each word, human → AI-generated. */
+  bands: number[];
   short: number;
   notEnglish: number;
   pending: number;

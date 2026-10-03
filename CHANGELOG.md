@@ -9,11 +9,30 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- Verdicts take four fixed colours, one per word, instead of the continuous scale: green for Human, gold for Lightly edited, orange for Heavily edited and deep crimson for AI-generated, brighter on dark pages. The chip is filled with its word's colour, with no dot, and its number in the ink that reads on it; Human's chip is a tint of its green with a green edge, so a mostly human page stays calm. Where the dot thinned to a ring when its word was likely wrong, the card now says "Unsure: close to" the neighbouring word. The toolbar menu's list and the setup page's legend show the same chips.
+- The toolbar menu leads with the page's colour mix: a bar of the paragraphs read, a count for each word, a muted line for what was not scored and the flagged paragraphs, then the page's one main button. Its **PDF reader** button is now **Read a PDF file…**, and its **Show marks on this page** switch is gone (Alt+Shift+P still shows or hides the marks). The PDF reader's own Anagram button opens the toolbar menu, and reads the document where the browser does not allow that.
+- The PDF reader reads the whole document, not only the pages on screen: the text of every page is read from the document as the viewer's find bar reads it, and the paragraphs of pages not drawn are scored in the background, nearest first in the direction of reading. A page's chips are there the moment it is scrolled to, and the toolbar menu's report covers the document ("Reading the whole document: 30% so far."). The pace follows how fast this computer scores: with a GPU or the local engine about half the engine's time goes to it, on a CPU a third, on a slow CPU a seventh and only for the pages around the one being read (the menu then offers **Read the whole document**); half that on battery, nothing at 20% battery, while the reader scrolls, while the page's own paragraphs wait, while the tab is hidden, or over a scan. A paragraph that runs on to a page not yet drawn is read whole, its chip standing on what of it is drawn. Settings, PDFs: **Read whole PDFs in the background** (on).
+- The PDF reader drops its status line at the bottom. The toolbar menu's report for a PDF is the document read so far: the viewer draws a few pages at a time and lets the rest go, and their verdicts used to leave the counts, the list and the toolbar icon's number with them; they now stay, a row of the list takes the reader back to its page, and the report says how much has been read while some has not. Past 300 pages, where the reader reads only the pages drawn, the report says it covers those.
+- In the PDF reader a chip stands right after its paragraph's last line, also after a footnote mark, sized to the document's line spacing, and goes to the page margin only when that line is full.
+- The setup page is three numbered steps (set up the engine, where Anagram reads, keep Anagram in the toolbar) whose numbers turn into ticks as they are done, then Reading the marks.
+- Settings' toolbar guide is no longer folded.
+- Human text's green underline is drawn at half strength, so a mostly human page stays calm and the other three colours stand out of it.
+- "PDFs on this computer" shows only its **Turn it on** button while it is off, and the site-access button **Withdraw** is now **Remove access**. The toolbar menu's engine line says where the model runs ("on the graphics card") rather than the runtime's name.
+- The README's install steps name the file to download and where Developer mode is.
+- The Analyze text page shows its verdict as the chips do: the word in its colour with the score, a bar of how the four words shared it, and, for a long text, each pass edged in its colour. It counts the words as you type, opens a text file from a button, and has Settings behind a gear.
+
 - The in-browser engine downloads the model from hf-mirror.com where Hugging Face cannot be reached (mainland China, for one), as the local engine already did, and the setup page says it is doing so. A download that gets no answer at all now gives up on a host after 20 seconds instead of waiting for the browser, and its failure no longer tells a person who is online to check that they are.
 
 ### Fixed
 
+- Refreshing the PDF reader keeps its document: it is read again from its source, in a tab that already showed it.
+- Scrolling the PDF reader no longer takes the chips off pages that stay drawn.
+- The PDF reader no longer reads a figure's caption as body text after a paragraph the figure cut off ("…are projected to" at the foot of one page, the figure and its caption at the head of the next).
+- The PDF reader no longer reads a paper's keyword line ("Index Terms—…", "Keywords: …") with its abstract, nor the funding, manuscript-received and corresponding-author notes at the foot of its first page.
+- In the PDF reader with a dark system theme, the marks were drawn in the dark-page colours over the reader's white pages.
 - With the in-browser engine the toolbar menu said "Local engine needs an update": the engine, in its offscreen document, could not read the extension's version and reported none.
+- The selection card's ✕ no longer covers the score in its corner.
+- Over a scanned PDF the toolbar menu said Anagram was off and offered **Analyze this page**; it now says the pages are images with no text to read, and the reader says so for a scan of any length, not only of one page.
 
 ## [0.8.2] — 2026-09-29
 

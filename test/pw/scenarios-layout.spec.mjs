@@ -229,7 +229,7 @@ test("a script rewriting the pre-wrap post it owns shows exactly its new text, w
 
 // Facebook puts only the first lines of a long post in the page, ending in "…" and an inline
 // "See more" button, and writes the rest in when it is pressed. The preview is not the post.
-test("a post the site cut to a preview (\"… See more\") is not read until it is opened, and then it is read whole", async ({ page, pages, nativeHost }) => {
+test("a post the site cut to a preview (\"… See more\") is not read until it is opened, and then it is read whole", async ({ page, pages, nativeHost, tell }) => {
   const HEAD = "SEEMOREHEAD Volunteers from the history society have spent the last two long winters transcribing them all by hand. The keeper's logs for that winter run to nearly four hundred pages, and almost none of it is about the light. It is about weather, mostly, and about the small economies of a household cut off from the mainland: how much coal was left, which hens were still laying, when the supply boat was due and whether it";
   const TAIL = " came at all, and which books the children read by the stove. SEEMORETAIL He wrote in pencil because ink froze in the well, and he wrote every evening without exception.";
   pages.serve({
@@ -244,8 +244,8 @@ test("a post the site cut to a preview (\"… See more\") is not read until it i
   const mine = () => nativeHost.textsSince(mark).filter((t) => t.includes("SEEMOREHEAD"));
   await page.goto(pages.url("/see-more.html"), { waitUntil: "load" });
   const preview = "a post the site cut to a preview (\"… See more\") is not read until it is opened, and then it is read whole";
-  await expect(page.locator("#anagram-fab"), `${preview} (the page is being read)`).toBeAttached();
-  await page.waitForTimeout(ABSENCE_MS); // the ball is up before the first walk has run
+  await expect.poll(async () => (await tell(page, { action: "getTabState" }))?.enabled, { message: `${preview} (the page is being read)` }).toBe(true);
+  await page.waitForTimeout(ABSENCE_MS); // the script answers before the first walk has run
   await expect(page.locator(`#post ${BADGE_SEL}`), `${preview} (no chip on the preview)`).toHaveCount(0);
   expect(mine(), `${preview} (nothing of the preview sent)`).toEqual([]);
   await page.click("#more");

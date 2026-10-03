@@ -26,7 +26,7 @@ import { partTextOf, minWordsOf, isShortText, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_C
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
-import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict } from "./windows";
+import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict, type WindowVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, requestTokenCounts, contextAlive } from "../messaging/client";
 import { modelDim } from "../backend/router";
@@ -39,8 +39,8 @@ import {
   refreshHighlightTheme,
 } from "../render/highlight";
 import { REPORT_PAGE_SIZE, reportOffset, type PageReport, type ReportCounts } from "./pageReport";
-import { t } from "../i18n";
 import { band, isFlagged } from "../render/band";
+import { levelOf } from "../render/scale";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 
@@ -49,6 +49,11 @@ const log = createLogger("orchestrator");
 // Per-lane batch sizes (chars): the viewport lane favours time-to-first-chip, the
 // background prefetch lane favours model throughput (see scheduler.ts).
 const BATCH_CHAR_BUDGET = { viewport: 2400, near: 4000, background: 6000 } as const;
+/** The lanes' budgets, or one unit a batch while `one` says so. */
+function laneBudgets(one: () => boolean): Record<Lane, () => number> {
+  const of = (lane: Lane) => () => (one() ? 1 : BATCH_CHAR_BUDGET[lane]);
+  return { viewport: of("viewport"), near: of("near"), background: of("background") };
+}
 const MAX_IN_FLIGHT = 4;
 /** Background prefetch may hold at most this many of the in-flight slots. */
 const MAX_BACKGROUND_IN_FLIGHT = 1;
@@ -63,6 +68,10 @@ const PREFETCH_PASS = 300;
 const URL_REFRESH_DEBOUNCE_MS = 300;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
+/** How long a jump to a kept paragraph waits for its page to be drawn, and how much of a
+ *  regrouped paragraph's opening must match for the jump to land on it. */
+const JUMP_WAIT_MS = 5000;
+const JUMP_MATCH_CHARS = 40;
 
 /**
  * Pages that are rendered on a server and HYDRATED in the browser check the markup they
@@ -109,6 +118,13 @@ export interface Orchestrator {
   stop(): void;
   /** Force a fresh full scan (popup "Rescan"): drop everything, re-collect. */
   rescan(): void;
+  /**
+   * The units a surface hands out (`OrchestratorOptions.collect`) changed: purge what is
+   * gone, collect what is new, and put back the chips the surface took down. Everything
+   * still valid keeps its chip, marks and verdict — the PDF reader calls this each time a
+   * page is drawn, recycled, re-laid at a new zoom or read again by the structure.
+   */
+  refresh(): void;
   /** Toggle paragraph marks from the toolbar or keyboard. First call also scans. */
   toggle(): void;
   /** Number of units that have rendered a badge (popup GET_TAB_STATE). */
@@ -121,6 +137,20 @@ export interface Orchestrator {
   unavailableCount(): number;
   /** Document-specific action shown in the toolbar (Google Docs reading view etc.). */
   setPageAction(label: string | null, onAction?: () => void): void;
+  /**
+   * Score paragraphs that are not on screen — no DOM, only their text — in the background
+   * lane: the PDF reader's whole-document reading. Their windows go to the score cache, so the
+   * paragraph costs nothing when its page is drawn, and their verdicts to the kept ledger, so
+   * the report counts them meanwhile. Resolves with what it cost.
+   */
+  scoreDetached(items: readonly DetachedParagraph[]): Promise<DetachedReport>;
+  /** Whether a paragraph's text has a verdict here, on screen or kept. */
+  knows(text: string): boolean;
+  /** Whether a unit on screen has this text: it is read by the page's own lanes. */
+  onScreen(text: string): boolean;
+  /** Whether work for what is on screen is waiting or in flight, or nothing may be sent now
+   *  (stopped, the engine down, the page hidden): when work for what is not waits. */
+  busy(): boolean;
   pageReport(offset?: number): PageReport;
   runPageAction(documentId: string, id: number): boolean;
   jumpToResult(documentId: string, id: string): boolean;
@@ -138,6 +168,43 @@ export interface Orchestrator {
 
 function newSessionId(): string {
   return "s_" + Math.random().toString(36).slice(2, 10);
+}
+
+/** A paragraph of a paged document that is not on screen, to be read in the background. */
+export interface DetachedParagraph {
+  /** The page its chip will stand on (Unit.page). */
+  page: number;
+  /** Its place in the document's reading order (Unit.order). */
+  order: number;
+  /** Exactly the text its unit will have when the page is drawn: the cache is keyed by it. */
+  text: string;
+  wordCount: number;
+}
+
+/** What one scoreDetached() call cost: the time, and how many windows the engine was sent. */
+export interface DetachedReport {
+  ms: number;
+  /** Windows of the batch the engine read: not cache hits, not settled by the language gate. */
+  sent: number;
+  /** Characters in those windows: what the pace learns from. */
+  chars: number;
+  /** Paragraphs that came back with a verdict. */
+  scored: number;
+  /** The run was stopped or started over while the batch was out: nothing of it counts. */
+  retired: boolean;
+  /** The engine was down when the batch came back: what it failed says nothing of the text. */
+  down: boolean;
+}
+
+/** A verdict on a paragraph of a paged document that is not drawn now (Unit.page). */
+interface KeptVerdict {
+  /** "k…": an id of its own, for the report's list. */
+  id: string;
+  page: number;
+  order: number;
+  text: string;
+  wordCount: number;
+  result: ScoreResult;
 }
 
 /** Everything the FIRST collect depends on, read as one snapshot before it runs. */
@@ -159,8 +226,20 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
 export interface OrchestratorOptions {
   /** The top frame owns the tab's toolbar count; subframes only draw paragraph marks. */
   toolbarOwner?: boolean;
-  /** Reader-specific coverage shown beside the popup counts. */
-  reportScopeNote?: () => string;
+  /** Reader-specific coverage shown beside the popup counts, told how many pages of a paged
+   *  document (Unit.page) have verdicts, drawn now or kept. */
+  reportScopeNote?: (pagesRead: number) => string;
+  /** Bring a page of a paged document into view: the report's list asked for a paragraph on a
+   *  page the viewer let go, which is jumped to once the page is drawn and read again. */
+  revealPage?: (page: number) => void;
+  /** The texts of the document's paragraphs as the surface reads them now, where it knows
+   *  them all (the PDF reader with Zotero's structure): a kept verdict on any other text is
+   *  of a paragraph read differently since, and is not counted. */
+  documentTexts?: () => ReadonlySet<string> | null;
+  /** Whether every batch is one unit, asked at each batch: the PDF reader's, where the engine
+   *  is not fast (lib/pdf/readAhead.ts). A pass pads its texts to the longest of them, and one
+   *  paragraph at a time puts each chip up as soon as it is read. */
+  oneUnitBatches?: () => boolean;
   /**
    * Where the units come from, when they do not come from a DOM walk. The PDF reader
    * supplies this: a PDF's paragraphs are the document's own reconstruction, decided by
@@ -206,6 +285,20 @@ export function createOrchestrator(
   const shortTexts = new Set<Text>();
   /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
   let verdictsById = new Map<string, UnitVerdict>();
+  /**
+   * PAGED DOCUMENTS. The PDF reader's viewer draws a few pages at a time and lets the rest go,
+   * and a unit goes with its page (purgeDisconnected); the reader also reads pages it has not
+   * drawn (scoreDetached). Both verdicts are kept here, by the paragraph's text, and counted
+   * and listed as long as no live unit has that text: the report is the document read so far,
+   * not the two pages on screen. A paragraph on screen counts by its live unit, and when its
+   * page is let go once more its kept verdict is replaced.
+   */
+  let kept = new Map<string, KeptVerdict>();
+  let detachedSeq = 0;
+  let keptSeq = 0;
+  /** A kept paragraph the report's list asked for: jumped to once its page is read again, if
+   *  that is soon — later, the reader has moved on. */
+  let pendingJump: { page: number; text: string; until: number } | null = null;
   /** Text-node ownership: node → live unit. Recreated on stop/rescan. */
   let nodeOwner = new WeakMap<Text, Unit>();
 
@@ -278,20 +371,29 @@ export function createOrchestrator(
   let lastCommentRefresh = 0;
   const reportDocumentId = (): string => `${session}:${captureGeneration}`;
 
+  /** The report's list: flagged units, and on a paged document the flagged kept verdicts of
+   *  pages not drawn now, by page and then place on it. */
+  function flaggedEntries(): { id: string; text: string; result: ScoreResult }[] {
+    const live = flaggedInOrder().map(({ unit, v }) => ({ id: unit.id, page: unit.page ?? 0, order: unit.order, text: unit.text, result: v.result }));
+    const gone = keptNow().filter((k) => isFlagged(k.result));
+    if (gone.length === 0) return live;
+    return [...live, ...gone].sort((a, b) => a.page - b.page || a.order - b.order);
+  }
+
   function pageReport(requestedOffset = 0): PageReport {
     if (Date.now() - lastCommentRefresh > 5000) {
       lastCommentRefresh = Date.now();
       refreshCommentOffer();
     }
-    const flagged = flaggedInOrder();
+    const flagged = flaggedEntries();
     const offset = reportOffset(requestedOffset, flagged.length);
     return {
       documentId: reportDocumentId(), visible, counts: reportCounts(),
       total: flagged.length, offset,
-      entries: flagged.slice(offset, offset + REPORT_PAGE_SIZE).map(({ unit, v: { result } }) => ({
-        id: unit.id, score: result.score, band: band(result), snippet: unit.text.slice(0, 140),
+      entries: flagged.slice(offset, offset + REPORT_PAGE_SIZE).map(({ id, text, result }) => ({
+        id, score: result.score, band: band(result), snippet: text.slice(0, 140),
       })),
-      scopeNote: opts.reportScopeNote?.() ?? "", commentOrigins: commentOffer,
+      scopeNote: opts.reportScopeNote?.(pagesRead()) ?? "", commentOrigins: commentOffer,
       pageAction: pageAction ? { id: pageAction.id, label: pageAction.label, enabled: !!pageAction.run } : null,
     };
   }
@@ -307,8 +409,17 @@ export function createOrchestrator(
   }
 
   function jumpToResult(documentId: string, id: string): boolean {
-    if (documentId !== reportDocumentId() || !unitsById.get(id)?.container.isConnected) return false;
+    if (documentId !== reportDocumentId()) return false;
+    const away = keptNow().find((k) => k.id === id);
+    if (away && opts.revealPage) {
+      if (!visible) setVisible(true);
+      pendingJump = { page: away.page, text: away.text, until: Date.now() + JUMP_WAIT_MS };
+      opts.revealPage(away.page);
+      return true;
+    }
+    if (!unitsById.get(id)?.container.isConnected) return false;
     if (!visible) setVisible(true);
+    pendingJump = null;
     jumpTo(id);
     return true;
   }
@@ -325,18 +436,29 @@ export function createOrchestrator(
     let notEnglish = 0;
     let unavailable = 0;
     let lessReliable = 0;
+    const bands = [0, 0, 0, 0];
     for (const [id, v] of verdictsById) {
       if (v.result.unsupported) notEnglish++;
       else if (v.result.degraded) unavailable++;
       else {
         read++;
+        bands[levelOf(v.result.score)]!++;
         const unit = unitsById.get(id);
         if (unit && isShortText(unit.wordCount)) lessReliable++;
       }
     }
+    for (const k of keptNow()) {
+      if (k.result.unsupported) notEnglish++;
+      else if (k.result.degraded) unavailable++;
+      else {
+        read++;
+        bands[levelOf(k.result.score)]!++;
+        if (isShortText(k.wordCount)) lessReliable++;
+      }
+    }
     let pending = 0;
     for (const id of unitsById.keys()) if (!verdictsById.has(id)) pending++;
-    return { read, short: shortTexts.size, notEnglish, pending, unavailable, lessReliable };
+    return { read, bands, short: shortTexts.size, notEnglish, pending, unavailable, lessReliable };
   }
 
   /**
@@ -445,6 +567,7 @@ export function createOrchestrator(
     // Detached text nodes are held by nothing else here — a feed that scrolls for an hour
     // would otherwise keep every short paragraph it ever showed.
     for (const node of shortTexts) if (!node.isConnected) shortTexts.delete(node);
+    let left = false;
     for (const unit of [...unitsById.values()]) {
       const gone =
         !unit.container.isConnected ||
@@ -453,15 +576,66 @@ export function createOrchestrator(
           const last = p.nodes[p.nodes.length - 1];
           return (first && !first.isConnected) || (last && !last.isConnected);
         });
-      if (gone) invalidateUnit(unit, rescanQueue);
+      if (!gone) continue;
+      const v = verdictsById.get(unit.id);
+      // Kept only where the document's paragraphs are known (the PDF reader's structure):
+      // the reflow reads a run of drawn pages as a whole, and a paragraph across the edge of
+      // the run reads differently with every run — each would be counted again.
+      if (unit.page !== undefined && v && !v.result.degraded && opts.documentTexts?.()) {
+        keep({ page: unit.page, order: unit.order, text: unit.text, wordCount: unit.wordCount }, v.result);
+        left = true;
+      }
+      invalidateUnit(unit, rescanQueue);
     }
+    if (left) updateToolbar();
+  }
+
+  function keep(p: DetachedParagraph, result: ScoreResult): void {
+    kept.set(p.text, { id: `k${(keptSeq++).toString(36)}`, page: p.page, order: p.order, text: p.text, wordCount: p.wordCount, result });
+  }
+
+  /** What is kept of the paragraphs not on screen now. */
+  function keptNow(): KeptVerdict[] {
+    if (kept.size === 0) return [];
+    const live = new Set<string>();
+    for (const unit of unitsById.values()) live.add(unit.text);
+    const current = opts.documentTexts?.() ?? null;
+    return [...kept.values()].filter((k) => !live.has(k.text) && (!current || current.has(k.text)));
+  }
+
+  /** Pages with verdicts, drawn now or kept. */
+  function pagesRead(): number {
+    const pages = new Set<number>();
+    for (const k of kept.values()) pages.add(k.page);
+    for (const id of verdictsById.keys()) {
+      const page = unitsById.get(id)?.page;
+      if (page !== undefined) pages.add(page);
+    }
+    return pages.size;
+  }
+
+  function knows(text: string): boolean {
+    if (kept.has(text)) return true;
+    for (const [id, v] of verdictsById) if (!v.result.degraded && unitsById.get(id)?.text === text) return true;
+    return false;
+  }
+
+  function onScreen(text: string): boolean {
+    for (const unit of unitsById.values()) if (unit.text === text) return true;
+    return false;
+  }
+
+  // Anything of the page's own out or waiting holds the read-ahead: on screen it comes
+  // first, and whatever a batch waits behind would be timed as the engine's pace.
+  function busy(): boolean {
+    return !started || !booted || frozen || backendDown || pageHidden || scheduler.pendingCount() > 0;
   }
 
   /**
    * Walker ownership filter. "skip" when the run is an exact live part; otherwise
    * invalidate any stale owners (run grew/shrunk/split) and let the walker re-take.
    */
-  function makeClaimFilter(rescanQueue?: Set<Element>) {
+  function makeClaimFilter(rescanQueue?: Set<Element>, seen?: Set<string>) {
     return (nodes: Text[]): "take" | "skip" => {
       const owners = new Set<Unit>();
       for (const n of nodes) {
@@ -478,6 +652,7 @@ export function createOrchestrator(
             part.nodes.length === nodes.length &&
             part.nodes.every((n, i) => n === nodes[i])
           ) {
+            seen?.add(u.id);
             return "skip"; // unchanged — already rendered
           }
         }
@@ -509,6 +684,14 @@ export function createOrchestrator(
   function ingestUnits(units: Unit[]): void {
     for (const u of units) {
       if (unitsById.has(u.id)) continue;
+      // A node is one unit's: a unit minted on nodes another still holds (the PDF reader's,
+      // its text restated by a page read since) retires that one, chip and all.
+      for (const part of u.parts) {
+        for (const n of part.nodes) {
+          const owner = nodeOwner.get(n);
+          if (owner && owner !== u && unitsById.get(owner.id) === owner) invalidateUnit(owner);
+        }
+      }
       unitsById.set(u.id, u);
       for (const part of u.parts) {
         for (const n of part.nodes) {
@@ -517,6 +700,19 @@ export function createOrchestrator(
         }
       }
       observers.observeUnit(u);
+    }
+    if (pendingJump && Date.now() > pendingJump.until) pendingJump = null;
+    if (pendingJump) {
+      const { page, text } = pendingJump;
+      const onPage = units.filter((u) => u.page === page);
+      // The same paragraph, or, regrouped since, the unit that holds its opening (an opening
+      // long enough to be its own).
+      const opens = (whole: string, part: string) => part.length >= JUMP_MATCH_CHARS && whole.includes(part.slice(0, 80));
+      const target = onPage.find((u) => u.text === text) ?? onPage.find((u) => opens(u.text, text) || opens(text, u.text));
+      if (target) {
+        pendingJump = null;
+        jumpTo(target.id);
+      }
     }
     schedulePrefetch();
   }
@@ -560,19 +756,21 @@ export function createOrchestrator(
    * of its windows have one — so nothing of a long paragraph is ever painted half-read.
    * What aggregation does with a failed or a non-English window is unitVerdict()'s rule.
    */
+  /** Token counts for this run of the capture. A count that meets a stopped engine turns the
+   *  page down exactly as a score would, so what it leaves Unavailable is queued again when
+   *  the engine is back. */
+  const countTokensFor = (generation: number) => async (texts: string[]) => {
+    const reply = await requestTokenCounts(texts);
+    if (generation === captureGeneration) {
+      if (reply.backend === "down") enterDown();
+      else if (reply.backend === "up") leaveDown();
+    }
+    return reply.counts;
+  };
+
   async function send(units: Unit[], lane: Lane): Promise<UnitVerdict[]> {
     const generation = captureGeneration;
-    // A count that meets a stopped engine turns the page down exactly as a score would, so
-    // what it leaves Unavailable is queued again when the engine is back.
-    const countTokens = async (texts: string[]) => {
-      const reply = await requestTokenCounts(texts);
-      if (generation === captureGeneration) {
-        if (reply.backend === "down") enterDown();
-        else if (reply.backend === "up") leaveDown();
-      }
-      return reply.counts;
-    };
-    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation), countTokens);
+    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation), countTokensFor(generation));
     if (generation !== captureGeneration) {
       // Clearing a cache leaves existing verdicts visible, but an abandoned batch
       // must not leave its unfinished chips behind or paint a late result. Where only the
@@ -596,6 +794,44 @@ export function createOrchestrator(
       else badges.remove(unit.id);
     }
     return out;
+  }
+
+  /**
+   * Paragraphs with no DOM, read exactly as a unit is (send): windows planned by
+   * readInWindows, blocks through scoreBlocks in the background lane — the cache first, the
+   * same requests, the same cache entries after — so the unit the paragraph becomes when its
+   * page is drawn finds every window cached. A degraded verdict is not kept: the page asks
+   * again when it is drawn.
+   */
+  async function scoreDetached(items: readonly DetachedParagraph[]): Promise<DetachedReport> {
+    const began = performance.now();
+    const generation = captureGeneration;
+    if (busy() || items.length === 0) return { ms: 0, sent: 0, chars: 0, scored: 0, retired: false, down: backendDown };
+    const given = items.map((p) => ({ id: `d${(detachedSeq++).toString(36)}`, text: p.text, order: p.order, p }));
+    let sent = 0, chars = 0;
+    const read = await readInWindows(given, async (blocks, owners) => {
+      const cached = new Set(blocks.filter((b) => cache.get(b.text)).map((b) => b.id));
+      const out = await scoreBlocks(blocks, owners, "background", generation);
+      // What the pace learns from (lib/pdf/readAhead.ts) is the engine's own work: not what
+      // this page or the service worker had cached, not what the language gate settled.
+      for (const b of blocks) {
+        const r = out.get(b.id);
+        if (!cached.has(b.id) && r && !r.cached && !r.unsupported && !r.degraded) { sent++; chars += b.text.length; }
+      }
+      return out;
+    }, countTokensFor(generation)).catch(() => new Map<string, WindowVerdict[]>());
+    if (generation !== captureGeneration) return { ms: performance.now() - began, sent, chars, scored: 0, retired: true, down: backendDown };
+    let scored = 0;
+    for (const { id, text, p } of given) {
+      const windows = read.get(id);
+      if (!windows?.length) continue;
+      const verdict = unitVerdict(id, text.length, windows);
+      if (verdict.result.degraded) continue;
+      keep(p, verdict.result);
+      scored++;
+    }
+    if (scored > 0) updateToolbar();
+    return { ms: performance.now() - began, sent, chars, scored, retired: false, down: backendDown };
   }
 
   /**
@@ -950,9 +1186,7 @@ export function createOrchestrator(
   }
 
   function updateToolbar(): void {
-    let flagged = 0;
-    for (const v of verdictsById.values()) if (isFlagged(v.result)) flagged++;
-    void notifyToolbarBadge(flagged);
+    void notifyToolbarBadge(flaggedCount());
   }
 
   /** Per-tab flagged count on the toolbar icon (top frame owns the tab's number). Settles
@@ -965,7 +1199,7 @@ export function createOrchestrator(
   }
 
   const scheduler: Scheduler = createScheduler<UnitVerdict>({
-    batchCharBudget: BATCH_CHAR_BUDGET,
+    batchCharBudget: opts.oneUnitBatches ? laneBudgets(opts.oneUnitBatches) : BATCH_CHAR_BUDGET,
     maxInFlight: MAX_IN_FLIGHT,
     maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
     send,
@@ -1372,6 +1606,8 @@ export function createOrchestrator(
     flaggedCursor = null; // the ids it names are about to stop existing
     unitsById = new Map();
     verdictsById = new Map();
+    kept = new Map();
+    pendingJump = null;
     shortTexts.clear();
     nodeOwner = new WeakMap();
   }
@@ -1443,6 +1679,24 @@ export function createOrchestrator(
     log.log("rescan");
   }
 
+  function refresh(): void {
+    if (!started || !booted) return;
+    purgeDisconnected();
+    const seen = new Set<string>();
+    const fresh = collect(document.body, makeClaimFilter(undefined, seen));
+    ingestUnits(fresh);
+    // A unit the surface no longer hands out is one its new reading drew otherwise — the PDF
+    // reader's quick reflow read a figure's caption as prose, Zotero's structure does not —
+    // and goes, though its text is still on the page.
+    for (const unit of fresh) seen.add(unit.id);
+    for (const unit of [...unitsById.values()]) if (!seen.has(unit.id)) invalidateUnit(unit);
+    // A surface may take a chip down with the layer it lived in (pdf.js empties a page it
+    // re-lays at a new zoom) while the unit itself stays: draw it again from its verdict.
+    const lost = [...verdictsById.values()].filter((v) => !badges.placed(v.id));
+    if (lost.length) whenSafeToInsert(() => paint(lost));
+    updateToolbar();
+  }
+
   function scoredCount(): number {
     return verdictsById.size;
   }
@@ -1450,6 +1704,7 @@ export function createOrchestrator(
   function flaggedCount(): number {
     let n = 0;
     for (const v of verdictsById.values()) if (isFlagged(v.result)) n++;
+    for (const k of keptNow()) if (isFlagged(k.result)) n++;
     return n;
   }
 
@@ -1470,12 +1725,17 @@ export function createOrchestrator(
     start,
     stop,
     rescan,
+    refresh,
     toggle,
     scoredCount,
     flaggedCount,
     unsupportedCount,
     unavailableCount,
     setPageAction,
+    scoreDetached,
+    knows,
+    onScreen,
+    busy,
     pageReport,
     runPageAction,
     jumpToResult,

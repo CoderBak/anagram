@@ -14,6 +14,10 @@
 //   adopt a shared constructable sheet carrying the same rules;
 // - print suppression: verdict marks are reading aids, not document content —
 //   all rules live under `@media screen`.
+// - forced colours (a high-contrast theme): the browser paints every registered highlight
+//   in the system's selection colours, whatever the rules say, so every read paragraph
+//   looked selected. There the highlights are kept but not registered (inForcedColors);
+//   the chips still say everything.
 //
 // v4: marks are per STRETCH. A paragraph longer than the model reads in one pass is read
 // in overlapping passes, and each stretch between two pass edges is marked in the colour
@@ -23,13 +27,12 @@
 // pass cap) and text only passes the language gate refused read get no mark: a mark claims
 // that the model read what it covers.
 //
-// v5 — ONE SCALE. Every read stretch is underlined in the colour of its own score, on the
-// one-hue ramp of lib/render/scale.ts: human text carries the palest, quietest line and
-// AI-generated text the darkest, so a mostly human page stays calm without anything being
-// left unmarked. The line is solid, never wavy (the spell-checker's "this is wrong"), and
-// the same weight everywhere, so a score on either side of a word's edge does not jump.
-// How sure the model is shows on the chip's dot and in the card, not on the line.
-// Underlines are all on or all off (setHighlightsVisible); there is no flagged-only mode.
+// v6 — FOUR COLOURS. Every read stretch is underlined in its word's colour
+// (lib/render/scale.ts): green, gold, orange, crimson, so a page read together sorts itself at
+// a glance. Human's green is laid on half-strength, so a mostly human page stays calm and the
+// other three stand out of it. The line is solid, never wavy (the spell-checker's "this is
+// wrong"), and the same weight everywhere. How sure the model is shows in the card, not on the line. Underlines are
+// all on or all off (setHighlightsVisible); there is no flagged-only mode.
 //
 // Detail on demand: while a unit is ACTIVE — its chip hovered, its card pinned, or a
 // jump from the panel or the next/previous-flagged command just landed on it — its
@@ -40,8 +43,8 @@
 // pointer leaves. Nothing animates: the highlight pseudo-element takes no transition, so
 // there is no motion to hold back under prefers-reduced-motion.
 //
-// ::highlight() rules cannot take a colour per range, so the ramp is sampled in
-// SCALE_STEPS + 1 named steps, each at rest or active.
+// ::highlight() rules cannot take a colour per range: one name per word (SCALE_STEPS + 1),
+// each at rest or active.
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict, WindowVerdict } from "../capture/windows";
@@ -70,12 +73,15 @@ function underline(color: string): string[] {
   ];
 }
 
+/** How strongly human text's line is drawn: present, but quieter than the three that matter. */
+const HUMAN_LINE = 0.5;
+
 function buildCss(dark: boolean): string {
   const rules: string[] = [];
   const rule = (name: string, decl: string[]) => rules.push(`::highlight(${name}) { ${decl.join("; ")}; }`);
   for (let step = 0; step <= SCALE_STEPS; step++) {
     const score = step / SCALE_STEPS;
-    const line = scaleColor(score, dark);
+    const line = scaleColor(score, dark, step === 0 ? HUMAN_LINE : 1);
     const tint = scaleColor(score, dark, dark ? 0.24 : 0.18);
     rule(markName(step, false), underline(line));
     rule(markName(step, true), [`background-color: ${tint}`, ...underline(line)]);
@@ -88,6 +94,20 @@ function highlightsSupported(): boolean {
 }
 
 const _highlights = new Map<string, Highlight>();
+const forcedColors = typeof matchMedia === "function" ? matchMedia("(forced-colors: active)") : null;
+/** A high-contrast theme is on, in which a registered highlight would read as a selection. */
+function inForcedColors(): boolean {
+  return forcedColors?.matches === true;
+}
+// The theme can change while the page is open: register or withdraw what is there.
+forcedColors?.addEventListener?.("change", () => {
+  if (!highlightsSupported()) return;
+  for (const [name, h] of _highlights) {
+    if (inForcedColors()) CSS.highlights.delete(name);
+    else CSS.highlights.set(name, h);
+  }
+});
+
 /** The Highlight a step's ranges live in — one set at rest, one for the active unit. */
 function markHighlight(step: number, active: boolean): Highlight | null {
   if (!highlightsSupported()) return null;
@@ -99,7 +119,8 @@ function markHighlight(step: number, active: boolean): Highlight | null {
   }
   // Chrome empties the HighlightRegistry when a page reopens its document
   // (document.open()/write()); a cached Highlight must be re-registered to paint.
-  if (CSS.highlights.get(name) !== h) CSS.highlights.set(name, h);
+  if (inForcedColors()) CSS.highlights.delete(name);
+  else if (CSS.highlights.get(name) !== h) CSS.highlights.set(name, h);
   return h;
 }
 
@@ -114,8 +135,22 @@ let _styleEl: HTMLStyleElement | null = null;
 let _shadowSheet: CSSStyleSheet | null = null;
 let _visible = true;
 
+/** Set by a surface that draws its own pages over its document (the PDF reader's white pages
+ *  on a dark viewer): whether those pages are dark. Unset, the document's own background says. */
+let _surfaceDark: boolean | null = null;
+
+function surfaceIsDark(): boolean {
+  return _surfaceDark ?? isDarkPage();
+}
+
+/** The palette follows `dark` pages from now on, whatever the document's background. */
+export function setHighlightSurface(dark: boolean | null): void {
+  _surfaceDark = dark;
+  if (_styleEl || _shadowSheet) applyCss();
+}
+
 function applyCss(): void {
-  const css = buildCss(isDarkPage());
+  const css = buildCss(surfaceIsDark());
   if (_styleEl) _styleEl.textContent = css;
   if (_shadowSheet) _shadowSheet.replaceSync(css);
 }
@@ -141,7 +176,7 @@ export function highlightSheets(): CSSStyleSheet[] {
   if (!highlightsSupported()) return [];
   if (!_shadowSheet) {
     _shadowSheet = new CSSStyleSheet();
-    _shadowSheet.replaceSync(buildCss(isDarkPage()));
+    _shadowSheet.replaceSync(buildCss(surfaceIsDark()));
     _shadowSheet.disabled = !_visible;
   }
   return [_shadowSheet];

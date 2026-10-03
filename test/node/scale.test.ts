@@ -1,9 +1,9 @@
 // test/node/scale.test.ts — the word, the colour and the doubt a verdict is shown with.
 import { describe, expect, it } from "vitest";
-import { inGamut, lrgb, oklab, parse } from "culori";
+import { lrgb, oklab, parse, wcagContrast } from "culori";
 import type { ScoreResult } from "../../lib/contract";
 import { band, isFlagged } from "../../lib/render/band";
-import { HUES, levelOf, scaleChroma, scaleColor, scaleColorCss, scaleHue, scaleLightness, scaleStep, SCALE_STEPS, SCORE_CUTS, scoreRange, spread } from "../../lib/render/scale";
+import { BAND_COLORS, bandColor, levelOf, nearestOtherLevel, scaleColor, scaleGradient, scaleStep, SCALE_STEPS, SCORE_CUTS, spread } from "../../lib/render/scale";
 
 const result = (percent: number[]): ScoreResult => {
   const probs = percent.map((p) => p / 100);
@@ -11,7 +11,6 @@ const result = (percent: number[]): ScoreResult => {
   const bucket = probs.indexOf(Math.max(...probs));
   return { id: "x", bucket, probs, score };
 };
-const lightness = (css: string): number => Number(/oklch\(([\d.]+)/.exec(css)![1]);
 
 describe("the word follows the score", () => {
   it("cuts where EditLens's equal buckets meet: 1/6, 1/2, 5/6", () => {
@@ -46,100 +45,58 @@ describe("the word follows the score", () => {
 });
 
 describe("the colour", () => {
-  it("runs one way: darker with every step on a light page, brighter on a dark one", () => {
+  it("is the word's: four colours, one per word, and nothing in between", () => {
     for (const dark of [false, true]) {
-      const steps = Array.from({ length: SCALE_STEPS + 1 }, (_, i) => lightness(scaleColor(i / SCALE_STEPS, dark)));
-      for (let i = 1; i < steps.length; i++) {
-        if (dark) expect(steps[i]).toBeGreaterThan(steps[i - 1]!);
-        else expect(steps[i]).toBeLessThan(steps[i - 1]!);
-      }
+      const own = dark ? BAND_COLORS.dark : BAND_COLORS.light;
+      expect([0, 0.16, 1 / 6, 0.3, 0.49, 0.5, 0.83, 5 / 6, 1].map((s) => scaleColor(s, dark)))
+        .toEqual([own[0], own[0], own[1], own[1], own[1], own[2], own[2], own[3], own[3]]);
+      expect(new Set(own).size).toBe(4);
     }
+    expect(bandColor(3, false, 0.2)).toMatch(/^rgb\(\d+ \d+ \d+ \/ 0\.2\)$/);
   });
 
-  it("runs green through amber to red, the hue falling with every step", () => {
-    expect(scaleHue(0)).toBe(HUES.human);
-    expect(scaleHue(0.5)).toBe(HUES.middle);
-    expect(scaleHue(1)).toBe(HUES.ai);
-    const hues = Array.from({ length: SCALE_STEPS + 1 }, (_, i) => scaleHue(i / SCALE_STEPS));
-    for (let i = 1; i < hues.length; i++) expect(hues[i]).toBeLessThan(hues[i - 1]!);
-  });
-
-  it("paints the same colour in a stylesheet as in script", () => {
-    // The stylesheet's calc() with the score put in, min() and max() as Math's.
-    const evaluate = (css: string, s: number): number[] => {
-      const body = css.replaceAll("var(--s, 0)", String(s)).replace(/^oklch\(/, "").replace(/\)$/, "");
-      const parts = body.match(/calc\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/g)!;
-      return parts.map((p) => Function(`"use strict"; return ${p.slice(4).replaceAll("min(", "Math.min(").replaceAll("max(", "Math.max(")};`)() as number);
-    };
-    for (const dark of [false, true]) {
-      for (let i = 0; i <= SCALE_STEPS; i++) {
-        const s = i / SCALE_STEPS;
-        const [l, c, h] = evaluate(scaleColorCss(dark), s);
-        const [, jl, jc, jh] = /oklch\(([\d.]+) ([\d.]+) ([\d.]+)/.exec(scaleColor(s, dark))!.map(Number);
-        // scaleColor rounds lightness and chroma to three places and the hue to one.
-        expect(Math.abs(l! - jl!)).toBeLessThanOrEqual(0.0005 + 1e-9);
-        expect(Math.abs(c! - jc!)).toBeLessThanOrEqual(0.0005 + 1e-9);
-        expect(Math.abs(h! - jh!)).toBeLessThanOrEqual(0.05 + 1e-9);
-      }
-    }
-  });
-
-  it("stays inside sRGB the whole way, and at its edge where chroma is highest", () => {
-    // The limit at a lightness and hue, found by bisection on culori's gamut test.
-    const limit = (l: number, h: number): number => {
-      let lo = 0, hi = 0.4;
-      for (let i = 0; i < 40; i++) {
-        const mid = (lo + hi) / 2;
-        if (inGamut("rgb")({ mode: "oklch", l, c: mid, h })) lo = mid; else hi = mid;
-      }
-      return lo;
-    };
-    for (const dark of [false, true]) {
-      const name = dark ? "dark" : "light";
-      let closest = 0;
-      for (let i = 0; i <= 100; i++) {
-        const s = i / 100;
-        const c = scaleChroma(s, dark), edge = limit(scaleLightness(s, dark), scaleHue(s));
-        expect(c, `${name} ${s}`).toBeLessThanOrEqual(edge);
-        closest = Math.max(closest, c / edge);
-      }
-      // At each quarter step the chroma is within a third of what sRGB allows at that lightness and hue.
-      for (const s of [0, 0.25, 0.5, 0.75, 1]) {
-        expect(scaleChroma(s, dark) / limit(scaleLightness(s, dark), scaleHue(s)), `${name} ${s}`).toBeGreaterThan(0.65);
-      }
-      expect(closest).toBeGreaterThan(0.97);
-    }
-  });
-
-  it("keeps a quarter of the scale apart for a reader with protanopia or deuteranopia", () => {
+  it("keeps every two words apart, also for a reader with protanopia or deuteranopia", () => {
     // Machado, Oliveira and Fernandes 2009, full severity, on linear sRGB.
     const MACHADO = {
       protanopia: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
       deuteranopia: [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.01182, 0.04294, 0.968881]],
     } as const;
-    const simulate = (css: string, kind: keyof typeof MACHADO) => {
+    const seen = (css: string, kind?: keyof typeof MACHADO) => {
+      if (!kind) return oklab(parse(css)!);
       const c = lrgb(parse(css)!);
       const v = [c.r, c.g, c.b];
       const [r, g, b] = MACHADO[kind].map((row) => Math.min(1, Math.max(0, row[0] * v[0]! + row[1] * v[1]! + row[2] * v[2]!)));
       return oklab({ mode: "lrgb", r: r!, g: g!, b: b! });
     };
-    for (const [dark, least] of [[false, 7.8], [true, 6.0]] as const) {
-      for (const kind of ["protanopia", "deuteranopia"] as const) {
-        const seen = [0, 0.25, 0.5, 0.75, 1].map((s) => simulate(scaleColor(s, dark), kind));
-        for (let i = 1; i < seen.length; i++) {
-          const a = seen[i - 1]!, b = seen[i]!;
+    for (const [dark, normal, cvd] of [[false, 15, 8.5], [true, 13, 9]] as const) {
+      const colours = dark ? BAND_COLORS.dark : BAND_COLORS.light;
+      for (const kind of [undefined, "protanopia", "deuteranopia"] as const) {
+        const least = kind ? cvd : normal;
+        for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+          const a = seen(colours[i]!, kind), b = seen(colours[j]!, kind);
           const d = 100 * Math.hypot(a.l - b.l, a.a - b.a, a.b - b.b);
-          expect(d, `${dark ? "dark" : "light"} ${kind} step ${i}`).toBeGreaterThanOrEqual(least);
+          expect(d, `${dark ? "dark" : "light"} ${kind ?? "normal"} ${i}-${j}`).toBeGreaterThanOrEqual(least);
         }
       }
     }
   });
 
-  it("is continuous: two scores either side of a word's edge are one step apart at most", () => {
-    expect(Math.abs(scaleStep(0.49) - scaleStep(0.51))).toBeLessThanOrEqual(1);
-    expect(scaleStep(-1)).toBe(0);
-    expect(scaleStep(2)).toBe(SCALE_STEPS);
-    expect(scaleColor(0.3, false, 0.2)).toMatch(/\/ 0\.2\)$/);
+  it("reads on its page: a mark on white or on near-black", () => {
+    // The gold is the one light colour under 3:1 on white; it is a gold, and the word is beside it.
+    expect(BAND_COLORS.light.map((c) => wcagContrast(c, "#ffffff") >= 3)).toEqual([true, false, true, true]);
+    expect(wcagContrast(BAND_COLORS.light[1], "#ffffff")).toBeGreaterThan(2);
+    for (const c of BAND_COLORS.dark) expect(wcagContrast(c, "#171717")).toBeGreaterThan(4.5);
+  });
+
+  it("draws the scale as the four words over their slices, cut where the words change", () => {
+    expect(scaleGradient(false)).toBe(
+      `linear-gradient(to right, ${BAND_COLORS.light[0]} 0 16.67%, ${BAND_COLORS.light[1]} 16.67% 50.00%, ${BAND_COLORS.light[2]} 50.00% 83.33%, ${BAND_COLORS.light[3]} 83.33% 100%)`,
+    );
+  });
+
+  it("underlines in one named step per word", () => {
+    expect(SCALE_STEPS).toBe(3);
+    expect([-1, 0.1, 0.3, 0.6, 0.9, 2].map(scaleStep)).toEqual([0, 0, 1, 2, 3, 3]);
   });
 });
 
@@ -157,12 +114,8 @@ describe("the doubt", () => {
     expect(leaning).toBeGreaterThan(sure);
   });
 
-  it("shades a range that holds the score and stays on the scale", () => {
-    const r = result([15, 33, 18, 34]);
-    const range = scoreRange(r);
-    expect(range.from).toBeLessThan(r.score);
-    expect(range.to).toBeGreaterThan(r.score);
-    const edge = scoreRange(result([0, 0, 0, 100]));
-    expect(edge).toEqual({ from: 1, to: 1 });
+  it("names the word an unsure verdict lies nearest to", () => {
+    expect([0.05, 0.15, 0.2, 0.45, 0.55, 0.8, 0.9].map(nearestOtherLevel)).toEqual([1, 1, 0, 2, 1, 3, 2]);
   });
+
 });

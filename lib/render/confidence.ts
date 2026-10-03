@@ -10,8 +10,8 @@
 // and Llama sets is 0.044 / 0.037 / 0.041.
 //
 // What it says still depends on the mix of human and AI text a page holds, which nothing
-// here can know, so it is only ever shown as how full a verdict's dot is (ringCss in
-// scale.ts), never as a number. On two sets the fitting never saw — news articles and
+// here can know, so it is never shown as a number: under one half the card says "Unsure"
+// and names the neighbouring word (unsureNote in dist.ts). On two sets the fitting never saw — news articles and
 // learners' essays, each wholly human or wholly AI-generated — a verdict rated 0.9 or
 // more was right 99.6–100% of the time, but the two middle words, which no text there
 // could earn, were still rated 0.3–0.5 on average: the chance they have on EditLens's mix.

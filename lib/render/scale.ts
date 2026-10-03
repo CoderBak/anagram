@@ -8,12 +8,10 @@
 // The most likely bucket used to pick the word; with the probabilities spread out it
 // flipped on a one-point change and could contradict the number next to it.
 //
-// The colour is the number itself on one continuous ramp: green through amber to red,
-// read at a glance, with the hue, lightness and chroma all moving with the score, so .49
-// and .51 look alike. Lightness falls the whole way (rises on a dark surface), so a reader
-// who cannot tell red from green still sees the order, and the word is always beside it;
-// chroma is as high as sRGB allows, so the human end is plainly green and the middle amber.
-import type { ScoreResult } from "../contract";
+// The colour is the word's: four colours, one per word, and nothing in between. A reader
+// going through a page of verdicts sorts them at a glance — green, gold, orange, crimson —
+// where a continuous ramp made .30 and .60 two shades of olive to be told apart. The number
+// beside it carries the detail.
 import { BUCKET_COUNT } from "../contract";
 
 /** Where one word ends and the next begins, on the 0–1 score. */
@@ -27,94 +25,60 @@ export function levelOf(score: number): number {
   return level;
 }
 
-// ---- colour ----------------------------------------------------------------------------
-
-/** OKLCH hue: green at score 0, amber at the middle, red at 1, linear in each half. */
-export const HUES = { human: 145, middle: 70, ai: 25 } as const;
-/**
- * OKLCH lightness at score 0, .5 and 1 (linear between), and chroma at 0, .25, .5, .75 and
- * 1 (linear between). Chroma is as high as sRGB allows at each lightness and hue: the limit
- * falls from a vivid green to an olive and rises again to the red, so it is set at each knot
- * to 69-100% of the limit there, and the whole ramp, sampled every hundredth, stays inside
- * sRGB (test/node/scale.test.ts computes the limit). Where it holds back, at the dark ramp's
- * quarter steps, more would bring two steps closer for a reader who cannot tell red from
- * green: simulated for protanopia and deuteranopia (Machado 2009), a quarter of the scale
- * apart is at least 7.8 (light) and 6.0 (dark) OKLab x100, and the test holds it there.
- * Lightness falls the whole way on a light page and rises on a dark one, which is what such
- * a reader sees.
- */
-const RAMP = {
-  light: { l: [0.76, 0.58, 0.42], c: [0.226, 0.131, 0.119, 0.135, 0.168] },
-  dark: { l: [0.46, 0.66, 0.78], c: [0.143, 0.1, 0.141, 0.13, 0.126] },
-} as const;
-
 function clamp01(x: number): number {
   return Number.isFinite(x) ? Math.min(Math.max(x, 0), 1) : 0;
 }
 
-/** The score's hue, in degrees: green through amber to red. */
-export function scaleHue(score: number): number {
-  const s = clamp01(score);
-  const { human, middle, ai } = HUES;
-  return s <= 0.5 ? human + (middle - human) * (s / 0.5) : middle + (ai - middle) * ((s - 0.5) / 0.5);
+// ---- colour ----------------------------------------------------------------------------
+
+/**
+ * The four words' colours, human → AI-generated, on a light page and on a dark one. Chosen
+ * to stay apart for a reader who cannot tell red from green (protanopia and deuteranopia,
+ * Machado 2009: every pair at least 8.9 OKLab x100 apart on a light page, 9.1 on a dark one,
+ * test/node/scale.test.ts) — the deep crimson is what keeps AI-generated off the orange and
+ * the green — and to read on white and on near-black.
+ */
+export const BAND_COLORS = {
+  light: ["#00a06a", "#e3a400", "#f0600f", "#a6002e"],
+  dark: ["#33d996", "#ffc21a", "#ff8633", "#ff5470"],
+} as const;
+
+/** A word's colour (0 human … 3 AI-generated) — with `alpha`, a tint of it. */
+export function bandColor(level: number, dark: boolean, alpha = 1): string {
+  const hex = (dark ? BAND_COLORS.dark : BAND_COLORS.light)[Math.min(Math.max(Math.round(level), 0), 3)]!;
+  if (alpha >= 1) return hex;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgb(${r} ${g} ${b} / ${alpha})`;
 }
 
-/** The ramp's lightness at `score`: linear in each half. */
-export function scaleLightness(score: number, dark: boolean): number {
-  const [a, b, c] = (dark ? RAMP.dark : RAMP.light).l;
-  const s = clamp01(score);
-  return s <= 0.5 ? a + (b - a) * (s / 0.5) : b + (c - b) * ((s - 0.5) / 0.5);
-}
-
-/** The ramp's chroma at `score`: linear between the quarter-step knots. */
-export function scaleChroma(score: number, dark: boolean): number {
-  const c = (dark ? RAMP.dark : RAMP.light).c;
-  const s = clamp01(score);
-  const k = Math.min(3, Math.floor(s * 4));
-  return c[k]! + (c[k + 1]! - c[k]!) * (s * 4 - k);
-}
-
-/** The score's colour, as a CSS oklch() — with `alpha`, a tint of it. */
+/** The score's colour: its word's. */
 export function scaleColor(score: number, dark: boolean, alpha = 1): string {
-  const s = clamp01(score);
-  return `oklch(${scaleLightness(s, dark).toFixed(3)} ${scaleChroma(s, dark).toFixed(3)} ${scaleHue(s).toFixed(1)}${alpha < 1 ? ` / ${alpha}` : ""})`;
+  return bandColor(levelOf(score), dark, alpha);
 }
 
-/**
- * The same colour for a stylesheet, reading the score from a custom property, so one
- * rule serves every chip and the page's light or dark surface picks the ramp. Each
- * piecewise-linear channel is written with min() and max(), which is what the functions
- * above compute for a score in 0–1.
- */
-export function scaleColorCss(dark: boolean, variable = "--s"): string {
-  const r = dark ? RAMP.dark : RAMP.light;
-  const s = `var(${variable}, 0)`;
-  const { human, middle, ai } = HUES;
-  const [l0, l1, l2] = r.l;
-  const c = r.c;
-  const chroma = [0, 1, 2, 3].map((i) => `${((c[i + 1]! - c[i]!) * 4).toFixed(3)} * max(0, min(${s} - ${i * 0.25}, 0.25))`).join(" + ");
-  return (
-    `oklch(calc(${l0} + ${((l1 - l0) * 2).toFixed(3)} * min(${s}, 0.5) + ${((l2 - l1) * 2).toFixed(3)} * max(${s} - 0.5, 0)) ` +
-    `calc(${c[0]} + ${chroma}) ` +
-    `calc(${human} - ${(2 * (human - middle)).toFixed(1)} * min(${s}, 0.5) - ${(2 * (middle - ai)).toFixed(1)} * max(${s} - 0.5, 0)))`
-  );
+/** Stylesheet rules giving `--c` each word's colour under `selector`.b0 … .b3, and the dark
+ *  page's under `dark` (a selector prefix for the dark surface). */
+export function bandColorRules(selector: string, dark: string, property = "--c"): string {
+  return [0, 1, 2, 3].map((i) =>
+    `${selector}.b${i} { ${property}: ${BAND_COLORS.light[i]}; }\n${dark} ${selector}.b${i} { ${property}: ${BAND_COLORS.dark[i]}; }`,
+  ).join("\n");
 }
 
-/** The whole ramp as a left-to-right gradient (the card's scale), with stops along the hue's path. */
+/** The four words side by side as a left-to-right bar, each over its slice of the scale (the
+ *  card's scale and the setup page's legend). */
 export function scaleGradient(dark: boolean): string {
-  // Every channel bends only at a quarter step, so five stops draw the ramp exactly.
-  const stops = [0, 0.25, 0.5, 0.75, 1].map((s) => `${scaleColor(s, dark)} ${s * 100}%`);
-  return `linear-gradient(to right in oklch, ${stops.join(", ")})`;
+  const c = dark ? BAND_COLORS.dark : BAND_COLORS.light;
+  const [a, b, d] = SCORE_CUTS.map((cut) => `${(cut * 100).toFixed(2)}%`);
+  return `linear-gradient(to right, ${c[0]} 0 ${a}, ${c[1]} ${a} ${b}, ${c[2]} ${b} ${d}, ${c[3]} ${d} 100%)`;
 }
 
 /**
- * Underlines are painted by named ::highlight() rules, which cannot take a colour per
- * range, so the ramp is sampled: twenty-one steps, .05 apart — closer than the eye tells
- * two thin lines apart.
+ * Underlines are painted by named ::highlight() rules, which cannot take a colour per range:
+ * one name per word.
  */
-export const SCALE_STEPS = 20;
+export const SCALE_STEPS = 3;
 export function scaleStep(score: number): number {
-  return Math.round(clamp01(score) * SCALE_STEPS);
+  return levelOf(score);
 }
 
 // ---- doubt ----------------------------------------------------------------------------
@@ -136,20 +100,12 @@ export function spread(probs: readonly number[]): number {
   return clamp01(Math.sqrt(variance) / most);
 }
 
-/**
- * How thick a verdict's dot is, as a ring in the score's colour, for the doubt in `--u`
- * (1 − the chance its word is right, lib/render/confidence.ts): the whole `radius` when the
- * word is surely right (a full dot), thinning in proportion to that chance down to a line
- * that stays visible. No threshold, and no fading, which the colour scale would read as
- * "more human".
- */
-export function ringCss(radius: string): string {
-  const least = "max(1px, 0.08em)";
-  return `calc(${least} + (${radius} - ${least}) * (1 - var(--u, 0)))`;
+/** The word beside the score's on the scale that the score lies nearer to: what an unsure
+ *  verdict could as well have been. */
+export function nearestOtherLevel(score: number): number {
+  const level = levelOf(score);
+  const below = level > 0 ? score - SCORE_CUTS[level - 1]! : Infinity;
+  const above = level < SCORE_CUTS.length ? SCORE_CUTS[level]! - score : Infinity;
+  return below <= above ? level - 1 : level + 1;
 }
 
-/** The range the card shades around the score: one standard deviation, in score units. */
-export function scoreRange(r: ScoreResult): { from: number; to: number } {
-  const half = (spread(r.probs) * ((BUCKET_COUNT - 1) / 2)) / (BUCKET_COUNT - 1);
-  return { from: clamp01(r.score - half), to: clamp01(r.score + half) };
-}

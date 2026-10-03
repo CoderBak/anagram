@@ -14,16 +14,21 @@ Nothing you read leaves your machine.
 
 ## Install
 
-1. Download the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases),
-   extract it to a folder you will keep, and load that folder at `chrome://extensions`
-   with Developer mode on and **Load unpacked**. Chrome 137 or later.
-2. The setup page opens. On most computers the model (1.4 GB) downloads into the browser
-   by itself. On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics
-   card, it asks first: **One click** runs the model in the browser; **Terminal** installs
-   a faster local engine with one command, which installs a private Python runtime,
-   registers the extension and downloads the model files. Settings switches later.
-3. When it says Ready, grant a site, or use **Analyze this page** from the toolbar icon for
-   one page.
+1. From the [latest release](https://github.com/CoderBak/anagram/releases), download
+   **anagram-chrome-&lt;version&gt;.zip** (Chrome 137 or later). The other files there are the
+   optional local engine; its installer fetches them itself.
+2. Unzip it into a folder you will keep: Chrome runs the extension from there.
+3. Open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**
+   and choose that folder.
+4. The setup page opens with three numbered steps, each ticked off once it is done. First
+   the engine: on most computers the model (1.4 GB) downloads into the browser by itself.
+   On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card, it asks
+   first: **One click** runs the model in the browser; **Terminal** installs a faster local
+   engine with one command, which installs a private Python runtime, registers the extension
+   and downloads the model files. Settings switches later.
+5. Then where it reads (**Allow all sites**, or one site at a time from the toolbar menu),
+   and pinning Anagram to the toolbar. Without a grant, **Analyze this page** in the toolbar
+   menu reads the page in front of you once.
 
 Apple Silicon Macs are the tested platform. Linux and Windows installers exist but have
 not been exercised on real machines. Firefox 153+ has a build but is not the focus.
@@ -38,11 +43,12 @@ Safari runtime verification is pending.
 ## Use
 
 Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
-(AI-generated). Hover it for the four-way breakdown. Pin Anagram beside the address bar
-using the browser-specific guide in setup. Its toolbar popup lists flagged paragraphs,
-jumps to them, and controls page marks. On Google Docs, choose **Analyze document**
-from the popup to open the reading view. PDFs open in a built-in reader. Settings
-covers site access, marks, cache and the engine, and includes the pinning guide.
+(AI-generated), and an underline, in one of four colours: green for Human, gold for Lightly
+edited, orange for Heavily edited, crimson for AI-generated. Hover a chip for the four-way
+breakdown. Everything else is in the toolbar menu: the page's mix of the four, its flagged
+paragraphs, the AI-generated ones (click one to jump to it), the switch for each site, and what the chips show. On
+Google Docs, choose **Analyze document** there to open the reading view. PDFs open in a
+built-in reader. Settings covers site access, marks, cache and the engine.
 
 ## Develop
 

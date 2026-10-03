@@ -17,7 +17,7 @@ async function debugLines(page, storage, re) {
 }
 const markCount = (page) => page.evaluate(() => { let n = 0; for (const h of CSS.highlights.values()) n += h.size; return n; });
 
-test("a page that replaces its own document (document.open/write) gets chips, the ball and marks on the new tree", async ({ page, pages }) => {
+test("a page that replaces its own document (document.open/write) gets chips and marks on the new tree, and reports them", async ({ page, pages, tell }) => {
   // What challenge interstitials and legacy frameworks do: the extension must restart on the new tree.
   pages.serve({
     "/rewrite.html": `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
@@ -31,11 +31,11 @@ test("a page that replaces its own document (document.open/write) gets chips, th
 </script></body></html>`,
   });
   await page.goto(pages.url("/rewrite.html"), { waitUntil: "load" });
-  const rewrite = "self-rewriting page (document.open/write): chips, ball and marks on the new tree";
+  const rewrite = "self-rewriting page (document.open/write): chips and marks on the new tree, and the count the toolbar menu is given";
   // Settled chips, not the "analyzing…" ones inserted at dispatch: marks land with the verdict.
   await expect.poll(() => page.evaluate(() => document.title), { message: rewrite }).toBe("rewritten");
   await chipsSettle(page, 2, "main");
-  await expect(page.locator("#anagram-fab"), rewrite).toBeAttached();
+  expect((await tell(page, { action: "getTabState" }))?.scored, `${rewrite} (the menu's count is the new tree's)`).toBe(2);
   await expect.poll(() => markCount(page), { message: rewrite }).toBeGreaterThanOrEqual(2);
 });
 
@@ -66,15 +66,15 @@ test("a page the browser translated: nothing is read or left on it while it is t
   };
 </script>`, "de"),
   });
-  const look = () => page.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+  const look = () => page.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length }), BADGE_SEL);
   const translated = "a page the browser translated: nothing is read or left on it while it is translated, and it is read again once the original is back";
   const mark = nativeHost.textMark();
   await page.goto(pages.url("/translated.html"), { waitUntil: "load" });
   await chipsSettle(page, 2);
-  expect(await look(), `${translated} (before)`).toEqual({ chips: 2, ball: true });
+  expect(await look(), `${translated} (before)`).toEqual({ chips: 2 });
 
   await page.evaluate(() => window.__translate());
-  await expect.poll(look, { message: `${translated} (during)` }).toEqual({ chips: 0, ball: false });
+  await expect.poll(look, { message: `${translated} (during)` }).toEqual({ chips: 0 });
   expect(await markCount(page), `${translated} (no marks during)`).toBe(0);
   expect((await tell(page, { action: "getTabState" }))?.translated, `${translated} (the tab says so)`).toBe(true);
   await page.waitForTimeout(ABSENCE_MS); // past the observers' debounce, the scheduler and the host
@@ -82,7 +82,7 @@ test("a page the browser translated: nothing is read or left on it while it is t
 
   await page.evaluate(() => window.__revert());
   await chipsSettle(page, 2);
-  expect(await look(), `${translated} (back)`).toEqual({ chips: 2, ball: true });
+  expect(await look(), `${translated} (back)`).toEqual({ chips: 2 });
   await expect.poll(() => markCount(page), { message: `${translated} (marks back)` }).toBeGreaterThan(0);
 });
 
@@ -126,20 +126,20 @@ for (const browser of ["edge", "firefox"]) {
   };
 </script>`, "de"),
     });
-    const look = () => page.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+    const look = () => page.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length }), BADGE_SEL);
     const translated = `a page ${name} translated: nothing is read or left on it while it is translated`;
     const mark = nativeHost.textMark();
     await page.goto(pages.url("/translated.html"), { waitUntil: "load" });
     await chipsSettle(page, 2);
-    expect(await look(), `${translated} (before)`).toEqual({ chips: 2, ball: true });
+    expect(await look(), `${translated} (before)`).toEqual({ chips: 2 });
     await page.evaluate(() => window.__translate());
-    await expect.poll(look, { message: `${translated} (during)` }).toEqual({ chips: 0, ball: false });
+    await expect.poll(look, { message: `${translated} (during)` }).toEqual({ chips: 0 });
     await page.waitForTimeout(ABSENCE_MS); // past the observers' debounce, the scheduler and the host
     expect(nativeHost.textsSince(mark).filter((t) => t.includes("MACHINE-")), `${translated} (nothing machine-made sent)`).toEqual([]);
     if (browser === "edge") {
       await page.evaluate(() => window.__revert());
       await chipsSettle(page, 2);
-      expect(await look(), `${translated}, and it is read again once the original is back`).toEqual({ chips: 2, ball: true });
+      expect(await look(), `${translated}, and it is read again once the original is back`).toEqual({ chips: 2 });
     }
   });
 }
@@ -324,9 +324,8 @@ function firstHostWatcher() {
     if (window.__firstHostAt !== null) return;
     for (const rec of recs) {
       for (const n of rec.addedNodes) {
-        // The ball is ours and lives outside anything a framework hydrates; this watches
-        // for a CHIP entering the page's own tree.
-        if (n.nodeType === 1 && n.getAttribute?.("data-anagram") === "host" && n.id !== "anagram-fab") {
+        // A CHIP entering the page's own tree.
+        if (n.nodeType === 1 && n.getAttribute?.("data-anagram") === "host") {
           window.__firstHostAt = performance.now();
           return;
         }
@@ -420,7 +419,7 @@ const para = (tag, i) => `${tag}-${i} ` + Array.from({ length: 84 }, (_, k) => V
 function chipClock() {
   window.__chipAt = {};
   new MutationObserver(() => {
-    for (const host of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
+    for (const host of document.querySelectorAll('[data-anagram="host"]')) {
       const p = host.closest("p[id]");
       if (p && !(p.id in window.__chipAt)) window.__chipAt[p.id] = performance.now();
     }

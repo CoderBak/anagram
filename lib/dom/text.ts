@@ -68,6 +68,12 @@ export interface Unit {
    * whose parts ARE the paragraphs.
    */
   paragraphs?: number;
+  /**
+   * The page of a paged document the unit's chip stands on (1-based): set by the PDF reader,
+   * whose viewer draws a few pages at a time and lets the rest go. The verdicts of a page let
+   * go are kept by the orchestrator, so its report covers the document read so far.
+   */
+  page?: number;
 }
 
 /**
@@ -200,7 +206,10 @@ export function skipGap(text: string, at: number): [number, number] | null {
  * engine applies itself (anagramd/engine.py clean_text, the official pipeline's): emoji
  * spelled out, a chatbot's opening paragraph dropped, lower case, whitespace collapsed.
  * Typography is part of that text — curly quotes, dashes, "…", "--" and "™" are evidence
- * of who wrote it — so nothing here folds them. Only what reading a page leaves behind is
+ * of who wrote it — so nothing here folds them. The em dash alone was measured (EditLens
+ * val, test, Enron and Llama, 2026-10-03): folded to " - ", human texts that use it read as
+ * Human far more often (69–76% → 90–97%), but some 40% of AI-edited texts use it against 5%
+ * of human ones, and the ternary accuracy fell on three of the four sets (test .862 → .842). Only what reading a page leaves behind is
  * repaired: the invisibles above out, `\%` `\&` `\_` `\#` `\$` escapes to the character and
  * un-rendered LaTeX spans out (arXiv-like pages), a PDF's ligature glyphs (ﬁ, ﬄ) to their
  * letters, a letter and its combining accents to one character (NFC: a PDF gives "e" and a

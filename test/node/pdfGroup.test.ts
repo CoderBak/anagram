@@ -8,7 +8,7 @@
 // pages are built by hand, run through the real reflow, and the GROUPS that come out are
 // compared against what a reader would say belongs together.
 import { describe, expect, it } from "vitest";
-import { reflowPdf, type PdfPageText, type PdfTextItem } from "../../lib/pdf/reflow";
+import { reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock } from "../../lib/pdf/reflow";
 import { groupsOf } from "../../lib/pdf/units";
 
 const WIDTH = 612;
@@ -122,6 +122,24 @@ describe("a PDF's short paragraphs", () => {
     const blocks = reflowPdf([page(1, placed)]);
     expect(blocks).toHaveLength(2);
     expect(groupsOf(blocks)).toEqual([[0], [1]]);
+  });
+
+  it("reads a paper's keyword line with nothing: the abstract is read alone, not with its Index Terms", () => {
+    const block = (text: string): ReflowBlock => ({ kind: "paragraph", text, page: 1, runs: [], apart: false, columnBreak: false });
+    const sentence = "The method is trained on unlabeled sequences and then fine-tuned on a small labelled set of the same scans. ";
+    const abstract = block(sentence.repeat(6));
+    for (const line of ["Index Terms—Vessel segmentation, self-supervised pretraining, coronary angiography.", "Keywords: AI-generated text; detection; scaling laws.", "关键词：人工智能；检测"]) {
+      expect(groupsOf([abstract, block(line)]), line).toEqual([[0]]);
+    }
+    // Nor with the journal's notes at the foot of the first page.
+    for (const note of ["This work was supported in part by the National Natural Science Foundation of China under Grant 62301234.", "Manuscript received May 3, 2026; revised July 9, 2026.", "Corresponding author: J. Smith (e-mail: js@example.edu)."]) {
+      expect(groupsOf([abstract, block(note)]), note).toEqual([[0]]);
+    }
+    // Past page 1 the same words open an acknowledgements paragraph, read like any other.
+    const later = { ...block("This work was supported in part by the National Natural Science Foundation of China under Grant 62301234."), page: 9 };
+    expect(groupsOf([{ ...abstract, page: 9 }, later])).toEqual([[0, 1]]);
+    // A sentence that merely starts with the words is prose like any other.
+    expect(groupsOf([abstract, block("Keywords are chosen by the authors and indexed by the publisher.")])).toEqual([[0, 1]]);
   });
 
   it("never reads across a caption, and picks the text up again after it", () => {

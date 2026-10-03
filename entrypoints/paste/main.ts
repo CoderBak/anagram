@@ -2,7 +2,7 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { localizePage } from "../../lib/ui/localize";
 import { followSystemTheme } from "../../lib/ui/theme";
-import { t } from "../../lib/i18n";
+import { t, tn } from "../../lib/i18n";
 import { CONTRACT_VERSION, type ModelInfo, type ScoreResult } from "../../lib/contract";
 import { countWords } from "../../lib/dom/text";
 import { readMinWords } from "../../lib/settings/settings";
@@ -14,8 +14,13 @@ import { modelDim } from "../../lib/backend/router";
 import { cancelDocumentSession } from "../../lib/access/session";
 import { band, bandLabel, BUCKET_BANDS, isNoVerdict } from "../../lib/render/band";
 import { formatScore } from "../../lib/render/score";
+import { bandColorRules, levelOf } from "../../lib/render/scale";
 
 localizePage(); followSystemTheme();
+// The four words' colours are the chips' and the marks' own.
+const bandRules = document.createElement("style");
+bandRules.textContent = bandColorRules("", "html.dark");
+document.head.append(bandRules);
 const input = document.getElementById("text") as HTMLTextAreaElement;
 const fileInput = document.getElementById("file") as HTMLInputElement;
 const analyze = document.getElementById("analyze") as HTMLButtonElement;
@@ -23,19 +28,25 @@ const status = document.getElementById("status")!;
 const results = document.getElementById("results")!;
 const list = document.getElementById("windows")!;
 const includeText = document.getElementById("includeText") as HTMLInputElement;
+const wordCount = document.getElementById("words")!;
 let generation = 0;
 let report: {text: string; windows: WindowVerdict[]; model: ModelInfo | null; coverage: string} | undefined;
 
 function clearResult(): void { report = undefined; results.hidden = true; list.replaceChildren(); }
+function countShown(): void {
+  const n = countWords(input.value);
+  wordCount.textContent = n > 0 ? tn("pasteWords", n) : "";
+}
 function readout(r: ScoreResult): string {
   const label = bandLabel(band(r));
   return isNoVerdict(band(r)) ? label : `${label}, ${formatScore(r.score)}, ${r.probs.map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`).join(" / ")}`;
 }
 function cancel(): void { ++generation; cancelDocumentSession(); analyze.disabled = false; }
-input.addEventListener("input", () => { cancel(); clearResult(); status.textContent = ""; });
+input.addEventListener("input", () => { cancel(); clearResult(); status.textContent = ""; countShown(); });
+document.getElementById("pick")!.addEventListener("click", () => fileInput.click());
 document.getElementById("settings")!.addEventListener("click", () => void browser.runtime.openOptionsPage());
 document.getElementById("clear")!.addEventListener("click", () => {
-  cancel(); input.value = ""; fileInput.value = ""; status.textContent = ""; clearResult(); input.focus();
+  cancel(); input.value = ""; fileInput.value = ""; status.textContent = ""; clearResult(); countShown(); input.focus();
 });
 fileInput.addEventListener("change", async () => {
   cancel(); const seq = generation;
@@ -46,7 +57,7 @@ fileInput.addEventListener("change", async () => {
     const text = new TextDecoder("utf-8", {fatal: true}).decode(await file.arrayBuffer());
     if (seq !== generation) return;
     if (text.length > 200_000) { status.textContent = t("pasteTooLarge"); return; }
-    input.value = text; status.textContent = "";
+    input.value = text; status.textContent = ""; countShown();
   } catch { if (seq === generation) status.textContent = t("pasteFileFailed"); }
 });
 analyze.addEventListener("click", async () => {
@@ -89,17 +100,54 @@ analyze.addEventListener("click", async () => {
       (shortTextNote(words) ? `, ${shortTextNote(words)}` : "") +
       (hasLookalikes(text) ? `, ${t("coverageLookalikes").trim()}` : "");
     document.getElementById("coverage")!.textContent = coverage;
-    document.getElementById("summary")!.textContent = readout(unitVerdict("paste", text.length, read).result);
+    showVerdict(unitVerdict("paste", text.length, read).result);
     for (const window of read) {
       const item = document.createElement("li");
-      const result = document.createElement("p"); result.textContent = readout(window.result);
+      const head = document.createElement("div"); head.className = "head";
+      head.append(...wordAndScore(window.result));
       const passage = document.createElement("p"); passage.textContent = text.slice(window.start, window.end);
-      item.append(result, passage); list.append(item);
+      item.className = colourOf(window.result);
+      item.append(head, passage); list.append(item);
     }
+    // One pass is the text above and the verdict again: listed only where there are several.
+    list.hidden = read.length < 2;
     report = {text, windows: read, model: producing, coverage}; results.hidden = false; status.textContent = "";
   } catch { if (seq === generation) status.textContent = t("pasteFailed"); }
   finally { if (seq === generation) analyze.disabled = false; }
 });
+/** The class carrying a verdict's colour (--c), or none where there is no verdict. */
+function colourOf(r: ScoreResult): string {
+  return isNoVerdict(band(r)) ? "" : `b${levelOf(r.score)}`;
+}
+/** A verdict's chip and its word. */
+function wordAndScore(r: ScoreResult): HTMLElement[] {
+  const word = document.createElement("span"); word.textContent = bandLabel(band(r));
+  if (isNoVerdict(band(r))) return [word];
+  const chip = document.createElement("span"); chip.className = `chip ${colourOf(r)}`;
+  chip.textContent = formatScore(r.score);
+  return [chip, word];
+}
+/** The whole text's verdict: its word and score, then how the four words shared it. */
+function showVerdict(r: ScoreResult): void {
+  document.getElementById("summary")!.textContent = bandLabel(band(r));
+  const score = document.getElementById("score")!;
+  score.className = `chip ${colourOf(r)}`;
+  score.textContent = isNoVerdict(band(r)) ? "" : formatScore(r.score);
+  const mix = document.getElementById("mix")!, legend = document.getElementById("legend")!;
+  mix.hidden = legend.hidden = isNoVerdict(band(r));
+  mix.replaceChildren(...r.probs.map((p, i) => {
+    const part = document.createElement("span"); part.className = `b${i}`; part.style.flex = String(p);
+    return part;
+  }));
+  legend.replaceChildren(...r.probs.map((p, i) => {
+    const row = document.createElement("li"); row.className = `b${i}`;
+    const dot = document.createElement("span"); dot.className = "dot";
+    const label = document.createElement("span"); label.className = "lbl"; label.textContent = bandLabel(BUCKET_BANDS[i]!);
+    const share = document.createElement("span"); share.className = "n"; share.textContent = `${Math.round(p * 100)}%`;
+    row.append(dot, label, share);
+    return row;
+  }));
+}
 document.getElementById("copy")!.addEventListener("click", async () => {
   if (!report) return;
   const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version}, contract ${CONTRACT_VERSION}`, report.coverage, t("reportCaveat"), t("reportEstimate")];
@@ -111,3 +159,4 @@ document.getElementById("copy")!.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(lines.join("\n\n")); status.textContent = t("copied"); }
   catch { status.textContent = t("reportCopyFailed"); }
 });
+countShown();

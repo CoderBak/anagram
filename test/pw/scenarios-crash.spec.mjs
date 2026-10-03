@@ -7,7 +7,7 @@
 // the pages already know.
 //
 //   npx playwright test scenarios-crash
-import { test as base, expect, BADGE_SEL, PAGE } from "./kit.mjs";
+import { test as base, expect, BADGE_SEL, PAGE, popupOver } from "./kit.mjs";
 import { GROUPED_PDF, TEST_PDF, PDF_CHIP, openPdfInReader } from "../pdf-fixture.mjs";
 import { join } from "node:path";
 import { NO_MODEL_HOSTS } from "../webengine/model-server.mjs";
@@ -34,15 +34,14 @@ const PARAS = (tag, count) => PAGE(tag, `<main>\n${Array.from({ length: count },
 const PASTE = (tag) => PARA(`${tag}-A`) + " " + PARA(`${tag}-B`);
 
 /** What the page has shown since watch() began: a chip read as "Unavailable" (band-unknown,
- *  no longer pending) or the ball's "!", at any moment. */
+ *  no longer pending), at any moment. */
 const watch = (page, sel) => page.evaluate((sel) => {
-  const seen = window.__crashWatch = { unavailable: 0, down: false };
+  const seen = window.__crashWatch = { unavailable: 0 };
   setInterval(() => {
     for (const host of document.querySelectorAll(sel)) {
       const pill = host.shadowRoot?.querySelector(".pill");
       if (pill?.classList.contains("band-unknown") && !pill.classList.contains("pending")) seen.unavailable++;
     }
-    if (document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!") seen.down = true;
   }, 40);
 }, sel);
 const seen = (page) => page.evaluate(() => window.__crashWatch);
@@ -53,7 +52,8 @@ const chipStates = (page, sel = BADGE_SEL) => page.evaluate((s) => [...document.
   return [pill.classList.contains("pending") ? "pending" : pill.classList.contains("band-unknown") ? "unavailable" : "verdict"];
 }), sel);
 const allVerdicts = (states) => states.length > 0 && states.every((s) => s === "verdict");
-const ball = (page) => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+/** The engine-down state as a page shows it: every chip it has reads "Unavailable". */
+const allUnavailable = (states) => states.length > 0 && states.every((s) => s === "unavailable");
 
 /**
  * Texts the engine was asked about again although the host it asked before had answered,
@@ -97,7 +97,7 @@ test.describe("the engine dies once", () => {
       const verdicts = "engine dies once mid-page: every chip ends with a verdict after the restart";
       await expect.poll(() => chipStates(page), { message: verdicts, timeout: 45_000 }).toEqual(Array(12).fill("verdict"));
       expect.soft(nativeHost.crashes(), verdicts).toBe(1);
-      expect.soft(await seen(page), "engine dies once mid-page: no chip ever reads Unavailable and the ball never shows !").toEqual({ unavailable: 0, down: false });
+      expect.soft(await seen(page), "engine dies once mid-page: no chip ever reads Unavailable").toEqual({ unavailable: 0 });
       expect.soft(unnecessaryResends(nativeHost, mark), "engine dies once mid-page: nothing already answered is asked again, what died with the host is asked once more").toEqual([]);
     });
   });
@@ -113,7 +113,7 @@ test.describe("the engine dies once", () => {
       const reader = "engine dies once while the PDF reader scores: every chip ends with a verdict, none reads Unavailable";
       await expect.poll(async () => { const s = await chipStates(page, PDF_CHIP); return s.length >= 2 && allVerdicts(s); }, { message: reader, timeout: 45_000 }).toBe(true);
       expect.soft(nativeHost.crashes(), reader).toBe(1);
-      expect.soft(await seen(page), reader).toEqual({ unavailable: 0, down: false });
+      expect.soft(await seen(page), reader).toEqual({ unavailable: 0 });
       expect.soft(unnecessaryResends(nativeHost, mark), reader).toEqual([]);
     });
 
@@ -148,8 +148,8 @@ test.describe("the engine dies on every batch", () => {
     };
     const before = nativeHost.crashes();
     await page.goto(pages.url("/always.html"), { waitUntil: "load" });
-    const down = "engine dies on every batch: the page shows the engine-down state (ball !, no verdict invented)";
-    await expect.poll(() => ball(page), { message: down, timeout: 60_000 }).toBe("!");
+    const down = "engine dies on every batch: the page shows the engine-down state (every chip Unavailable, no verdict invented)";
+    await expect.poll(async () => allUnavailable(await chipStates(page)), { message: down, timeout: 60_000 }).toBe(true);
     // Down may pass at first (a batch that killed two hosts takes the page down, and the engine
     // is asked again once it answers health); the starts must stop all the same.
     const bounded = "engine dies on every batch: restarts stop after a bounded number, nothing loops";
@@ -157,21 +157,21 @@ test.describe("the engine dies on every batch", () => {
     expect.soft(first, bounded).toBeGreaterThanOrEqual(2);
     expect.soft(first, bounded).toBeLessThanOrEqual(4);
     const states = await chipStates(page);
-    expect.soft(await ball(page), down).toBe("!");
-    expect.soft(states.length > 0 && states.every((s) => s === "unavailable"), `${down}: ${JSON.stringify(states)}`).toBe(true);
+    expect.soft(allUnavailable(states), `${down}: ${JSON.stringify(states)}`).toBe(true);
     const later = nativeHost.crashes();
 
-    // The panel says why: not the generic "not ready" but that the engine keeps stopping.
-    await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.click());
-    const notice = page.locator("#anagram-fab .pnotice");
-    const says = "engine dies on every batch: the panel says the engine keeps stopping and offers Retry";
-    await expect(notice, says).toHaveText(/stopp/i);
-    await expect(notice, says).toContainText("Retry");
+    // The toolbar menu over the page says why: not the generic "not ready" but that the
+    // engine keeps stopping, with Retry.
+    const menu = await popupOver(page);
+    const says = "engine dies on every batch: the toolbar menu says the engine keeps stopping and offers Retry";
+    await expect(menu.locator("#status"), says).toHaveText(/stopp/i);
+    await expect(menu.locator("#action"), says).toHaveText("Retry");
+    await menu.close();
 
     // The reader and the paste page meet the same state and start nothing either.
     const reader = await openPdfInReader(context, pages.url("/grouped.pdf"));
     const others = "engine dies on every batch: the PDF reader and the paste page show their engine-down state and start no host";
-    await expect.poll(() => ball(reader), { message: `${others} (the reader)` }).toBe("!");
+    await expect.poll(async () => allUnavailable(await chipStates(reader, PDF_CHIP)), { message: `${others} (the reader)` }).toBe(true);
     const paste = await context.newPage();
     await paste.goto(extension.url("paste.html"));
     await paste.locator("#text").fill(PASTE("PASTEALWAYS"));
@@ -198,15 +198,13 @@ test.describe("the engine dies on every batch", () => {
     expect.soft(second, again).toBeLessThanOrEqual(4);
     await options.close();
 
-    // Mended, and Retry in the panel brings everything back: the page, and the reader with it
-    // (it re-checks by itself once the engine answers again).
+    // Mended, and Retry in the toolbar menu brings everything back: the page, and the reader
+    // with it (both re-check by themselves once the engine answers again).
     nativeHost.setState({ crash: null, startupMs: 0 });
+    const retry = await popupOver(page);
+    await expect(retry.locator("#action"), "the toolbar menu offers Retry").toHaveText("Retry");
+    await retry.locator("#action").click();
     await page.bringToFront();
-    await page.evaluate(() => {
-      const root = document.getElementById("anagram-fab")?.shadowRoot;
-      if (!root?.querySelector(".pnotice")) root?.querySelector(".count")?.click();
-      [...(root?.querySelectorAll(".pnotice button") ?? [])].find((b) => b.textContent === "Retry")?.click();
-    });
     const mended = "engine mended: Retry brings verdicts back to the page, and the reader follows";
     await expect.poll(() => chipStates(page), { message: `${mended} (the page)`, timeout: 30_000 }).toEqual(Array(6).fill("verdict"));
     await expect.poll(async () => allVerdicts(await chipStates(reader, PDF_CHIP)), { message: `${mended} (the reader)`, timeout: 30_000 }).toBe(true);
@@ -226,7 +224,7 @@ test.describe("the local engine dies on every batch, where the in-browser engine
     test.setTimeout(3 * 60_000);
     pages.serve({ "/fallback.html": PARAS("FALLBACK", 6) });
     await page.goto(pages.url("/fallback.html"), { waitUntil: "load" });
-    await expect.poll(() => ball(page), { message: "the page shows the engine down", timeout: 60_000 }).toBe("!");
+    await expect.poll(async () => allUnavailable(await chipStates(page)), { message: "the page shows the engine down", timeout: 60_000 }).toBe(true);
     // Given up on once no host has died for 12 s: a request that killed two hosts takes the
     // engine down for a moment too, and health brings it back until the starts are counted out.
     let last = nativeHost.crashes(), still = Date.now();

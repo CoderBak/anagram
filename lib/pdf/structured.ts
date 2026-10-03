@@ -555,8 +555,11 @@ const NAMES_NEXT = /(?:^|\s)(?:in|of|see|at|from|to|by|on|with|and|or|than|under
  * Captions Zotero took for paragraphs. One that opens with its label — "Table S7: All five
  * conditioning rungs…", "FIG. 1. The partition sum…", "Figure 8 Difference of density
  * plots…" — is set aside as Zotero's own captions are, but not where the paragraph before
- * it stops at a word that names a figure: that is its own sentence carried over the float,
- * "…as shown in" / "Figure 6.32. Notice this node…". So is a paragraph that carries on the
+ * it stops at a word that names a figure and the label is set right under that paragraph's
+ * last line: that is its own sentence carried on, "…as shown in" / "Figure 6.32. Notice this
+ * node…". A paragraph the float cut off ("…are projected to" at the foot of one page, the
+ * figure and its caption at the head of the next) stops at such a word too, and its caption is
+ * still a caption. So is a paragraph that carries on the
  * caption set right above it (continuesCaption), and one that is the note set under a table
  * (notesTable). A reading whose lines are numbered is not one Zotero's paragraph stands for
  * (numberedReadings): `numbered` says which.
@@ -588,7 +591,7 @@ function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], number
     if (r.kind !== "paragraph" || numbered(k)) return;
     if (!restOfFloat(r)) {
       if (!CAPTION_LABEL.test(plainText(r.block))) return;
-      if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block))) return;
+      if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block)) && setUnder(prev.block, r.block, CAPTION_RUN_ON_GAP)) return;
     }
     out[k] = "skip";
     before = prev;
@@ -1274,6 +1277,9 @@ interface Draft {
  */
 export interface StructuredReader {
   blocks(pages: readonly PdfPageText[]): StructuredBlock[];
+  /** The 1-based pages a block of the last answer lies on, as the structure has it: the pages
+   *  whose text the block needs before it reads as it will when they are all drawn. */
+  pagesOf(block: StructuredBlock): readonly number[];
 }
 
 export function createStructuredReader(structure: SdtStructure, options: StructuredOptions = {}): StructuredReader {
@@ -1341,11 +1347,21 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
     d.pages = [...on].sort((a, b) => a - b);
   }
   const vocab = vocabularyOf(drafts.map((d) => written(d.pieces)));
+  // A page's index, once per page's text: the reader passes every page it has the text of to
+  // each call, and indexing them all again each time a page is drawn would be the cost.
+  const indexed = new WeakMap<PdfPageText, PageIndex>();
+  const indexOf = (p: PdfPageText): PageIndex => {
+    let index = indexed.get(p);
+    if (!index) indexed.set(p, (index = indexPage(p)));
+    return index;
+  };
+  const pagesOfResult = new WeakMap<StructuredBlock, readonly number[]>();
 
   return {
+    pagesOf: (block) => pagesOfResult.get(block) ?? [block.page],
     blocks(pages) {
       const pagesByNumber = new Map<number, PageIndex>();
-      for (const p of pages) pagesByNumber.set(p.page, indexPage(p));
+      for (const p of pages) pagesByNumber.set(p.page, indexOf(p));
       const kinds = mathPagesOf(pagesByNumber);
       const out: StructuredBlock[] = [];
       for (const d of drafts) {
@@ -1354,6 +1370,7 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
           const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, kinds);
           const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
           d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
+          if (d.result) pagesOfResult.set(d.result, d.pages);
           d.seen = seen;
         }
         if (d.result) out.push(d.result);

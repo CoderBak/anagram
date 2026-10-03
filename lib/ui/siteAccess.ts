@@ -1,5 +1,5 @@
 // lib/ui/siteAccess.ts — the site-access row the setup page and Settings share: what is
-// granted, "Allow all sites" and Withdraw. Anagram installs able to read no site at all;
+// granted, "Allow all sites" and "Remove access". Anagram installs able to read no site at all;
 // withdrawing leaves the per-site rules alone, they are settings, not access.
 import { browser } from "#imports";
 import { t, tn } from "../i18n";

@@ -10,15 +10,15 @@
 //                has to be refused, including loopback, while native scoring works;
 //   too tight  — the way a policy quietly breaks a product. So every surface the extension
 //                has is opened for real — popup, options, onboarding, the reader empty and
-//                with a PDF in it, and an ordinary web page with the chips and the panel on
-//                it — while `securitypolicyviolation` and the console are listened to, and
+//                with a PDF in it, and an ordinary web page with the chips on it, which the
+//                toolbar menu reports — while `securitypolicyviolation` and the console are listened to, and
 //                ANY violation fails.
 //
 //   npm run test:csp
 import { readFileSync } from "node:fs";
 import { test as base, expect } from "./fixtures.mjs";
-import { EXT, BADGE_SEL } from "../harness.mjs";
-import { TEST_PDF } from "../pdf-fixture.mjs";
+import { EXT, BADGE_SEL, popupOver, menuReport } from "../harness.mjs";
+import { TEST_PDF, pdfTabChip } from "../pdf-fixture.mjs";
 import { ARTICLE, WATCH, isCspLine } from "../csp-page.mjs";
 
 const manifest = () => JSON.parse(readFileSync(`${EXT}/manifest.json`, "utf8"));
@@ -89,16 +89,15 @@ for (const [name, path] of [["the popup", "popup.html"], ["the options page", "o
   });
 }
 
-// THE WHOLE HANDOFF, under the policy: the tab shows the PDF, the ball's chip hands it to
-// the worker, and the tab becomes the reading mode. The re-read the content script makes is
+// THE WHOLE HANDOFF, under the policy: the tab shows the PDF, the page's Analyze PDF in the
+// toolbar menu hands it to the worker, and the tab becomes the reading mode. The re-read the content script makes is
 // governed by the PAGE's policy and not this one — which is the point of doing it there —
 // so this is where a `connect-src` that broke the reading mode would show itself.
 test("the reader with a PDF loaded loads with nothing refused, and really drew its pages, its text layer and its chips", async ({ surface, files }) => {
   const { refused, extra: reader } = await surface(files.url("/doc.pdf"), {
     settle: 6000,
     prepare: async (page) => {
-      await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"), null, { timeout: 20000 }).catch(() => {});
-      await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click()).catch(() => {});
+      await pdfTabChip(page, { timeout: 20000, click: true });
       await page.waitForURL(/reader\.html/, { timeout: 20000 }).catch(() => {});
     },
     after: (page) =>
@@ -116,23 +115,20 @@ test("the reader with a PDF loaded loads with nothing refused, and really drew i
   expect(reader.chips).toBeGreaterThan(0);
 });
 
-test("an ordinary web page with the chips and the panel loads with nothing refused, and really got them", async ({ surface, files }) => {
+test("an ordinary web page with the chips loads with nothing refused, really got them, and the toolbar menu reports them", async ({ surface, files }) => {
   const { refused, extra: state } = await surface(files.url("/a"), {
     settle: 6000,
     after: async (page) => {
-      await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))).catch(() => {});
-      await page.waitForTimeout(1200);
-      return page
-        .evaluate((sel) => ({
-          chips: document.querySelectorAll(sel).length,
-          panel: document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel")?.classList.contains("open") ?? false,
-        }), BADGE_SEL)
-        .catch(() => ({ chips: 0, panel: false }));
+      const chips = await page.evaluate((sel) => document.querySelectorAll(sel).length, BADGE_SEL).catch(() => 0);
+      const menu = await popupOver(page);
+      const report = await expect.poll(() => menuReport(menu), { timeout: 10000 }).not.toBeNull().then(() => true, () => false);
+      await menu.close();
+      return { chips, report };
     },
   });
   expect.soft(refused).toEqual([]);
   expect(state.chips, JSON.stringify(state)).toBeGreaterThan(0);
-  expect(state.panel, JSON.stringify(state)).toBe(true);
+  expect(state.report, JSON.stringify(state)).toBe(true);
 });
 
 // ---- what connect-src actually permits ------------------------------------------------------

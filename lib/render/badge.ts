@@ -38,8 +38,8 @@ import { formatScore } from "./score";
 import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
-import { distributionHtml, swatchHtml } from "./dist";
-import { verdictConfidence } from "./confidence";
+import { distributionHtml, swatchHtml, unsureNote } from "./dist";
+import { levelOf } from "./scale";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
 
@@ -48,6 +48,8 @@ export interface BadgeLayer {
   /** Insert the chip in its "analyzing…" state (no verdict yet). */
   renderPending(unit: Unit): void;
   remove(id: string): void;
+  /** Whether the unit's chip is in the document (a surface may have taken its layer down). */
+  placed(id: string): boolean;
   /** Show/hide all badges without removing them (instant toggle, keeps results). */
   setVisible(visible: boolean): void;
   /** Forget cached background verdicts (site theme toggled; used by Rescan). */
@@ -371,12 +373,9 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const num = root.querySelector(".num") as HTMLElement;
     const score = formatScore(result.score);
 
-    // The dot is the score's own colour (lib/render/scale.ts), a thinner ring the less likely
-    // its word is right (lib/render/confidence.ts); the text stays in ink, whatever the verdict.
-    const sure = verdictConfidence(verdict);
-    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : " scored"}`;
-    pill.style.setProperty("--s", result.score.toFixed(3));
-    pill.style.setProperty("--u", (1 - sure).toFixed(3));
+    // The pill is the word's colour (lib/render/scale.ts), its number in the ink that reads
+    // on it (badge.css.ts).
+    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : ` scored b${levelOf(result.score)}`}`;
     // The bare number (".38") — what it means is in the card and the intro, not on
     // every line. A merged unit says so up front (".38 ×3"): one verdict covering N
     // short paragraphs must never masquerade as a single-paragraph judgment. How many
@@ -509,9 +508,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
           ? t("cardFootUnsupported")
           : coverageNote(verdict, "paragraph", unit.text).trim();
     const short = isNoVerdict(b) ? "" : shortTextNote(unit.wordCount);
+    const unsure = isNoVerdict(b) ? "" : unsureNote(verdict);
     card.innerHTML =
-      `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result, verdictConfidence(verdict))}${bandLabel(b)}</span>` +
+      `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result)}${bandLabel(b)}</span>` +
       `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
+      (unsure ? `<div class="unsure">${unsure}</div>` : "") +
       (short ? `<div class="short">${short}</div>` : "") +
       dist +
       langRow +
@@ -534,6 +535,10 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       e.stopPropagation();
       copyText(unit.text, copy);
     });
+  }
+
+  function placed(id: string): boolean {
+    return hosts.get(id)?.isConnected ?? false;
   }
 
   function remove(id: string): void {
@@ -586,7 +591,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     _openCardHost = null;
   }
 
-  return { render, renderPending, remove, setVisible, resetTheme, flash, teardownAll };
+  return { render, renderPending, remove, placed, setVisible, resetTheme, flash, teardownAll };
 }
 
 /** Copy with execCommand fallback (Clipboard API can be permission-blocked). */

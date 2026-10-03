@@ -45,7 +45,7 @@
 // Every budget is a soft expectation, printed with what was measured, pass or fail.
 import { test as base, expect } from "./fixtures.mjs";
 import { launchPlain, BADGE_SEL } from "../harness.mjs";
-import { buildTwoColumnPdf, handOverPdf } from "../pdf-fixture.mjs";
+import { buildTwoColumnPdf, handOverPdf, pdfTabChip } from "../pdf-fixture.mjs";
 import { X_FEED, REDDIT_FEED, scrollSession } from "../perf-feeds.mjs";
 
 const test = base.extend({
@@ -263,7 +263,7 @@ for (const img of document.querySelectorAll("img.shot")) io.observe(img);
         return n;
       };
       return {
-        chips: [...document.querySelectorAll(sel)].filter((h) => h.id !== "anagram-fab").length,
+        chips: document.querySelectorAll(sel).length,
         boxes: boxes.length,
         withOne: boxes.filter((b) => under(b) === 1).length,
         withMore: boxes.filter((b) => under(b) > 1).length,
@@ -310,7 +310,7 @@ test.describe("E) the PDF reader", () => {
     await watchLongTasks(page);
     // Include the authorized source handoff in the time from the user's click.
     await page.goto(pages.url("/paper.pdf"), { waitUntil: "load" }).catch(() => {});
-    await page.waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action"), null, { timeout: 30000 }).catch(() => {});
+    await pdfTabChip(page, { timeout: 30000 }); // the page has told the worker it shows a PDF
     const startedAt = Date.now();
     await handOverPdf(page, { timeout: 30000 });
     await page.waitForFunction(() => window.PDFViewerApplication?.pdfViewer.getPageView(0)?.renderingState === 3, null, { timeout: 30000 });

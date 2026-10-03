@@ -5,8 +5,7 @@
 // it sits on a dark surface transitions `background-color` over 130 ms, and a reading taken
 // inside that window pairs the OLD white surface with the NEW text colour — a 2.5:1 failure
 // no user ever sees. settleAll() waits for document.getAnimations() to go quiet (it reaches
-// into shadow trees), settle() also waits for the emulated colour scheme to land, and the
-// ball is taken out of its idle tuck before anything is measured through its 62% opacity.
+// into shadow trees), and settle() also waits for the emulated colour scheme to land.
 import { BADGE_SEL } from "./harness.mjs";
 
 // The in-page probe — the helpers the code-level checks run inside the page.
@@ -248,8 +247,8 @@ export function installProbe() {
         if (el.shadowRoot) walk(el.shadowRoot);
         const cs = getComputedStyle(el);
         if (cs.display === "none" || cs.visibility === "hidden") continue;
-        // Words kept for a screen reader only (a clipped 1 px box, the ball's live region
-        // while it announces) are never drawn, so they have no contrast to reach.
+        // Words kept for a screen reader only (a clipped 1 px box) are never drawn, so they
+        // have no contrast to reach.
         if (cs.clipPath !== "none" && el.getBoundingClientRect().width < 2) continue;
         const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== "");
         if (own) out.push(el);
@@ -317,13 +316,14 @@ export function frames(page) {
     .catch(() => {});
 }
 
-/** Wait until nothing in our shadow UI is moving, so a scan reads settled colours. */
-export async function still(page, hostSel = "#anagram-fab") {
+/** Wait until nothing in our shadow UI under `hostSel` is moving, so a scan reads settled
+ *  colours; with no host, a frame and a moment. */
+export async function still(page, hostSel = null) {
   await frames(page);
   await page
     .waitForFunction(
       (sel) => {
-        const host = document.querySelector(sel);
+        const host = sel && document.querySelector(sel);
         if (!host) return true;
         return host.getAnimations({ subtree: true }).every((a) => a.playState !== "running");
       },
@@ -332,36 +332,6 @@ export async function still(page, hostSel = "#anagram-fab") {
     )
     .catch(() => {});
   await page.waitForTimeout(150);
-}
-
-/** The ball has to be there before anything can be asked about it. */
-export const fabReady = (page) =>
-  page
-    .waitForFunction(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count"), null, { timeout: 15000 })
-    .then(() => true, () => false);
-
-/**
- * Bring the ball out of its idle tuck (half off the edge, 62% opacity) and wait for the
- * fade to finish. The opacity is checked explicitly, not just the animation list: a colour
- * read at 0.97 opacity gives axe #fef8f8 on #dd2d2d and a 4.45:1 "failure" of a pair that
- * is 4.83:1 the moment the fade lands.
- */
-export async function untuck(page) {
-  await page.evaluate(() => {
-    const stack = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack");
-    stack?.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }));
-  });
-  await still(page);
-  await page
-    .waitForFunction(
-      () => {
-        const wrap = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".fabwrap");
-        return !wrap || getComputedStyle(wrap).opacity === "1";
-      },
-      null,
-      { timeout: 4000 },
-    )
-    .catch(() => {});
 }
 
 /** Chips settled (none left in the "analyzing…" state) — the state a scan may read. */

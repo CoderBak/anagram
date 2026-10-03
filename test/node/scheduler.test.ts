@@ -129,4 +129,25 @@ describe("scheduler", () => {
     await new Promise((r) => setTimeout(r, 120));
     expect(batches).toEqual(["u1", "u2", "u3,u4"]);
   });
+
+  it("asks a lane's budget given as a function at each batch: the PDF reader's pace changes it as it goes", async () => {
+    const batches: string[] = [];
+    const asked: number[] = [];
+    let budget = 1; // one unit, as a slow engine's background lane
+    const s = createScheduler({
+      batchCharBudget: { background: () => { asked.push(budget); return budget; } },
+      maxInFlight: 1,
+      async send(units) {
+        batches.push(units.map((u) => u.id).join(","));
+        budget = 10_000; // the engine turned out fast
+        await tick();
+        return units.map(score);
+      },
+      render() {},
+    });
+    for (let i = 1; i <= 4; i++) s.enqueue(unit(i), "background");
+    await new Promise((r) => setTimeout(r, 60));
+    expect(batches).toEqual(["u1", "u2,u3,u4"]);
+    expect(asked).toEqual([1, 10_000]);
+  });
 });

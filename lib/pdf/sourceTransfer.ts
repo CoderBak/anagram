@@ -12,6 +12,8 @@ const SOURCE_TICKET = /^s-[a-f0-9]{32}$/;
 const LOADER_TICKET = /^[a-f0-9]{32}$/;
 const FAILURES: readonly HandoffFailure[] = ["large", "type", "read"];
 export type PdfOpenResult = {ok: true} | {ok: false; error: "busy" | "forbidden" | "read"};
+/** The address that holds a refreshed reader's document, or why there is none. */
+export type PdfReopenResult = {ok: true; reader: string} | {ok: false; error: "busy" | "forbidden"};
 type Port = ReturnType<typeof browser.runtime.connect>;
 function ticket(): string { return [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
 function post(port: Port, value: unknown): boolean { try { port.postMessage(value); return true; } catch { return false; } }
@@ -161,6 +163,22 @@ export function createSourceBroker(readerUrl: (source: string) => string) {
       const entry: Transfer = {tabId, source, reader, navigating: true, loadingSeen: false, complete: false, timer: setTimeout(() => drop(key), SOURCE_TIMEOUT)};
       held.set(key, entry);
       try { await browser.tabs.update(tabId, {url: reader}); return {ok: true}; } catch { drop(key); return {ok: false, error: "read"}; }
+    },
+    /**
+     * A reader of `source` was refreshed and holds nothing: the same private read again, for
+     * that reader. The worker has checked that the asking document is the tab's reader and
+     * that its address names `source`; the reader moves itself to the address returned, so
+     * a refresh leaves no extra entry in the tab's history.
+     */
+    async reopen(tabId: number, source: string): Promise<PdfReopenResult> {
+      const url = safePdfSource(source);
+      if (!url || (url.protocol === "file:" && !looksLikePdfUrl(source))) return {ok: false, error: "forbidden"};
+      if (!await hasPdfSourceAccess(source)) return {ok: false, error: "forbidden"};
+      forget(tabId);
+      if (held.size >= 1) return {ok: false, error: "busy"};
+      const key = `s-${ticket()}`, reader = `${readerUrl(source)}&ticket=${key}`;
+      held.set(key, {tabId, source, reader, navigating: true, loadingSeen: false, complete: false, timer: setTimeout(() => drop(key), SOURCE_TIMEOUT)});
+      return {ok: true, reader};
     },
   };
 }

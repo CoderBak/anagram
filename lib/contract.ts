@@ -66,6 +66,9 @@ export interface ScoreResult {
    * optional field; absent means a real result.
    */
   degraded?: boolean;
+  /** True when the service worker answered from its cache and the engine read nothing: the
+   *  PDF reader's pace (lib/pdf/readAhead.ts) learns only from what the engine read. */
+  cached?: boolean;
 }
 
 /** Identity of the backend that produced a batch — folded into every cache key. */

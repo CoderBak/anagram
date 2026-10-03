@@ -56,6 +56,9 @@
   "cardScaleTitle": {
     "message": "AI 编辑程度，0 到 1"
   },
+  "cardUnsure": {
+    "message": "不太确定：接近“$1”"
+  },
   "cardPartsTogether": {
     "message": "合并分析的段落"
   },
@@ -152,51 +155,6 @@
   "selFootUnsupported": {
     "message": "仅对英文文本评分。"
   },
-  "fabHide": {
-    "message": "隐藏 AI 检测"
-  },
-  "fabShow": {
-    "message": "显示 AI 检测"
-  },
-  "fabHideAria": {
-    "message": "隐藏 AI 检测标记"
-  },
-  "fabShowAria": {
-    "message": "显示 AI 检测标记"
-  },
-  "countTitle": {
-    "message": "查看存疑段落"
-  },
-  "countDownTitle": {
-    "message": "本地引擎未就绪，点击查看详情"
-  },
-  "countDownAria": {
-    "message": "本地引擎未就绪，详情"
-  },
-  "countAria_one": {
-    "message": "$1 个存疑段落，查看列表"
-  },
-  "countAria_other": {
-    "message": "$1 个存疑段落，查看列表"
-  },
-  "panelAnnounceCount_one": {
-    "message": "本页有 $1 个存疑段落"
-  },
-  "panelAnnounceCount_other": {
-    "message": "本页有 $1 个存疑段落"
-  },
-  "panelDaemonDown": {
-    "message": "本地引擎尚未就绪。请打开 Anagram 设置；新段落将等待引擎就绪后再分析。"
-  },
-  "panelEngineCrashed": {
-    "message": "本地引擎接连意外停止，Anagram 已不再自动重启它。新段落将等待你重试后再分析。"
-  },
-  "panelInBrowserDown": {
-    "message": "浏览器内引擎尚未就绪。请打开 Anagram 设置；新段落将等待引擎就绪后再分析。"
-  },
-  "panelInBrowserCrashed": {
-    "message": "浏览器内引擎接连意外停止，Anagram 已不再自动重启它。新段落将等待你重试后再分析。"
-  },
   "panelRetry": {
     "message": "重试"
   },
@@ -214,9 +172,6 @@
   },
   "panelTitleCount": {
     "message": "存疑段落（$1/$2）"
-  },
-  "panelClose": {
-    "message": "关闭"
   },
   "panelCopyReport": {
     "message": "复制报告"
@@ -314,7 +269,7 @@
     "message": "载入中…"
   },
   "readerNoText": {
-    "message": "这个 PDF 没有文本层。"
+    "message": "这个 PDF 的页面是图片，没有可读取的文字。"
   },
   "readerTooLarge": {
     "message": "这个 PDF 太大，无法在这里阅读。"
@@ -332,13 +287,21 @@
     "message": "此标签页已不再持有 PDF 数据。可打开原件后再次选择 Anagram，或选择本地文件。",
     "description": "PDF source loading and recovery status."
   },
-  "readerAnalysisScope": {
-    "message": "当前分析范围为 $2 页中的 $1 页。滚动可加载更多页面；已回收页面会移出分析面板。",
-    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+  "readerReading": {
+    "message": "正在读取全文：已完成 $1%。"
+  },
+  "readerReadShare": {
+    "message": "已读取全文的 $1%，其余部分会在你滚动到时读取。"
+  },
+  "readerReadWhole": {
+    "message": "读取全文"
   },
   "readerReportScope": {
-    "message": "PDF 分析范围：共 $2 页，当前加载 $1 页。本报告不是整份文档的完整评估。",
-    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+    "message": "仅涵盖当前已加载的 $1 页（共 $2 页），其余页面会在你滚动到时读取。",
+    "description": "Popup report over the PDF reader where the document's paragraphs are not known (a very long document, or the structure setting off): only the pages loaded now are covered. $1 = pages loaded now, $2 = pages in the document."
+  },
+  "readerOpenMenu": {
+    "message": "Anagram：本文档的结果与控制"
   },
   "pasteTitle": {
     "message": "分析文本",
@@ -349,7 +312,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFile": {
-    "message": "打开文本文件",
+    "message": "打开文本文件…",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteAnalyze": {
@@ -375,6 +338,12 @@
   "pasteFailed": {
     "message": "分析未完成。请在设置中检查本地引擎，再重试。",
     "description": "Text analysis page action, status, or limit."
+  },
+  "pasteWords_one": {
+    "message": "$1 个词"
+  },
+  "pasteWords_other": {
+    "message": "$1 个词"
   },
   "pasteCoverage": {
     "message": "已分析 $1/$2 次读取，不支持的语言 $3 次，不可用 $4 次，截断 $5 次"
@@ -578,21 +547,6 @@
   },
   "popupSetupPaused": {
     "message": "下载已暂停（$1%）"
-  },
-  "panelSetupNeeded": {
-    "message": "Anagram 尚未设置。新段落将等待模型下载完成后再分析。"
-  },
-  "panelSetupDownloading": {
-    "message": "正在下载模型（$1%）。新段落将等待模型就绪后再分析。"
-  },
-  "panelSetupPaused": {
-    "message": "模型下载已暂停（$1%）。新段落将等待下载完成后再分析。"
-  },
-  "panelSetupFailed": {
-    "message": "Anagram 的设置未完成。新段落将等待设置完成后再分析。"
-  },
-  "panelSetupLoading": {
-    "message": "模型正在启动。新段落将等待模型就绪后再分析。"
   },
   "componentStarting": {
     "message": "正在启动…"
@@ -853,7 +807,7 @@
     "message": "允许所有网站"
   },
   "accessWithdraw": {
-    "message": "撤回"
+    "message": "撤销授权"
   },
   "optCommentsFrom": {
     "message": "你刚才的页面显示来自 $1 的评论。Anagram 需获准访问该网站才能读取。"
@@ -931,10 +885,13 @@
     "message": "阅读范围"
   },
   "onbVerdictTitle": {
-    "message": "怎么看结果"
+    "message": "怎么看标记"
   },
-  "onbConfidence": {
-    "message": "圆点饱满表示这个结论大概率正确；细环表示 Anagram 拿不准。"
+  "onbScoreLine": {
+    "message": "每个段落旁都有一个标签，显示 .00（人工撰写）到 1.0（AI 生成）的分数，颜色对应其类别。将鼠标悬停在标签上可查看详情。AI 生成的段落会被标为存疑：工具栏菜单会列出它们，图标上的数字就是它们的数量。"
+  },
+  "onbStepDone": {
+    "message": "完成"
   },
   "onbModelNotice": {
     "message": "Anagram 使用 Pangram 开源的 EditLens 模型（CC BY-NC-SA 4.0）。不得用于商业用途，也不应据此在教育或职业场景中执行任何 AI 使用政策。"
@@ -944,6 +901,12 @@
   },
   "accessAllowed": {
     "message": "已允许所有网站"
+  },
+  "optReadAhead": {
+    "message": "在后台读取整篇 PDF"
+  },
+  "optReadAheadNote": {
+    "message": "按本机打分速度调节：较快的设备读完全文，较慢的只读当前页附近，且只在你停止滚动时进行。"
   },
   "optLocalPdfs": {
     "message": "本机上的 PDF"
@@ -977,9 +940,6 @@
   },
   "optCache": {
     "message": "缓存"
-  },
-  "popupPdfReader": {
-    "message": "PDF 阅读器"
   },
   "safariEngineTitle": {
     "message": "Anagram Safari 版"
@@ -1015,7 +975,7 @@
     "message": "如何将 Anagram 固定到工具栏"
   },
   "toolbarPinIntro": {
-    "message": "将 Anagram 图标放在地址栏旁，方便在 Google 文档等页面快速使用。"
+    "message": "Anagram 的一切都在工具栏菜单里：每页的结果、各网站的开关，以及设置。"
   },
   "toolbarExtensionsMenu": {
     "message": "点击地址栏旁的“扩展程序”按钮（拼图图标）。"
@@ -1034,12 +994,6 @@
   },
   "toolbarSafariDrag": {
     "message": "将 Anagram 图标拖到地址栏旁，然后点击“完成”。如果图标已在那里，就可以直接使用。"
-  },
-  "toolbarPinUse": {
-    "message": "在 Google 文档中，点击 Anagram → 分析文档，打开阅读视图。再次点击 Anagram，即可查看结果和页面控制。"
-  },
-  "popupMarksVisible": {
-    "message": "显示此页面的标记"
   },
   "popupReportRange": {
     "message": "第 $1–$2 项，共 $3 项"

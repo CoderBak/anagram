@@ -33,9 +33,10 @@ import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } fro
 import { sendTabControl } from "../lib/messaging/tabControl";
 import type { ControlMessage } from "../lib/messaging/protocol";
 import { commentHost } from "../lib/access/commentFrames";
-import { READER_PAGE, readerQuery } from "../lib/pdf/source";
+import { READER_PAGE, readerQuery, safePdfSource } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";
+import type { PdfReopenResult } from "../lib/pdf/sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
 import { settings, cacheModeStorage, enabledForSite } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
@@ -383,6 +384,12 @@ export default defineBackground(() => {
         const src=new URL(sender.url!).searchParams.get("src");
         if(src !== msg.url)return {ok:false} satisfies PdfPassOnceReply;
         pdfNavigation.pass(sender.tab!.id!,msg.url); return {ok:true} satisfies PdfPassOnceReply;
+      }
+      case ACTIONS.PDF_REOPEN: {
+        // Only a reader showing that very source, with its ticket already spent, asks again.
+        const shown=new URL(sender.url!).searchParams;
+        if(shown.has("ticket") || safePdfSource(shown.get("src") ?? "")?.href!==msg.url)return {ok:false,error:"forbidden"} satisfies PdfReopenResult;
+        return handoff.reopen(sender.tab!.id!,msg.url);
       }
       case ACTIONS.SET_CACHE_MODE:
         try {

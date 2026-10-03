@@ -76,6 +76,11 @@ const pageText = (page: number, items: PdfTextItem[], fonts: Record<string, stri
 const structure = (content: SdtBlock[], pages = 1): SdtStructure =>
   ({ catalog: { pages: Array.from({ length: pages }, () => ({ viewRect: [0, 0, WIDTH, HEIGHT] })) }, content });
 
+/** The box of one line of `text` set at baseline `y` (from the top) on `page`, in PDF space, y
+ *  up: a fifth of the size below the baseline to seven tenths above, as Zotero draws it. */
+const lineRect = (page: number, text: string, y: number): number[] =>
+  [page - 1, 72, HEIGHT - y - 0.2 * SIZE, 72 + text.length * CW, HEIGHT - y + 0.7 * SIZE];
+
 const paragraph = (page: number, nodes: { text: string; anchor: { textMap: string } }[], extra: Partial<SdtBlock> = {}): SdtBlock =>
   ({ type: "paragraph", anchor: { pageRects: [[page - 1, 72, 100, 500, 700]] }, content: nodes.map(({ text, anchor }) => ({ text, anchor })), ...extra });
 
@@ -1127,12 +1132,28 @@ describe("structuredBlocks — the document", () => {
       ["Figure 3 compares the spectra of the two dwarfs.", 220],
       ["Figure 4.21 shows an improved version of the behavior.", 250],
       ["we add the spine action to turn the spine as shown in", 280],
-      ["Figure 6.32. Notice this node is a sibling of the fallback.", 310],
+      // Its sentence carries on in the next line: one line pitch below.
+      ["Figure 6.32. Notice this node is a sibling of the fallback.", 291],
     ];
     const nodes = lines.map(([text, y]) => node(1, [{ text, x: 72, y }]));
     const pages = [pageText(1, nodes.flatMap((n) => n.items))];
-    const blocks = structuredBlocks(structure(nodes.map((n) => paragraph(1, [n]))), pages);
+    const blocks = structuredBlocks(structure(nodes.map((n, i) => paragraph(1, [n], { anchor: { pageRects: [lineRect(1, lines[i]![0], lines[i]![1])] } }))), pages);
     expect(blocks.map((b) => b.text)).toEqual([0, 4, 5, 6, 7].map((i) => lines[i]![0]));
+  });
+
+  it("leaves out a caption after a paragraph the figure cut off, though that paragraph stops at a word that could name it", () => {
+    // "…are projected to" at the foot of page 1; the figure and its caption head page 2; the
+    // sentence carries on under them.
+    const cut = node(1, [{ text: "and at this pace the models of the next years are projected to", x: 72, y: 700 }]);
+    const caption = node(2, [{ text: "Figure 1. AI-generated web text helps only data-starved models.", x: 72, y: 400 }]);
+    const rest = node(2, [{ text: "exhaust nearly all public text by the end of the decade.", x: 72, y: 440 }]);
+    const pages = [pageText(1, cut.items), pageText(2, [...caption.items, ...rest.items])];
+    const blocks = structuredBlocks(structure([
+      paragraph(1, [cut], { anchor: { pageRects: [lineRect(1, cut.text, 700)] } }),
+      paragraph(2, [caption], { anchor: { pageRects: [lineRect(2, caption.text, 400)] } }),
+      paragraph(2, [rest], { anchor: { pageRects: [lineRect(2, rest.text, 440)] } }),
+    ], 2), pages);
+    expect(blocks.map((b) => b.text).join(" | ")).not.toContain("Figure 1.");
   });
 
   it("leaves out the rest of a caption Zotero read as a paragraph under it, and keeps the body set off below a float", () => {

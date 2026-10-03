@@ -206,9 +206,15 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
 - Follow the reader: score what is on screen after a short dwell, skip fast scrolling,
   bound queued work per document. Hooks are in `lib/capture/observers.ts` and
   `lib/capture/scheduler.ts`.
-- PDF: keep results across PDF.js page recycling (`entrypoints/reader/main.ts`,
-  `lib/pdf/units.ts`), and raise the 300-page cap on Zotero's structure by decoding a
-  block's glyphs only while its pages are rendered (`lib/pdf/structured.ts` keeps them all).
+- PDF: whole-document reading (`lib/pdf/readAhead.ts`) works only with Zotero's structure;
+  past 300 pages, or without it, the reflow reads the drawn pages alone, because its text
+  depends on the run of pages reflowed together. Raise the 300-page cap by decoding a
+  block's glyphs only while its pages are read (`lib/pdf/structured.ts` keeps them all).
+- PDF: the tail of a paragraph set under a figure on the next page is lost when Zotero tags it
+  `auxiliary` ("…simulated INT8 preserves" / figure / "vulnerability rather than…"), and the
+  chip then stands mid-sentence at the foot of the page. Thirty such lowercase continuations
+  in the benchmark corpus, half of them table or figure text, so joining them needs more than
+  the run-on test of `continues()`.
 - Installer recovery on Windows: two component homes registering one browser race on
   the HKCU keys (`installer/native_registration.py`), and an interrupted uninstall is
   finished only by reinstalling or deleting the folder (`installer/maintenance.ps1`).

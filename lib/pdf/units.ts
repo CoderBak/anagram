@@ -121,8 +121,17 @@ const MAX_SYMBOL_NOISE = 0.2;
  * page number that escaped the margin rule and a caption label are not somebody's prose
  * and nothing is grouped across them.
  */
+/** A paper's keyword line — "Index Terms—…", "Keywords: …" — names topics; it is nobody's
+ *  sentences, and an abstract read with it is not the abstract. */
+const KEYWORD_LINE = /^\s*(?:index terms|key\s?words?|关键词|关键字)\s*[—–:：.-]/iu;
+/** The boilerplate a journal sets at the foot of a paper's first page: who funded it, when the
+ *  manuscript arrived, whom to write to. Nobody's writing either — on page 1 only: later, "This
+ *  work was supported by…" opens an acknowledgements paragraph, which is somebody's writing. */
+const FIRST_PAGE_NOTE = /^\s*(?:this (?:work|research|study|project|paper) (?:was|is|has been) (?:\w+ )?(?:supported|funded)|manuscript received|\*?\s*corresponding author)/iu;
+
 function roleOf(block: ReflowBlock, words: number, floor: number): BlockRole {
   if (block.kind === "heading") return "barrier";
+  if (KEYWORD_LINE.test(block.text) || (block.page === 1 && FIRST_PAGE_NOTE.test(block.text))) return "barrier";
   if (block.apart) return words >= floor ? "apart" : "barrier";
   if (words >= floor) return "prose";
   if (!hasLetters(block.text)) return isSeparatorRun(block.text) ? "barrier" : "skip";
@@ -166,6 +175,62 @@ function soloGroups(plan: readonly PlanBlock[], floor: number): number[][] {
 export function groupsOf(blocks: readonly ReflowBlock[], mergeShorts = true, floor: number = DEFAULT_MIN_WORDS): number[][] {
   const plan = planOf(blocks, floor);
   return mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
+}
+
+/** A unit's text: its paragraphs joined the way a merged unit's text is joined everywhere
+ *  else — "\n\n" between them, which is also where the window planner prefers to cut
+ *  (lib/capture/windows.ts) — up to the storage cap; and where each paragraph starts in it. */
+function joined(members: readonly ReflowBlock[]): { text: string; starts: number[] } {
+  const starts: number[] = [];
+  let text = "";
+  for (const m of members) {
+    starts.push(text.length === 0 ? 0 : text.length + 2);
+    text = text.length === 0 ? m.text : `${text}\n\n${m.text}`;
+  }
+  return { text: text.slice(0, MAX_UNIT_TEXT_CHARS), starts };
+}
+
+/** A paragraph of the document as the reader will read it, page or no page. */
+export interface DocumentParagraph {
+  /** Its place in reading order: the order of the unit minted for it. */
+  order: number;
+  /** Exactly the unit's text, once every page it lies on is drawn. */
+  text: string;
+  words: number;
+  /** The page its chip stands on: where its last run is (the unit's `page`). */
+  page: number;
+  /** Every page its blocks lie on. */
+  pages: readonly number[];
+}
+
+/**
+ * The document's units without the page: the same groups in the same order, with the same
+ * texts, that a unit source mints from `blocks` once their pages are drawn — what the reader
+ * reads ahead of the viewer (Orchestrator.scoreDetached), so that each unit, when its page is
+ * drawn, finds its verdict in the cache. `pagesOf` names the pages a block lies on.
+ */
+export function documentParagraphs(
+  blocks: readonly ReflowBlock[],
+  pagesOf: (block: ReflowBlock) => readonly number[],
+  mergeShorts = true,
+  floor: number = DEFAULT_MIN_WORDS,
+): DocumentParagraph[] {
+  const plan = planOf(blocks, floor);
+  const groups = mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
+  const out: DocumentParagraph[] = [];
+  groups.forEach((group, order) => {
+    const members = group.map((at) => blocks[at]!);
+    const { text } = joined(members);
+    let words = 0;
+    for (const at of group) words += plan[at]!.words;
+    // A paragraph on pages not read yet has no runs, and is the structure's text until they
+    // are; one on no page at all is never read, and is not counted as the document's.
+    const pages = [...new Set(members.flatMap((m) => pagesOf(m)))].sort((a, b) => a - b);
+    if (pages.length === 0) return;
+    const last = members[members.length - 1]!;
+    out.push({ order, text, words, page: last.runs.at(-1)?.page ?? pages.at(-1) ?? last.page, pages });
+  });
+  return out;
 }
 
 /** Search highlights split PDF.js item spans into nested text nodes. */
@@ -227,22 +292,16 @@ export function createPdfUnitSource(): PdfUnitSource {
 
   /**
    * One group of blocks as a Unit, or null where there is nothing on the page to hang it
-   * on (its pages have not been rendered yet). Parts break at a page boundary, at the
-   * joint between two blocks, and wherever the item index stops climbing — which is a
-   * column change, and is also what keeps every part in document order, so a range over
-   * one is a range over the glyphs it names and nothing between them.
+   * on (none of its pages is drawn yet). A paragraph only partly drawn is a unit of its
+   * drawn parts with its whole text: its verdict is the whole paragraph's, and its chip
+   * moves to its end when the rest is drawn (a new unit, same text, from the cache). Parts
+   * break at a page boundary, at the joint between two blocks, and wherever the item index
+   * stops climbing — which is a column change, and is also what keeps every part in
+   * document order, so a range over one is a range over the glyphs it names and nothing
+   * between them.
    */
   function build(members: readonly ReflowBlock[], wordsPer: readonly number[], order: number): Blueprint | null {
-    // The unit's text is the paragraphs joined the way a merged unit's text is joined
-    // everywhere else — "\n\n" between them, which is also where the window planner
-    // prefers to cut (lib/capture/windows.ts).
-    const starts: number[] = [];
-    let text = "";
-    for (const m of members) {
-      starts.push(text.length === 0 ? 0 : text.length + 2);
-      text = text.length === 0 ? m.text : `${text}\n\n${m.text}`;
-    }
-    text = text.slice(0, MAX_UNIT_TEXT_CHARS);
+    const { text, starts } = joined(members);
     // The words are the ones already counted for the plan; a grouped unit's count is the
     // sum of its paragraphs', exactly as a merged unit's is on a page (lib/dom/walker.ts).
     let words = 0;
@@ -258,9 +317,12 @@ export function createPdfUnitSource(): PdfUnitSource {
       for (const run of block.runs) {
         const at = base + run.at;
         if (at + run.length > text.length) break; // past the storage cap
-        const itemNodes = nodesOf(run);
+        // A page not drawn: the paragraph is read whole all the same — its text is the
+        // document's (documentParagraphs) — and its unit stands on what of it is drawn.
         const layer = pages.get(run.page)?.layer;
-        if (!itemNodes.length || !layer?.isConnected) { missing = true; continue; }
+        if (!layer) continue;
+        const itemNodes = nodesOf(run);
+        if (!itemNodes.length || !layer.isConnected) { missing = true; continue; }
         if (open === null || open.page !== run.page || run.item < open.item) {
           const part: UnitPart = { nodes: [], container: layer };
           parts.push(part);
@@ -319,10 +381,27 @@ export function createPdfUnitSource(): PdfUnitSource {
       isScored: false,
       textFixed: true,
       paragraphs: from.paragraphs,
+      page: from.runs.at(-1)?.page,
     };
     from.minted = unit.id;
     placed.set(unit.id, from);
     return unit;
+  }
+
+  const sameNodes = (a: Blueprint, b: Blueprint): boolean => a.nodes.length === b.nodes.length && a.nodes.every((n, i) => n === b.nodes[i]);
+
+  /** Is there a unit handed out already whose text nodes are exactly these, in this order? */
+  function placedAsIs(candidate: Blueprint): boolean {
+    for (const blueprint of placed.values()) if (sameNodes(blueprint, candidate)) return true;
+    return false;
+  }
+
+  /** The id of a unit handed out on exactly these nodes with another text: a page the
+   *  paragraph lies on was read since (the read-ahead), and its text is the document's now,
+   *  though nothing drawn changed. */
+  function restated(candidate: Blueprint): string | null {
+    for (const [id, blueprint] of placed) if (sameNodes(blueprint, candidate) && blueprint.text !== candidate.text) return id;
+    return null;
   }
 
   function collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts = true, minWords: number = DEFAULT_MIN_WORDS): Unit[] {
@@ -330,7 +409,20 @@ export function createPdfUnitSource(): PdfUnitSource {
     for (const [id, blueprint] of placed) {
       if (blueprint.nodes.some((node) => !node.isConnected)) placed.delete(id);
     }
+    const taken: Blueprint[] = [];
     for (const candidate of rebuild(mergeShorts, minWords)) {
+      // Two paragraphs on the very same nodes would restate each other at every collect: the
+      // first is read.
+      if (taken.some((other) => sameNodes(other, candidate))) continue;
+      taken.push(candidate);
+      // Its text changed, its nodes did not: no claim can tell, so the unit is minted again
+      // without one, and the stale one is retired as the new one takes its nodes.
+      const stale = restated(candidate);
+      if (stale !== null) {
+        placed.delete(stale);
+        out.push(mint(candidate));
+        continue;
+      }
       // The walker's protocol, run by hand: a part a live unit owns EXACTLY is skipped,
       // and a paragraph all of whose parts are skipped IS that live unit and is not
       // emitted again. One part answering differently means the paragraph is not what it
@@ -340,6 +432,11 @@ export function createPdfUnitSource(): PdfUnitSource {
       for (const part of candidate.parts) {
         if (claim(part.nodes) !== "skip") live = false;
       }
+      // Every part being some live unit's own is not yet being THAT unit: two units can own
+      // them between them, or one own them with more besides — the quick reflow read a page's
+      // caption and paragraph together, and the structure reads the paragraph with its first
+      // half on the page before. The paragraph is a live unit only where one owns exactly it.
+      if (live && !placedAsIs(candidate)) live = false;
       if (live) continue;
       if (claim(candidate.parts.flatMap((p) => p.nodes)) === "skip") continue;
       out.push(mint(candidate));

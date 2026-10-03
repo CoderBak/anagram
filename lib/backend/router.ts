@@ -205,7 +205,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       const groups = new Map<string, ScoreBlock[]>();
       sent.forEach((block, index) => {
         const key = keys[index]!, hit = hits.get(key);
-        if (hit) { results.set(block.id, { ...hit, id: block.id }); producers.set(dim, model); }
+        if (hit) { results.set(block.id, { ...hit, id: block.id, cached: true }); producers.set(dim, model); }
         else { const group = groups.get(key) ?? []; group.push(block); groups.set(key, group); }
       });
       const promises: Promise<void>[] = [];

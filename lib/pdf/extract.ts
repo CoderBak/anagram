@@ -26,6 +26,19 @@ export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> 
   return {page: page.pageNumber, width: viewport.width, height: viewport.height, items, transform: [...viewport.transform], fonts};
 }
 
+/** Name the fonts of a page's text that were not loaded when it was read: a page not drawn
+ *  has its fonts from the pages drawn or read before it that share them, and loads the rest
+ *  itself (getOperatorList). Whether every font is named now. */
+export function nameFonts(page: PDFPageProxy, text: PdfPageText): boolean {
+  const fonts = text.fonts ?? {};
+  let all = true;
+  for (const id of Object.keys(fonts)) {
+    if (!fonts[id]) fonts[id] = fontNameOf(page, id);
+    if (!fonts[id]) all = false;
+  }
+  return all;
+}
+
 function fontNameOf(page: PDFPageProxy, loadedName: string): string {
   try {
     const objs = page.commonObjs as { has(id: string): boolean; get(id: string): unknown };

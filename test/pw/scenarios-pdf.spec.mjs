@@ -1,12 +1,12 @@
 // The PDF reader: a real PDF handed to the full PDF.js viewer and shown as it is, with the
-// ORDINARY pipeline over it (the same chips, underlines, ball and panel). The
+// ORDINARY pipeline over it (the same chips, underlines and toolbar menu report). The
 // reconstruction is invisible and is only asserted through what it decides: what reaches the
 // host, and where a chip lands. Then short paragraphs grouped under a heading, a thirty-page
 // document, a scan and a corrupt file, the way in from a tab showing a PDF, the drop zone,
 // and two documents asked for one after the other.
 //
 //   npx playwright test scenarios-pdf
-import { test as base, expect, BADGE_SEL, ABSENCE_MS, toggleCounter } from "./kit.mjs";
+import { test as base, expect, BADGE_SEL, ABSENCE_MS, popupOver, menuReport } from "./kit.mjs";
 import {
   BROKEN_PDF, GROUPED_PARAS, GROUPED_PDF, GROUPED_UNIT_TEXT, PDF_HEAD, PDF_HEADING, PDF_PARAS, SCANNED_PDF, TALL_PDF, TEST_PDF,
   handOverPdf, openPdfInReader, pdfTabChip, readerRead, readerReady,
@@ -84,7 +84,7 @@ const readReader = (page) =>
     };
   }, BADGE_SEL);
 
-test("a PDF in the reader: its paragraphs read as written, drawn with a text layer, one chip each beside the text, marks on their glyphs, zoom from the cache and the panel", async ({ page, pdfs, nativeHost }) => {
+test("a PDF in the reader: its paragraphs read as written, drawn with a text layer, one chip each beside the text, marks on their glyphs, zoom from the cache and the menu's report", async ({ page, pdfs, nativeHost }) => {
   const extErrors = [];
   page.on("console", (m) => {
     // Only what OUR page said: the browser's own viewer asking the server for a favicon it
@@ -141,20 +141,17 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
   expect.soft(zoomed.placed.filter((c) => !c.inPage || c.overText), zoom).toEqual([]);
   expect.soft(nativeHost.stats.requests, zoom).toBe(requestsBefore);
 
-  // The panel must name the PDF's scope, not the chrome-extension:// address it is rendered on.
-  // PDF.js is still re-drawing after the zoom, and the reader re-reads each page it re-draws:
-  // the panel is drawn when it opens, so it is reopened until its title and rows agree.
-  const panel = "PDF reader: the panel lists the flagged paragraphs, its title counts them, and it carries the scope note";
+  // The toolbar menu's report is the PDF's, not the chrome-extension:// address it is rendered
+  // on. PDF.js is still re-drawing after the zoom, and the reader re-reads each page
+  // it re-draws: the menu asks again every second, so it is read until its title and rows agree.
+  const report = "PDF reader: the toolbar menu lists the flagged paragraphs and its title counts them; with every page drawn it has no scope note";
+  const menu = await popupOver(page);
   await expect(async () => {
-    const open = await page.evaluate(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel.open"));
-    if (open) await toggleCounter(page);
-    await toggleCounter(page);
-    const items = await page.locator("#anagram-fab .panel.open .pitem").count();
-    const title = (await page.locator("#anagram-fab .panel.open .phead h2").textContent()) ?? "";
-    expect(title).toMatch(/^Flagged paragraphs \(\d+\/\d+\)$/);
-    expect(items).toBe(Number(title.match(/\((\d+)\//)?.[1]));
-    expect(await page.locator("#anagram-fab .panel.open .pscope").textContent()).toContain("not a complete document assessment");
-  }, panel).toPass({ timeout: 30_000 });
+    const shown = await menuReport(menu);
+    expect(shown?.title).toMatch(/^Flagged paragraphs \(\d+\/\d+\)$/);
+    expect(shown.rows).toHaveLength(Number(shown.title.match(/\((\d+)\//)?.[1]));
+    expect(shown.notes.join(" ")).not.toMatch(/Read \d+ of \d+ pages/);
+  }, report).toPass({ timeout: 30_000 });
 });
 
 // On a web page three short paragraphs of one voice are read together and the chip says ×3;
@@ -208,6 +205,75 @@ test("a thirty-page document: distant pages are not drawn ahead of time, are dra
   expect.soft(returned.marks, restores).toBeGreaterThan(0);
 });
 
+// The viewer draws a few pages at a time and lets the rest go, and their units with them. The
+// menu's report is the document read so far all the same — its counts, its list, the toolbar
+// icon's number — and its list takes the reader back to a paragraph on a page let go.
+test("a thirty-page document read to the end: the menu counts every page read, not the few still drawn, and its list goes back to a page let go", async ({ context, pdfs, extension }) => {
+  const page = await openPdfInReader(context, pdfs.url("/tall.pdf"));
+  await readerReady(page, { timeout: 30_000 });
+  const scoredOn = (n) => page.evaluate(([sel, n]) => [...document.querySelectorAll(sel)].filter((h) => h.closest(".page")?.dataset.pageNumber === String(n) && h.shadowRoot?.querySelector(".pill.scored")).length, [BADGE_SEL, n]);
+  for (let n = 1; n <= 30; n++) {
+    await visitPdfPage(page, n);
+    await expect.poll(() => scoredOn(n), { message: `page ${n} is read`, timeout: 15_000 }).toBeGreaterThan(0);
+  }
+  const drawn = await page.evaluate(() => [...document.querySelectorAll("#viewer .page .textLayer")].filter((t) => t.querySelector("span")).length);
+  const keeps = "PDF reader: the menu's report keeps the pages the viewer let go";
+  expect.soft(drawn, `${keeps} (most pages are let go by the end)`).toBeLessThan(15);
+  const menu = await popupOver(page);
+  let shown;
+  await expect.poll(async () => { shown = await menuReport(menu); return shown?.bands.reduce((a, b) => a + b, 0) ?? 0; }, { message: keeps }).toBeGreaterThanOrEqual(30 * 2);
+  expect.soft(shown.notes.join(" "), `${keeps}: every page is read, so no scope note`).not.toMatch(/Read \d+ of \d+ pages/);
+  const flagged = Number(shown.title?.match(/\((\d+)\//)?.[1] ?? 0);
+  const tabId = await page.evaluate(async () => (await chrome.tabs.getCurrent())?.id);
+  const badge = await extension.sw.evaluate((tabId) => chrome.action.getBadgeText({ tabId }), tabId);
+  expect.soft(badge, `${keeps}: the toolbar icon counts what the list lists`).toBe(flagged > 0 ? String(flagged) : "");
+  test.skip(flagged === 0, "nothing flagged in this document under the fixture's scores: no row to follow");
+  await menu.locator(".report-result").first().click();
+  const back = "PDF reader: a row of the menu's list goes back to its page, which the viewer had let go";
+  await expect.poll(() => page.evaluate(() => window.PDFViewerApplication.page), { message: back, timeout: 15_000 }).toBeLessThan(25);
+});
+
+// Reading on draws the next pages. Each one adds its own paragraphs and takes nothing down:
+// the chips and marks of the pages still drawn stay where they are, with their verdicts. The
+// quick reading only: Zotero's structure, landing whenever the worker is done, redraws the
+// chips of a paragraph it reads otherwise, by design, and at a time no test can fix.
+test("drawing the next pages leaves the chips already on screen in place", async ({ context, pdfs, storage }) => {
+  await storage.set({ autoOpenPdfs: true, pdfStructure: false });
+  const page = await context.newPage();
+  await page.goto(pdfs.url("/tall.pdf"), { waitUntil: "load" }).catch(() => {});
+  await readerReady(page, { timeout: 30_000 });
+  const firstChips = () => page.evaluate((sel) => [...document.querySelectorAll(`.anagramPdfChips ${sel}`)]
+    .filter((el) => el.closest(".page")?.dataset.pageNumber === "1" && el.shadowRoot?.querySelector(".pill:not(.pending)")).length, BADGE_SEL);
+  await expect.poll(firstChips, { message: "page 1 is read" }).toBeGreaterThan(0);
+  // All of page 1 read, not its first verdicts: nothing waiting there, and the count holding.
+  const waiting = () => page.evaluate((sel) => [...document.querySelectorAll(`.anagramPdfChips ${sel}`)]
+    .filter((el) => el.closest(".page")?.dataset.pageNumber === "1" && el.shadowRoot?.querySelector(".pill.pending")).length, BADGE_SEL);
+  let before = -1;
+  await expect.poll(async () => {
+    const [now, pending] = [await firstChips(), await waiting()];
+    const settled = pending === 0 && now === before;
+    before = now;
+    return settled;
+  }, { message: "page 1 is read whole", intervals: [300] }).toBe(true);
+  // Every chip host taken out of a page that is still drawn.
+  await page.evaluate((sel) => {
+    window.__takenDown = 0;
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.removedNodes) {
+        const hosts = n instanceof Element ? (n.matches(sel) ? [n] : [...n.querySelectorAll(sel)]) : [];
+        const drawn = r.target instanceof Element && r.target.closest(".page")?.querySelector(".textLayer span");
+        if (drawn) window.__takenDown += hosts.length;
+      }
+    }).observe(document.getElementById("viewer"), { childList: true, subtree: true });
+  }, BADGE_SEL);
+  await visitPdfPage(page, 2);
+  await visitPdfPage(page, 3);
+  await visitPdfPage(page, 1);
+  const kept = "PDF reader: a page that is drawn takes no chip off the pages already drawn";
+  expect.soft(await page.evaluate(() => window.__takenDown), kept).toBe(0);
+  expect.soft(await firstChips(), kept).toBe(before);
+});
+
 // The two ways a PDF refuses to be read, each said in one line; the scan is SHOWN rather
 // than refused, its pages being the faithful thing to render.
 test("PDF reader: a scan is still shown and says it has no text; a corrupt file says so instead", async ({ context, pdfs }) => {
@@ -219,26 +285,19 @@ test("PDF reader: a scan is still shown and says it has no text; a corrupt file 
     }));
   const refuses = "PDF reader: a scan is still shown and says it has no text; a corrupt file says so instead";
   const scanned = await openPdfInReader(context, pdfs.url("/scanned.pdf"));
-  await expect.poll(() => stateOf(scanned), { message: `${refuses} (the scan)` }).toEqual({ notice: "This PDF has no text layer.", pages: 1, drawn: 1 });
+  await expect.poll(() => stateOf(scanned), { message: `${refuses} (the scan)` }).toEqual({ notice: "This PDF's pages are images, with no text to read.", pages: 1, drawn: 1 });
   const broken = await openPdfInReader(context, pdfs.url("/broken.pdf"));
   await expect.poll(() => stateOf(broken), { message: `${refuses} (the corrupt file)` }).toMatchObject({ notice: "This file could not be read as a PDF.", pages: 0 });
 });
 
-// Chrome wraps its viewer in an outer document that content scripts do run in, so the ball is
-// there, and it has to be ABOVE the plugin's own chrome. The chip asks the worker to swap the
-// tab for the reader, which a content script cannot do itself.
-test("PDF tab: the ball offers Analyze PDF above the viewer, and it swaps the tab for the reader", async ({ page, pdfs, extension }) => {
+// Chrome wraps its viewer in an outer document that content scripts do run in, so the page
+// itself offers Analyze PDF, in the toolbar menu. It asks the worker to swap the tab for the
+// reader, which a content script cannot do itself.
+test("PDF tab: the toolbar menu offers the page's Analyze PDF, and it swaps the tab for the reader", async ({ page, pdfs, extension }) => {
   await page.goto(pdfs.url("/doc.pdf"), { waitUntil: "load" }).catch(() => {});
-  const swap = "PDF tab: the ball offers Analyze PDF above the viewer, and it swaps the tab for the reader";
-  expect(await pdfTabChip(page), swap).toBe("Analyze PDF");
-  await expect
-    .poll(() => page.evaluate(() => {
-      const host = document.getElementById("anagram-fab");
-      const r = host.shadowRoot.querySelector(".action").getBoundingClientRect();
-      return { contentType: document.contentType, onTop: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === host };
-    }), { message: swap })
-    .toEqual({ contentType: "application/pdf", onTop: true });
-  await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click());
+  const swap = "PDF tab: the toolbar menu offers the page's Analyze PDF, and it swaps the tab for the reader";
+  expect(await page.evaluate(() => document.contentType), swap).toBe("application/pdf");
+  expect(await pdfTabChip(page, { click: true }), swap).toBe("Analyze PDF");
   await page.waitForURL(/reader\.html/);
   expect(page.url(), swap).toMatch(new RegExp(`^${extension.url("reader.html").replace(/[.?]/g, "\\$&")}\\?src=`));
   expect(new URL(page.url()).searchParams.get("src"), swap).toBe(pdfs.url("/doc.pdf"));

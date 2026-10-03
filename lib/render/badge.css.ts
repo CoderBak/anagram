@@ -24,7 +24,7 @@
 // but shadow-context !important beats page !important — so the layout-critical
 // host props are declared !important here AND mirrored as inline styles.
 import { DIST_CSS } from "./dist";
-import { ringCss, scaleColorCss } from "./scale";
+import { bandColorRules } from "./scale";
 
 export const BADGE_CSS: string = `
 :host {
@@ -83,6 +83,11 @@ export const BADGE_CSS: string = `
   transition: background-color 130ms ease, border-color 130ms ease;
 }
 
+/* A chip where the whole pill has no room (between two columns of a PDF): a square of its
+   colour alone, the number in the card. */
+:host([data-compact]) .pill { gap: 0; padding: 0; width: 1.1em; height: 1.1em; border-radius: 0.3em; justify-content: center; }
+:host([data-compact]) .num { display: none; }
+
 :host(:hover) .pill {
   background: #f5f5f5;
   border-color: #d4d4d4;
@@ -102,11 +107,20 @@ export const BADGE_CSS: string = `
   font-variant-numeric: tabular-nums;
 }
 
-/* The score's colour, read from --s, as a ring that thins as the doubt in --u grows (both
-   set per chip in badge.ts). */
-.pill.scored { --dot: ${scaleColorCss(false)}; --ring: color-mix(in oklab, var(--dot) 20%, transparent); background: color-mix(in oklab, var(--dot) 13%, #ffffff); border-color: color-mix(in oklab, var(--dot) 26%, #e5e5e5); }
-:host(:hover) .pill.scored { background: color-mix(in oklab, var(--dot) 20%, #ffffff); border-color: color-mix(in oklab, var(--dot) 40%, #d4d4d4); }
-.pill.scored .dot { background: transparent; box-shadow: inset 0 0 0 ${ringCss("0.35em")} var(--dot), 0 0 0 0.18em var(--ring); }
+/* The word's colour (.b0 human … .b3 AI-generated, set per chip in badge.ts) is the chip
+   itself: the whole pill in it, the number in the ink that reads on it (WCAG AA on each).
+   Human's chip is a tint of its green with a green edge, as its underline is half-strength
+   (lib/render/highlight.ts): a mostly human page stays calm, and the other three stand out.
+   A verdict has no dot; the dot is the waiting chip's, and a no-verdict's. */
+${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
+.pill.scored { gap: 0; padding: 0.3em 0.55em; background: var(--c); border-color: var(--c); color: #141414; }
+.pill.scored .dot { display: none; }
+.pill.scored.b3 { color: #ffffff; }
+.pill.scored.b0 { background: color-mix(in oklab, var(--c) 22%, #ffffff); border-color: color-mix(in oklab, var(--c) 75%, #ffffff); color: #1f1f1f; }
+:host(:hover) .pill.scored { background: color-mix(in oklab, var(--c) 86%, #000000); border-color: color-mix(in oklab, var(--c) 86%, #000000); }
+:host(:hover) .pill.scored.b0 { background: color-mix(in oklab, var(--c) 34%, #ffffff); border-color: var(--c); }
+/* The square a compact chip is: its full colour, human's too, or it is too small to see. */
+:host([data-compact]) .pill.scored, :host([data-compact]) .pill.scored.b0 { background: var(--c); border-color: var(--c); }
 .pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); }
 .pill.band-unsupported { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #737373; font-weight: 500; }
 
@@ -233,7 +247,7 @@ export const BADGE_CSS: string = `
 .card .row.wins .k { flex: none; }
 .card .row.wins .v { text-align: right; }
 /* A verdict on a text under the model's training minimum says so, on a line of its own. */
-.card .short { color: #737373; font-style: italic; margin-bottom: 4px; }
+.card .short, .card .unsure { color: #737373; font-style: italic; margin-bottom: 4px; }
 
 .card .actions {
   display: flex;
@@ -272,8 +286,11 @@ export const BADGE_CSS: string = `
   color: #a3a3a3;
 }
 :host(.pg-dark:hover) .pill { background: #262626; border-color: rgba(255, 255, 255, 0.2); }
-:host(.pg-dark) .pill.scored { --dot: ${scaleColorCss(true)}; color: #d4d4d4; background: color-mix(in oklab, var(--dot) 18%, #171717); border-color: color-mix(in oklab, var(--dot) 34%, #262626); }
-:host(.pg-dark:hover) .pill.scored { background: color-mix(in oklab, var(--dot) 26%, #171717); }
+:host(.pg-dark) .pill.scored { color: #141414; background: var(--c); border-color: var(--c); box-shadow: none; }
+:host(.pg-dark) .pill.scored.b0 { color: #e5e5e5; background: color-mix(in oklab, var(--c) 22%, #171717); border-color: color-mix(in oklab, var(--c) 65%, #171717); }
+:host(.pg-dark:hover) .pill.scored { background: color-mix(in oklab, var(--c) 85%, #ffffff); border-color: color-mix(in oklab, var(--c) 85%, #ffffff); }
+:host(.pg-dark:hover) .pill.scored.b0 { background: color-mix(in oklab, var(--c) 32%, #171717); border-color: var(--c); }
+:host(.pg-dark[data-compact]) .pill.scored.b0 { background: var(--c); border-color: var(--c); }
 :host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
 :host(.pg-dark) .pill.band-unsupported { color: #a3a3a3; }
 :host(.pg-dark) .card .verdict.band-unsupported { color: #a3a3a3; }
@@ -285,7 +302,7 @@ export const BADGE_CSS: string = `
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 :host(.pg-dark) .card .big { color: #fafafa; }
-:host(.pg-dark) .card .row .k, :host(.pg-dark) .card .short { color: #a3a3a3; }
+:host(.pg-dark) .card .row .k, :host(.pg-dark) .card .short, :host(.pg-dark) .card .unsure { color: #a3a3a3; }
 :host(.pg-dark) .card .row .v { color: #fafafa; }
 :host(.pg-dark) .card .verdict { color: #fafafa; }
 :host(.pg-dark) .card .verdict.band-unknown { color: #b9c0c8; }
@@ -298,20 +315,22 @@ export const BADGE_CSS: string = `
    guarantee a visible chip boundary. */
 @media (forced-colors: active) {
   .pill, .card { border: 1px solid ButtonText; }
-  .dot { forced-color-adjust: none; }
+  .dot, .pill.scored { forced-color-adjust: none; }
+  /* A filled chip keeps its colour, with an edge in the system's text colour around it. */
+  .pill.scored, .pill.scored.b0 { border-color: CanvasText; }
 }
 
 /* Jump-target pulse: a ring in the chip's own verdict colour, nothing foreign. */
 @keyframes anagram-flash {
   0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
-  25%, 65% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--dot, #a3a3a3) 35%, transparent); }
+  25%, 65% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--c, var(--dot, #a3a3a3)) 35%, transparent); }
 }
 .pill.pg-flash { animation: anagram-flash 800ms ease-in-out 2; }
 
 @media (prefers-reduced-motion: reduce) {
   .pill { animation: none; transition: none; }
   .pill.pending .dot { animation: none; opacity: 0.6; }
-  .pill.pg-flash { animation: none; outline: 2px solid var(--dot, #a3a3a3); outline-offset: 2px; }
+  .pill.pg-flash { animation: none; outline: 2px solid var(--c, var(--dot, #a3a3a3)); outline-offset: 2px; }
   /* [popover] as well: the .card[popover] rule above outranks a bare .card, so the plain
      rule turned nothing off for the card that is actually shown — every hover card still
      faded in for a reader who had asked for no motion. (No backticks in here: this whole

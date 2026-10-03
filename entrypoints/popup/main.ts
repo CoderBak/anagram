@@ -1,12 +1,14 @@
 // entrypoints/popup/main.ts — popup logic.
 //
-// The popup opens over whatever page the reader is looking at, and Anagram installs with
-// access to no site, so most of those pages are ones it is doing nothing on. The top of
-// the popup is therefore the page's state and ONE button that follows it — rescan, analyze
-// this page once, read this PDF, open a PDF from this computer, or open Settings
-// (./state.ts decides which). Under it: the per-site switch (the rule that decides the
-// active tab may belong to a parent domain, see ./siteSwitch.ts), what it shows, and the
-// engine's state. Everything else lives in Settings.
+// The toolbar menu is the one place Anagram is used from: no page carries a control of its
+// own. It opens over whatever page the reader is looking at, and Anagram installs with
+// access to no site, so most of those pages are ones it is doing nothing on. The top of the
+// menu is therefore the page: what its paragraphs read as (./report.ts), or why there is
+// nothing, and ONE button that follows it — rescan, analyze this page once, read this PDF,
+// open a PDF from this computer, or set the engine up (./state.ts decides which). Under it:
+// the per-site switch (the rule that decides the active tab may belong to a parent domain,
+// see ./siteSwitch.ts) and what the page shows; at the foot, the other ways in and the
+// engine. Everything else lives in Settings.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
@@ -39,6 +41,7 @@ import { commentHost } from "../../lib/access/commentFrames";
 import { sendTabControl } from "../../lib/messaging/tabControl";
 import type { PageReport } from "../../lib/capture/pageReport";
 import { mountReport } from "./report";
+import { bandColorRules } from "../../lib/render/scale";
 
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
@@ -51,7 +54,6 @@ const keepOpenEl = document.getElementById("keepOpen") as HTMLElement;
 const openReaderEl = document.getElementById("openReader") as HTMLButtonElement;
 const analyzeTextEl = document.getElementById("analyzeText") as HTMLButtonElement;
 const pageActionEl = document.getElementById("pageAction") as HTMLButtonElement;
-const marksEl = document.getElementById("marksVisible") as HTMLInputElement;
 let currentTab: { id?: number; url?: string } | undefined;
 let docsEditor = false;
 let report: PageReport | null = null;
@@ -174,6 +176,13 @@ function countsLine(state: TabState): Node[] {
 function paint(): void {
   if (!asked) return;
   lead = popupLead(facts);
+  // A page no extension may be granted — a browser page, the web store, a file, the reader —
+  // has no site to switch, and one nothing can run on has nothing to show either.
+  const siteField = siteEl.closest(".field") as HTMLElement;
+  const showField = document.getElementById("displayModeLbl")!.closest(".field") as HTMLElement;
+  siteField.hidden = facts.pattern === null;
+  showField.hidden = lead.status === "unsupported" || lead.status === "noTab";
+  (siteField.closest(".grp") as HTMLElement).hidden = siteField.hidden && showField.hidden;
   (document.getElementById("localFileSettings") as HTMLButtonElement).hidden = lead.status !== "fileAccess" || !FILE_URL_ACCESS_SUPPORTED;
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down || lead.status === "crashed");
@@ -182,6 +191,7 @@ function paint(): void {
 
   switch (lead.status) {
     case "counts":
+      // The report says it better, as soon as there is one.
       statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("selAnalyzing")]));
       break;
     case "off":
@@ -192,6 +202,9 @@ function paint(): void {
       break;
     case "translated":
       statusEl.textContent = t("popupTranslatedPage");
+      break;
+    case "noText":
+      statusEl.textContent = t("readerNoText");
       break;
     case "noTab":
       statusEl.textContent = t("popupUnsupportedPage");
@@ -216,9 +229,10 @@ function paint(): void {
       statusEl.textContent = "";
       break;
   }
-  // On a PDF tab the button says the whole of it; an empty line above it would only be a
-  // gap where a sentence used to be.
-  statusEl.hidden = lead.status === "none";
+  // On a PDF tab the button says the whole of it, and on a page read the report does; an
+  // empty line above them would only be a gap where a sentence used to be.
+  const reported = lead.status === "counts" && !!counts && !!report && !facts.tab?.translated;
+  statusEl.hidden = lead.status === "none" || reported;
   // While the in-browser engine's model downloads, the browser has to stay open.
   keepOpenEl.hidden = !(lead.status === "setup" && facts.setup?.state === "downloading");
   // The main button already opens the reader empty on these tabs.
@@ -234,8 +248,6 @@ function paint(): void {
   actionEl.hidden = !!pageAction && (docsEditor && (lead.action === "analyze" || lead.action === "rescan") || lead.action === "readPdf");
   if (!pageAction || lead.primary && !actionEl.hidden) pageActionEl.dataset.variant = "outline";
   else delete pageActionEl.dataset.variant;
-  document.getElementById("marksRow")!.hidden = !counts || !report;
-  marksEl.checked = report?.visible ?? true;
   paintReport(counts && !facts.tab?.translated ? report : null);
   actionEl.disabled = false;
   if (lead.primary) delete actionEl.dataset.variant;
@@ -261,8 +273,17 @@ function paintModel(s: BackendStatus | undefined): void {
   const up = s?.active === "idle" || (s?.active === "server" && !!s.model);
   backendEl.hidden = !up;
   if (!up || !s) { backendEl.textContent = ""; return; }
+  const where = deviceWords(s.server.device);
   backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
-    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (s.server.device ? ", " + s.server.device : ""));
+    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (where ? ", " + where : ""));
+}
+
+/** Where the model runs, in Settings' words; a runtime's own name ("mps", "webgpu") is none. */
+function deviceWords(device: string | undefined): string {
+  if (!device) return "";
+  if (/gpu|cuda|mps|metal|rocm|directml|dml/iu.test(device)) return t("engineWordsGpu");
+  if (/cpu|wasm/iu.test(device)) return t("engineWordsCpu");
+  return "";
 }
 
 /** Is the local engine ready? If not, the action opens setup and Settings. */
@@ -362,7 +383,7 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
   if (request !== statusRequest) return;
   // A one-shot analysis can be running without a persistent site grant.
   if (state?.pdf && facts.pattern) facts.pdfTab = true;
-  facts.tab = state ? { enabled: state.enabled, translated: state.translated === true } : null;
+  facts.tab = state ? { enabled: state.enabled, translated: state.translated === true, reader: state.reader === true, noText: state.noText === true } : null;
   counts = state?.enabled ? state : null;
   if (report?.documentId !== state?.report?.documentId) { offset = 0; pageControlFailed = false; }
   report = state?.report ?? null;
@@ -378,6 +399,10 @@ function openEmptyReader(): void {
 async function init(): Promise<void> {
   localizePage();
   followSystemTheme();
+  // The four words' colours are the chips' and the marks' own.
+  const bandRules = document.createElement("style");
+  bandRules.textContent = bandColorRules("", "html.dark");
+  document.head.append(bandRules);
   const tab = await activeTab();
   currentTab = tab;
   try { docsEditor = !!tab?.url && detectDocsPage(new URL(tab.url))?.kind === "editor"; } catch { /* restricted URL */ }
@@ -433,9 +458,6 @@ async function init(): Promise<void> {
   });
 
   bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
-  marksEl.addEventListener("change", () => {
-    void sendToTab(tab?.id, { action: ACTIONS.TOGGLE_OVERLAY }).then(() => refreshStatus(tab?.id));
-  });
   pageActionEl.addEventListener("click", () => {
     if (!report?.pageAction?.enabled) return;
     pageActionEl.disabled = true;
@@ -446,6 +468,8 @@ async function init(): Promise<void> {
     pageControlFailed = false;
     switch (lead.action) {
       case "analyze":
+        // The reader reads its document when asked; nothing is injected into it.
+        if (facts.tab?.reader) { void runPageControl({ action: ACTIONS.ANALYZE_PAGE }); return; }
         // A page Anagram is off for — by a rule, or because nothing was ever granted for
         // its site — is analyzed ONCE, with no setting written and no permission asked:
         // opening this popup gave the extension `activeTab`, which is all the worker needs.
@@ -523,7 +547,11 @@ async function init(): Promise<void> {
   gearEl.addEventListener("click", () => {
     void browser.runtime.openOptionsPage();
   });
-  document.getElementById("toolbarHelp")!.addEventListener("click", () => {
+  // How to keep Anagram in the toolbar, only while it is not kept there.
+  const toolbarHelp = document.getElementById("toolbarHelp")!;
+  const userSettings = (browser as { action?: { getUserSettings?: () => Promise<{ isOnToolbar?: boolean }> } }).action?.getUserSettings;
+  void userSettings?.().then((u) => { toolbarHelp.hidden = u.isOnToolbar !== false; }).catch(() => undefined);
+  toolbarHelp.addEventListener("click", () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#toolbar-guide" });
     window.close();
   });

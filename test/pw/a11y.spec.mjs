@@ -11,13 +11,12 @@
 //     up and with it stopped, the reader empty (file picker), with a PDF rendered and
 //     asking for a password.
 //  2. axe again, SCOPED TO OUR OWN NODES, on the UI we inject into other people's pages:
-//     the ball with its panel closed and open (flagged rows + the verdict filters), a
-//     chip's detail card, the selection card, and the panel's fixture-down notice. The
-//     page's own accessibility is not ours; axe is therefore given our shadow host as its
-//     context, and the suite asserts that it really descended into the shadow root rather
-//     than quietly checking nothing.
-//  3. The things axe cannot do, asserted in code: the keyboard walk to and through the
-//     triage panel, an accessible name for every interactive control, a visible focus
+//     a chip's detail card and the selection card. The page's own accessibility is not
+//     ours; axe is therefore given our shadow host as its context, and the suite asserts
+//     that it really descended into the shadow root rather than quietly checking nothing.
+//     And the toolbar menu over such a page, with its flagged list and with the engine down.
+//  3. The things axe cannot do, asserted in code: the keyboard walk through the toolbar
+//     menu's flagged list, an accessible name for every interactive control, a visible focus
 //     indicator, a 24x24 CSS-pixel hit target (WCAG 2.2 target size, minimum), colour
 //     contrast computed from the RESOLVED colours (axe cannot always see through a
 //     top-layer popover inside a shadow root), prefers-reduced-motion, and a visible chip
@@ -36,8 +35,8 @@
 // DELIBERATE EXEMPTIONS, which are decisions and not debts:
 //   - per-paragraph chips are aria-hidden="true" and unfocusable (lib/render/badge.ts): a
 //     page can carry hundreds of chips, and exposing them would add hundreds of tab stops
-//     and read ".38" into the middle of every sentence. The triage panel behind the ball
-//     is the accessible route to the same verdicts, and it is keyboard-operable.
+//     and read ".38" into the middle of every sentence. The toolbar menu's flagged list is
+//     the accessible route to the same verdicts, and it is keyboard-operable.
 //   - the underline / tint colours are not contrast-checked (lib/render/marks.ts): they are
 //     decoration over the page's own text, never a foreground colour of their own; WCAG
 //     1.4.3 applies to the text, which keeps the page's colour.
@@ -46,10 +45,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test as base, expect } from "./fixtures.mjs";
-import { BADGE_SEL, waitForRegistration } from "../harness.mjs";
+import { BADGE_SEL, waitForRegistration, popupOver, menuReport } from "../harness.mjs";
 import { SMALL_PDF } from "../a11y-pdf.mjs";
 import { LOCKED_PDF } from "../pdf-fixture.mjs";
-import { installProbe, settle, settleAll, still, fabReady, untuck, chipsSettled } from "../a11y-probe.mjs";
+import { installProbe, settle, settleAll, still, chipsSettled } from "../a11y-probe.mjs";
 import { scriptEngine } from "../webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "../webengine/model-server.mjs";
 
@@ -73,10 +72,11 @@ const PARA = (tag) =>
   "must still be able to reach every verdict this extension produces, which is what the floating ball, its " +
   "counter and the triage panel behind them exist for on a page like this one, where every verdict has to " +
   "be one key press away and read out in words rather than shown only as a colour.";
-// The fake fixture's verdicts are a pure function of the text, so the tags below are chosen
+// The fake fixture's verdicts are a pure function of the text — the paragraph above is kept
+// word for word, its talk of a ball included — so the tags below are chosen
 // (with test/fake-native.mjs's own fakeScore) to land three paragraphs AI-generated — the
-// flagged ones, the panel's rows — three heavily edited and two below: every word the chips
-// can say is on the page, and the panel has rows and a Close button.
+// flagged ones, the menu's rows — three heavily edited and two below: every word the chips
+// can say is on the page, and the menu's list has rows.
 const AI_TAGS = ["FLAG-16", "FLAG-18", "FLAG-27"];
 const HEAVY_TAGS = ["FLAG-4", "FLAG-8", "FLAG-11"];
 const CALM_TAGS = ["FLAG-1", "FLAG-19"]; // lightly edited, human
@@ -221,12 +221,6 @@ async function tabWalk(page, { max = 60, startFromTop = true } = {}) {
   const stops = [];
   for (let i = 0; i < max; i++) {
     await page.keyboard.press("Tab");
-    // Focus landing in the ball brings it out of its idle tuck (half off the edge) with a
-    // transition. Measured mid-flight, the counter's 24x24 box still hangs outside the
-    // viewport and "hits nothing" — which is what the Windows runner reported for the
-    // reader page, the one extension page that has a ball and takes long enough to load
-    // for the ball to have tucked. Let it arrive before anything about it is measured.
-    if (await page.evaluate(() => document.activeElement?.id === "anagram-fab")) await still(page);
     // Identity, not a selector, decides when the walk has wrapped: two rows of the same
     // verdict band have the same path, and a name-based check would stop at the second.
     const stop = await page.evaluate(async (n) => {
@@ -357,10 +351,6 @@ async function chipContrast(axe, page, label) {
   return measured;
 }
 
-/** Open the panel from the counter, as a click does. */
-const openPanel = (page) =>
-  page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-
 // =====================================================================================
 // PART 1 — the extension pages, light and dark
 // =====================================================================================
@@ -475,40 +465,6 @@ async function uiFixtures(open, site) {
   return page;
 }
 
-test("the ball at rest, and axe really descends into its shadow root", async ({ open, site, axe }) => {
-  const page = await uiFixtures(open, site);
-  // Untuck first: a tucked ball sits half off the edge at 62% opacity, and every colour
-  // read through it would be a blend of our surface and the page.
-  expect(await fabReady(page), "the ball mounted").toBe(true);
-  await untuck(page);
-  const closed = await axe.scan(page, "ball (panel closed)", "#anagram-fab");
-  // axe has to have gone THROUGH the shadow boundary: the counter button lives only
-  // inside #anagram-fab's shadow root, so a checked node whose target names it is proof.
-  const targets = closed.checkedTargets ?? [];
-  expect(targets.some((t) => t.includes(">>>") && /\.count\b/.test(t)), `axe descends into the ball's open shadow root: ${targets.length} node targets, e.g. ${targets[0] ?? "—"}`).toBe(true);
-});
-
-test("the triage panel open with flagged rows", async ({ open, site, axe }) => {
-  const page = await uiFixtures(open, site);
-  expect(await fabReady(page), "the ball mounted").toBe(true);
-  await untuck(page);
-  await openPanel(page);
-  const panelState = await page.evaluate(() => {
-    const panel = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel");
-    if (!panel) return { open: false, items: 0, filters: [] };
-    return { open: panel.classList.contains("open"), items: panel.querySelectorAll(".pitem").length, filters: [...panel.querySelectorAll(".fchip")].map((c) => c.textContent) };
-  });
-  await still(page);
-  await page
-    .waitForFunction(() => getComputedStyle(document.getElementById("anagram-fab").shadowRoot.querySelector(".panel")).opacity === "1", null, { timeout: 4000 })
-    .catch(() => {});
-  // Which bands this page happens to produce is the fixture's business, not a contract —
-  // the deterministic state is scanned on the suite's own keyboard fixture below, where the
-  // verdicts are chosen.
-  expect(panelState.open && panelState.items > 0, `triage panel opens with flagged rows (the state axe is run on): ${JSON.stringify(panelState)}`).toBe(true);
-  await axe.scan(page, "ball (panel open, flagged rows)", "#anagram-fab");
-});
-
 test("a chip's detail card pinned open, and Copy text leaves focus outside the aria-hidden chip", async ({ open, site, axe }) => {
   const page = await uiFixtures(open, site);
   // A chip's detail card, pinned open (a tap pins what a hover shows).
@@ -524,7 +480,11 @@ test("a chip's detail card pinned open, and Copy text leaves focus outside the a
   }, BADGE_SEL);
   expect(cardHost, "a flagged chip to pin").not.toBeNull();
   await still(page, cardHost);
-  await axe.scan(page, "chip detail card (pinned open)", cardHost);
+  const scanned = await axe.scan(page, "chip detail card (pinned open)", cardHost);
+  // axe has to have gone THROUGH the shadow boundary: the card lives only inside the chip's
+  // shadow root, so a checked node whose target crosses into it is proof.
+  const targets = scanned.checkedTargets ?? [];
+  expect(targets.some((t) => t.includes(">>>")), `axe descends into the chip's open shadow root: ${targets.length} node targets, e.g. ${targets[0] ?? "—"}`).toBe(true);
   // Unfocusable includes the pointer: focus inside the aria-hidden host is what Chrome
   // reports as "Blocked aria-hidden on an element because its descendant retained focus".
   await page.locator(`${cardHost} .act.copy`).click();
@@ -592,161 +552,69 @@ test("the selection card", async ({ open, site, axe, extension }) => {
 // PART 3 — the checks axe cannot make
 // =====================================================================================
 
-/** The keyboard fixture, every chip settled and the ball counting its three flagged rows. */
+/** The keyboard fixture with every chip settled. */
 async function keyboardPage(open, site) {
   const page = await open(site("/keyboard.html"));
-  await chipsSettled(page, KEY_TAGS.length);
+  expect(await chipsSettled(page, KEY_TAGS.length), "every paragraph of the keyboard fixture is read").toBe(true);
   await settleAll(page);
-  expect(await fabReady(page), "the ball mounted").toBe(true);
-  await expect
-    .poll(() => page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".count")?.textContent), { message: "the counter settles on the three flagged paragraphs" })
-    .toBe(String(AI_TAGS.length));
   return page;
 }
 
+/** The toolbar menu over `page`, at its own size and in `scheme`, with axe and the probe in it. */
+async function menuOver(page, axe, scheme = "light") {
+  const menu = await popupOver(page, {
+    setup: async (p) => {
+      await p.setViewportSize({ width: 300, height: 620 });
+      await p.emulateMedia({ colorScheme: scheme });
+    },
+  });
+  await menu.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 }).catch(() => {});
+  await menu.evaluate(installProbe);
+  await axe.inject(menu);
+  return menu;
+}
+
 /**
- * The three things a screen reader would otherwise never be told. Automation can only go
- * as far as reading what the live region says after the event — whether a real screen
- * reader speaks it is for a human with VoiceOver.
+ * The route the chips deliberately do not provide: the toolbar menu's flagged list. Its rows
+ * are buttons in the Tab order, in the page's reading order, each named with its verdict; the
+ * list is named by the title that counts them; and everything in the menu has a name, a ring,
+ * a target and a contrast that pass, in light and dark.
  */
-test("the ball's live region: its shape and the settled count said out loud", async ({ open, site }) => {
-  const page = await keyboardPage(open, site);
-  const live = () => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".live")?.textContent ?? null);
-  const shape = await page.evaluate(() => {
-    const el = document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".live");
-    if (!el) return null;
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return {
-      role: el.getAttribute("role"),
-      polite: el.getAttribute("aria-live"),
-      hiddenToEyes: r.width <= 1 && r.height <= 1,
-      // display:none would take it out of the accessibility tree along with the pixels.
-      rendered: cs.display !== "none" && cs.visibility !== "hidden",
-    };
+for (const scheme of ["light", "dark"]) {
+  test(`the toolbar menu's flagged list over a page [${scheme}]: its rows, names, Tab order, focus rings, hit targets and contrast`, async ({ open, site, axe }) => {
+    const page = await keyboardPage(open, site);
+    const menu = await menuOver(page, axe, scheme);
+    await expect.poll(async () => (await menuReport(menu))?.rows.length, { message: "the menu's report lists the flagged rows" }).toBe(AI_TAGS.length);
+    const shown = await menuReport(menu);
+    expect.soft(shown.title, "the keyboard fixture's three AI-generated paragraphs are the list's rows (heavily edited ones are not flagged)").toBe(`Flagged paragraphs (${AI_TAGS.length}/${KEY_TAGS.length})`);
+    for (const row of shown.rows) expect.soft(row, "each row is named with its verdict, its score and its text").toMatch(/^AI-generated, (0\.\d\d|1\.0): \S/);
+    const listName = await menu.evaluate(() => window.__a11y.name(document.querySelector("#pageReport .report-list")));
+    expect.soft(listName, "the list is named by the title that counts it").toBe(shown.title);
+    await settle(menu, scheme);
+    await axe.scan(menu, `toolbar menu with the flagged list [${scheme}]`);
+    await ourTextContrast(axe, menu, `toolbar menu's report [${scheme}]`, "#pageReport");
+    if (scheme !== "light") return;
+
+    // Names, rings and hit targets do not change with the colour scheme.
+    const stops = await tabWalk(menu, { max: 40 });
+    judgeStops(axe, "toolbar menu with the flagged list", stops);
+    // Tab reaches every row, in DOM order, and nothing has a positive tabindex.
+    const order = await menu.evaluate(() => ({
+      dom: [...document.querySelectorAll("#pageReport .report-result")].map((el) => el.getAttribute("aria-label")),
+      positive: window.__a11y.controls(document.body).filter((el) => Number(el.getAttribute("tabindex") ?? 0) > 0).map((el) => window.__a11y.path(el)),
+    }));
+    const visited = stops.filter((s) => /\.report-result\b/.test(s.path)).map((s) => s.name);
+    expect.soft({ visited, positive: order.positive }, "Tab walks the flagged rows in DOM order, with no positive tabindex").toEqual({ visited: order.dom, positive: [] });
+    // Arrow keys are NOT a second navigation model here (the rows are plain buttons in a
+    // list, not a listbox) — asserted so a change of mind is a decision, not a drift.
+    await menu.locator(".report-result").first().focus();
+    const beforeArrow = await menu.evaluate(() => window.__a11y.path(document.activeElement));
+    await menu.keyboard.press("ArrowDown");
+    await menu.waitForTimeout(80);
+    const afterArrow = await menu.evaluate(() => window.__a11y.path(document.activeElement));
+    expect.soft(afterArrow, "arrow keys do not move focus in the list (Tab is the only model — by design)").toBe(beforeArrow);
   });
-  expect.soft(shape, "the ball carries one polite live region, clipped rather than hidden").toEqual({ role: "status", polite: "polite", hiddenToEyes: true, rendered: true });
-
-  // The count settles over several seconds; the announcement waits for it to hold still.
-  await page.waitForTimeout(2500);
-  const said = await live();
-  const counter = await page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
-  expect.soft(
-    typeof said === "string" && new RegExp(`^${counter} flagged paragraphs? on this page$`).test(said),
-    `the settled flagged count is said once, and matches the counter: ${JSON.stringify({ said, counter })}`,
-  ).toBe(true);
-});
-
-/** The keyboard route the chips deliberately do not provide: ball → counter → panel. */
-test("the keyboard walk: Tab to the ball and the counter, Enter into the panel, Tab through it, Escape out", async ({ open, site }) => {
-  const page = await keyboardPage(open, site);
-  await untuck(page);
-  // 1. Tab reaches the ball, and then the counter — in that order.
-  const order = await tabWalk(page, { max: 12 });
-  const ball = order.findIndex((s) => /\.chip\.fab|\.fab\b/.test(s.path));
-  const count = order.findIndex((s) => /\.count\b/.test(s.path));
-  expect.soft(ball >= 0 && count >= 0 && ball < count, `Tab reaches the ball and then the flagged counter: ${JSON.stringify({ order: order.map((s) => tail(s.path)), ball, count })}`).toBe(true);
-
-  // 2. Enter on the counter opens the panel and hands the keyboard over.
-  await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".count").focus());
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(400);
-  const opened = await page.evaluate(() => {
-    const sr = document.getElementById("anagram-fab").shadowRoot;
-    const panel = sr.querySelector(".panel");
-    return {
-      open: panel.classList.contains("open"),
-      role: panel.getAttribute("role"),
-      named: !!sr.getElementById(panel.getAttribute("aria-labelledby") ?? "")?.textContent,
-      inside: !!sr.activeElement && panel.contains(sr.activeElement),
-      landedOn: sr.activeElement ? window.__a11y.path(sr.activeElement).split(" > ").pop() : null,
-      expanded: sr.querySelector(".count").getAttribute("aria-expanded"),
-    };
-  });
-  expect.soft(opened, "Enter opens the panel as a named dialog and focus lands inside it").toMatchObject({ open: true, role: "dialog", named: true, inside: true, expanded: "true" });
-
-  // 3. Tab order inside the panel: DOM order, everything reachable, nothing with a
-  //    positive tabindex, and the last stop is the panel's own last control.
-  const inner = await page.evaluate(() => {
-    const panel = document.getElementById("anagram-fab").shadowRoot.querySelector(".panel");
-    return {
-      dom: window.__a11y.controls(panel).map((el) => window.__a11y.path(el).split(" > ").pop()),
-      positive: window.__a11y.controls(panel).filter((el) => Number(el.getAttribute("tabindex") ?? 0) > 0).map((el) => window.__a11y.path(el)),
-    };
-  });
-  const visited = [];
-  for (let i = 0; i < inner.dom.length + 3; i++) {
-    const at = await page.evaluate(() => {
-      const sr = document.getElementById("anagram-fab").shadowRoot;
-      const el = sr.activeElement;
-      return el && sr.querySelector(".panel").contains(el) ? window.__a11y.path(el).split(" > ").pop() : null;
-    });
-    if (at) visited.push(at);
-    else break;
-    await page.keyboard.press("Tab");
-    await page.waitForTimeout(40);
-  }
-  const start = inner.dom.indexOf(visited[0]);
-  const expected = start >= 0 ? inner.dom.slice(start) : [];
-  expect.soft(
-    visited.length > 1 && inner.positive.length === 0 && JSON.stringify(visited) === JSON.stringify(expected),
-    `Tab walks the panel's controls in DOM order, with no positive tabindex: ${JSON.stringify({ visited, expected, positive: inner.positive })}`,
-  ).toBe(true);
-  // Arrow keys are NOT a second navigation model here (the rows are plain buttons in a
-  // dialog, not a listbox) — asserted so a change of mind is a decision, not a drift.
-  await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".panel .pitem")?.focus());
-  const beforeArrow = await page.evaluate(() => window.__a11y.path(document.getElementById("anagram-fab").shadowRoot.activeElement));
-  await page.keyboard.press("ArrowDown");
-  await page.waitForTimeout(80);
-  const afterArrow = await page.evaluate(() => window.__a11y.path(document.getElementById("anagram-fab").shadowRoot.activeElement));
-  expect.soft(afterArrow, "arrow keys do not move focus in the panel (Tab is the only model — by design)").toBe(beforeArrow);
-
-  // 4. Escape closes it and gives the keyboard back to the counter.
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
-  const closed = await page.evaluate(() => {
-    const sr = document.getElementById("anagram-fab").shadowRoot;
-    return { open: !!sr.querySelector(".panel.open"), back: sr.activeElement === sr.querySelector(".count"), expanded: sr.querySelector(".count").getAttribute("aria-expanded") };
-  });
-  expect.soft(closed, "Escape closes the panel and returns focus to the counter").toEqual({ open: false, back: true, expanded: "false" });
-});
-
-/** Names, rings, hit targets and contrast for the panel's own controls. */
-test("the panel's controls: its rows, names, focus rings, hit targets and contrast", async ({ open, site, axe }) => {
-  const page = await keyboardPage(open, site);
-  await openPanel(page);
-  await still(page);
-  const state = await page.evaluate(() => {
-    const panel = document.getElementById("anagram-fab").shadowRoot.querySelector(".panel");
-    return { open: panel.classList.contains("open"), items: panel.querySelectorAll(".pitem").length, filters: [...panel.querySelectorAll(".fchip")].map((c) => c.textContent), close: panel.querySelector(".pclose")?.getAttribute("aria-label") ?? null, gone: !panel.querySelector(".pcopy, .psiteoff") };
-  });
-  expect.soft(state, "the keyboard fixture's three AI-generated paragraphs are the panel's rows (heavily edited ones are not flagged)").toEqual({ open: true, items: 3, filters: [], close: "Close", gone: true });
-  await axe.scan(page, "ball (panel open)", "#anagram-fab");
-  const stops = await tabWalk(page, { max: 40 });
-  const ours = stops.filter((s) => s.path.includes("#anagram-fab"));
-  expect.soft(ours.length, "ball + panel: the walk reached our controls at all").toBeGreaterThan(2);
-  judgeStops(axe, "ball + panel", ours);
-
-  // The counter and the panel's scores, computed from the resolved colours: axe
-  // reads these through a top-layer popover inside a shadow root and can get them wrong.
-  await ourTextContrast(axe, page, "panel (flagged)", "#anagram-fab");
-  const counter = await page.evaluate(() => window.__a11y.contrast(document.getElementById("anagram-fab").shadowRoot.querySelector(".count")));
-  axe.findings(
-    "contrast",
-    "counter (flagged)",
-    `the flagged counter's number reads on its own surface (${counter.fg} on ${counter.bg} = ${counter.ratio}:1)`,
-    1,
-    counter.ok ? [] : [{ detail: `button.count ${counter.fg}/${counter.bg} ${counter.ratio}:1 (needs ${counter.need})` }],
-  );
-  const pscore = await page.evaluate(() => [...document.getElementById("anagram-fab").shadowRoot.querySelectorAll(".panel .pscore")].map((el) => window.__a11y.contrast(el)));
-  axe.findings(
-    "contrast",
-    "panel .pscore",
-    `every verdict score reads on the panel surface (worst ${pscore.length ? Math.min(...pscore.map((c) => c.ratio)) : "—"}:1)`,
-    pscore.length,
-    pscore.filter((c) => !c.ok).map((c) => ({ detail: `${tail(c.path)} ${c.fg}/${c.bg} ${c.ratio}:1` })),
-  );
-});
+}
 
 // Chip colours on a light page and on a dark one (the chip has a dark variant of its own,
 // chosen per anchor — nothing else in this suite would ever measure it).
@@ -765,43 +633,14 @@ test("chip colours on a dark page, in the chip's dark variant", async ({ open, s
   expect(dark, `dark page: the chip's dark variant is what was measured (${dark} of ${measured.length} chips are pg-dark)`).toBeGreaterThan(0);
 });
 
-// The panel on a dark page. It has a dark variant of its own (the chip card's, same
-// probe), so the surface every colour in it is judged against is a different one.
-test("the triage panel on a dark page", async ({ open, site, axe }) => {
-  const page = await open(site("/dark.html"));
-  await chipsSettled(page, 4);
-  await settleAll(page);
-  expect(await fabReady(page), "the ball mounted").toBe(true);
-  await untuck(page);
-  await openPanel(page);
-  await still(page);
-  const state = await page.evaluate(() => {
-    const host = document.getElementById("anagram-fab");
-    const panel = host?.shadowRoot?.querySelector(".panel");
-    if (!panel) return { dark: false, open: false, surface: null, items: 0 };
-    return { dark: host.classList.contains("pg-dark"), open: panel.classList.contains("open"), surface: getComputedStyle(panel).backgroundColor, items: panel.querySelectorAll(".pitem").length };
-  });
-  expect.soft(
-    state.dark && state.open && state.surface === "rgb(23, 23, 23)" && state.items > 0,
-    `the triage panel takes the page's dark surface (the same probe the chips use): ${JSON.stringify(state)}`,
-  ).toBe(true);
-  await axe.scan(page, "ball (panel open, dark page)", "#anagram-fab");
-  await ourTextContrast(axe, page, "panel (dark page)", "#anagram-fab");
-  // A near-black focus ring on a near-black panel is no ring at all.
-  const stops = await tabWalk(page, { max: 40 });
-  judgeStops(axe, "ball + panel (dark page)", stops.filter((s) => s.path.includes("#anagram-fab")));
-});
-
 // prefers-reduced-motion and forced colours: both are page-level emulations, so each gets
 // its own page rather than being toggled under a rendered one.
 test("prefers-reduced-motion: nothing of ours moves, or is left anything to run", async ({ open, site, axe }) => {
   const page = await open(site("/keyboard.html"), { media: { reducedMotion: "reduce" } });
   await chipsSettled(page, 4);
-  expect(await fabReady(page), "the ball mounted").toBe(true);
-  await untuck(page);
   const moving = await page.evaluate((sel) => {
     const out = [];
-    for (const host of [document.getElementById("anagram-fab"), ...document.querySelectorAll(sel)]) if (host) out.push(...window.__a11y.running(host));
+    for (const host of document.querySelectorAll(sel)) out.push(...window.__a11y.running(host));
     return out;
   }, BADGE_SEL);
   // Not a synthetic hover — that proves nothing, because a hover that fails to land
@@ -818,8 +657,6 @@ test("prefers-reduced-motion: nothing of ours moves, or is left anything to run"
         if (cs.animationName !== "none" && dur("animationDuration")) out.push({ path: window.__a11y.path(el), what: `animation ${cs.animationName} ${cs.animationDuration}` });
       }
     };
-    const fab = document.getElementById("anagram-fab");
-    if (fab?.shadowRoot) look(fab.shadowRoot);
     for (const h of document.querySelectorAll(sel)) if (h.shadowRoot) look(h.shadowRoot);
     return out;
   }, BADGE_SEL);
@@ -835,7 +672,7 @@ test("prefers-reduced-motion: nothing of ours moves, or is left anything to run"
 });
 
 /** Under forced colours a chip must still read as a chip: a boundary the system draws. */
-test("forced colours: chips keep a boundary, and the verdict dot its colour", async ({ open, site, axe }) => {
+test("forced colours: chips keep a boundary, and a verdict its colour", async ({ open, site, axe }) => {
   const page = await open(site("/keyboard.html"), { media: { forcedColors: "active" } });
   await chipsSettled(page, 4);
   await settleAll(page);
@@ -845,8 +682,9 @@ test("forced colours: chips keep a boundary, and the verdict dot its colour", as
       const pill = host.shadowRoot?.querySelector(".pill");
       if (!pill) continue;
       const cs = getComputedStyle(pill);
-      const dot = host.shadowRoot.querySelector(".dot");
-      out.push({ borderStyle: cs.borderTopStyle, borderWidth: cs.borderTopWidth, borderColor: cs.borderTopColor, background: cs.backgroundColor, dotAdjust: dot ? getComputedStyle(dot).forcedColorAdjust : null });
+      // A verdict's chip is filled with its colour; a chip still waiting shows a dot.
+      const coloured = pill.classList.contains("scored") ? pill : host.shadowRoot.querySelector(".dot");
+      out.push({ borderStyle: cs.borderTopStyle, borderWidth: cs.borderTopWidth, borderColor: cs.borderTopColor, background: cs.backgroundColor, colourAdjust: coloured ? getComputedStyle(coloured).forcedColorAdjust : null });
     }
     return out;
   }, BADGE_SEL);
@@ -854,11 +692,11 @@ test("forced colours: chips keep a boundary, and the verdict dot its colour", as
   axe.report.forcedColors = { pills: pills.length, bad };
   expect(pills.length, "chips on the page").toBeGreaterThan(0);
   expect.soft(bad, `chips keep a visible boundary under forced colours: border ${pills[0]?.borderWidth} ${pills[0]?.borderStyle} ${pills[0]?.borderColor} on ${pills[0]?.background}`).toEqual([]);
-  expect.soft(pills.map((p) => p.dotAdjust), "the verdict dot keeps its own colour (forced-color-adjust: none)").toEqual(pills.map(() => "none"));
+  expect.soft(pills.map((p) => p.colourAdjust), "a verdict keeps its own colour (forced-color-adjust: none)").toEqual(pills.map(() => "none"));
 });
 
 // =====================================================================================
-// PART 4 — fixture down (onboarding's other state, and the panel's notice)
+// PART 4 — fixture down (onboarding's other state, and the toolbar menu's)
 // =====================================================================================
 for (const scheme of ["light", "dark"]) {
   test(`onboarding (fixture down) [${scheme}]`, async ({ extension, nativeHost, open, axe }) => {
@@ -873,17 +711,14 @@ for (const scheme of ["light", "dark"]) {
   });
 }
 
-test("the fixture-down notice in the panel", async ({ nativeHost, open, site, axe }) => {
+test("the toolbar menu over a page while the fixture is down", async ({ nativeHost, open, site, axe }) => {
   await nativeHost.close();
   const page = await open(site("/keyboard.html"));
-  await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 });
-  await untuck(page);
-  await openPanel(page);
-  await still(page);
-  const notice = await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".panel .pnotice")?.textContent ?? null);
-  expect(notice, "fixture-down notice renders in the panel (the state axe is run on)").toBeTruthy();
-  await axe.scan(page, "ball (panel open, fixture-down notice)", "#anagram-fab");
-  await ourTextContrast(axe, page, "panel (fixture down)", "#anagram-fab");
+  const menu = await menuOver(page, axe);
+  await expect(menu.locator("#status.down"), "the menu says the engine is not ready (the state axe is run on)").toHaveText("Local engine is not ready", { timeout: 25000 });
+  await settle(menu);
+  await axe.scan(menu, "toolbar menu, fixture down");
+  await ourTextContrast(axe, menu, "toolbar menu (fixture down)", ".act");
 });
 
 // =====================================================================================
@@ -892,7 +727,7 @@ test("the fixture-down notice in the panel", async ({ nativeHost, open, site, ax
 // Its panel on the setup page in each state people meet on the way to Ready, scripted into
 // the page (test/webengine/scripted-engine.mjs; test/inbrowser.mjs drives the real engine
 // through them), the reason a download waits for Set up, the confirmation before a download
-// is cancelled, the popup offering setup, and the panel's notice on a page while the engine is
+// is cancelled, the popup offering setup, and the toolbar menu over a page while the engine is
 // not set up: a fresh profile's own download, cancelled. On a device with no choice a fresh
 // profile starts that download by itself, so Hugging Face resolves to nothing here (NO_MODEL_HOSTS).
 test.describe("the in-browser engine's setup", () => {
@@ -941,17 +776,15 @@ test.describe("the in-browser engine's setup", () => {
     judgeStops(axe, "popup, setup downloading", await tabWalk(page, { max: 20 }));
   });
 
-  test("the panel's notice while the engine is not set up", async ({ extension, open, site, axe }) => {
+  test("the toolbar menu over a page while the engine is not set up", async ({ extension, open, site, axe }) => {
     await waitForRegistration(extension.sw);
     await cancelAutoSetup(extension.context, extension.extId);
     const page = await open(site("/keyboard.html"));
-    await page.waitForFunction(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!", null, { timeout: 25000 });
-    await untuck(page);
-    await openPanel(page);
-    await page.waitForFunction(() => /set up/i.test(document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".panel .pnotice button")?.textContent ?? ""), null, { timeout: 15000 });
-    await still(page);
-    await axe.scan(page, "ball (panel open, setup notice)", "#anagram-fab");
-    await ourTextContrast(axe, page, "panel (setup notice)", "#anagram-fab");
+    const menu = await menuOver(page, axe);
+    await expect(menu.locator("#action"), "the menu offers to set the engine up (the state axe is run on)").toHaveText(/set up/i, { timeout: 15000 });
+    await settle(menu);
+    await axe.scan(menu, "toolbar menu, setup needed");
+    await ourTextContrast(axe, menu, "toolbar menu (setup needed)", ".act");
   });
 });
 

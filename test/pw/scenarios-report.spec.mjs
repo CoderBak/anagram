@@ -1,12 +1,12 @@
 // What the reader asks for and takes away: the selection card (closed while the host is
 // still thinking, a selection read whole in passes), look-alike letters, dense text planned on
-// the engine's token counts, and the triage panel (its title, its coverage line, how it opens
-// and closes) and the three keyboard commands.
+// the engine's token counts, the toolbar menu's flagged list (its rows, its title, its coverage
+// line) and the keyboard commands that walk the flagged paragraphs.
 //
 //   npx playwright test scenarios-report
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test, expect, BADGE_SEL, SCORE, PAGE, KEY_PARA, KEY_TAGS, ABSENCE_MS, chipsSettle, toggleCounter } from "./kit.mjs";
+import { test, expect, BADGE_SEL, SCORE, PAGE, KEY_PARA, KEY_TAGS, ABSENCE_MS, chipsSettle, popupOver, menuReport } from "./kit.mjs";
 import { fakeScore, fakeTokens } from "../fake-native.mjs";
 
 // The self-test page's paragraph read in passes (~3750 characters; its seeded pass verdicts
@@ -174,11 +174,12 @@ test("dense text: counted tokens plan a dense paragraph into passes; one the eng
   expect.soft(cards.solid.foot, note).toMatch(/too dense for one pass of the model and was not read/);
 });
 
-// ---- the triage panel and the keyboard commands -------------------------------------------
-// The chips are aria-hidden and unfocusable by design, so the panel is the accessible route to
-// the verdicts: reachable, focusable and closable without a pointer, with three commands that
-// work. Chrome swallows the real key combinations before the page sees them, so the commands
-// arrive exactly as background.ts sends them: a message from the worker to the tab.
+// ---- the toolbar menu's flagged list and the keyboard commands ---------------------------
+// The chips are aria-hidden and unfocusable by design, so the toolbar menu's report is the
+// accessible route to the verdicts: one button per flagged paragraph, named with its verdict,
+// that takes the page to it, with the count on the toolbar badge. Chrome swallows the real key
+// combinations before the page sees them, so the commands arrive exactly as background.ts
+// sends them: a message from the worker to the tab.
 //
 // Four flagged paragraphs spread far enough apart that "the next one" is a real scroll. The
 // 900 px lead-in puts every paragraph BELOW the viewport's middle at scroll 0, which is what
@@ -198,49 +199,12 @@ ${KEY_TAGS.map((t, i) => `<p id="k${i + 1}">${KEY_PARA(t)}</p>\n<div style="heig
   },
 });
 
-const panelState = (page) =>
-  page.evaluate(() => {
-    const host = document.getElementById("anagram-fab");
-    const sr = host.shadowRoot;
-    const panel = sr.querySelector(".panel");
-    const count = sr.querySelector(".count");
-    const named = panel.getAttribute("aria-labelledby");
-    return {
-      open: panel.classList.contains("open"),
-      role: panel.getAttribute("role"),
-      name: named ? sr.getElementById(named)?.textContent ?? null : null,
-      inPanel: !!sr.activeElement && panel.contains(sr.activeElement),
-      onCounter: document.activeElement === host && sr.activeElement === count,
-      expanded: count.getAttribute("aria-expanded"),
-      label: count.getAttribute("aria-label"),
-      itemLabel: panel.querySelector(".pitem")?.getAttribute("aria-label") ?? null,
-      untucked: !sr.querySelector(".stack.tucked"),
-    };
-  });
-
-keyboard("the triage panel by keyboard: a focusable counter button, Enter opens it and takes focus, Escape gives it back; the names carry the counts and verdicts", async ({ keys: page }) => {
-  const walk = "triage panel: focusable counter button, Enter opens and takes focus, Escape returns it";
-  const counter = page.locator("#anagram-fab .count");
-  expect(await counter.evaluate((el) => el.tagName), walk).toBe("BUTTON");
-  await counter.focus();
-  await expect.poll(() => panelState(page), { message: `${walk} (focused)` }).toMatchObject({ onCounter: true, untucked: true });
-  const onCounter = await panelState(page);
-  await page.keyboard.press("Enter");
-  await expect.poll(() => panelState(page), { message: `${walk} (Enter)` }).toMatchObject({ open: true, role: "dialog", inPanel: true, expanded: "true" });
-  const opened = await panelState(page);
-  expect(opened.name, `${walk} (the dialog is named)`).toBeTruthy();
-  await page.keyboard.press("Escape");
-  await expect.poll(() => panelState(page), { message: `${walk} (Escape)` }).toMatchObject({ open: false, onCounter: true, expanded: "false" });
-
-  const names = "accessible names carry the flagged count and each row's verdict";
-  expect.soft(onCounter.label, names).toMatch(/\b4 flagged paragraphs\b/);
-  expect.soft(opened.itemLabel, names).toMatch(/^(Heavily edited|AI-generated), (0\.\d\d|1\.0): \S/);
-});
-
-keyboard("open-panel command opens the triage panel and puts the keyboard in it", async ({ keys: page, tell }) => {
-  await tell(page, { action: "openPanel" });
-  await expect.poll(() => panelState(page), { message: "open-panel command opens the triage panel and puts the keyboard in it" }).toMatchObject({ open: true, inPanel: true });
-});
+/** The toolbar badge on the page's tab: the flagged count the page last sent the worker. */
+const badgeOf = (extension, page) =>
+  extension.worker().evaluate(async (url) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
+    return tab ? chrome.action.getBadgeText({ tabId: tab.id }) : null;
+  }, page.url());
 
 /** Each flagged chip's position in the document is its identity; a jump flashes the chip it
  *  landed on, which is how the walk is read back. */
@@ -262,6 +226,29 @@ async function jump(page, tell, action) {
   return flashedAt(page);
 }
 
+keyboard("the toolbar menu lists the flagged paragraphs as buttons named with their verdicts under a title that counts them, the badge carries the count, and Enter on a row takes the page there", async ({ keys: page, extension }) => {
+  const list = "the toolbar menu's flagged list: named buttons under a counting title, the count on the badge, Enter on a row jumps";
+  await expect.poll(() => badgeOf(extension, page), { message: `${list} (the toolbar badge)` }).toBe("4");
+  const menu = await popupOver(page);
+  await expect.poll(() => menuReport(menu), { message: list }).toMatchObject({ title: "Flagged paragraphs (4/4)" });
+  const shown = await menuReport(menu);
+  expect.soft(shown.rows, list).toHaveLength(4);
+  for (const row of shown.rows) expect.soft(row, `${list} (a row's name: verdict, score, text)`).toMatch(/^(Heavily edited|AI-generated), (0\.\d\d|1\.0): \S/);
+  const named = await menu.evaluate(() => {
+    const list = document.querySelector("#pageReport .report-list");
+    return {
+      by: document.getElementById(list?.getAttribute("aria-labelledby") ?? "")?.textContent ?? null,
+      buttons: [...(list?.querySelectorAll(".report-result") ?? [])].every((b) => b.tagName === "BUTTON" && b.tabIndex === 0),
+    };
+  });
+  expect.soft(named, `${list} (the list is named by its title, and every row is a button in the tab order)`).toEqual({ by: "Flagged paragraphs (4/4)", buttons: true });
+  const at = await flaggedAt(page);
+  await menu.locator(".report-result").nth(1).focus();
+  await menu.keyboard.press("Enter");
+  await page.bringToFront();
+  await expect.poll(() => flashedAt(page), { message: `${list} (the second row lands on the second flagged paragraph)` }).toBe(at[1]);
+});
+
 keyboard("next/prev-flagged walk the flagged paragraphs in document order and wrap around", async ({ keys: page, tell }) => {
   const at = await flaggedAt(page);
   const walk = "next/prev-flagged walk the flagged paragraphs in document order and wrap around";
@@ -275,48 +262,35 @@ keyboard("next/prev-flagged walk the flagged paragraphs in document order and wr
 
 // A flagged paragraph found AFTER the others (a post a feed prepends, a reply inserted above)
 // is listed and walked where it stands, not after everything found before it.
-keyboard("a flagged paragraph inserted above the others comes first in the panel and the next-flagged walk", async ({ keys: page, tell }) => {
+keyboard("a flagged paragraph inserted above the others comes first in the toolbar menu's list and the next-flagged walk", async ({ keys: page, tell }) => {
   const LATE_TAG = "LATE-1"; // AI-generated (.90) under the fake's scores
   await page.evaluate((html) => document.getElementById("k1").insertAdjacentHTML("beforebegin", html), `<p id="k0">${KEY_PARA(LATE_TAG)}</p>\n<div style="height:700px"></div>`);
-  const first = "a flagged paragraph inserted above the others comes first in the panel and the next-flagged walk";
+  const first = "a flagged paragraph inserted above the others comes first in the toolbar menu's list and the next-flagged walk";
   await expect(page.locator(`#k0 ${BADGE_SEL} .num`), first).toHaveText(SCORE);
-  await toggleCounter(page);
-  await expect(page.locator("#anagram-fab .panel .pitem"), first).toHaveCount(5);
-  const listed = await page.evaluate(() =>
-    [...document.getElementById("anagram-fab").shadowRoot.querySelectorAll(".panel .pitem")].map((r) => /: (\S+) paragraph/.exec(r.getAttribute("aria-label") ?? "")?.[1] ?? null));
-  expect.soft(listed, `${first} (the panel)`).toEqual([LATE_TAG, ...KEY_TAGS]);
-  await page.keyboard.press("Escape");
+  const menu = await popupOver(page);
+  await expect.poll(async () => (await menuReport(menu))?.rows.length, { message: first }).toBe(5);
+  const listed = (await menuReport(menu)).rows.map((r) => /: (\S+) paragraph/.exec(r ?? "")?.[1] ?? null);
+  expect.soft(listed, `${first} (the list)`).toEqual([LATE_TAG, ...KEY_TAGS]);
+  await menu.close();
+  await page.bringToFront();
   const lateAt = await page.evaluate((sel) => Math.round(document.querySelector(`#k0 ${sel}`).getBoundingClientRect().top + scrollY), BADGE_SEL);
   await page.evaluate(() => scrollTo(0, 0));
   expect.soft(await jump(page, tell, "nextFlagged"), `${first} (the walk)`).toBe(lateAt);
 });
 
-// ---- the panel's title, coverage line, buttons and lifetime -------------------------------
-const panelText = (page) =>
-  page.evaluate(() => {
-    const panel = document.getElementById("anagram-fab").shadowRoot.querySelector(".panel");
-    return {
-      open: panel.classList.contains("open"),
-      title: panel.querySelector(".phead h2")?.textContent ?? "",
-      coverage: panel.querySelector(".pcov:not(.pscope)")?.textContent ?? null,
-      buttons: [...panel.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent.trim()),
-      text: panel.textContent,
-    };
-  });
-
-keyboard("the panel's title says flagged out of read, and it has a Close button and no Copy report or Turn off button", async ({ keys: page }) => {
-  const title = "the panel's title says flagged out of read, and it has a Close button and no Copy report or Turn off button";
-  await toggleCounter(page);
-  await expect.poll(async () => (await panelText(page)).open, { message: title }).toBe(true);
-  const shown = await panelText(page);
+// ---- the report's title and coverage line ------------------------------------------------
+keyboard("the report's title says flagged out of read, with no coverage line on a page read whole, and no Copy report or Turn off button", async ({ keys: page }) => {
+  const title = "the report's title says flagged out of read, with no coverage line on a page read whole, and no Copy report or Turn off button";
+  const menu = await popupOver(page);
   // Four flagged, every paragraph of the page read: "(4/4)". Nothing on the page is short.
-  expect.soft(shown.title, title).toBe("Flagged paragraphs (4/4)");
-  expect.soft(shown.coverage, `${title} (nothing short: no coverage line)`).toBeNull();
-  expect.soft(shown.buttons.filter((b) => !/^(Heavily edited|AI-generated),/.test(b)), title).toEqual(["Close"]);
-  expect.soft(shown.text, title).not.toMatch(/Copy report|Turn off on/);
+  await expect.poll(() => menuReport(menu), { message: title }).toMatchObject({ title: "Flagged paragraphs (4/4)" });
+  const shown = await menuReport(menu);
+  expect.soft(shown.notes, `${title} (nothing short: no coverage line)`).toEqual([]);
+  expect.soft(shown.bands.reduce((a, n) => a + n, 0), `${title} (the four counts under the bar are what was read)`).toBe(4);
+  expect.soft(await menu.locator("#pageReport").textContent(), title).not.toMatch(/Copy report|Turn off on/);
 });
 
-test("the panel's coverage line: what was too short to score, and what was scored under 75 words is less reliable", async ({ page, pages }) => {
+test("the report's coverage line: what was too short to score, and what was scored under 75 words is less reliable", async ({ page, pages }) => {
   const words = (n, tag) => `${tag} ` + Array.from({ length: n - 1 }, (_, i) => ["river", "stone", "lantern", "window", "orchard", "letter", "harbor", "ladder"][i % 8]).join(" ") + ".";
   pages.serve({
     "/coverage.html": PAGE("coverage fixture", `<h1>Three lengths</h1>
@@ -327,49 +301,14 @@ test("the panel's coverage line: what was too short to score, and what was score
 <p id="full">${words(90, "Full")}</p>`),
   });
   await page.goto(pages.url("/coverage.html"), { waitUntil: "load" });
-  const cov = "the panel's coverage line: what was too short to score, and what was scored under 75 words is less reliable";
+  const cov = "the report's coverage line: what was too short to score, and what was scored under 75 words is less reliable";
   await expect(page.locator(`#full ${BADGE_SEL} .num`), cov).toHaveText(SCORE);
   await expect(page.locator(`#mid ${BADGE_SEL} .num`), cov).toHaveText(SCORE);
-  await toggleCounter(page);
+  const menu = await popupOver(page);
   // Read: the 60-word and the 90-word paragraph. The 12-word one was not scored at all.
-  await expect.poll(async () => (await panelText(page)).title, { message: cov }).toMatch(/^Flagged paragraphs \(\d\/2\)$/);
-  const shown = await panelText(page);
-  expect.soft(shown.coverage, cov).toBe("1 too short to score, 1 less reliable (under 75 words)");
-  expect.soft(shown.coverage, cov).not.toMatch(/\bread\b/);
-});
-
-keyboard("a click or a scroll on the page leaves the panel open; the counter, Escape and the Close button close it", async ({ keys: page }) => {
-  const life = "a click or a scroll on the page leaves the panel open; the counter, Escape and the Close button close it";
-  const open = async () => {
-    await toggleCounter(page);
-    await expect.poll(async () => (await panelText(page)).open, { message: `${life} (opens)` }).toBe(true);
-  };
-  const isOpen = async () => (await panelText(page)).open;
-  await open();
-  // The page still gets its clicks: a listener on the document sees this one.
-  await page.evaluate(() => { window.__pageClicks = 0; document.addEventListener("click", () => window.__pageClicks++); });
-  await page.mouse.click(20, 300);
-  await expect.poll(() => page.evaluate(() => window.__pageClicks), { message: `${life} (the page got the click)` }).toBe(1);
-  // ...and it scrolls under the open panel.
-  const before = await page.evaluate(() => scrollY);
-  await page.mouse.move(200, 300);
-  await page.mouse.wheel(0, 300);
-  await expect.poll(() => page.evaluate(() => scrollY), { message: `${life} (the page scrolled)` }).toBeGreaterThan(before);
-  await page.waitForTimeout(ABSENCE_MS);
-  expect(await isOpen(), `${life} (still open after a click and a scroll)`).toBe(true);
-  // A row jumps to its paragraph and the panel stays for the next one.
-  await page.locator("#anagram-fab .panel .pitem").first().click();
-  expect(await isOpen(), `${life} (still open after a jump)`).toBe(true);
-  // The counter toggles it.
-  await toggleCounter(page);
-  await expect.poll(isOpen, { message: `${life} (the counter closes it)` }).toBe(false);
-  // Escape closes it, wherever the focus is: here, on the page.
-  await open();
-  await page.keyboard.press("Escape");
-  await expect.poll(isOpen, { message: `${life} (Escape closes it)` }).toBe(false);
-  // The Close button closes it and hands the keyboard back to the counter.
-  await open();
-  await page.locator("#anagram-fab .panel .pclose").click();
-  await expect.poll(isOpen, { message: `${life} (Close closes it)` }).toBe(false);
-  await expect.poll(() => panelState(page), { message: `${life} (focus back on the counter)` }).toMatchObject({ open: false, expanded: "false" });
+  await expect.poll(async () => (await menuReport(menu))?.bands.reduce((a, n) => a + n, 0), { message: cov }).toBe(2);
+  const shown = await menuReport(menu);
+  expect.soft(shown.title, cov).toMatch(/^(Flagged paragraphs \(\d\/2\)|Nothing flagged on this page\.)$/);
+  expect.soft(shown.notes, cov).toEqual(["1 too short to score, 1 less reliable (under 75 words)"]);
+  expect.soft(shown.notes.join(" "), cov).not.toMatch(/\bread\b/);
 });

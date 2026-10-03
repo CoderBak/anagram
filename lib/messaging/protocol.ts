@@ -65,6 +65,11 @@ export const ACTIONS = {
    * bounce straight back here while the setting is on.
    */
   PDF_PASS_ONCE: "pdfPassOnce",
+  /**
+   * reader → SW: this reader was refreshed and its document is gone with the page that held
+   * it: read the source it shows again (PRIVACY.md, "A PDF … you opened in Anagram").
+   */
+  PDF_REOPEN: "pdfReopen",
   /** SW → content: are you there? The worker's probe before it injects the content
    *  script into a tab it has only `activeTab` for (lib/access/worker.ts). */
   PING: "ping",
@@ -198,6 +203,10 @@ export interface TabState {
   hostname: string;
   /** The tab is a PDF the browser's own viewer is showing — the popup offers the reader. */
   pdf?: boolean;
+  /** The tab is Anagram's own PDF reader: no site of its own, so no site switch. */
+  reader?: boolean;
+  /** The reader's pages drawn so far are images with no text to read (a scan). */
+  noText?: boolean;
   scored: number;
   /** Units flagged heavily edited / AI-generated (popup stat line). */
   flagged: number;

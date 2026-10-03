@@ -1,13 +1,13 @@
 // What Anagram draws into a page, on test/ui-fixtures.html: the hover card at the edges of
 // the screen and out of an overflow:hidden box, the chip in RTL, small, large, tight and
 // vertical text, shadow DOM and slots, copying, a trailing link, dark sections, duplicates,
-// KaTeX, the top layer (a modal dialog, a site overlay), the ball and its panel; and the host going away
+// KaTeX, the top layer (a modal dialog, a site overlay), the toolbar menu's flagged list; and the host going away
 // and coming back. Every test fails on an error the extension writes to the page's console.
 //
 //   npx playwright test scenarios-ui
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test as base, expect, BADGE_SEL, ABSENCE_MS, settledChips, chipCounts, toggleCounter } from "./kit.mjs";
+import { test as base, expect, BADGE_SEL, ABSENCE_MS, settledChips, chipCounts, popupOver, menuReport } from "./kit.mjs";
 
 const UI_FIXTURES = readFileSync(join(import.meta.dirname, "..", "ui-fixtures.html"), "utf8");
 /** The units the page holds before anything is clicked, by the element they sit in (the
@@ -63,15 +63,6 @@ const cardOf = (page, scope) =>
     },
     { sel: BADGE_SEL, scope },
   );
-
-/** Put the pointer on the part of the ball that is on screen (a tucked ball hangs half off the edge). */
-async function pointAtBall(page) {
-  const box = await page.locator("#anagram-fab .fab").boundingBox();
-  const size = page.viewportSize();
-  const left = Math.max(box.x, 0), right = Math.min(box.x + box.width, size.width - 1);
-  await page.mouse.move((left + right) / 2, box.y + box.height / 2);
-}
-const tucked = (page) => page.evaluate(() => !!document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".stack.tucked"));
 
 test("the hover card stays on screen: below the chip at the top edge, pinned at the right edge, out of an overflow:hidden box in the top layer", async ({ fixtures: page }) => {
   await page.evaluate(() => scrollTo(0, 0));
@@ -248,17 +239,10 @@ test("a KaTeX formula: one single-part unit, the formula counted in the card, an
   expect.soft(await clipboard.read(page), `${katex} (no duplicated formula text)`).not.toContain("KATEXDUP");
 });
 
-test("the top layer: a modal dialog's paragraph is read and the ball rides above it; a site overlay covers the chips behind it, not the ball", async ({ fixtures: page }) => {
+test("the top layer: a modal dialog's paragraph is read; a site overlay covers the chips behind it", async ({ fixtures: page }) => {
   await page.locator("#openmodal").scrollIntoViewIfNeeded();
   await page.locator("#openmodal").click();
   await expect(settledChips(page, "#modal"), "paragraph inside showModal dialog badged").toHaveCount(1);
-  // A manual popover where supported; the fallback path has no top layer to be in.
-  await expect
-    .poll(() => page.evaluate(() => {
-      const fab = document.getElementById("anagram-fab");
-      return !!fab && (!("showPopover" in fab) || fab.matches(":popover-open"));
-    }), { message: "FAB promoted to top layer (popover)" })
-    .toBe(true);
   await page.locator("#closemodal").click();
 
   // A chip is part of its paragraph, never floating chrome: an overlay the site opens covers
@@ -266,7 +250,6 @@ test("the top layer: a modal dialog's paragraph is read and the ball rides above
   await page.evaluate(() => scrollTo(0, 0));
   await page.locator("#openoverlay").scrollIntoViewIfNeeded();
   const r = await page.evaluate((sel) => {
-    // The centre of the on-screen part: an idle-tucked ball hangs half off the edge.
     const centreHit = (el) => {
       const b = el.getBoundingClientRect();
       const x = (Math.max(b.left, 0) + Math.min(b.right, innerWidth - 1)) / 2;
@@ -281,16 +264,13 @@ test("the top layer: a modal dialog's paragraph is read and the ball rides above
     document.getElementById("openoverlay").click();
     const overlay = document.getElementById("siteoverlay");
     const covered = inView.filter((h) => overlay.contains(centreHit(h))).length;
-    const fab = document.getElementById("anagram-fab");
-    const fabOnTop = centreHit(fab.shadowRoot.querySelector(".fab")) === fab;
     document.getElementById("closeoverlay").click();
-    return { chipsInView: inView.length, hitBefore: before, coveredByOverlay: covered, fabOnTop };
+    return { chipsInView: inView.length, hitBefore: before, coveredByOverlay: covered };
   }, BADGE_SEL);
-  const overlay = `a site overlay covers the chips behind it; the ball stays above (top layer): ${JSON.stringify(r)}`;
+  const overlay = `a site overlay covers the chips behind it: ${JSON.stringify(r)}`;
   expect.soft(r.chipsInView, overlay).toBeGreaterThan(0);
   expect.soft(r.hitBefore, overlay).toBe(r.chipsInView);
   expect.soft(r.coveredByOverlay, overlay).toBe(r.chipsInView);
-  expect.soft(r.fabOnTop, overlay).toBe(true);
 });
 
 test("every analyzing chip drains into a verdict, and a paragraph added while a counter ticks is read before the ticking stops", async ({ fixtures: page }) => {
@@ -310,79 +290,21 @@ test("every analyzing chip drains into a verdict, and a paragraph added while a 
   expect(await page.evaluate(() => window.__tickAtChip), `${debounce}: the tick the chip came at, of 60`).toBeLessThan(60);
 });
 
-test("the triage panel opens from the counter and lists AI-generated paragraphs only, with no verdict filters", async ({ fixtures: page }) => {
-  await toggleCounter(page);
-  const panel = () =>
-    page.evaluate(() => {
-      const panel = document.getElementById("anagram-fab").shadowRoot.querySelector(".panel");
-      return {
-        open: panel.classList.contains("open"),
-        items: panel.querySelectorAll(".pitem").length,
-        others: panel.querySelectorAll(".pitem:not(.band-ai)").length,
-        filters: panel.querySelectorAll(".pfilters, .fchip[aria-pressed]").length,
-      };
-    });
-  const lists = "triage panel opens and lists AI-generated paragraphs only, with no verdict filters";
-  await expect.poll(panel, { message: lists }).toMatchObject({ open: true, others: 0, filters: 0 });
-  expect((await panel()).items, lists).toBeGreaterThan(0);
+test("the toolbar menu lists AI-generated paragraphs only, with no verdict filters", async ({ fixtures: page }) => {
+  const menu = await popupOver(page);
+  const lists = "the toolbar menu lists AI-generated paragraphs only, with no verdict filters";
+  await expect.poll(async () => (await menuReport(menu))?.rows.length ?? 0, { message: lists }).toBeGreaterThan(0);
+  const shown = await menuReport(menu);
+  expect.soft(shown.rows.filter((row) => !row.startsWith("AI-generated, ")), lists).toEqual([]);
+  expect.soft(await menu.locator("#pageReport [aria-pressed]").count(), lists).toBe(0);
 });
 
-test("the ball is the icon, not a letter: the light tile on a light page, the dark tile on a dark one, both loaded", async ({ fixtures: page }) => {
-  const ball = () =>
-    page.evaluate(() => {
-      const host = document.getElementById("anagram-fab");
-      const fab = host.shadowRoot.querySelector(".fab");
-      const shown = [...fab.querySelectorAll(".mark img")].filter((i) => getComputedStyle(i).display !== "none");
-      return {
-        text: fab.querySelector(".mark").textContent.trim(),
-        shown: shown.map((i) => i.className),
-        size: shown.map((i) => [i.naturalWidth, Math.round(i.getBoundingClientRect().width)]),
-        srcs: [...fab.querySelectorAll(".mark img")].map((i) => i.src.split("/").slice(-2).join("/")),
-      };
-    });
-  const icon = "the ball shows the icon and no \"A\"";
-  expect.soft(await ball(), icon).toMatchObject({ text: "", shown: ["logo-light"], srcs: ["icons/icon-light-96.png", "icons/icon-96.png"] });
-  expect((await ball()).size, `${icon}: a 96 px PNG drawn at 40 px, so it is sharp at 2x`).toEqual([[96, 40]]);
-  await page.evaluate(() => document.getElementById("anagram-fab").classList.add("pg-dark"));
-  expect(await ball(), "the ball on a page treated as dark shows the dark tile").toMatchObject({ shown: ["logo-dark"] });
-});
-
-test("the count badge sets its own type: the UI sans-serif at weight 600 with tabular digits, whatever the page styles", async ({ fixtures: page }) => {
-  await page.addStyleTag({ content: "* { font-family: 'Times New Roman', serif !important; font-style: italic !important; text-transform: uppercase !important; }" });
-  const type = await page.evaluate(() => {
-    const cs = getComputedStyle(document.getElementById("anagram-fab").shadowRoot.querySelector(".count"));
-    return { family: cs.fontFamily, weight: cs.fontWeight, style: cs.fontStyle, digits: cs.fontVariantNumeric, transform: cs.textTransform, align: cs.textAlign };
-  });
-  expect(type.family, "the badge's face is the UI stack, not the UA's serif").toMatch(/^ui-sans-serif, /);
-  expect({ weight: type.weight, style: type.style, digits: type.digits, transform: type.transform, align: type.align }, "the badge's own type settings").toEqual({ weight: "600", style: "normal", digits: "tabular-nums", transform: "none", align: "center" });
-});
-
-test("the ball: dragged, it snaps to the left edge; left alone, it tucks half away and comes back under the pointer", async ({ fixtures: page }) => {
-  await pointAtBall(page); // untuck first: a tucked ball sits half off-screen
-  await expect.poll(() => tucked(page), { message: "the ball comes out under the pointer" }).toBe(false);
-  const box = await page.locator("#anagram-fab .fab").boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(140, 300, { steps: 8 }); // dropped near the LEFT edge
-  await page.mouse.up();
-  const side = () => page.evaluate(() => {
-    const stack = document.getElementById("anagram-fab").shadowRoot.querySelector(".stack");
-    return { left: stack.style.left, sideLeft: stack.classList.contains("side-left") };
-  });
-  await expect.poll(side, { message: "FAB snaps to the left edge after drag" }).toEqual({ left: "12px", sideLeft: true });
-
-  await page.mouse.move(600, 300); // the pointer far away, and nothing else happening
-  await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover", timeout: 15_000 }).toBe(true);
-  await pointAtBall(page);
-  await expect.poll(() => tucked(page), { message: "FAB tucks when idle and returns on hover" }).toBe(false);
-});
-
-// The host goes away: the batch in flight renders "Unavailable", nothing new is dispatched,
-// the ball's counter shows "!"; it comes back and everything is queued again by itself (no
-// reload, no Rescan). Twice: a paragraph under 510 bytes meets the dead socket with its
+// The host goes away: the batch in flight renders "Unavailable", which the page counts for the
+// toolbar menu, and nothing new is dispatched; it comes back and everything is queued again
+// by itself (no reload, no Rescan). Twice: a paragraph under 510 bytes meets the dead socket with its
 // score request, one twice as long with its token count.
 for (const [path, repeat] of [["score", 1], ["count", 2]]) {
-  test(`the host goes away and comes back with a ${path} request in flight: Unavailable, then read again by itself`, async ({ page, fixturesUrl, nativeHost, storage }) => {
+  test(`the host goes away and comes back with a ${path} request in flight: Unavailable, then read again by itself`, async ({ page, fixturesUrl, nativeHost, storage, tell }) => {
     await storage.set({ debug: true });
     const scans = [];
     page.on("console", (m) => {
@@ -402,29 +324,30 @@ for (const [path, repeat] of [["score", 1], ["count", 2]]) {
         document.querySelector("main").prepend(el);
       }, { pid: `${id}${path}`, times: repeat });
     const pill = (id) => page.locator(`#${id}${path} ${BADGE_SEL} .pill`);
-    const bubble = () => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+    /** What the page tells the toolbar menu: how many of its paragraphs are Unavailable. */
+    const unavailable = async () => (await tell(page, { action: "getTabState" }))?.unavailable ?? null;
 
-    const down = `fixture down (${path} request): in-flight batch renders Unavailable, later paragraphs get no chip, counter shows !`;
+    const down = `fixture down (${path} request): in-flight batch renders Unavailable and is counted so, later paragraphs get no chip`;
     await nativeHost.close(); // connection refused from here on
     await addPara("down1");
     // Settled: past "analyzing…" — the pending chip goes in at dispatch, BEFORE the reply
     // that puts the page in the down state.
     await expect(pill("down1"), down).toHaveClass(/band-unknown/);
     await expect(pill("down1"), down).not.toHaveClass(/pending/);
-    await expect.poll(bubble, { message: down }).toBe("!");
+    await expect.poll(unavailable, { message: down }).toBeGreaterThan(0);
     const scanned = scans.length;
     await addPara("down2");
     // The walk has the paragraph; nothing may dispatch it while the host is down.
     await expect.poll(() => scans.length, { message: `${down} (the walk saw it)` }).toBeGreaterThan(scanned);
     await page.waitForTimeout(ABSENCE_MS);
     await expect(page.locator(`#down2${path} ${BADGE_SEL}`), down).toHaveCount(0);
-    expect(await bubble(), down).toBe("!");
+    expect(await unavailable(), down).toBeGreaterThan(0);
 
     const back = `fixture back (${path} request): waiting + Unavailable units re-queued automatically`;
     await nativeHost.resume(); // the same native registration
     await expect(settledChips(page, `#down2${path}`), back).toHaveCount(1, { timeout: 30_000 });
     await expect(pill("down1"), back).not.toHaveClass(/band-unknown|pending/, { timeout: 30_000 });
-    await expect.poll(bubble, { message: back }).not.toBe("!");
+    await expect.poll(unavailable, { message: back }).toBe(0);
   });
 }
 
@@ -432,10 +355,11 @@ for (const [path, repeat] of [["score", 1], ["count", 2]]) {
 // in (the fixture's `loadingWaits`): a page paused while the engine was away goes on as soon as
 // its recheck hears the engine is loading, so its paragraphs are read the moment the model is.
 // The local engine says "not ready" while it loads, and a page waits for ready (above).
-test("the host comes back loading its model, as the in-browser engine does: the paused page is sent while it loads", async ({ page, fixturesUrl, nativeHost }) => {
+test("the host comes back loading its model, as the in-browser engine does: the paused page is sent while it loads", async ({ page, fixturesUrl, nativeHost, tell }) => {
   await page.goto(fixturesUrl, { waitUntil: "load" });
   await expect(settledChips(page, "#topedge")).toHaveCount(1);
-  const bubble = () => page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+  /** What the page tells the toolbar menu: how many of its paragraphs are Unavailable. */
+  const unavailable = async () => (await tell(page, { action: "getTabState" }))?.unavailable ?? null;
   const pill = page.locator(`#loading1 ${BADGE_SEL} .pill`);
   await nativeHost.close();
   await page.evaluate(() => {
@@ -447,16 +371,16 @@ test("the host comes back loading its model, as the in-browser engine does: the 
       "and a paragraph sent early is read the moment the model is.";
     document.querySelector("main").prepend(el);
   });
-  const down = "fixture down: the paragraph is Unavailable and the ball shows !";
+  const down = "fixture down: the paragraph is Unavailable, and counted so";
   await expect(pill, down).toHaveClass(/band-unknown/);
   await expect(pill, down).not.toHaveClass(/pending/);
-  await expect.poll(bubble, { message: down }).toBe("!");
+  await expect.poll(unavailable, { message: down }).toBeGreaterThan(0);
 
   nativeHost.setState({ startupMs: 12_000, loadingWaits: true });
   await nativeHost.resume();
   const sent = "fixture back and loading its model: the paused page sends the paragraph while the model loads";
   const sentWhileLoading = () => nativeHost.requests().some((r) => r.op === "score" && r.loading === true && r.payload.blocks.some((b) => b.text.includes("LOADING1")));
   await expect.poll(sentWhileLoading, { message: sent, timeout: 15_000 }).toBe(true);
-  expect(await bubble(), sent).not.toBe("!");
+  expect(await unavailable(), `${sent} (and it is no longer counted Unavailable)`).toBe(0);
   await expect(pill, "and it is read once the model is in").not.toHaveClass(/band-unknown|pending/, { timeout: 30_000 });
 });

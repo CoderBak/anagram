@@ -7,10 +7,12 @@
 //                        context menu, the keyboard commands and the popup's Rescan all
 //                        arrive this way; the real key combinations never reach a page)
 //   backendUp()          the worker has the fixture host up again (after close()/resume())
+//   popupOver(page)      the toolbar menu as it opens over that page's tab (test/harness.mjs);
+//                        menuReport(popup) reads what its report says
 import { test as base, expect as baseExpect } from "./fixtures.mjs";
-import { BADGE_SEL } from "../harness.mjs";
+import { BADGE_SEL, popupOver, menuReport } from "../harness.mjs";
 
-export { BADGE_SEL };
+export { BADGE_SEL, popupOver, menuReport };
 
 /** A chip waits on a batch, a batch on a host under whatever else this machine runs. */
 export const expect = baseExpect.configure({ timeout: 20_000 });
@@ -81,9 +83,6 @@ export const marked = (page) =>
     return out;
   });
 
-/** Click the ball's counter: the panel opens (or closes). */
-export const toggleCounter = (page) =>
-  page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
 /** A paragraph long enough to be scored alone, opening on `tag`. */
 export const PARA = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a self-rewriting page must still end up with chips after it replaces its own document element, which is what legacy challenge pages and some old single-page frameworks do, and the extension then has to find the new document, walk it again from the top and read every paragraph in it as if the page had only just loaded.`;

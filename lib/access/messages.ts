@@ -40,6 +40,7 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.GET_PDF_STATUS),tabId}),
   v.strictObject({action:v.literal(ACTIONS.PDF_TAB_OPENED),session,url,contentType:v.literal("application/pdf"),protocol:v.picklist(["http:","https:"]),navigationType:v.picklist(["navigate","reload","back_forward","prerender"])}),
   v.strictObject({action:v.literal(ACTIONS.PDF_PASS_ONCE),session,url:pdfUrl}),
+  v.strictObject({action:v.literal(ACTIONS.PDF_REOPEN),session,url:pdfUrl}),
   v.strictObject({action:v.literal(ACTIONS.CLEAR_CACHE)}),
   v.strictObject({action:v.literal(ACTIONS.SET_CACHE_MODE),mode:v.picklist(["persistent","session"])}),
   v.strictObject({action:v.literal(ACTIONS.GET_CACHE_COUNT)}),
@@ -107,7 +108,7 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
     case ACTIONS.OPEN_PDF_READER:
       return role === "popup" ? msg.tabId !== undefined && !!msg.url : role === "content" && sender.frameId === 0 && msg.tabId === undefined && msg.url === undefined;
     case ACTIONS.PDF_TAB_OPENED: return role === "content" && sender.frameId === 0 && msg.url === sender.url && new URL(msg.url).protocol === msg.protocol;
-    case ACTIONS.PDF_PASS_ONCE: return role === "reader" && Number.isInteger(sender.tab?.id);
+    case ACTIONS.PDF_PASS_ONCE: case ACTIONS.PDF_REOPEN: return role === "reader" && Number.isInteger(sender.tab?.id);
     case ACTIONS.SCORE_BATCH: case ACTIONS.COUNT_TOKENS: return role === "content" || role === "reader" || role === "paste";
     case ACTIONS.GET_TOP_HOST: return role === "content";
     case ACTIONS.UPDATE_BADGE: return (role === "content" || role === "reader") && sender.frameId === 0;

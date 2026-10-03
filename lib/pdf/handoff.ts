@@ -1,7 +1,7 @@
 // Chromium reads its current PDF tab; Firefox and local files use a private, ticketed loader.
 import { browser } from "#imports";
 import * as v from "valibot";
-import { claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult } from "./sourceTransfer";
+import { claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult, type PdfReopenResult } from "./sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../surface";
 import { matchesAny } from "../access/patterns";
 
@@ -266,7 +266,7 @@ export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;t
   });
 }
 export interface HandoffDeps {readerUrl(src:string):string;ensureInjected?(tabId:number):Promise<boolean>}
-export interface PdfHandoff {serve():void;open(tabId:number,src:string,opts:{auto:boolean}):Promise<PdfOpenResult>;forget(tabId:number):void}
+export interface PdfHandoff {serve():void;open(tabId:number,src:string,opts:{auto:boolean}):Promise<PdfOpenResult>;reopen(tabId:number,src:string):Promise<PdfReopenResult>;forget(tabId:number):void}
 export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
   const budget=createHandoffBudget(),store=createTicketStore(TICKET_TTL_MS,budget);
   const sourceBroker=createSourceBroker(deps.readerUrl);
@@ -372,7 +372,11 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
         try{await browser.tabs.update(tabId,{url:reader});return {ok:true};}
         catch{discard(ticket);return {ok:false,error:"read"};}
       }finally{if(!transferred)lease.release();reading.delete(tabId);sources.delete(tabId);endTransfer();}
-    },forget,
+    },
+    // A refreshed reader has no tab showing the PDF to stream from: its document is read
+    // again the private way every other route reads a source (lib/pdf/sourceTransfer.ts).
+    reopen:(tabId,src)=>sourceBroker.reopen(tabId,src),
+    forget,
   };
 }
 /** The reader's claim: the document, or why there is none. */

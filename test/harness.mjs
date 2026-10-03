@@ -27,8 +27,51 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** The TEST variant, not the shipping build: a suite cannot click a permission prompt,
  *  so it loads the build where the site patterns are already granted. See test-build.mjs. */
 export const EXT = join(TEST_OUT, "chrome-mv3");
-/** Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id. */
-export const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
+/** A chip's host (the selection card's too). */
+export const BADGE_SEL = '[data-anagram="host"]';
+
+/**
+ * The toolbar menu (popup.html) as it opens over `page`'s tab. The menu finds that tab with
+ * tabs.query({ active: true, currentWindow: true }), which is answered with it: an ordinary
+ * page with its id and address, an extension page (the reader) with its id alone, as the
+ * browser tells the menu. `setup(popup)` runs before it loads (a viewport, a colour scheme).
+ * Close it when done; a jump or a handoff from it closes it itself.
+ */
+export async function popupOver(page, { setup } = {}) {
+  const context = page.context();
+  const worker = context.serviceWorkers().find((w) => w.url().startsWith("chrome-extension://"));
+  const own = page.url().startsWith("chrome-extension://");
+  const url = own ? undefined : page.url();
+  const tabId = own
+    ? await page.evaluate(async () => (await chrome.tabs.getCurrent())?.id)
+    : await worker.evaluate(async (url) => (await chrome.tabs.query({})).find((t) => t.url === url)?.id, url);
+  const popup = await context.newPage();
+  await popup.addInitScript(({ tabId, url }) => {
+    const query = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = (info, ...rest) => (info?.active ? Promise.resolve([{ id: tabId, url, active: true, windowId: -1, index: 0 }]) : query(info, ...rest));
+  }, { tabId, url });
+  await setup?.(popup);
+  await popup.goto(`chrome-extension://${new URL(worker.url()).host}/popup.html`, { waitUntil: "load" });
+  return popup;
+}
+
+/**
+ * What the toolbar menu (opened with popupOver) says about its page: the report's title,
+ * its notes (the coverage line, then the scope note), the four counts under the bar, each
+ * flagged row's spoken name, and the comment sites it offers; null while it shows none.
+ */
+export const menuReport = (popup) =>
+  popup.evaluate(() => {
+    const report = document.getElementById("pageReport");
+    if (!report || report.hidden) return null;
+    return {
+      title: report.querySelector("#reportTitle")?.textContent ?? null,
+      notes: [...report.querySelectorAll(".report-coverage")].filter((p) => !p.hidden).map((p) => p.textContent),
+      bands: [...report.querySelectorAll(".legend li .n")].map((n) => Number(n.textContent)),
+      rows: [...report.querySelectorAll(".report-result")].map((b) => b.getAttribute("aria-label")),
+      comments: [...report.querySelectorAll(".report-comment span")].map((s) => s.textContent),
+    };
+  });
 
 /** A window only when asked for. HEADLESS=0 is the old spelling of HEADED=1. */
 export const HEADED = process.env.HEADED === "1" || process.env.HEADLESS === "0";
@@ -50,7 +93,7 @@ export async function serveHtml(pages, fallback = Object.keys(pages)[0]) {
   const server = http.createServer((req, res) => {
     const path = req.url.split("?")[0];
     const body = pages[path] ?? pages[fallback];
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.writeHead(200, { "content-type": /\.pdf$/i.test(path) ? "application/pdf" : "text/html; charset=utf-8" });
     res.end(body);
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));

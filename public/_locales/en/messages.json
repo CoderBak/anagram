@@ -12,7 +12,8 @@
     "description": "Store listing description. The name stays 'Anagram'."
   },
   "cmdOpenPanel": {
-    "message": "Open Anagram in the toolbar"
+    "message": "Open Anagram in the toolbar",
+    "description": "Keyboard shortcut (chrome://extensions/shortcuts): opens Anagram's toolbar menu."
   },
   "cmdNextFlagged": {
     "message": "Go to the next flagged paragraph",
@@ -73,6 +74,10 @@
   "cardScaleTitle": {
     "message": "Extent of AI editing, 0 to 1",
     "description": "Tooltip on the big number in a card."
+  },
+  "cardUnsure": {
+    "message": "Unsure: close to $1",
+    "description": "Hover card, shown when the verdict's word is likely wrong: $1 is the word next to it on the scale that the score lies nearer to (e.g. \"Heavily edited\")."
   },
   "cardPartsTogether": {
     "message": "Paragraphs analyzed together",
@@ -202,66 +207,6 @@
     "message": "Only English text is scored.",
     "description": "Selection card footnote for non-English text."
   },
-  "fabHide": {
-    "message": "Hide AI detection",
-    "description": "Floating ball tooltip while the overlay is shown."
-  },
-  "fabShow": {
-    "message": "Show AI detection",
-    "description": "Floating ball tooltip while the overlay is hidden."
-  },
-  "fabHideAria": {
-    "message": "Hide AI detection marks",
-    "description": "Floating ball accessible name while the overlay is shown."
-  },
-  "fabShowAria": {
-    "message": "Show AI detection marks",
-    "description": "Floating ball accessible name while the overlay is hidden."
-  },
-  "countTitle": {
-    "message": "Show flagged paragraphs",
-    "description": "Tooltip on the counter bubble that opens the triage panel."
-  },
-  "countDownTitle": {
-    "message": "Local engine not ready — click for details",
-    "description": "Tooltip on the counter bubble while the local engine is down."
-  },
-  "countDownAria": {
-    "message": "Local engine not ready, details",
-    "description": "Accessible name of the counter bubble while the local engine is down."
-  },
-  "countAria_one": {
-    "message": "$1 flagged paragraph — show list",
-    "description": "Accessible name of the counter bubble. $1 = 1."
-  },
-  "countAria_other": {
-    "message": "$1 flagged paragraphs — show list",
-    "description": "Accessible name of the counter bubble. $1 = flagged count."
-  },
-  "panelAnnounceCount_one": {
-    "message": "$1 flagged paragraph on this page",
-    "description": "Spoken once the count settles. $1 = 1."
-  },
-  "panelAnnounceCount_other": {
-    "message": "$1 flagged paragraphs on this page",
-    "description": "Spoken once the count settles. $1 = flagged count."
-  },
-  "panelDaemonDown": {
-    "message": "The local engine is not ready. Open Anagram Settings; new paragraphs wait until it is ready.",
-    "description": "Notice at the top of the triage panel while the local engine is not ready."
-  },
-  "panelEngineCrashed": {
-    "message": "The local engine kept stopping unexpectedly, so Anagram stopped restarting it. New paragraphs wait until you retry.",
-    "description": "Notice at the top of the triage panel when the local engine died several times in a row while scoring and is no longer restarted automatically."
-  },
-  "panelInBrowserDown": {
-    "message": "The in-browser engine is not ready. Open Anagram Settings; new paragraphs wait until it is ready.",
-    "description": "Notice at the top of the triage panel while the in-browser engine is not ready for a reason other than setup."
-  },
-  "panelInBrowserCrashed": {
-    "message": "The in-browser engine kept stopping unexpectedly, so Anagram stopped restarting it. New paragraphs wait until you retry.",
-    "description": "Notice at the top of the triage panel when the in-browser engine died several times in a row."
-  },
   "panelRetry": {
     "message": "Retry",
     "description": "Panel action beside the daemon-down notice."
@@ -285,10 +230,6 @@
   "panelTitleCount": {
     "message": "Flagged paragraphs ($1/$2)",
     "description": "Triage panel heading. $1 = flagged count, $2 = paragraphs read (given a verdict)."
-  },
-  "panelClose": {
-    "message": "Close",
-    "description": "The panel's close button (a multiplication sign), tooltip and accessible name."
   },
   "panelCopyReport": {
     "message": "Copy report",
@@ -415,8 +356,8 @@
     "description": "Reader notice while the file is fetched."
   },
   "readerNoText": {
-    "message": "This PDF has no text layer.",
-    "description": "Reader notice: a scan, nothing to read."
+    "message": "This PDF's pages are images, with no text to read.",
+    "description": "Reader notice, and the toolbar menu over the reader: a scan, nothing to read."
   },
   "readerTooLarge": {
     "message": "This PDF is too large to read here.",
@@ -438,13 +379,25 @@
     "message": "This tab no longer holds the PDF data. Open the original and choose Anagram again, or choose a local file.",
     "description": "PDF source loading and recovery status."
   },
-  "readerAnalysisScope": {
-    "message": "Analysis covers $1 of $2 pages currently loaded for analysis. Scroll to load more; recycled pages leave this panel.",
-    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+  "readerReading": {
+    "message": "Reading the whole document: $1% so far.",
+    "description": "Toolbar menu over the PDF reader while it reads the rest of the document in the background: $1 = the share of its paragraphs read, in percent."
+  },
+  "readerReadShare": {
+    "message": "$1% of the document read; the rest is read as you scroll to it.",
+    "description": "Toolbar menu over the PDF reader where only the pages around the one being read are read ahead (a slow computer, or the setting off): $1 = the share of its paragraphs read, in percent."
+  },
+  "readerReadWhole": {
+    "message": "Read the whole document",
+    "description": "Button in the toolbar menu over the PDF reader where, on a slow computer, only the pages around the one being read are read ahead."
   },
   "readerReportScope": {
-    "message": "PDF analysis scope: $1 currently loaded pages of $2. This is not a complete document assessment.",
-    "description": "PDF analysis coverage: $1 is the currently loaded page count, $2 is the total page count."
+    "message": "Covers the $1 pages loaded now, of $2; the others are read as you scroll to them.",
+    "description": "Popup report over the PDF reader where the document's paragraphs are not known (a very long document, or the structure setting off): only the pages loaded now are covered. $1 = pages loaded now, $2 = pages in the document."
+  },
+  "readerOpenMenu": {
+    "message": "Anagram: results and controls for this document",
+    "description": "Tooltip of the Anagram button in the PDF reader's toolbar, which opens the extension's toolbar menu."
   },
   "pasteTitle": {
     "message": "Analyze text",
@@ -455,7 +408,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFile": {
-    "message": "Open text file",
+    "message": "Open text file…",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteAnalyze": {
@@ -481,6 +434,14 @@
   "pasteFailed": {
     "message": "Analysis did not complete. Check the local engine in Settings and try again.",
     "description": "Text analysis page action, status, or limit."
+  },
+  "pasteWords_one": {
+    "message": "$1 word",
+    "description": "Analyze text page: the length of the text typed or opened (singular)."
+  },
+  "pasteWords_other": {
+    "message": "$1 words",
+    "description": "Analyze text page: the length of the text typed or opened (plural)."
   },
   "pasteCoverage": {
     "message": "$1 of $2 passes analyzed, $3 unsupported, $4 unavailable, $5 truncated",
@@ -749,26 +710,6 @@
   "popupSetupPaused": {
     "message": "Download paused at $1%",
     "description": "In-browser edition, popup: the setup download is paused; $1 is the percentage."
-  },
-  "panelSetupNeeded": {
-    "message": "Anagram isn't set up yet. New paragraphs wait until its model is downloaded.",
-    "description": "In-browser edition, the in-page panel: the engine is not set up yet."
-  },
-  "panelSetupDownloading": {
-    "message": "Downloading the model ($1%). New paragraphs wait until it's ready.",
-    "description": "In-browser edition, the in-page panel: setup is downloading; $1 is the percentage."
-  },
-  "panelSetupPaused": {
-    "message": "The model download is paused at $1%. New paragraphs wait until it finishes.",
-    "description": "In-browser edition, the in-page panel: the setup download is paused; $1 is the percentage."
-  },
-  "panelSetupFailed": {
-    "message": "Anagram's setup didn't finish. New paragraphs wait until it does.",
-    "description": "In-browser edition, the in-page panel: the setup download stopped on an error."
-  },
-  "panelSetupLoading": {
-    "message": "The model is starting. New paragraphs wait until it's ready.",
-    "description": "In-browser edition, the panel's notice while the downloaded model loads."
   },
   "componentStarting": {
     "message": "Starting…",
@@ -1115,7 +1056,7 @@
     "description": "Button that requests access to every site."
   },
   "accessWithdraw": {
-    "message": "Withdraw",
+    "message": "Remove access",
     "description": "Button that removes every site grant."
   },
   "optCommentsFrom": {
@@ -1219,12 +1160,16 @@
     "description": "Setup page: heading of the permissions block, first on the page."
   },
   "onbVerdictTitle": {
-    "message": "Reading a verdict",
+    "message": "Reading the marks",
     "description": "Setup page: heading of the block that explains the words, the colours and the dot."
   },
-  "onbConfidence": {
-    "message": "A full dot means the word is likely right; a thin ring means Anagram is unsure.",
-    "description": "Setup page: what the dot in a verdict's colour shows."
+  "onbScoreLine": {
+    "message": "Each paragraph gets a chip with a score from .00 (human) to 1.0 (AI-generated), in its word's colour. Hover the chip for the details. AI-generated paragraphs are flagged: the toolbar menu lists them, and the number on its icon counts them.",
+    "description": "Setup page, under the four words and the coloured scale."
+  },
+  "onbStepDone": {
+    "message": "Done",
+    "description": "Setup page: beside a step that is complete."
   },
   "onbModelNotice": {
     "message": "Anagram uses Pangram's open EditLens model (CC BY-NC-SA 4.0). Commercial use is not permitted. It should not be used to enforce any AI-usage policy in an educational or professional setting.",
@@ -1237,6 +1182,14 @@
   "accessAllowed": {
     "message": "All sites allowed",
     "description": "Setup page and Settings: all-sites access is granted."
+  },
+  "optReadAhead": {
+    "message": "Read whole PDFs in the background",
+    "description": "Settings, PDFs: switch for reading the pages of a document before they are scrolled to."
+  },
+  "optReadAheadNote": {
+    "message": "Paced to how fast this computer scores: a fast one reads the whole document, a slow one the pages around where you are, and only while you are not scrolling.",
+    "description": "Settings, PDFs: the note under the read-ahead switch."
   },
   "optLocalPdfs": {
     "message": "PDFs on this computer",
@@ -1282,80 +1235,92 @@
     "message": "Cache",
     "description": "Settings: row label."
   },
-  "popupPdfReader": {
-    "message": "PDF reader",
-    "description": "Popup: secondary button that opens the PDF reader."
-  },
   "safariEngineTitle": {
-    "message": "Anagram for Safari"
+    "message": "Anagram for Safari",
+    "description": "Safari: title of the in-browser engine card on the setup page."
   },
   "safariEngineTabNote": {
-    "message": "Keep the Anagram engine tab open while analyzing pages. Safari runs the WebGPU engine in this pinned tab. Closing it interrupts analysis; the next request opens it again."
+    "message": "Keep the Anagram engine tab open while analyzing pages. Safari runs the WebGPU engine in this pinned tab. Closing it interrupts analysis; the next request opens it again.",
+    "description": "Safari: why a pinned extension tab stays open while the engine runs."
   },
   "safariEnginePrivacy": {
-    "message": "Text is scored on this Mac. The model downloads once; page text is never sent to a server. Model memory is released when the engine is idle."
+    "message": "Text is scored on this Mac. The model downloads once; page text is never sent to a server. Model memory is released when the engine is idle.",
+    "description": "Safari: the in-browser engine runs locally; nothing is uploaded."
   },
   "safariEngineSetup": {
-    "message": "Set up Anagram"
+    "message": "Set up Anagram",
+    "description": "Safari: button that starts the in-browser engine setup."
   },
   "safariEngineSettings": {
-    "message": "Open settings"
+    "message": "Open settings",
+    "description": "Safari: link from the engine card to Settings."
   },
   "safariBrowserRequired": {
-    "message": "Anagram for Safari requires Safari 27 or later on a Mac, with WebAssembly JSPI and browser file storage available. Update Safari, then reopen setup."
+    "message": "Anagram for Safari requires Safari 27 or later on a Mac, with WebAssembly JSPI and browser file storage available. Update Safari, then reopen setup.",
+    "description": "Safari: shown when the Safari version is too old for the in-browser engine."
   },
   "safariWebGpuRequired": {
-    "message": "The in-browser engine needs a hardware WebGPU adapter that can run the model. This Mac does not currently offer a compatible adapter. It cannot run this engine on the CPU."
+    "message": "The in-browser engine needs a hardware WebGPU adapter that can run the model. This Mac does not currently offer a compatible adapter. It cannot run this engine on the CPU.",
+    "description": "Safari: shown when WebGPU is unavailable, so the in-browser engine cannot run."
   },
   "safariLocalPdfNote": {
-    "message": "Open the PDF reader and choose or drop a PDF from this Mac. Safari does not allow Anagram to read file:// tabs directly."
+    "message": "Open the PDF reader and choose or drop a PDF from this Mac. Safari does not allow Anagram to read file:// tabs directly.",
+    "description": "Safari: local PDFs are opened with the reader's file picker, not by file access."
   },
   "safariOpenPdf": {
-    "message": "Choose a PDF"
+    "message": "Choose a PDF",
+    "description": "Safari: button that opens the PDF reader's file picker."
   },
   "toolbarPinTitle": {
-    "message": "Keep Anagram in your toolbar"
+    "message": "Keep Anagram in your toolbar",
+    "description": "Setup page and Settings: title of the step that keeps Anagram's icon in the browser toolbar."
   },
   "toolbarPinHelp": {
-    "message": "How to keep Anagram in the toolbar"
+    "message": "How to keep Anagram in the toolbar",
+    "description": "Toolbar menu: link to the pinning instructions, shown while Anagram is not pinned."
   },
   "toolbarPinIntro": {
-    "message": "Keep the Anagram icon beside the address bar for quick access on pages such as Google Docs."
+    "message": "Everything Anagram does is in its toolbar menu: each page's results, the switch for each site, and Settings.",
+    "description": "Setup page: why to pin Anagram — its toolbar menu is where it is used from."
   },
   "toolbarExtensionsMenu": {
-    "message": "Click the Extensions button (puzzle piece) beside the address bar."
+    "message": "Click the Extensions button (puzzle piece) beside the address bar.",
+    "description": "Pinning step 1 (Chrome, Firefox): open the browser's Extensions menu."
   },
   "toolbarChromePin": {
-    "message": "Find Anagram and click the pin beside it."
+    "message": "Find Anagram and click the pin beside it.",
+    "description": "Pinning step 2 in Chrome: click the pin beside Anagram."
   },
   "toolbarFirefoxPin": {
-    "message": "Open the menu beside Anagram (gear or three dots), then choose Pin to Toolbar."
+    "message": "Open the menu beside Anagram (gear or three dots), then choose Pin to Toolbar.",
+    "description": "Pinning step 2 in Firefox: pin Anagram to the toolbar."
   },
   "toolbarSafariEnable": {
-    "message": "In Safari → Settings → Extensions, make sure Anagram is enabled."
+    "message": "In Safari → Settings → Extensions, make sure Anagram is enabled.",
+    "description": "Pinning step 1 in Safari: enable the extension."
   },
   "toolbarSafariCustomize": {
-    "message": "Choose View → Customize Toolbar from the menu bar."
+    "message": "Choose View → Customize Toolbar from the menu bar.",
+    "description": "Pinning step 2 in Safari: open Customize Toolbar."
   },
   "toolbarSafariDrag": {
-    "message": "Drag the Anagram icon beside the address field, then click Done. If it is already there, you are ready."
-  },
-  "toolbarPinUse": {
-    "message": "On Google Docs, click Anagram → Analyze document to open the reading view. Open Anagram again to see results and page controls."
-  },
-  "popupMarksVisible": {
-    "message": "Show marks on this page"
+    "message": "Drag the Anagram icon beside the address field, then click Done. If it is already there, you are ready.",
+    "description": "Pinning step 3 in Safari: drag Anagram into the toolbar."
   },
   "popupReportRange": {
-    "message": "$1–$2 of $3"
+    "message": "$1–$2 of $3",
+    "description": "Toolbar menu, flagged list paging: $1–$2 of $3 flagged paragraphs."
   },
   "popupResultsPrevious": {
-    "message": "Previous"
+    "message": "Previous",
+    "description": "Toolbar menu, flagged list paging: previous page."
   },
   "popupResultsNext": {
-    "message": "Next"
+    "message": "Next",
+    "description": "Toolbar menu, flagged list paging: next page."
   },
   "popupPageActionFailed": {
-    "message": "The page changed or is no longer available. Reopen Anagram and try again."
+    "message": "The page changed or is no longer available. Reopen Anagram and try again.",
+    "description": "Toolbar menu: the page did not carry out the requested action (jump, document action)."
   }
 }

@@ -110,9 +110,9 @@ test("a paragraph longer than the model reads in one pass is counted, read whole
   expect.soft(hasMark(await marked(page), "final WINDOWTAIL sentence"), "WINDOWED paragraph: underline reaches the final sentence").toBe(true);
 
   // The opening is read by the first pass alone and the close by the last alone, so those
-  // two stretches carry exactly their pass's step of the scale (lib/render/scale.ts, twenty
-  // steps); every stretch between is a weighted mean, so its step lies between the passes'.
-  const stepOf = (score) => `s${String(Math.round(Math.min(Math.max(score, 0), 1) * 20)).padStart(2, "0")}`;
+  // two stretches carry exactly their pass's word (lib/render/scale.ts, one step per word);
+  // every stretch between is a weighted mean, so its word lies between the passes'.
+  const stepOf = (score) => `s0${score < 1 / 6 ? 0 : score < 1 / 2 ? 1 : score < 5 / 6 ? 2 : 3}`;
   const steps = verdicts.map((v) => stepOf(v.score));
   const bands = await page.evaluate(() => {
     const p = document.querySelector("#windowed p");
@@ -121,7 +121,6 @@ test("a paragraph longer than the model reads in one pass is counted, read whole
     return [...out].sort();
   });
   const stretch = `WINDOWED paragraph: marked stretch by stretch — the opening in the first pass's colour, the close in the last's, the rest between (${steps.join(", ")}; drawn ${bands.join(", ")})`;
-  expect.soft(steps[0], stretch).not.toBe(steps.at(-1));
   expect.soft(bands, stretch).toEqual(expect.arrayContaining([steps[0], steps.at(-1)]));
   const sorted = [...steps].sort();
   expect.soft(bands.every((b) => b >= sorted[0] && b <= sorted.at(-1)), stretch).toBe(true);

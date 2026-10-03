@@ -1,34 +1,42 @@
 // lib/render/dist.ts — the verdict readout shared by the hover card and the selection
-// card: where the score sits on the human → AI-generated scale (with the range the
-// model's own probabilities spread over, and the three places the word changes), and the
-// four probabilities, each by its colour on the same scale.
+// card: where the score sits on the human → AI-generated scale, drawn as the four words'
+// slices, and the four probabilities, each by its word's colour. How sure the word is is a
+// line of its own (unsureNote), not a shading on the scale.
 import type { ScoreResult } from "../contract";
+import type { UnitVerdict } from "../capture/windows";
+import { t } from "../i18n";
 import { bandLabel, BUCKET_BANDS } from "./band";
-import { ringCss, scaleColorCss, scaleGradient, scoreRange, SCORE_CUTS } from "./scale";
+import { verdictConfidence } from "./confidence";
+import { bandColorRules, levelOf, nearestOtherLevel, scaleGradient } from "./scale";
 
 const at = (x: number): string => `${(Math.min(Math.max(x, 0), 1) * 100).toFixed(1)}%`;
 const percent = (p: number): number => Math.round(Math.max(p, 0) * 100);
 
-/** A dot in the score's colour, full when its word is likely right (`sure`,
- *  lib/render/confidence.ts) and a thinner ring the less likely it is. */
-export function swatchHtml(r: ScoreResult, sure: number): string {
-  return `<span class="sw" style="--s:${r.score.toFixed(3)};--u:${(1 - sure).toFixed(3)}"></span>`;
+/** Below this chance that its word is right (lib/render/confidence.ts) a card says what else
+ *  the verdict could have been. */
+const UNSURE_BELOW = 0.5;
+
+/** The card's line for a verdict whose word is likely wrong — the word it could as well have
+ *  been — or "" when the word is likely right. */
+export function unsureNote(verdict: UnitVerdict): string {
+  return verdictConfidence(verdict) < UNSURE_BELOW ? t("cardUnsure", bandLabel(BUCKET_BANDS[nearestOtherLevel(verdict.result.score)]!)) : "";
+}
+
+/** A dot in the word's colour. */
+export function swatchHtml(r: ScoreResult): string {
+  return `<span class="sw b${levelOf(r.score)}"></span>`;
 }
 
 export function distributionHtml(r: ScoreResult): string {
-  const range = scoreRange(r);
-  const ticks = SCORE_CUTS.map((cut) => `<span class="tick" style="left:${at(cut)}"></span>`).join("");
   // The scale repeats what the number and the rows below it say, so it is not read out.
   const scale =
     `<div class="scale" aria-hidden="true"><span class="track"></span>` +
-    `<span class="range" style="left:${at(range.from)};width:${at(range.to - range.from)}"></span>` +
-    `${ticks}<span class="marker" style="left:${at(r.score)}"></span></div>` +
+    `<span class="marker" style="left:${at(r.score)}"></span></div>` +
     `<div class="ends" aria-hidden="true"><span>${bandLabel("human")}</span><span>${bandLabel("ai")}</span></div>`;
   const rows = r.probs
     .map((p, i) => {
-      const centre = (i / (BUCKET_BANDS.length - 1)).toFixed(3);
       return (
-        `<div class="drow"><span class="ddot" style="--s:${centre}"></span>` +
+        `<div class="drow"><span class="ddot b${i}"></span>` +
         `<span class="dk">${bandLabel(BUCKET_BANDS[i]!)}</span><span class="dv">${percent(p)}%</span></div>`
       );
     })
@@ -38,8 +46,8 @@ export function distributionHtml(r: ScoreResult): string {
 
 /** Shared styles (light + dark) for the readout. Hosts using it set .pg-dark on themselves. */
 export const DIST_CSS = `
-.sw, .dist .ddot { --c: ${scaleColorCss(false)}; }
-:host(.pg-dark) .sw, :host(.pg-dark) .dist .ddot { --c: ${scaleColorCss(true)}; }
+${bandColorRules(".sw", ":host(.pg-dark)")}
+${bandColorRules(".dist .ddot", ":host(.pg-dark)")}
 .sw {
   display: inline-block;
   width: 0.62em;
@@ -47,7 +55,7 @@ export const DIST_CSS = `
   margin-inline-end: 0.42em;
   border-radius: 50%;
   vertical-align: 0.02em;
-  box-shadow: inset 0 0 0 ${ringCss("0.31em")} var(--c);
+  background: var(--c);
 }
 .dist { margin: 2px 0 7px; }
 .dist .scale { position: relative; height: 10px; margin: 6px 0 2px; }
@@ -56,23 +64,6 @@ export const DIST_CSS = `
   inset: 2px 0;
   border-radius: 3px;
   background: ${scaleGradient(false)};
-}
-.dist .range {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  box-sizing: border-box;
-  border-radius: 4px;
-  border: 1px solid rgba(15, 23, 42, 0.38);
-  background: rgba(255, 255, 255, 0.28);
-}
-.dist .tick {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  width: 1px;
-  margin-left: -0.5px;
-  background: rgba(255, 255, 255, 0.85);
 }
 .dist .marker {
   position: absolute;
@@ -105,9 +96,7 @@ export const DIST_CSS = `
 .dist .ddot { width: 7px; height: 7px; border-radius: 50%; align-self: center; background: var(--c); }
 .dist .dv { font-variant-numeric: tabular-nums; text-align: right; }
 :host(.pg-dark) .dist .track { background: ${scaleGradient(true)}; }
-:host(.pg-dark) .dist .range { border-color: rgba(255, 255, 255, 0.5); background: rgba(0, 0, 0, 0.22); }
-:host(.pg-dark) .dist .tick { background: rgba(0, 0, 0, 0.55); }
-:host(.pg-dark) .dist .marker { background: #fafafa; box-shadow: 0 0 0 1.5px #171717; }
+:host(.pg-dark) :host(.pg-dark) :host(.pg-dark) .dist .marker { background: #fafafa; box-shadow: 0 0 0 1.5px #171717; }
 :host(.pg-dark) .dist .ends { color: #8a8a8a; }
 :host(.pg-dark) .dist .drows { color: #9aa3ad; }
 @media (forced-colors: active) {

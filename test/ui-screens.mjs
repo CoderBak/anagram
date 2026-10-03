@@ -1,4 +1,5 @@
-// test/ui-screens.mjs — screenshots of the setup page, Settings, popup and a page with chips,
+// test/ui-screens.mjs — screenshots of the setup page, Settings, the toolbar menu over a page with
+// chips, a page Anagram is off for, a PDF tab and the PDF reader, and of those pages themselves,
 // for a reviewer: English and Chinese, light and dark, in a temporary profile each.
 //
 //   node test/ui-screens.mjs <output dir> [apple,linux,chips]   (LANGS=en SCHEMES=light narrow it)
@@ -13,6 +14,7 @@ import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
 import { scriptEngine, scriptDevice } from "./webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS } from "./webengine/model-server.mjs";
+import { TEST_PDF } from "./pdf-fixture.mjs";
 
 const out = resolve(process.argv[2] ?? "ui-screens");
 mkdirSync(out, { recursive: true });
@@ -74,6 +76,31 @@ async function shot(ctx, { file, url, scheme, width, script, ready, tall }) {
   await page.close();
 }
 
+/**
+ * The toolbar menu as it opens over `target`: its page, 360 px wide, believing `target` is the
+ * active tab — everything else (the page's answers, the worker's) is the real thing.
+ */
+async function popupOver(ctx, target, { file, scheme }) {
+  // An extension page's address is one the menu is not told (the reader's): it gets the id alone.
+  const own = target.url().startsWith("chrome-extension://");
+  const url = own ? undefined : target.url();
+  const tabId = own
+    ? await target.evaluate(async () => (await chrome.tabs.getCurrent())?.id)
+    : await ctx.sw.evaluate(async (url) => (await chrome.tabs.query({})).find((t) => t.url === url)?.id, url);
+  const popup = await ctx.context.newPage();
+  await popup.setViewportSize({ width: 360, height: 600 });
+  await popup.emulateMedia({ colorScheme: scheme });
+  await popup.addInitScript(({ tabId, url }) => {
+    const query = chrome.tabs.query.bind(chrome.tabs);
+    chrome.tabs.query = (info, ...rest) => (info?.active ? Promise.resolve([{ id: tabId, url, active: true, windowId: -1, index: 0 }]) : query(info, ...rest));
+  }, { tabId, url });
+  await popup.goto(`chrome-extension://${ctx.extId}/popup.html`);
+  await popup.waitForFunction(() => !document.getElementById("action")?.disabled, null, { timeout: 10000 }).catch(() => {});
+  await popup.waitForTimeout(1500);
+  await popup.screenshot({ path: file, fullPage: true });
+  await popup.close();
+}
+
 const apple = deviceBuild("apple-silicon", DEVICES["apple-silicon"]);
 const linux = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
 
@@ -88,13 +115,14 @@ for (const [lang, tag] of LANGS) {
     if (wanted("linux")) await run(linux, lang, async (ctx) => {
       const u = (p) => `chrome-extension://${ctx.extId}/${p}`;
       await shot(ctx, { file: name("landing-downloading"), url: u("onboarding.html"), scheme, width: 900, script: (p) => scriptEngine(p, "downloading") });
+      await shot(ctx, { file: name("landing-mirror"), url: u("onboarding.html"), scheme, width: 900, script: (p) => scriptEngine(p, "mirror") });
       await shot(ctx, { file: name("landing-ready"), url: u("onboarding.html"), scheme, width: 900, script: (p) => scriptEngine(p, "ready_gpu") });
       const popupReady = (page) => page.waitForFunction(() => !document.getElementById("action")?.disabled, null, { timeout: 10000 }).then(() => page.waitForTimeout(500));
       await shot(ctx, { file: name("popup-downloading"), url: u("popup.html"), scheme, width: 300, tall: 400, script: (p) => scriptEngine(p, "downloading"), ready: popupReady });
       await shot(ctx, { file: name("popup-ready"), url: u("popup.html"), scheme, width: 300, tall: 400, script: (p) => scriptEngine(p, "ready_gpu"), ready: popupReady });
     });
     if (wanted("chips")) await run(undefined, lang, async (ctx) => {
-      const site = await serveHtml({ "/chips.html": chipsHtml(scheme === "dark") });
+      const site = await serveHtml({ "/chips.html": chipsHtml(scheme === "dark"), "/doc.pdf": TEST_PDF });
       try {
         await waitForRegistration(ctx.sw);
         const page = await ctx.context.newPage();
@@ -108,56 +136,35 @@ for (const [lang, tag] of LANGS) {
         await chip.hover();
         await page.waitForTimeout(900);
         await page.screenshot({ path: name("chips"), fullPage: true });
-        // The ball, and the panel open beside it (flagged out of read, then what was too short).
         await page.mouse.move(5, 5);
-        await page.evaluate(() => scrollTo(0, 0));
-        await page.waitForTimeout(400);
-        const stack = page.locator("#anagram-fab .stack");
-        const box = await stack.boundingBox();
-        await page.screenshot({ path: name("ball"), clip: { x: box.x - 24, y: box.y - 24, width: box.width + 48, height: box.height + 48 } });
-        await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".count").click());
-        await page.waitForTimeout(600);
-        await page.screenshot({ path: name("panel"), fullPage: false });
+        // The toolbar menu over that page: everything Anagram offers on a page is in it.
+        await popupOver(ctx, page, { file: name("popup-page"), scheme });
+        // …over a page it is off for (a site rule), and over a PDF tab.
+        await ctx.sw.evaluate((host) => chrome.storage.local.set({ siteOverrides: { [host]: "off" } }), new URL(site.url("/chips.html")).hostname);
+        const off = await ctx.context.newPage();
+        await off.goto(site.url("/chips.html"));
+        await off.waitForTimeout(800);
+        await popupOver(ctx, off, { file: name("popup-off"), scheme });
+        await ctx.sw.evaluate(() => chrome.storage.local.set({ siteOverrides: {} }));
+        const pdf = await ctx.context.newPage();
+        await pdf.goto(site.url("/doc.pdf")).catch(() => {});
+        await pdf.waitForTimeout(1500);
+        await popupOver(ctx, pdf, { file: name("popup-pdf"), scheme });
+        // The reader, with its chips, and the menu over it.
+        await ctx.sw.evaluate(() => chrome.storage.local.set({ autoOpenPdfs: true }));
+        const reader = await ctx.context.newPage();
+        await reader.setViewportSize({ width: 1100, height: 800 });
+        await reader.emulateMedia({ colorScheme: scheme });
+        await reader.goto(site.url("/doc.pdf")).catch(() => {});
+        await reader.waitForURL(/reader\.html/, { timeout: 20000 });
+        await reader.waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill.scored")).length >= 2, BADGE_SEL, { timeout: 30000 });
+        await reader.waitForTimeout(800);
+        await reader.screenshot({ path: name("reader") });
+        await popupOver(ctx, reader, { file: name("popup-reader"), scheme });
         await page.close();
       } finally { await site.close(); }
     });
   }
 }
 
-// The count badge on the ball, close up at 1, 12 and 99+ (the cap): the numbers are set the way
-// setCount writes them, and the ball is shot at 3x.
-if (wanted("badge")) {
-  const [lang] = LANGS[0];
-  for (const scheme of SCHEMES) {
-    await run(undefined, lang, async (ctx) => {
-      const site = await serveHtml({ "/chips.html": chipsHtml(scheme === "dark") });
-      try {
-        await waitForRegistration(ctx.sw);
-        const page = await ctx.context.newPage();
-        await page.setViewportSize({ width: 900, height: 900 });
-        await page.emulateMedia({ colorScheme: scheme });
-        const cdp = await ctx.context.newCDPSession(page);
-        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 900, height: 900, deviceScaleFactor: 3, mobile: false });
-        await page.goto(site.url("/chips.html"));
-        await page.waitForFunction((sel) => document.querySelectorAll(sel).length >= 4 && [...document.querySelectorAll(sel)].every((h) => h.shadowRoot?.querySelector(".pill.scored")), BADGE_SEL, { timeout: 20000 });
-        // A hostile page style: the badge must not take any of it.
-        await page.addStyleTag({ content: "* { font-family: 'Times New Roman', serif !important; font-style: italic !important; letter-spacing: 3px !important; text-transform: uppercase !important; }" });
-        await page.mouse.move(5, 5);
-        const shots = [];
-        for (const text of ["1", "12", "99+"]) {
-          await page.evaluate((text) => { document.getElementById("anagram-fab").shadowRoot.querySelector(".count").textContent = text; }, text);
-          await page.waitForTimeout(300);
-          const box = await page.locator("#anagram-fab .stack").boundingBox();
-          shots.push((await page.screenshot({ clip: { x: box.x - 12, y: box.y - 12, width: box.width + 24, height: box.height + 24 } })).toString("base64"));
-        }
-        const sheet = await ctx.context.newPage();
-        await sheet.setViewportSize({ width: 700, height: 240 });
-        await sheet.setContent(`<body style="margin:0;display:flex;gap:16px;padding:12px;background:${scheme === "dark" ? "#0d1117" : "#fff"}">${shots.map((b) => `<img style="height:198px" src="data:image/png;base64,${b}">`).join("")}</body>`);
-        await sheet.screenshot({ path: join(out, `badge-${scheme}.png`), fullPage: true });
-        await sheet.close();
-        await page.close();
-      } finally { await site.close(); }
-    });
-  }
-}
 console.log("screenshots in", out);

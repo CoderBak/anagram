@@ -17,7 +17,7 @@ export interface PdfApplication {
   initializedPromise: Promise<void>;
   pdfDocument: PDFDocumentProxy | null;
   pdfLoadingTask: {destroy(): Promise<void>} | null;
-  pdfViewer: {getPageView(index: number): UpstreamPage; currentScaleValue: string};
+  pdfViewer: {getPageView(index: number): UpstreamPage; currentScaleValue: string; currentPageNumber: number};
   eventBus: {on(name: string, listener: (event: {source?: UpstreamPage; pageNumber?: number; pageIndex?: number}) => void): void};
   open(args: Record<string, unknown>): Promise<void>;
   close(): Promise<void>;

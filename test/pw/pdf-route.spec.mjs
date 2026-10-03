@@ -1,4 +1,4 @@
-// Where a PDF opens: the ball's chip and the popup's button, the automatic reading mode and
+// Where a PDF opens: the toolbar menu's buttons, the automatic reading mode and
 // its way back, the bounded handoff of the bytes, the reader's password dialog and site
 // switch — and, after every test, that nothing was contacted but the fixtures.
 //
@@ -112,15 +112,14 @@ async function visit(context, url) {
   await page.goto(url, { waitUntil: "load" }).catch(() => {});
   return page;
 }
-/** What the ball is offering on this page, and what the page thinks it is showing. */
+/** What the page thinks it is showing. */
 const tabState = (page) =>
   page
     .evaluate(() => ({
       contentType: document.contentType,
-      chip: document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".action")?.textContent ?? null,
       navigationType: performance.getEntriesByType("navigation")[0]?.type ?? null,
     }))
-    .catch(() => ({ contentType: null, chip: null, navigationType: null }));
+    .catch(() => ({ contentType: null, navigationType: null }));
 /** The worker has moved this tab into the reader, showing `src`. */
 const inReader = (page, extension, src) =>
   page
@@ -153,13 +152,11 @@ const sha256 = (page) =>
   });
 
 test.describe("the way into the reader", () => {
-  test("the ball's chip on a paper's PDF opens THAT PDF in the reading mode", async ({ context, extension }) => {
+  test("the toolbar menu's Analyze PDF on a paper's PDF opens THAT PDF in the reading mode", async ({ context, extension }) => {
     const page = await visit(context, ARXIV);
-    await pdfTabChip(page);
-    const before = await tabState(page);
-    await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click()).catch(() => {});
+    const offered = await pdfTabChip(page, { click: true });
     await page.waitForURL(/reader\.html/, { timeout: 10000 }).catch(() => {});
-    expect(before.chip).toBe("Analyze PDF");
+    expect(offered).toBe("Analyze PDF");
     expect(page.url().startsWith(`${READER(extension)}?src=`), page.url().slice(0, 100)).toBe(true);
     expect(new URL(page.url()).searchParams.get("src")).toBe(ARXIV);
   });
@@ -175,8 +172,7 @@ test.describe("the way into the reader", () => {
 
   test("nothing asks arxiv.org whether a paper has an HTML rendering — the probe is gone", async ({ context, extension, arxiv }) => {
     const page = await visit(context, ARXIV);
-    await pdfTabChip(page);
-    await page.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".action").click()).catch(() => {});
+    await pdfTabChip(page, { click: true });
     await inReader(page, extension, ARXIV);
     await readerReady(page);
     // A probe would go out around the handoff; there is no signal for one that never comes.
@@ -185,12 +181,13 @@ test.describe("the way into the reader", () => {
     expect(probes).toEqual([]);
   });
 
-  test("off (the default): a PDF tab stays a PDF tab, with the ball offering Analyze PDF", async ({ context, files }) => {
+  test("off (the default): a PDF tab stays a PDF tab, with the toolbar menu offering Analyze PDF", async ({ context, files }) => {
     const page = await visit(context, files.url("/doc.pdf"));
     await pdfTabChip(page);
     await page.waitForTimeout(ABSENCE_MS);
     const state = await tabState(page);
-    expect({ url: page.url(), ...state }).toMatchObject({ url: files.url("/doc.pdf"), contentType: "application/pdf", chip: "Analyze PDF" });
+    const chip = await pdfTabChip(page);
+    expect({ url: page.url(), ...state, chip }).toMatchObject({ url: files.url("/doc.pdf"), contentType: "application/pdf", chip: "Analyze PDF" });
   });
 });
 
@@ -213,7 +210,7 @@ test.describe("reading mode on", () => {
     expect(chips).toBeGreaterThan(0);
   });
 
-  test("on + Back: the tab stays on the PDF and the ball offers Analyze PDF again", async ({ context, extension, files }) => {
+  test("on + Back: the tab stays on the PDF and the toolbar menu offers Analyze PDF again", async ({ context, extension, files }) => {
     const page = await visit(context, files.url("/doc.pdf"));
     await inReader(page, extension);
     await readerRead(page).catch(() => {});
@@ -221,7 +218,8 @@ test.describe("reading mode on", () => {
     await pdfTabChip(page);
     await page.waitForTimeout(ABSENCE_MS);
     const back = await tabState(page);
-    expect({ url: page.url(), ...back }).toMatchObject({ url: files.url("/doc.pdf"), navigationType: "back_forward", chip: "Analyze PDF" });
+    const chip = await pdfTabChip(page);
+    expect({ url: page.url(), ...back, chip }).toMatchObject({ url: files.url("/doc.pdf"), navigationType: "back_forward", chip: "Analyze PDF" });
   });
 
   /** Open `/doc.pdf?original` in the reader and press Open original. */
@@ -269,14 +267,21 @@ test.describe("reading mode on", () => {
     expect(front.url()).toBe(files.url("/ordinary.html"));
   });
 
-  test("refresh: a spent source stays in the reader with picker and explicit original recovery", async ({ context, extension, files }) => {
+  test("refresh: the reader reads its own source again and shows the same document, with no extra history entry", async ({ context, extension, files }) => {
     const page = await visit(context, files.url("/reload.pdf"));
     await readerReady(page);
+    const shown = () => page.evaluate(() => ({
+      fingerprint: window.PDFViewerApplication.pdfDocument.fingerprints[0],
+      pages: window.PDFViewerApplication.pdfDocument.numPages,
+      history: history.length,
+      drop: !document.getElementById("drop").hidden,
+      ticket: new URL(location.href).searchParams.has("ticket"),
+    }));
+    const before = await shown();
     await page.reload({ waitUntil: "load" });
-    await page.locator("#drop:not([hidden])").waitFor();
-    const state = await page.evaluate(() => ({ drop: !document.getElementById("drop").hidden, original: !document.getElementById("original").hidden }));
+    await readerReady(page);
     expect(page.url().startsWith(`${READER(extension)}?src=`)).toBe(true);
-    expect(state).toEqual({ drop: true, original: true });
+    expect(await shown()).toEqual({ ...before, drop: false, ticket: false });
   });
 
   test("on: a local PDF without its separate authorization remains in the native viewer", async ({ context, extension }, testInfo) => {
@@ -303,11 +308,10 @@ test.describe("reading mode on", () => {
     expect(await inReader(on, extension), "the reading mode is on to begin with").toBe(true);
     await storage.set({ autoOpenPdfs: false });
     const page = await visit(context, files.url("/after-off.pdf"));
-    await pdfTabChip(page);
     await page.waitForTimeout(ABSENCE_MS);
     const state = await tabState(page);
     expect(page.url()).toBe(files.url("/after-off.pdf"));
-    expect(state.chip).toBe("Analyze PDF");
+    expect(state.contentType).toBe("application/pdf");
   });
 
   test("handoff: auto-open does not turn an arbitrary reader source query into a read permission", async ({ context, extension, files }) => {
@@ -383,6 +387,18 @@ test.describe("the handoff", () => {
     await expect(page.locator("#drop:not([hidden])")).toBeVisible();
   });
 
+  test("handoff: refreshing a pasted source still reads nothing — only a tab that held the document reads it again", async ({ context, extension, files, traffic }) => {
+    const src = files.url("/pasted-reload.pdf");
+    const page = await context.newPage();
+    await page.goto(`${READER(extension)}?src=${encodeURIComponent(src)}`, { waitUntil: "load" }).catch(() => {});
+    await pickerShown(page);
+    await page.reload({ waitUntil: "load" });
+    await pickerShown(page);
+    await page.waitForTimeout(ABSENCE_MS);
+    expect(traffic.requested.filter((url) => url === src)).toHaveLength(0);
+    await expect(page.locator("#drop:not([hidden])")).toBeVisible();
+  });
+
   test("handoff: a source that is not a document address is not an address to leave for", async ({ context, extension }) => {
     const page = await context.newPage();
     await page.goto(`${READER(extension)}?src=${encodeURIComponent("javascript:window.__ran=1")}`, { waitUntil: "load" }).catch(() => {});
@@ -451,20 +467,13 @@ test.describe("a locked PDF", () => {
 
 test.describe("the reader's site rule", () => {
   // A site turned off (from the toolbar popup) is not analyzed in the reader either. The
-  // panel carries no switch of its own, for a web PDF or for a file from this computer.
-  const panelOpened = (p) =>
-    p
-      .evaluate(() => {
-        const sr = document.getElementById("anagram-fab")?.shadowRoot;
-        sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        return { open: !!sr?.querySelector(".phead"), siteSwitch: !!sr?.querySelector(".psiteoff") };
-      })
-      .catch(() => ({ open: false, siteSwitch: null }));
+  // toolbar menu over the reader carries no site switch, for a web PDF or for a file from
+  // this computer.
 
   test("reader: the next PDF from a site turned off opens without being analyzed", async ({ context, extension, files, storage }) => {
     await storage.set({ siteOverrides: { localhost: "off" } });
     const url = files.url("/site-off-next.pdf");
-    // No ball comes up on a site turned off, so there is no chip to wait for: the popup is
+    // Nothing runs on a site turned off, so the page offers nothing: the popup's own button is
     // the way in, and it offers the reader once the tab has loaded.
     const next = await visit(context, url);
     await openFromPopup(context, extension, url);
@@ -475,14 +484,27 @@ test.describe("the reader's site rule", () => {
     expect(await pdfChipCount(next)).toBe(0);
   });
 
-  test("reader: the panel offers no site switch", async ({ context, extension }) => {
+  test("reader: the toolbar menu reports the document and offers no site switch", async ({ context, extension }) => {
     const local = await context.newPage();
     await local.goto(READER(extension), { waitUntil: "load" });
     await pickerShown(local);
     await local.setInputFiles("#file", { name: "local.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
     await readerRead(local).catch(() => {});
     await pdfChips(local);
-    const reader = await readerState(local);
-    expect(await panelOpened(local), JSON.stringify(reader)).toEqual({ open: true, siteSwitch: false });
+    // The menu as it opens over the reader's tab: told its id, not its address (an extension
+    // page's address is not given to the menu), it finds the reader all the same.
+    const tabId = await local.evaluate(async () => (await chrome.tabs.getCurrent())?.id);
+    const menu = await context.newPage();
+    await menu.addInitScript((tabId) => {
+      const query = chrome.tabs.query.bind(chrome.tabs);
+      chrome.tabs.query = (info, ...rest) => (info?.active ? Promise.resolve([{ id: tabId, active: true, windowId: -1, index: 0 }]) : query(info, ...rest));
+    }, tabId);
+    await menu.goto(extension.url("popup.html"), { waitUntil: "load" });
+    await menu.waitForFunction(() => !document.getElementById("pageReport").hidden, null, { timeout: 10000 }).catch(() => {});
+    const seen = await menu.evaluate(() => ({
+      report: !document.getElementById("pageReport").hidden,
+      siteSwitch: !document.getElementById("siteEnabled").closest(".field").hidden,
+    }));
+    expect(seen, JSON.stringify(await readerState(local))).toEqual({ report: true, siteSwitch: false });
   });
 });

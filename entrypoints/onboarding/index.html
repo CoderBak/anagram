@@ -7,12 +7,9 @@
     <title>Anagram</title>
     <style>
       /* Layout only; colours, type and controls come from Basecoat (Vega). */
-      :root { --d-none: #a3a3a3; }
-      html.dark { --d-none: #9aa3ad; }
-      /* .sc takes its colour from --s on the one scale; main.ts installs the rule. */
       body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
-      .page { max-width: 680px; margin: 0 auto; padding: 20px 20px 24px; }
-      header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+      .page { max-width: 640px; margin: 0 auto; padding: 24px 20px 28px; }
+      header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
       header.hdr img { width: 48px; height: 48px; margin: -2px; }
       header.hdr .logo-dark { display: none; }
       html.dark header.hdr .logo-light { display: none; }
@@ -20,22 +17,37 @@
       header.hdr h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
       header.hdr .tag { margin: 3px 0 0; font-size: 14px; color: var(--muted-foreground); }
       header.hdr .ver { margin-inline-start: auto; align-self: flex-start; font-size: 12px; color: var(--muted-foreground); }
-      .stack { display: flex; flex-direction: column; gap: 10px; }
+      .stack { display: flex; flex-direction: column; gap: 12px; }
       .card > section { display: flex; flex-direction: column; gap: 10px; }
 
-      /* Reading a verdict: the four words with their dots, the scale, what the dot says. */
-      .words { display: flex; flex-wrap: wrap; gap: 6px 8px; }
-      .words .dot, .conf .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
-      .sc .dot { background: var(--c); }
-      .grad { height: 10px; border-radius: 999px; }
-      .conf { display: flex; align-items: center; gap: 8px; margin: 0; }
-      .conf .dots { display: inline-flex; gap: 4px; flex: none; }
-      .conf .dot { width: 12px; height: 12px; }
-      .conf .full { background: var(--c); }
-      .conf .thin { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c); }
-      .conf .sc { --s: .667; }
-      .note, .tip, .conf { font-size: 13px; color: var(--muted-foreground); }
-      .note, .tip { margin: 0; }
+      /* The three steps: a number that turns into a tick once the step is done. */
+      .step > header { display: flex; align-items: center; gap: 10px; }
+      .step > header h2 { flex: 1; min-width: 0; }
+      .num { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%;
+        font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+        background: var(--muted); color: var(--foreground); }
+      .num svg { display: none; }
+      .step.done .num { background: #00a06a; color: #fff; }
+      html.dark .step.done .num { background: #33d996; color: #0a0a0a; }
+      .step.done .num span { display: none; }
+      .step.done .num svg { display: block; }
+      .step .done-label { font-size: 12px; color: var(--muted-foreground); }
+      .step:not(.done) .done-label { display: none; }
+      .step-note { margin: 0; font-size: 13px; color: var(--muted-foreground); }
+
+      /* Reading the marks: the four words in their colours, and the scale they cut. */
+      /* The four words, each beside a chip as the page shows it (lib/render/badge.css.ts). */
+      .words { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
+      .word { display: inline-flex; align-items: center; gap: 7px; }
+      .chip { display: inline-block; padding: 2px 6px; border: 1px solid var(--c); border-radius: 5px; background: var(--c); color: #141414; font-size: 11px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
+      .chip.b3 { color: #ffffff; }
+      html.dark .chip.b3 { color: #141414; }
+      .chip.b0 { background: color-mix(in oklab, var(--c) 22%, var(--background)); border-color: color-mix(in oklab, var(--c) 70%, var(--background)); color: var(--foreground); }
+      .bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; }
+      .bar > span { background: var(--c); }
+      .bar > span + span { border-inline-start: 2px solid var(--background); }
+      .ends { display: flex; justify-content: space-between; margin-top: -4px; font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+      .note, .tip { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
       .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 2px 0 0; font-size: 13px; }
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
     </style>
@@ -53,38 +65,51 @@
       </header>
 
       <div class="stack">
-        <section class="card" data-size="sm" id="whereCard" aria-labelledby="whereTitle">
-          <header><h2 id="whereTitle" data-i18n="onbWhere">Where it reads</h2></header>
-          <section>
-            <div class="rows" id="where"></div>
-          </section>
-        </section>
-
-        <section class="card" data-size="sm" aria-labelledby="toolbarGuideTitle">
-          <header><h2 id="toolbarGuideTitle" data-i18n="toolbarPinTitle">Keep Anagram in your toolbar</h2></header>
-          <section id="toolbarGuide"></section>
-        </section>
-
-        <section class="card" data-size="sm" id="engineCard" aria-labelledby="engineTitle">
-          <header><h2 id="engineTitle" data-i18n="engineChooseTitle">Choose how Anagram runs</h2></header>
+        <section class="card step" data-size="sm" id="engineCard" aria-labelledby="engineTitle">
+          <header>
+            <span class="num" aria-hidden="true"><span>1</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
+            <h2 id="engineTitle" data-i18n="engineChooseTitle">Choose how Anagram runs</h2>
+            <span class="done-label" data-i18n="onbStepDone">Done</span>
+          </header>
           <section>
             <div id="componentSettings"></div>
           </section>
         </section>
 
+        <section class="card step" data-size="sm" id="whereCard" aria-labelledby="whereTitle">
+          <header>
+            <span class="num" aria-hidden="true"><span>2</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
+            <h2 id="whereTitle" data-i18n="onbWhere">Where it reads</h2>
+            <span class="done-label" data-i18n="onbStepDone">Done</span>
+          </header>
+          <section>
+            <div class="rows" id="where"></div>
+          </section>
+        </section>
+
+        <section class="card step" data-size="sm" id="pinCard" aria-labelledby="toolbarGuideTitle">
+          <header>
+            <span class="num" aria-hidden="true"><span>3</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
+            <h2 id="toolbarGuideTitle" data-i18n="toolbarPinTitle">Keep Anagram in your toolbar</h2>
+            <span class="done-label" data-i18n="onbStepDone">Done</span>
+          </header>
+          <section id="toolbarGuide"></section>
+        </section>
+
         <section class="card" data-size="sm" id="verdictCard" aria-labelledby="verdictTitle">
-          <header><h2 id="verdictTitle" data-i18n="onbVerdictTitle">Reading a verdict</h2></header>
+          <header><h2 id="verdictTitle" data-i18n="onbVerdictTitle">Reading the marks</h2></header>
           <section>
             <div class="words">
-              <span class="badge sc" style="--s: 0" data-variant="outline"><span class="dot"></span><span data-i18n="bandHuman">Human</span></span>
-              <span class="badge sc" style="--s: .333" data-variant="outline"><span class="dot"></span><span data-i18n="bandLight">Lightly edited</span></span>
-              <span class="badge sc" style="--s: .667" data-variant="outline"><span class="dot"></span><span data-i18n="bandHeavy">Heavily edited</span></span>
-              <span class="badge sc" style="--s: 1" data-variant="outline"><span class="dot"></span><span data-i18n="bandAi">AI-generated</span></span>
+              <span class="word"><span class="chip b0">.05</span><span data-i18n="bandHuman">Human</span></span>
+              <span class="word"><span class="chip b1">.30</span><span data-i18n="bandLight">Lightly edited</span></span>
+              <span class="word"><span class="chip b2">.64</span><span data-i18n="bandHeavy">Heavily edited</span></span>
+              <span class="word"><span class="chip b3">.95</span><span data-i18n="bandAi">AI-generated</span></span>
             </div>
-            <div class="grad" aria-hidden="true"></div>
-            <p class="conf"><span class="dots sc" aria-hidden="true"><span class="dot full"></span><span class="dot thin"></span></span><span data-i18n="onbConfidence">A full dot means the word is likely right; a thin ring means Anagram is unsure.</span></p>
-            <p class="note" data-i18n="onbModelNotice">Anagram uses Pangram's open EditLens model (CC BY-NC-SA 4.0). Commercial use is not permitted. It should not be used to enforce any AI-usage policy in an educational or professional setting.</p>
+            <div class="bar" aria-hidden="true"><span class="b0" style="flex: 1"></span><span class="b1" style="flex: 2"></span><span class="b2" style="flex: 2"></span><span class="b3" style="flex: 1"></span></div>
+            <div class="ends" aria-hidden="true"><span>.00</span><span>1.0</span></div>
+            <p class="step-note" data-i18n="onbScoreLine">Each paragraph gets a chip with a score from .00 (human) to 1.0 (AI-generated), in its word's colour. Hover the chip for the details. AI-generated paragraphs are flagged: the toolbar menu lists them, and the number on its icon counts them.</p>
             <p class="tip" data-i18n="onbArxivTip">Tip: arXiv papers read most precisely in their HTML version, at arxiv.org/html/.</p>
+            <p class="note" data-i18n="onbModelNotice">Anagram uses Pangram's open EditLens model (CC BY-NC-SA 4.0). Commercial use is not permitted. It should not be used to enforce any AI-usage policy in an educational or professional setting.</p>
           </section>
         </section>
 

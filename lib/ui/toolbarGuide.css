@@ -2,7 +2,6 @@
 .toolbar-guide p { margin: 0 0 10px; }
 .toolbar-guide ol { list-style: decimal; margin: 0 0 12px; padding-inline-start: 22px; }
 .toolbar-guide li + li { margin-top: 6px; }
-.toolbar-guide .toolbar-guide-use { margin-bottom: 0; color: var(--muted-foreground); }
-details.toolbar-guide-settings { margin: 20px 0; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; }
-.toolbar-guide-settings summary { cursor: pointer; font-size: 14px; font-weight: 600; }
-.toolbar-guide-settings[open] summary { margin-bottom: 12px; }
+.toolbar-guide ol:last-child { margin-bottom: 0; }
+.toolbar-guide-settings { margin: 20px 0; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; }
+.toolbar-guide-settings .toolbar-guide-title { margin: 0 0 8px; font-size: 14px; font-weight: 600; }

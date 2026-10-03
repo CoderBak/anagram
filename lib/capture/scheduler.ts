@@ -53,7 +53,8 @@ interface Pending {
 }
 
 export function createScheduler<V>(opts: {
-  batchCharBudget: number | Partial<Record<Lane, number>>;
+  /** Characters a batch may carry, per lane; a function is asked at each batch. */
+  batchCharBudget: number | Partial<Record<Lane, number | (() => number)>>;
   maxInFlight: number;
   maxBackgroundInFlight?: number;
   send(units: Unit[], lane: Lane): Promise<V[]>;
@@ -63,10 +64,11 @@ export function createScheduler<V>(opts: {
 }): Scheduler {
   const maxInFlight = opts.maxInFlight || 4;
   const maxBackground = Math.max(1, opts.maxBackgroundInFlight ?? 1);
-  const budgetFor = (lane: Lane): number =>
-    typeof opts.batchCharBudget === "number"
-      ? opts.batchCharBudget || DEFAULT_BUDGET
-      : opts.batchCharBudget[lane] || DEFAULT_BUDGET;
+  const budgetFor = (lane: Lane): number => {
+    if (typeof opts.batchCharBudget === "number") return opts.batchCharBudget || DEFAULT_BUDGET;
+    const budget = opts.batchCharBudget[lane];
+    return (typeof budget === "function" ? budget() : budget) || DEFAULT_BUDGET;
+  };
 
   const queues: Record<Lane, Pending[]> = {
     viewport: [],

@@ -6,7 +6,7 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, BADGE_SEL, ABSENCE_MS, PARA, KEY_PARA, KEY_TAGS, PAGE, settledChips, toggleCounter } from "./kit.mjs";
+import { test, expect, BADGE_SEL, ABSENCE_MS, PARA, KEY_PARA, KEY_TAGS, PAGE, settledChips, popupOver } from "./kit.mjs";
 import { EXT, waitForRegistration } from "../harness.mjs";
 
 /** The same server under another origin: 127.0.0.1 where the page is on localhost. */
@@ -127,7 +127,7 @@ test("frames with no address of their own: srcdoc, about:blank and blob: frames 
 // once that site is granted too. The test build grants every site, so this runs a copy of it
 // that grants localhost ALONE (the page's own site) and leaves the rest optional, as a
 // reader's per-site grant does. A permission prompt is native UI no automation can answer:
-// what is checked is that the panel names the site and offers it, that nothing is ever asked
+// what is checked is that the toolbar menu names the site and offers it, that nothing is ever asked
 // for by itself, and that the offer's button opens Settings at the one row that can ask.
 const localhostOnly = test.extend({
   localhostBuild: [
@@ -148,7 +148,7 @@ const localhostOnly = test.extend({
   build: async ({ localhostBuild }, use) => use(localhostBuild),
 });
 
-localhostOnly("a comment thread in another site's frame: not read, named and offered by the panel, allowed only from the Settings row it opens", async ({ context, page, pages, extension, nativeHost }) => {
+localhostOnly("a comment thread in another site's frame: not read, named and offered by the toolbar menu, allowed only from the Settings row it opens", async ({ context, page, pages, extension, nativeHost }) => {
   await waitForRegistration(extension.sw);
   await context.route("https://disqus.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "text/html", body: `<!doctype html><html lang="en"><body><p>${KEY_PARA("DISQUSCOMMENT")}</p></body></html>` }),
@@ -161,9 +161,9 @@ localhostOnly("a comment thread in another site's frame: not read, named and off
   const mark = nativeHost.textMark();
   await page.goto(pages.url("/comments.html"), { waitUntil: "load" });
   await expect(settledChips(page), "the page's own paragraphs are read").toHaveCount(2);
-  await toggleCounter(page);
-  const offered = "a comment thread in another site's frame is not read; the panel names that site and offers to allow it";
-  const offer = page.locator("#anagram-fab .panel.open .pcomments");
+  const menu = await popupOver(page);
+  const offered = "a comment thread in another site's frame is not read; the toolbar menu names that site and offers to allow it";
+  const offer = menu.locator("#pageReport .report-comment");
   await expect(offer, offered).toContainText("disqus.com");
   await expect(offer.locator("button"), offered).toHaveAttribute("aria-label", /disqus\.com/);
   expect(nativeHost.textsSince(mark).filter((t) => t.includes("DISQUSCOMMENT")), offered).toEqual([]);

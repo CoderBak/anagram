@@ -32,35 +32,36 @@ test.describe("the setup page", () => {
 
   test("teaches toolbar pinning and keeps the guide reachable from Settings", async ({ extension }) => {
     const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
-    await expect(page.locator("#toolbarGuide")).toContainText("Google Docs");
+    await expect(page.locator("#toolbarGuide")).toContainText("toolbar menu");
     await expect(page.locator("#toolbarGuide li")).toHaveCount(2);
     await expect(page.locator("#toolbarGuide")).toContainText("pin beside it");
     await page.goto(extension.url("options.html") + "#toolbar-guide");
-    await expect(page.locator("#toolbar-guide")).toHaveAttribute("open", "");
-    await expect(page.locator("#toolbarGuide")).toContainText("Analyze document");
+    // Not a fold: the steps are on the page, and the link brings them into view.
+    await expect(page.locator("#toolbarGuide li").first()).toBeVisible();
+    await expect(page.locator("#toolbar-guide")).toBeInViewport();
   });
 
-  test("puts where it reads above the engine, and both above how to read a verdict", async ({ extension }) => {
+  test("numbers its steps — the engine, where it reads, the toolbar — and ticks each off once done", async ({ extension }) => {
     const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
     await painted(page);
     const order = await page.evaluate(() => {
       const at = (id) => document.getElementById(id);
-      const before = (a, b) => !!(at(a).compareDocumentPosition(at(b)) & Node.DOCUMENT_POSITION_FOLLOWING);
       return {
-        whereBeforeEngine: before("whereCard", "engineCard"),
-        engineBeforeVerdict: before("engineCard", "verdictCard"),
-        // Every permission control lives in the first card.
+        // The order on the screen, not only in the markup.
+        tops: ["engineCard", "whereCard", "pinCard", "verdictCard"].map((id) => Math.round(at(id).getBoundingClientRect().top)),
+        numbers: [...document.querySelectorAll(".step .num")].map((n) => n.textContent.trim()),
+        // Every permission control lives in the second step.
         inWhere: ["site-access", "autoOpenPdfs", "local-pdfs"].map((id) => at("whereCard").contains(at(id))),
         folds: document.querySelectorAll("details").length,
-        // The order on the screen, not only in the markup.
-        tops: ["whereCard", "engineCard", "verdictCard"].map((id) => Math.round(at(id).getBoundingClientRect().top)),
+        done: [...document.querySelectorAll(".step")].map((s) => s.classList.contains("done")),
       };
     });
-    expect(order.whereBeforeEngine, "permissions come first").toBe(true);
-    expect(order.engineBeforeVerdict).toBe(true);
-    expect(order.inWhere, "site access and both PDF rows are in the permissions card").toEqual([true, true, true]);
-    expect(order.folds, "no collapsed fold anywhere").toBe(0);
     expect(order.tops).toEqual([...order.tops].sort((a, b) => a - b));
+    expect(order.numbers).toEqual(["1", "2", "3"]);
+    expect(order.inWhere, "site access and both PDF rows are in the second step").toEqual([true, true, true]);
+    expect(order.folds, "no collapsed fold anywhere").toBe(0);
+    // The test build may read every site; no engine is set up and nothing is pinned.
+    expect(order.done).toEqual([false, true, false]);
   });
 
   test("the choice quotes no speed and no memory", async ({ extension }) => {
@@ -180,7 +181,7 @@ test.describe("the popup", () => {
     }
   });
 
-  test("offers the PDF reader and Analyze text beside the one action", async ({ extension, context, page, pages }) => {
+  test("offers a PDF file and Analyze text at its foot, beside the one action", async ({ extension, context, page, pages }) => {
     // The popup reads the ACTIVE tab: a page in front, the popup reloaded behind it.
     pages.serve({ "/plain.html": "<!doctype html><html><head><meta charset=\"utf-8\"><title>plain</title></head><body><p>Nothing to read.</p></body></html>" });
     await page.goto(pages.url("/plain.html"), { waitUntil: "load" });
@@ -191,7 +192,7 @@ test.describe("the popup", () => {
     await page.bringToFront();
     await popup.reload({ waitUntil: "load" });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
-    await expect(popup.locator("#openReader")).toHaveText("PDF reader");
+    await expect(popup.locator("#openReader")).toHaveText("Read a PDF file…");
     await expect(popup.locator("#analyzeText")).toHaveText("Analyze text");
     expect(await popup.locator("main .btn:not([data-variant])").count(), "the new entries are secondary: at most one filled button").toBeLessThanOrEqual(1);
 

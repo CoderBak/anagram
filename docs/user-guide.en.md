@@ -12,16 +12,23 @@ requires a compatible GPU and never falls back to CPU inference. Open local PDFs
 reader's file picker. This version is awaiting real-Mac verification; see
 [Development](DEVELOPMENT.md#safari) for packaging and verification steps.
 
-Get the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases)
-(Chrome 137 or later). Extract it to a folder you will keep. Open `chrome://extensions`,
-turn on Developer mode, click **Load unpacked** and pick that folder. Do not move the folder
+Download **anagram-chrome-&lt;version&gt;.zip** from the
+[latest release](https://github.com/CoderBak/anagram/releases) (Chrome 137 or later); the
+other files there are the optional local engine, which its installer fetches itself. Extract
+it to a folder you will keep. Open `chrome://extensions`, turn on **Developer mode** (top
+right), click **Load unpacked** and pick that folder. Do not move the folder
 later; its location is part of the extension's identity.
 
-The setup page opens and decides how Anagram runs its model. Either way the model runs on
-this computer:
+The setup page opens with three numbered steps, and each number turns into a tick when its
+step is done: 1. set up the engine, 2. where Anagram reads (**Allow all sites** and the two
+PDF switches), 3. keep Anagram in the toolbar. **Reading the marks** under them shows the
+four words, their colours and the scale.
+
+Step 1 decides how Anagram runs its model. Either way the model runs on this computer:
 
 - **On most computers** it runs inside the browser, and its model starts downloading at once:
-  1.4 GB, one time, from Hugging Face into the browser's own storage. With Data Saver on, or
+  1.4 GB, one time, from Hugging Face into the browser's own storage (from its mirror
+  hf-mirror.com where Hugging Face cannot be reached, as in mainland China). With Data Saver on, or
   too little disk space, it waits for **Set up (one-time 1.4 GB download)** instead.
 - **On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card**, the
   page asks first, and nothing downloads until you pick:
@@ -42,11 +49,12 @@ browser closes, the download carries on the next time Anagram starts); a downloa
 says why, and **Retry** continues where it left off. The model runs on
 the graphics card through WebGPU, or on the processor, much more slowly, where the browser
 offers no usable GPU. The local engine detects your hardware and loads the best
-configuration itself. When the setup page says **Ready**, allow sites as described below.
+configuration itself. When step 1 says **Ready**, allow sites in step 2 or as described below.
 
 Settings switches between the two engines later. Switching to the local engine keeps the
 in-browser engine's model files until you delete them there. If the local engine keeps
-stopping unexpectedly, the setup page and the popup offer the in-browser engine beside Retry.
+stopping unexpectedly, the setup page and the toolbar menu offer the in-browser engine
+beside Retry.
 
 The command shown in a development build is disabled because no matching release exists
 for it yet.
@@ -58,25 +66,27 @@ loads it until Firefox restarts.
 
 ## Read
 
-Grant a site with the switch in the popup, or allow all sites on the setup page or in Settings. Without a
-grant, **Analyze this page** in the popup scores the page in front of you once. Google
-Play Books, Libby and VitalSource Bookshelf show the book in a frame from a second
-address, and the switch asks for both; a reader granted with an older version shows as
-off until you switch it on again.
+Grant a site with **Run on this site** in the toolbar menu, or allow all sites on the setup
+page or in Settings. Without a grant, **Analyze this page** in the toolbar menu scores the
+page in front of you once. Google Play Books, Libby and VitalSource Bookshelf show the book
+in a frame from a second address, and the switch asks for both; a reader granted with an
+older version shows as off until you switch it on again.
 
 - A chip after each paragraph shows the score. Hover it for where the score sits on the
   scale, the four-way breakdown and the word count. Non-English text gets a grey chip
   with the language code.
-- The chip's dot and the underline share one colour scale, from a vivid green for human
-  writing through amber to red for AI-generated text. The word follows the number: Human below .17, Lightly
-  edited below .50, Heavily edited below .83, AI-generated above. A full dot means the
-  word is likely right; the less likely, the thinner the ring the dot becomes.
+- The chip and the underline take one colour per word: green for Human, gold for
+  Lightly edited, orange for Heavily edited and deep crimson for AI-generated, brighter on
+  dark pages. The chip is filled with it; Human's chip and underline are lighter, so a mostly
+  human page stays calm. The word follows the number: Human below .17, Lightly edited below .50,
+  Heavily edited below .83, AI-generated above. When the word is likely wrong, the card
+  names the word it is close to: "Unsure: close to Heavily edited".
 - Professionally edited human writing, such as news and magazine articles, often reads
-  as Lightly edited. The dot's likelihood comes from a small model fitted on the EditLens
-  dataset, which mixes human, edited and AI text; on a page with no AI-edited text, a dot
-  on Lightly or Heavily edited is fuller than it should be. The open EditLens model is a
-  research baseline: scores are estimates, not proof of authorship, so do not use them
-  for disciplinary or other high-stakes decisions.
+  as Lightly edited. Whether a word is likely wrong comes from a small model fitted on the
+  EditLens dataset, which mixes human, edited and AI text; on a page with no AI-edited
+  text, Lightly or Heavily edited is called Unsure less often than it should be. The open
+  EditLens model is a research baseline: scores are estimates, not proof of authorship, so
+  do not use them for disciplinary or other high-stakes decisions.
 - On [RAID](https://github.com/liamdugan/raid), a public benchmark of English writing by
   people and by 11 language models in eight genres, 21,000 of its texts were each scored
   whole, as a pasted text. Of 2,400 human texts, 3 (0.1%) read as AI-generated, and about
@@ -93,8 +103,8 @@ off until you switch it on again.
   75, 100 or 150. Shorter paragraphs are scored together with their neighbours in the same
   section, never across a heading; a ×2 on a chip means it covers two paragraphs, and a
   short paragraph with nothing to join is not scored. The open model was trained on texts
-  of 75 words or more, so a verdict on fewer says "Short text: less reliable" and its dot
-  is thinner. On EditLens test texts cut to length, the word was right for 67% of texts of
+  of 75 words or more, so the card of a verdict on fewer says "Short text: less reliable".
+  On EditLens test texts cut to length, the word was right for 67% of texts of
   25–49 words, 72% of 50–74 and 79% of 75–149, and 2% of human texts under 75 words read
   as AI-generated, against 0.8% at 75–149 words.
 - Only the writing is scored. Reference marks such as [4] or a raised ¹, formulas inside a
@@ -104,27 +114,42 @@ off until you switch it on again.
   adds is skipped. On review pages each customer review is read by itself, never with
   another one, and the reviewer's name, stars, date and "Helpful" row are left out.
 - Text in a frame is read where Anagram may read the frame, an EPUB reader's chapters
-  included. Its chips are in the frame; the toolbar popup's list covers the page itself.
+  included. Its chips are in the frame; the toolbar menu's counts and list cover the page
+  itself.
 - Pin Anagram beside the address bar for quick access. Setup shows instructions for
-  Chrome, Firefox or Safari; **How to keep Anagram in the toolbar** in the popup opens
-  them again in Settings.
-- Click the toolbar icon to show or hide page marks, rescan, and see flagged paragraphs.
-  The list shows how many were flagged out of how many were read, plus coverage notes
-  for short, non-English, pending and unavailable text. Click a result to jump to it;
-  the popup closes so you can read the paragraph. Open it again to continue through
-  the list. The toolbar icon's badge shows the flagged count.
-- Right-click a selection to score just that text. Alt+Shift+P toggles Anagram on the
-  page, Alt+Shift+L opens the toolbar popup, Alt+Shift+J and K walk flagged paragraphs.
-- PDFs open in Anagram's reader from the popup or a right-click on a
-  link; the popup's **PDF reader** opens it empty, and **Analyze text** opens a page for
-  pasted text. You can also drop a file into the reader. Local PDFs need "Allow access to
-  file URLs" on the extension's page in `chrome://extensions`; the setup page and Settings
-  have a button that takes you there. The first chips come from a quick
-  reading of each page; a moment later Zotero's document engine has worked out the
-  paragraphs, leaving out captions, footnotes and reference lists, and the chips are
-  redrawn on those. Past 300 pages every page is read by the quick reading alone.
-  On Google Docs, choose **Analyze document** in the toolbar popup to open the reading
-  view. The popup also offers **Close reading view** or **Back to editor**.
+  Chrome, Firefox or Safari; while Anagram is not pinned, **How to keep Anagram in the
+  toolbar** at the foot of the toolbar menu opens them again in Settings.
+- Click the toolbar icon to open the toolbar menu. It starts with the page in front of
+  you: a bar of the paragraphs read, split by colour, with a count for each word; a grey
+  line for what was not scored (too short, less reliable, not English, pending,
+  unavailable); and the flagged paragraphs. Click one to jump to it; the menu closes so
+  you can read the paragraph. Open it again to continue through the list. Below them are
+  the page's one main button, such as **Rescan** or **Analyze this page**, the **Run on
+  this site** switch, and **Show**: **All chips** or **Flagged only**. The toolbar icon's
+  badge shows the flagged count.
+- Right-click a selection to score just that text. Alt+Shift+P shows or hides the marks
+  on the page, Alt+Shift+L opens the toolbar menu, Alt+Shift+J and K walk flagged
+  paragraphs.
+- PDFs open in Anagram's reader from the toolbar menu (**Read this PDF**) or a right-click
+  on a link; **Read a PDF file…** at the foot of the toolbar menu opens the reader empty,
+  and **Analyze text** opens a page for pasted text. You can also drop a file into the
+  reader. Local PDFs need "Allow access to file URLs" on the extension's page in
+  `chrome://extensions`; the setup page and Settings have a button that takes you there.
+  The reader reads the whole document in the background, nearest pages first, so a page's
+  chips are there when you scroll to it; how much of the computer it takes follows how fast
+  it scores, and on a slow one it reads only the pages around yours until you choose **Read
+  the whole document** in the toolbar menu (Settings, PDFs, turns it off).
+  The first chips come from a quick reading of each page; a moment later Zotero's document
+  engine has worked out the paragraphs, leaving out captions, footnotes and reference
+  lists, and the chips are redrawn on those. Past 300 pages every page is read by the
+  quick reading alone. A chip stands right after its paragraph's last line, and in the
+  page margin only when that line is full. The **Anagram** button in the reader's toolbar
+  opens the toolbar menu, whose report is the document read so far, pages scrolled past
+  included, and says how many pages that is; a row of its list takes you back to its page.
+  Where the browser does not allow opening the menu, the button reads the document. Refreshing a reader tab that
+  shows a document keeps it: it is read again from its source.
+  On Google Docs, choose **Analyze document** in the toolbar menu to open the reading
+  view. The toolbar menu also offers **Close reading mode** or **Back to editor**.
 
 ## Settings
 
@@ -133,7 +158,7 @@ The toolbar icon's gear opens Settings, one list of rows.
 - **Engine**: its status in words, the switch to the other engine, delete model files and
   when the model is unloaded. The local engine adds update, stop and uninstall. FP32 is
   always the automatic choice; FP16 is used only where FP32 does not fit.
-- **Sites**: allow or withdraw all sites, run on granted sites by default, and per-site rules.
+- **Sites**: allow all sites or remove that access, run on granted sites by default, and per-site rules.
 - **PDFs**: open PDFs in Anagram automatically, and PDFs on this computer.
 - **Marks**: chips on every paragraph or only flagged ones, and underlines.
 - **Length**: the minimum words, and grouping short paragraphs.

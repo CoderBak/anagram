@@ -32,12 +32,11 @@ import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
 
 const log = createLogger("options");
 mountToolbarGuide(document.getElementById("toolbarGuide")!);
-const toolbarGuide = document.getElementById("toolbar-guide") as HTMLDetailsElement;
+const toolbarGuide = document.getElementById("toolbar-guide")!;
 function showToolbarGuide(): void {
   if (location.hash !== "#toolbar-guide") return;
-  toolbarGuide.open = true;
   toolbarGuide.scrollIntoView({ block: "start" });
-  toolbarGuide.querySelector("summary")?.focus({ preventScroll: true });
+  toolbarGuide.focus({ preventScroll: true });
 }
 window.addEventListener("hashchange", showToolbarGuide);
 showToolbarGuide();
@@ -184,7 +183,7 @@ bindToggle(mergeShortsEl, settings.mergeShorts);
   mountSiteAccess(holder);
   document.getElementById("siteRows")!.prepend(...holder.children);
 }
-mountPdfRows(document.getElementById("pdfRows")!);
+mountPdfRows(document.getElementById("pdfRows")!, { readAhead: true });
 bindSelect(displayModeEl, settings.displayMode);
 bindSelect<"all" | "off">(underlineEl, {
   getValue: async () => (await settings.showHighlights.getValue()) ? "all" : "off",

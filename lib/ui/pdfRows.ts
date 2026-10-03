@@ -3,8 +3,9 @@
 //
 // The second one cannot be turned on from here. Chrome keeps "Allow access to file URLs" on
 // the extension's details page, out of any extension's reach, so the row shows whether it is
-// on and its button takes the person there (Firefox: the steps, in words). The button also
-// asks for Anagram's own half, the file origin, in the same click; the row is on when both are.
+// on and, while it is off, its button takes the person there (Firefox: the steps, in words).
+// The button also asks for Anagram's own half, the file origin, in the same click; the row is
+// on when both are.
 import { browser } from "#imports";
 import { t } from "../i18n";
 import { settings } from "../settings/settings";
@@ -26,8 +27,9 @@ function switchInput(id: string): HTMLInputElement {
   return input;
 }
 
-/** Append both rows to `host` (a `.rows` container). */
-export function mountPdfRows(host: HTMLElement): void {
+/** Append the rows to `host` (a `.rows` container); `readAhead`, Settings', adds the switch for
+ *  reading a document's pages before they are scrolled to. */
+export function mountPdfRows(host: HTMLElement, { readAhead = false }: { readAhead?: boolean } = {}): void {
   const auto = el("div", "row");
   const autoLabel = el("label", undefined, t("optAutoOpenPdfs")); autoLabel.htmlFor = "autoOpenPdfs";
   const autoBody = el("div", "row-body");
@@ -39,7 +41,7 @@ export function mountPdfRows(host: HTMLElement): void {
   const local = el("div", "row"); local.id = "local-pdfs";
   const localLabel = el("label", undefined, t("optLocalPdfs")); localLabel.htmlFor = "fileAccess";
   const localBody = el("div", "row-body");
-  const state = switchInput("fileAccess"); state.disabled = true;
+  const state = switchInput("fileAccess"); state.disabled = true; state.hidden = true;
   const turnOn = el("button", "btn", t("optFileAccessTurnOn")); turnOn.type = "button"; turnOn.id = "fileAccessEnable";
   turnOn.dataset.variant = "outline"; turnOn.dataset.size = "sm"; turnOn.setAttribute("aria-describedby", "fileAccess");
   turnOn.hidden = true;
@@ -54,6 +56,18 @@ export function mountPdfRows(host: HTMLElement): void {
     line.hidden = !bad;
   };
   bindConfirmedToggle(autoInput, settings.autoOpenPdfs, failedIn(autoError));
+  if (readAhead) {
+    const row = el("div", "row");
+    const label = el("label", undefined, t("optReadAhead")); label.htmlFor = "pdfReadAhead";
+    const body = el("div", "row-body");
+    const input = switchInput("pdfReadAhead");
+    const error = el("p", "row-error"); error.setAttribute("role", "alert"); error.hidden = true;
+    const note = el("p", "row-note", t("optReadAheadNote"));
+    body.append(input);
+    row.append(label, body, note, error);
+    auto.after(row);
+    bindConfirmedToggle(input, settings.pdfReadAhead, failedIn(error));
+  }
   if (!FILE_URL_ACCESS_SUPPORTED) {
     state.remove();
     localLabel.removeAttribute("for");
@@ -73,6 +87,8 @@ export function mountPdfRows(host: HTMLElement): void {
     const { granted, allowed } = await getFileAccess();
     if (mine !== generation) return;
     state.checked = granted && allowed;
+    // Off, the button is the row's answer; a greyed-out switch beside it only repeats it.
+    state.hidden = !state.checked;
     turnOn.hidden = state.checked;
     if (state.checked) steps.hidden = true;
   }

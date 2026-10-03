@@ -139,6 +139,7 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `showHighlights` | whether analyzed text is underlined in place |
 | `autoOpenPdfs` | whether a PDF tab opens in the reader by itself |
 | `pdfStructure` | whether the reader's paragraphs come from the vendored Zotero document-worker (default) or from its own geometric reflow; no control in the UI |
+| `pdfReadAhead` | whether the reader also reads the pages it has not drawn, in the background, paced by how fast the engine is (default on; Settings, PDFs) |
 | `debug` | verbose logging |
 | `cacheMode` | persistent scores (up to 30 days) or memory only |
 | `displayMode` | mark everything, or only flagged paragraphs |
@@ -158,6 +159,8 @@ rows expire 30 days after they were written.
 
 - `sessionStorage` key `anagram-docs-return` in a Google Docs tab: the editor address, so
   "Back to editor" returns to the exact view. It dies with the tab.
+- `sessionStorage` key `anagram-reader-source` in a PDF reader tab: the address of the PDF
+  that tab opened, so a refresh or Back reads it again from its source. It dies with the tab.
 - The packaged PDF.js viewer uses `localStorage` keys `pdfjs.history` (up to 20 document
   fingerprints with view state, no text or password) and `pdfjs.preferences`. These are
   not erased by "Clear cached verdicts".

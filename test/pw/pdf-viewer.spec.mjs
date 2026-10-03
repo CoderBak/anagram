@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { build } from "esbuild";
 import { test, expect } from "./fixtures.mjs";
 import { TEST_PDF, LOCKED_PDF, PDF_PASSWORD, TALL_PDF, PDF_CHIP, PDF_HEAD, PDF_HEADING, PDF_PARAS, buildPdf, buildTwoColumnPdf, pdfColumn, readerReady } from "../pdf-fixture.mjs";
-import { BADGE_SEL } from "../harness.mjs";
+import { BADGE_SEL, popupOver, menuReport } from "../harness.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -55,7 +55,7 @@ test("a chosen PDF opens offline in the full upstream viewer, byte for byte", as
   expect(digest(Buffer.from(bytes)), "rendering and analysis never rewrite the source bytes").toBe(digest(TEST_PDF));
 });
 
-test("the structure worker's reading marks the page's own glyphs, and the panel says what it covers", async ({ page, extension }, testInfo) => {
+test("the structure worker's reading marks the page's own glyphs, and the toolbar menu says what it covers", async ({ page, extension }, testInfo) => {
   await openReader(page, extension.extId);
   await expect.poll(() => chips(page), { message: "chips on the reader's pages", timeout: 15000 }).toBeGreaterThan(0);
   // The worker's reading replaces the reflow's: the paragraphs the fixture set, the running
@@ -82,11 +82,12 @@ test("the structure worker's reading marks the page's own glyphs, and the panel 
   expect(marked.page2).toMatch(/Running heads and page numbers are furniture/);
   expect(marked.all.filter((s) => s.includes("ANAGRAM TEST DOCUMENT")), "the running head is not marked").toEqual([]);
   expect(marked.all.filter((s) => /^\s*[12]\s*$/.test(s)), "the page number is not marked").toEqual([]);
-  await page.locator("#anagramAnalyze").click();
-  await page.locator("#anagram-fab .pscope").waitFor();
-  expect(await page.locator("#analysisScope").textContent()).toMatch(/2/);
-  expect(await page.locator("#anagram-fab .pscope").textContent()).toMatch(/not a complete document assessment/);
-  await page.keyboard.press("Escape");
+  // The menu the reader's Anagram button opens reports the document; with both its pages drawn
+  // it counts all of them and says nothing about scope.
+  const menu = await popupOver(page);
+  await expect.poll(async () => (await menuReport(menu))?.title, { message: "the toolbar menu's report" }).toMatch(/^Flagged paragraphs|^Nothing flagged/);
+  expect((await menuReport(menu)).notes.join(" "), "no scope note over a document drawn whole").not.toMatch(/Read \d+ of \d+ pages/);
+  await menu.close();
   await page.screenshot({ path: testInfo.outputPath("reading.png") });
 });
 

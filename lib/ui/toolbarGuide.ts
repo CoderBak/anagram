@@ -18,8 +18,5 @@ export function mountToolbarGuide(host: HTMLElement): void {
     item.textContent = t(key);
     list.append(item);
   }
-  const use = document.createElement("p");
-  use.className = "toolbar-guide-use";
-  use.textContent = t("toolbarPinUse");
-  host.replaceChildren(intro, list, use);
+  host.replaceChildren(intro, list);
 }
