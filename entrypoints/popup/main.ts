@@ -36,6 +36,7 @@ import { FILE_URL_ACCESS_SUPPORTED } from "../../lib/surface";
 import { chooseEngine } from "../../lib/backend/engineChoice";
 import { decide } from "../../lib/device";
 import { readDeviceInputs } from "../../lib/ui/deviceInputs";
+import { timeLeft } from "../../lib/ui/size";
 import { detectDocsPage } from "../../lib/docs";
 import { commentHost } from "../../lib/access/commentFrames";
 import { sendTabControl } from "../../lib/messaging/tabControl";
@@ -220,7 +221,8 @@ function paint(): void {
       break;
     case "setup": {
       const setup = facts.setup!;
-      statusEl.textContent = setup.state === "downloading" ? t("popupSetupDownloading", setup.percent)
+      const left = setup.state === "downloading" ? downloadLeft(setup.percent) : null;
+      statusEl.textContent = setup.state === "downloading" ? (left === null ? t("popupSetupDownloading", setup.percent) : t("popupSetupDownloadingLeft", setup.percent, timeLeft(left)))
         : setup.state === "paused" ? t("popupSetupPaused", setup.percent)
         : setup.state === "failed" ? t(SETUP_FAILURE[setup.failure ?? "other"])
         : t(setup.state === "loading" ? "engineLoading" : "popupSetupNeeded");
@@ -259,6 +261,20 @@ function paint(): void {
     statusEl.hidden = false;
     statusEl.textContent = t("popupPageActionFailed");
   }
+}
+
+/** The download's percentages as the menu saw them come in, and when: how long the rest takes,
+ *  as the setup page tells it from its bytes. */
+const downloadSeen: { at: number; percent: number }[] = [];
+function downloadLeft(percent: number): number | null {
+  const now = performance.now(), last = downloadSeen.at(-1);
+  if (!last || percent < last.percent) downloadSeen.length = 0;
+  if (!last || percent !== last.percent) downloadSeen.push({ at: now, percent });
+  while (downloadSeen.length > 2 && now - downloadSeen[0]!.at > 20_000) downloadSeen.shift();
+  const first = downloadSeen[0]!, newest = downloadSeen.at(-1)!;
+  if (newest.at - first.at < 3_000 || newest.percent <= first.percent) return null;
+  const perSecond = ((newest.percent - first.percent) * 1000) / (newest.at - first.at);
+  return (100 - percent) / perSecond;
 }
 
 /** Why the model's download stopped, in the menu's few words; the setup page says what to do. */

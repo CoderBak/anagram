@@ -743,6 +743,10 @@
     "message": "Downloading the model, $1%",
     "description": "In-browser edition, popup: setup is downloading; $1 is the percentage."
   },
+  "popupSetupDownloadingLeft": {
+    "message": "Downloading the model, $1%, $2",
+    "description": "Toolbar menu while the in-browser engine's model downloads: $1 = percent done; $2 = time left as the setup page says it (\"about 3 minutes left\")."
+  },
   "popupSetupPaused": {
     "message": "Download paused at $1%",
     "description": "In-browser edition, popup: the setup download is paused; $1 is the percentage."

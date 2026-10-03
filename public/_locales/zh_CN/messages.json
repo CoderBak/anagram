@@ -581,6 +581,10 @@
   "popupSetupDownloading": {
     "message": "正在下载模型，$1%"
   },
+  "popupSetupDownloadingLeft": {
+    "message": "正在下载模型，$1%，$2",
+    "description": "Toolbar menu while the in-browser engine's model downloads: $1 = percent done; $2 = time left as the setup page says it (\"about 3 minutes left\")."
+  },
   "popupSetupPaused": {
     "message": "下载已暂停（$1%）"
   },
