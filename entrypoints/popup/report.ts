@@ -60,7 +60,9 @@ export function mountReport(host: HTMLElement, hooks: {
     const title = document.createElement("h2");
     title.id = "reportTitle";
     title.tabIndex = -1;
-    title.textContent = report.total === 0 ? t("panelEmpty") : t("panelTitleCount", report.total, report.counts.read);
+    // While paragraphs are still being read, nothing flagged is only nothing flagged yet.
+    const reading = report.counts.pending > 0 || !!report.scopeNote;
+    title.textContent = report.total === 0 ? t(reading ? "panelEmptySoFar" : "panelEmpty") : t("panelTitleCount", report.total, report.counts.read);
     const coverage = document.createElement("p");
     coverage.className = "report-coverage";
     const c = report.counts;
@@ -78,7 +80,12 @@ export function mountReport(host: HTMLElement, hooks: {
     scope.hidden = !report.scopeNote;
     // Nothing read yet (a PDF tab before the reader, a page still loading): no mix to show.
     const read = report.counts.read > 0;
-    host.replaceChildren(...(read ? mixOf(report.counts.bands) : []), coverage, scope, ...(read ? [title] : []));
+    // A page whose every paragraph is in another language: say why there is nothing, once.
+    const foreign = document.createElement("p");
+    foreign.className = "report-lead";
+    foreign.textContent = !read && c.notEnglish > 0 && !c.pending ? t("panelNotEnglishPage") : "";
+    foreign.hidden = !foreign.textContent;
+    host.replaceChildren(...(read ? mixOf(report.counts.bands) : []), foreign, coverage, scope, ...(read ? [title] : []));
     for (const origin of report.commentOrigins) {
       const line = document.createElement("p");
       line.className = "report-comment";

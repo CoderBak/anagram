@@ -58,7 +58,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
 
 /** `crashAction`: a button shown beside Retry while the engine keeps crashing (the setup
  *  page's switch to the in-browser engine, lib/ui/engineCard.ts). */
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, { crashAction, settings: inSettings = false, extra = [] }: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply, crashed?: boolean) => void, { crashAction, settings: inSettings = false, extra = [] }: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
   host.classList.add("component-settings");
   delete host.dataset.engine;
   const makeButton = (key: MessageKey, handler: () => void, variant = "outline"): HTMLButtonElement => {
@@ -233,7 +233,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       // A host that was never reached is simply not installed; its transport message is noise.
       details.textContent = actionDetail || (everConnected || reply.kind === "invalid" ? reply.message ?? "" : "");
       details.hidden = !details.textContent;
-      buttons(); onUpdate?.(reply); return;
+      buttons(); onUpdate?.(reply, crashed); return;
     }
     const s = reply.snapshot; snapshot = s; everConnected = true;
     if (s.download.status !== "running") pausing = false;
@@ -268,7 +268,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     error.textContent = actionError || (crashed ? t("componentEngineCrashed") : s.error || s.download.error ? t("componentFailed") : "");
     error.hidden = !error.textContent;
     details.textContent = actionDetail || s.error?.message || s.download.error || ""; details.hidden = !details.textContent;
-    buttons(); onUpdate?.(reply);
+    buttons(); onUpdate?.(reply, crashed);
     if (completedUninstallReceipt && attemptedReceipt !== completedUninstallReceipt) void finishUninstall();
   }
 

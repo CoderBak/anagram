@@ -190,6 +190,14 @@ describe("the pacer's rest, batches and quiet", () => {
     expect(pacer.speed()).not.toBe("fast");
   });
 
+  it("tells how long the rest takes at its pace, its rests included: half its time on a GPU, a third on a CPU, half that on battery", () => {
+    expect(createPacer(250).timeFor(60_000, false)).toBe(30_000); // 15 s of passes, as much rest
+    expect(createPacer(1000).timeFor(60_000, false)).toBe(180_000); // 60 s of passes, a third of the time
+    expect(createPacer(1000).timeFor(60_000, true)).toBe(360_000);
+    expect(createPacer(3000).timeFor(10_000, false, true)).toBe(90_000); // asked for: a mid engine's share
+    expect(createPacer(250).timeFor(0, false)).toBe(0);
+  });
+
   it("reads one paragraph first, whatever the device says, until a batch has been measured", () => {
     const gpu = createPacer(250);
     expect(gpu.speed()).toBe("fast");

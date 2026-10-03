@@ -196,11 +196,14 @@ function replan(): void {
 
 /** How much of the document has a verdict, in paragraphs: the structure names every one of
  *  them from the start, while a page of references or figures has none to count. */
-function share(): { done: number; of: number } {
-  if (!plan || !orchestrator) return { done: 0, of: 0 };
-  let done = 0;
-  for (const p of plan) if (orchestrator.knows(p.text) || givenUp(p.text)) done++;
-  return { done, of: plan.length };
+function share(): { done: number; of: number; left: number } {
+  if (!plan || !orchestrator) return { done: 0, of: 0, left: 0 };
+  let done = 0, left = 0;
+  for (const p of plan) {
+    if (orchestrator.knows(p.text) || givenUp(p.text)) done++;
+    else left += p.text.length;
+  }
+  return { done, of: plan.length, left };
 }
 
 /** The menu's report, while some of the document is not read: how much is, and, where only
@@ -208,7 +211,7 @@ function share(): { done: number; of: number } {
 function scopeNote(read: number): string {
   const total = app.pdfDocument?.numPages ?? 0;
   if (!plan) return read < total ? t("readerReportScope", read, total) : "";
-  const { done, of } = share();
+  const { done, of, left } = share();
   const limited = pacer.limited() && !whole;
   const offer = limited && aheadOn && done < of;
   if (offer !== offered) {
@@ -221,7 +224,11 @@ function scopeNote(read: number): string {
   const now = Math.floor(done * 100 / Math.max(1, of));
   shownPercent = now >= shownPercent - 2 ? Math.max(shownPercent, now) : now;
   const percent = String(shownPercent);
-  return limited || !aheadOn ? t("readerReadShare", percent) : t("readerReading", percent);
+  if (limited || !aheadOn) return t("readerReadShare", percent);
+  // How long the rest will take, once the pace has been measured a few times.
+  if (pacer.samples() < 3) return t("readerReading", percent);
+  const minutes = Math.ceil(pacer.timeFor(left, onBattery, whole) / 60_000);
+  return minutes <= 1 ? t("readerReadingSoon", percent) : t("readerReadingLeft", percent, String(minutes));
 }
 
 let aheadOn = true;
@@ -567,6 +574,7 @@ async function reopen(src: string): Promise<boolean> {
 async function main(): Promise<void> {
   document.getElementById("choose")!.textContent = t("readerChoose");
   document.getElementById("dropLabel")!.textContent = t("readerDrop");
+  document.getElementById("dropNote")!.textContent = t("readerDropNote");
   original.querySelector("span")!.textContent = t("readerOpenOriginal");
   original.title = t("readerOpenOriginal"); original.setAttribute("aria-label", t("readerOpenOriginal"));
   analyze.title = t("readerOpenMenu"); analyze.setAttribute("aria-label", t("readerOpenMenu"));

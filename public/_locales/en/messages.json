@@ -239,6 +239,14 @@
     "message": "Nothing flagged on this page.",
     "description": "Panel empty state."
   },
+  "panelEmptySoFar": {
+    "message": "Nothing flagged so far.",
+    "description": "Panel title while the page's paragraphs are still being read and none of those read is flagged."
+  },
+  "panelNotEnglishPage": {
+    "message": "This page isn't in English: Anagram reads English text only.",
+    "description": "Toolbar menu over a page none of whose paragraphs is in English: why nothing was scored."
+  },
   "panelCovShort": {
     "message": "$1 too short to score",
     "description": "Coverage line: prose the walk found and did NOT score, under the minimum length (Settings) with no neighbour of its own voice to join."
@@ -343,6 +351,10 @@
     "message": "Drop a PDF here",
     "description": "Reader drop zone."
   },
+  "readerDropNote": {
+    "message": "Anagram reads it on this computer and marks each paragraph with how much of it AI wrote or edited.",
+    "description": "PDF reader's empty state, under \"Drop a PDF here\": what happens to a file once opened."
+  },
   "readerChoose": {
     "message": "Choose a file",
     "description": "Reader drop-zone button."
@@ -382,6 +394,14 @@
   "readerReading": {
     "message": "Reading the whole document: $1% so far.",
     "description": "Toolbar menu over the PDF reader while it reads the rest of the document in the background: $1 = the share of its paragraphs read, in percent."
+  },
+  "readerReadingLeft": {
+    "message": "Reading the whole document: $1% so far, about $2 minutes left.",
+    "description": "Toolbar menu over the PDF reader while it reads the rest in the background: $1 = the share read, in percent; $2 = minutes left, estimated from this computer's pace."
+  },
+  "readerReadingSoon": {
+    "message": "Reading the whole document: $1% so far, less than a minute left.",
+    "description": "Toolbar menu over the PDF reader, the background reading about to finish: $1 = the share read, in percent."
   },
   "readerReadShare": {
     "message": "$1% of the document read; the rest is read as you scroll to it.",
@@ -598,6 +618,22 @@
   "engineSetupFailed": {
     "message": "Setup didn't finish",
     "description": "In-browser edition: engine status when the model download stopped on an error."
+  },
+  "popupSetupStoppedNetwork": {
+    "message": "The model's download lost its connection",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because the connection was lost. The button below opens the setup page, which offers Retry."
+  },
+  "popupSetupStoppedStorage": {
+    "message": "There isn't enough disk space for the model",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because the disk is full."
+  },
+  "popupSetupStoppedServer": {
+    "message": "The model's download site isn't answering",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because the server failed."
+  },
+  "popupSetupStoppedDamaged": {
+    "message": "A downloaded model file was damaged",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because a file failed its checksum."
   },
   "engineLoading": {
     "message": "Starting the model…",

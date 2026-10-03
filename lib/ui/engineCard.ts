@@ -36,7 +36,8 @@ export interface EngineCardOptions {
   /** Settings: the switch beside the panel's controls. The setup page: the crash fallback beside Retry. */
   settings: boolean;
   /** Every status the panel reads, with the engine it belongs to; null while there is none. */
-  onUpdate?: (engine: Engine | null, reply: ComponentReply | null) => void;
+  /** `crashed`: the engine is set up and keeps dying (its card says it needs attention). */
+  onUpdate?: (engine: Engine | null, reply: ComponentReply | null, crashed?: boolean) => void;
 }
 
 
@@ -136,9 +137,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     panelHost.hidden = false;
     const crashAction = !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
     engineTier = null;
-    panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply) => {
+    panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply, crashed) => {
       if (reply.kind === "ok" && next === "inbrowser") { const before = engineTier; engineTier = reply.snapshot.tier ?? null; if (engineTier !== before) paintTight(); }
-      options.onUpdate?.(next, reply);
+      options.onUpdate?.(next, reply, crashed === true);
     }, { crashAction, settings, extra: settings ? [switchButton, deleteLeftover] : [] });
     paintTight();
     void paintSwitch();

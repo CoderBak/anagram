@@ -78,6 +78,8 @@ export interface Pacer {
   /** How long to rest after a batch that took `ms`; `asked`, the reader asked for the whole
    *  document, gives a slow engine a third of its time rather than a seventh. */
   restAfter(ms: number, onBattery: boolean, asked?: boolean): number;
+  /** About how long `chars` more characters take in the background, its rests included. */
+  timeFor(chars: number, onBattery: boolean, asked?: boolean): number;
   /** Characters a batch may carry; 0 means one paragraph. */
   budget(): number;
   /** How long the reader must have left the page alone before background work starts. */
@@ -95,6 +97,7 @@ export function createPacer(seedMsPerK = SEED_MS_PER_K): Pacer {
   let spent = 0;
   let samples = 0;
   let outlier = false;
+  const duty = (onBattery: boolean, asked: boolean): number => Math.max(DUTY[cls], asked ? DUTY.mid : 0) * (onBattery ? 0.5 : 1);
   return {
     done(ms, chars) {
       spent += ms;
@@ -118,9 +121,10 @@ export function createPacer(seedMsPerK = SEED_MS_PER_K): Pacer {
     samples: () => samples,
     speed: () => cls,
     restAfter(ms, onBattery, asked = false) {
-      const d = Math.max(DUTY[cls], asked ? DUTY.mid : 0) * (onBattery ? 0.5 : 1);
+      const d = duty(onBattery, asked);
       return Math.round(ms * (1 - d) / d);
     },
+    timeFor: (chars, onBattery, asked = false) => Math.round(chars / 1000 * pace / duty(onBattery, asked)),
     budget: () => (cls === "fast" && samples > 0 ? Math.min(MAX_BATCH_CHARS, Math.round(BATCH_MS * 1000 / pace)) : 0),
     quiet: () => Math.min(5000, Math.max(500, 2 * pace)),
     limited: () => cls === "slow" || spent > SESSION_MS,

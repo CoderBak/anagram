@@ -279,7 +279,7 @@ describe("the engine's lifecycle", () => {
     const total = MODEL.length + TOKENIZER.length;
     expect(stage).toMatchObject({ stage: "failed", failure: "storage", total });
     expect(stage.stage === "failed" && stage.total - stage.received).toBe(total - kept);
-    expect(engineSetup(snapshot)).toEqual({ state: "failed", percent: Math.floor((kept * 100) / total) });
+    expect(engineSetup(snapshot)).toEqual({ state: "failed", percent: Math.floor((kept * 100) / total), failure: "storage" });
     // The browser restarts, the disk still full: the same failure is said, over the same bytes.
     await m.engine.close();
     const next = track(make({ store }));

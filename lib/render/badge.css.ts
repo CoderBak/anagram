@@ -117,7 +117,9 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
 .pill.scored .dot { display: none; }
 .pill.scored.b3 { color: #ffffff; }
 .pill.scored.b0 { background: color-mix(in oklab, var(--c) 22%, #ffffff); border-color: color-mix(in oklab, var(--c) 75%, #ffffff); color: #1f1f1f; }
-:host(:hover) .pill.scored { background: color-mix(in oklab, var(--c) 86%, #000000); border-color: color-mix(in oklab, var(--c) 86%, #000000); }
+/* Hovered: a darker edge, the fill kept — darkening the fill took gold and orange under the
+   4.5:1 their dark number needs. */
+:host(:hover) .pill.scored { border-color: color-mix(in oklab, var(--c) 60%, #000000); box-shadow: 0 0 0 1px color-mix(in oklab, var(--c) 60%, #000000); }
 :host(:hover) .pill.scored.b0 { background: color-mix(in oklab, var(--c) 34%, #ffffff); border-color: var(--c); }
 /* The square a compact chip is: its full colour, human's too, or it is too small to see. */
 :host([data-compact]) .pill.scored, :host([data-compact]) .pill.scored.b0 { background: var(--c); border-color: var(--c); }

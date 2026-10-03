@@ -222,7 +222,8 @@ function paint(): void {
       const setup = facts.setup!;
       statusEl.textContent = setup.state === "downloading" ? t("popupSetupDownloading", setup.percent)
         : setup.state === "paused" ? t("popupSetupPaused", setup.percent)
-        : t(setup.state === "failed" ? "engineSetupFailed" : setup.state === "loading" ? "engineLoading" : "popupSetupNeeded");
+        : setup.state === "failed" ? t(SETUP_FAILURE[setup.failure ?? "other"])
+        : t(setup.state === "loading" ? "engineLoading" : "popupSetupNeeded");
       break;
     }
     case "none":
@@ -257,6 +258,15 @@ function paint(): void {
     statusEl.textContent = t("popupPageActionFailed");
   }
 }
+
+/** Why the model's download stopped, in the menu's few words; the setup page says what to do. */
+const SETUP_FAILURE: Record<NonNullable<EngineSetup["failure"]>, MessageKey> = {
+  network: "popupSetupStoppedNetwork",
+  storage: "popupSetupStoppedStorage",
+  server: "popupSetupStoppedServer",
+  damaged: "popupSetupStoppedDamaged",
+  other: "engineSetupFailed",
+};
 
 /** The setup button's words: start it, watch it, or carry on with it. */
 function setupLabel(setup: EngineSetup): MessageKey {

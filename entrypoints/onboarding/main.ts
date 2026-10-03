@@ -39,7 +39,8 @@ mountEngineCard({
   title: document.getElementById("engineTitle")!,
   panelHost: document.getElementById("componentSettings")!,
   settings: false,
-  onUpdate: (engine, reply) => done("engineCard", engineReady(engine, reply)),
+  // An engine that keeps dying is not done, whatever its last snapshot says.
+  onUpdate: (engine, reply, crashed) => done("engineCard", !crashed && engineReady(engine, reply)),
 });
 
 /** Step 2 is done once any site may be read; step 3 once the browser keeps Anagram in the

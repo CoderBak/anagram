@@ -60,7 +60,9 @@ describe("the stage setup is in", () => {
     expect(failed("There is not enough free disk space for model.onnx")).toMatchObject({ failure: "storage" });
     expect(failed("The server answered model.onnx with status 503")).toMatchObject({ failure: "server" });
     expect(failed("Checksum or size mismatch for model.onnx")).toMatchObject({ failure: "damaged" });
-    expect(engineSetup(snapshot({ state: "error", download: { status: "failed", total_bytes: TOTAL, bytes_received: TOTAL / 10 } }))).toEqual({ state: "failed", percent: 10 });
+    expect(engineSetup(snapshot({ state: "error", download: { status: "failed", total_bytes: TOTAL, bytes_received: TOTAL / 10 } }))).toEqual({ state: "failed", percent: 10, failure: "other" });
+    // The toolbar menu says why, as the setup page does.
+    expect(engineSetup(snapshot({ state: "error", download: { status: "failed", total_bytes: TOTAL, bytes_received: TOTAL / 10, error: "The connection for model.onnx was lost" } }))).toEqual({ state: "failed", percent: 10, failure: "network" });
   });
 
   it("is loading, then ready on the GPU or the CPU, once the files are there", () => {

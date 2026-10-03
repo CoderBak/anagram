@@ -175,6 +175,9 @@ export interface EngineSetup {
   state: "needed" | "downloading" | "paused" | "failed" | "loading";
   /** Of the model download, 0–100. */
   percent: number;
+  /** Why a failed download stopped (lib/webengine/download.ts DownloadFailure), for the
+   *  toolbar menu to say. */
+  failure?: "network" | "storage" | "server" | "damaged" | "other";
 }
 
 /** popup/SW → content: force a re-scan of the active tab. */

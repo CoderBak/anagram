@@ -66,7 +66,7 @@ class Speedometer {
   }
 }
 
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply) => void, options: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply, crashed?: boolean) => void, options: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
   const inSettings = options.settings === true;
   host.classList.add("component-settings");
   host.dataset.engine = "in-browser";

@@ -179,20 +179,28 @@
   "panelEmpty": {
     "message": "本页没有存疑段落。"
   },
+  "panelEmptySoFar": {
+    "message": "目前还没有存疑段落。",
+    "description": "Panel title while the page's paragraphs are still being read and none of those read is flagged."
+  },
+  "panelNotEnglishPage": {
+    "message": "此页面不是英文：Anagram 只分析英文文本。",
+    "description": "Toolbar menu over a page none of whose paragraphs is in English: why nothing was scored."
+  },
   "panelCovShort": {
-    "message": "过短未评分 $1"
+    "message": "$1 段过短，未评分"
   },
   "panelCovLessReliable": {
-    "message": "可靠性较低 $1（不足 $2 个词）"
+    "message": "$1 段可靠性较低（不足 $2 个词）"
   },
   "panelCovNotEnglish": {
-    "message": "非英文 $1"
+    "message": "$1 段非英文"
   },
   "panelCovPending": {
-    "message": "等待中 $1"
+    "message": "$1 段等待中"
   },
   "panelCovUnavailable": {
-    "message": "暂不可用 $1"
+    "message": "$1 段暂不可用"
   },
   "panelItemAria": {
     "message": "$1，$2：$3"
@@ -259,6 +267,10 @@
   "readerDrop": {
     "message": "把 PDF 拖到这里"
   },
+  "readerDropNote": {
+    "message": "Anagram 会在本机读取它，并标出每个段落中 AI 撰写或编辑的程度。",
+    "description": "PDF reader's empty state, under \"Drop a PDF here\": what happens to a file once opened."
+  },
   "readerChoose": {
     "message": "选择文件"
   },
@@ -289,6 +301,14 @@
   },
   "readerReading": {
     "message": "正在读取全文：已完成 $1%。"
+  },
+  "readerReadingLeft": {
+    "message": "正在读取全文：已完成 $1%，大约还需 $2 分钟。",
+    "description": "Toolbar menu over the PDF reader while it reads the rest in the background: $1 = the share read, in percent; $2 = minutes left, estimated from this computer's pace."
+  },
+  "readerReadingSoon": {
+    "message": "正在读取全文：已完成 $1%，不到一分钟即可完成。",
+    "description": "Toolbar menu over the PDF reader, the background reading about to finish: $1 = the share read, in percent."
   },
   "readerReadShare": {
     "message": "已读取全文的 $1%，其余部分会在你滚动到时读取。"
@@ -396,7 +416,7 @@
     "message": "在浏览器内运行，无需安装其他程序。"
   },
   "engineOneClickButton": {
-    "message": "设置（下载 $1）"
+    "message": "开始设置（下载 $1）"
   },
   "engineTerminal": {
     "message": "终端"
@@ -463,6 +483,22 @@
   },
   "engineSetupFailed": {
     "message": "设置未完成"
+  },
+  "popupSetupStoppedNetwork": {
+    "message": "模型下载时网络连接中断",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because the connection was lost. The button below opens the setup page, which offers Retry."
+  },
+  "popupSetupStoppedStorage": {
+    "message": "磁盘空间不足，无法保存模型",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because the disk is full."
+  },
+  "popupSetupStoppedServer": {
+    "message": "模型下载站点暂时没有响应",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because the server failed."
+  },
+  "popupSetupStoppedDamaged": {
+    "message": "下载的模型文件已损坏",
+    "description": "Toolbar menu, in-browser engine: the model download stopped because a file failed its checksum."
   },
   "engineLoading": {
     "message": "正在启动模型…"

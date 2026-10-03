@@ -11,7 +11,7 @@
   text-align: center;
 }
 #anagramReaderStatus p { margin: 0; }
-#anagramReaderStatus #notice:not([hidden]), #drop:not([hidden]) {
+#anagramReaderStatus #notice:not([hidden]):not(:empty), #drop:not([hidden]) {
   display: inline-block;
   padding: 12px 18px;
   border: 1px solid var(--anagram-reader-border);
@@ -21,7 +21,12 @@
   pointer-events: auto;
 }
 #drop:not([hidden]) { display: block; max-width: 32rem; margin: 12vh auto 0; }
-#choose { margin: 16px 0 4px; padding: 8px 16px; cursor: pointer; }
+#dropLabel { font-size: 16px; font-weight: 600; }
+#dropNote { margin-top: 4px !important; color: var(--anagram-reader-muted); font-size: 13px; }
+/* The reader's one button, as the extension's pages draw a primary one. */
+#choose { margin: 16px 0 4px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--anagram-reader-fg); color: var(--anagram-reader-bg); font: 500 14px/1.4 system-ui, sans-serif; cursor: pointer; }
+#choose:hover { opacity: 0.88; }
+#choose:focus-visible { outline: 2px solid #0060df; outline-offset: 2px; }
 #anagramAnalyze, #original { width: auto; flex: none; padding-inline: 8px; }
 #anagramAnalyze { min-width: 72px; }
 #original { max-width: 120px; }
