@@ -40,6 +40,22 @@ class Tokenizer:
     fast RoBERTa tokenizer runs it, without transformers. Truncation and padding stay
     off in the backend, so concurrent calls only read it."""
 
+    _kept: tuple | None = None
+
+    @classmethod
+    def of(cls, model_dir: Path) -> "Tokenizer":
+        """The tokenizer of `model_dir`, kept for the process while its files stay what they
+        were: an engine woken from idle loads its model again, and reading the tokenizer
+        again took 50 ms of the half second."""
+        files = [Path(model_dir) / name for name in ("tokenizer.json", "special_tokens_map.json")]
+        key = (str(Path(model_dir).resolve()), tuple((f.stat().st_size, f.stat().st_mtime_ns, f.stat().st_ino) for f in files))
+        kept = cls._kept
+        if kept is not None and kept[0] == key:
+            return kept[1]
+        tokenizer = cls(model_dir)
+        cls._kept = (key, tokenizer)
+        return tokenizer
+
     def __init__(self, model_dir: Path):
         from tokenizers import Tokenizer as Backend
 

@@ -1029,6 +1029,25 @@ class PassTests(unittest.TestCase):
             self.assertEqual(sum(fixed + (b - a) * w[b - 1] for a, b in spans), cheapest(w, limit, fixed))
 
 
+class TokenizerKeptTests(unittest.TestCase):
+    def test_an_engine_loaded_again_reuses_the_tokenizer_while_its_files_stay_the_same(self):
+        from tokenizers import Tokenizer as Backend, models, pre_tokenizers
+        from scoring import Tokenizer
+        with tempfile.TemporaryDirectory() as directory:
+            where = Path(directory)
+            backend = Backend(models.WordLevel({"<s>": 0, "<pad>": 1, "</s>": 2, "<unk>": 3, "a": 4}, unk_token="<unk>"))
+            backend.pre_tokenizer = pre_tokenizers.Whitespace()
+            backend.save(str(where / "tokenizer.json"))
+            (where / "special_tokens_map.json").write_text(json.dumps({"eos_token": "</s>", "sep_token": "</s>", "pad_token": "<pad>"}))
+            first = Tokenizer.of(where)
+            self.assertIs(Tokenizer.of(where), first)
+            stat = (where / "tokenizer.json").stat()
+            os.utime(where / "tokenizer.json", ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+            again = Tokenizer.of(where)
+            self.assertIsNot(again, first)
+            self.assertEqual(again(["a a"], add_special_tokens=True)["input_ids"], first(["a a"], add_special_tokens=True)["input_ids"])
+
+
 class IsolatedBenchmarkTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

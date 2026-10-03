@@ -173,7 +173,7 @@ class OnnxEditLens:
         self.n_buckets = len(api.BUCKET_LABELS)
         self.api = api
         require_classifier(model_dir, self.n_buckets)
-        self.tok = Tokenizer(model_dir)
+        self.tok = Tokenizer.of(model_dir)
         self.options = self.provider_options(candidate)
         provider = self.options["provider"]
         if provider not in ort.get_available_providers():
@@ -262,7 +262,7 @@ class MlxEditLens:
         self.api = api
         self.model = None
         require_classifier(model_dir, self.n_buckets)
-        self.tok = Tokenizer(model_dir)
+        self.tok = Tokenizer.of(model_dir)
         self.owner = mlx_thread()
         try:
             self.options = self.owner.submit(self._load, model_dir).result()
