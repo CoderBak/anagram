@@ -1401,6 +1401,39 @@ function wholePost(root: Element): Element {
   return all.replace(/\s+/g, " ").length <= WHOLE_POST_CHARS ? scope : root;
 }
 
+/** Letters a text needs before its writing system is told. */
+const SCRIPT_MIN_LETTERS = 8;
+/** Share of its letters one writing system must hold to be the text's. */
+const SCRIPT_SHARE = 0.7;
+const SCRIPTS: [string, RegExp][] = [
+  ["cjk", /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu],
+  ["latin", /\p{Script=Latin}/gu],
+  ["cyrillic", /\p{Script=Cyrillic}/gu],
+  ["arabic", /\p{Script=Arabic}/gu],
+  ["greek", /\p{Script=Greek}/gu],
+];
+const scriptKept = new WeakMap<Run, string | null>();
+/** The writing system most of a run's letters are in, Chinese, Japanese and Korean as one;
+ *  null where none holds most of them, or the run has too few letters to tell. */
+function scriptOf(r: Run): string | null {
+  if (scriptKept.has(r)) return scriptKept.get(r)!;
+  const letters = (r.text.match(/\p{L}/gu) ?? []).length;
+  let found: string | null = null;
+  if (letters >= SCRIPT_MIN_LETTERS) {
+    for (const [name, pattern] of SCRIPTS) {
+      if ((r.text.match(pattern) ?? []).length >= letters * SCRIPT_SHARE) { found = name; break; }
+    }
+  }
+  scriptKept.set(r, found);
+  return found;
+}
+/** Two runs in two writing systems are two texts: a Chinese paragraph and the English note
+ *  after it were read as one, and its chip stood after the English. */
+function sameScript(a: Run, b: Run): boolean {
+  const x = scriptOf(a), y = scriptOf(b);
+  return x === null || y === null || x === y;
+}
+
 /**
  * The prose of a post, divided by where it stands: a run belongs with the first earlier
  * run it is `compatible` with. A LinkedIn card sets the author's headline ("VP, Chief
@@ -1410,10 +1443,10 @@ function wholePost(root: Element): Element {
  * short runs to one section keeps them out of it. Paragraphs on both sides of a list whose
  * items sit a level deeper still find each other, because ANY earlier run will do.
  */
-function standingTogether(runs: Run[], together: (a: Element, b: Element) => boolean): Run[][] {
+function standingTogether(runs: Run[], together: (a: Run, b: Run) => boolean): Run[][] {
   const places: Run[][] = [];
   for (const r of runs) {
-    const home = places.find((place) => place.some((other) => together(other.container, r.container)));
+    const home = places.find((place) => place.some((other) => together(other, r)));
     if (home) home.push(r);
     else places.push([r]);
   }
@@ -1490,6 +1523,10 @@ function createAssembler(
     if (scopes.recognised(f.scope)) return scopes.oneBody(a, b, f.scope);
     return compatible(unwrapped(a, f.scope), unwrapped(b, f.scope));
   }
+  /** Two runs one unit may hold: in the same place, and in the same writing system. */
+  function alike(f: Frame, a: Run, b: Run): boolean {
+    return sameScript(a, b) && together(f, a.container, b.container);
+  }
 
   function emit(runs: Run[]): void {
     const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container, preserved: r.preserved, ...(r.skips.length > 0 ? { skips: r.skips } : {}) }));
@@ -1552,7 +1589,7 @@ function createAssembler(
     if (g.length > 0 && clearsFloor(g, minWords)) {
       for (const runs of modelSized(g, minWords)) out(f, runs);
     } else if (g.length > 0) {
-      const beside = (a: Run, b: Run): boolean => together(f, a.container, b.container);
+      const beside = (a: Run, b: Run): boolean => alike(f, a, b);
       // A preview the site cut takes nobody in: it is not read, and what joined it would not be.
       const prev = f.prev && !f.prev.some((r) => r.truncated) ? f.prev : null;
       const next = following && !following.truncated ? following : null;
@@ -1620,7 +1657,7 @@ function createAssembler(
       return;
     }
     if (!f.partial && clearsFloor(f.prose, minWords) && fitsWindow(f.prose)) {
-      for (const runs of standingTogether(f.prose, (a, b) => together(f, a, b))) {
+      for (const runs of standingTogether(f.prose, (a, b) => alike(f, a, b))) {
         if (clearsFloor(runs, minWords)) release(runs);
         else onShortText?.(runs.flatMap((r) => r.nodes));
       }
@@ -1842,7 +1879,7 @@ function createAssembler(
       const lines = f.lines;
       f.lines = [];
       f.pending = null;
-      if (last && !together(f, last.container, r.container)) close(f); // another section
+      if (last && !alike(f, last, r)) close(f); // another section, or another language
       // The short lines held before it are lines of the same verse (see below).
       if (unstopped && lines.length > 0 && sameBody(lines[lines.length - 1]!.container, r.container)) for (const line of lines) push(f, line);
       push(f, r);
@@ -1934,7 +1971,7 @@ function createAssembler(
   function note(f: Frame, r: Run): void {
     if (shortRole(r.text) !== "prose") return;
     const last = f.group.length > 0 ? f.group[f.group.length - 1] : f.prev ? f.prev[f.prev.length - 1] : null;
-    if (last && !together(f, last.container, r.container)) close(f);
+    if (last && !alike(f, last, r)) close(f);
     if (!r.claimed) f.live = true;
     if (f.group.length === 0 && f.prev && fitsWindow([...f.prev, r])) {
       f.prev.push(r);

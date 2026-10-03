@@ -29,6 +29,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A paragraph in Chinese, Japanese, Korean or another writing system was read together with a short English note after it, and its chip stood after the English.
 - With the local engine, the first page after the browser started could go without scores for several seconds: asked while it was still checking and loading its model, the engine said it was not ready, and the extension took it for down until its next check. It now says it is loading, and what is asked meanwhile waits for the model, about a second.
 - The local engine let ONNX Runtime 1.30 send its own usage telemetry to Microsoft and keep a device identifier in your home folder, though Anagram has no telemetry: ONNX Runtime now loads with its telemetry switched off before it starts, and creates neither.
 - Refreshing the PDF reader keeps its document: it is read again from its source, in a tab that already showed it.

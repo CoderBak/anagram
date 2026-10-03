@@ -247,6 +247,15 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(40)}<span style="position:absolute;width:1px;height:1px;overflow:hidden">SRONLY LEAK</span> ${words(40)}</p>`);
   check("sr-only inline text excluded mid-sentence", u.length === 1 && !u[0].text.includes("SRONLY"), JSON.stringify(u.map(x => x.parts)));
 
+  // A Chinese paragraph and the short English note after it are two texts: the chip of the
+  // Chinese one stood after the English sentence.
+  {
+    const zh = "这是一段用中文写成的较长段落，讲述了一项研究的背景、方法和主要发现，并对其意义做了简要的讨论。".repeat(4);
+    const units = collect(`<article><p>${zh}</p><p>Source: a short English note about where this text comes from, with a few more words.</p></article>`);
+    const mixed = units.filter((u) => /\p{Script=Han}/u.test(u.text) && /[A-Za-z]{4}/.test(u.text));
+    check("a paragraph in one writing system is never read with one in another", mixed.length === 0, JSON.stringify(units.map((u) => u.text.slice(0, 20))));
+  }
+
   sandbox.innerHTML = `<p>${words(80)}</p>`;
   const skipped = PW.collectUnits(sandbox, { claimFilter: () => "skip" });
   check("claimFilter skip suppresses owned runs", skipped.length === 0);
