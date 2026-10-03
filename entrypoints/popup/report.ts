@@ -40,6 +40,9 @@ function mixOf(bands: readonly number[]): HTMLElement[] {
   return total ? [bar, legend] : [legend];
 }
 
+/** Paragraphs read before a page still being read shows its mix. */
+const MIN_MIX = 3;
+
 export function mountReport(host: HTMLElement, hooks: {
   jump(documentId: string, id: string): void;
   page(offset: number): void;
@@ -85,7 +88,10 @@ export function mountReport(host: HTMLElement, hooks: {
     foreign.className = "report-lead";
     foreign.textContent = !read && c.notEnglish > 0 && !c.pending ? t("panelNotEnglishPage") : "";
     foreign.hidden = !foreign.textContent;
-    host.replaceChildren(...(read ? mixOf(report.counts.bands) : []), foreign, coverage, scope, ...(read ? [title] : []));
+    // One paragraph read of a document still being read is no mix: a bar drawn whole in its
+    // colour said the page was that colour.
+    const mix = read && (c.read >= MIN_MIX || !reading);
+    host.replaceChildren(...(mix ? mixOf(report.counts.bands) : []), foreign, coverage, scope, ...(read ? [title] : []));
     for (const origin of report.commentOrigins) {
       const line = document.createElement("p");
       line.className = "report-comment";
