@@ -150,6 +150,7 @@ run_uv() {
     UV_PYTHON_BIN_DIR="$ANAGRAM_HOME/python/bin" UV_TOOL_DIR="$ANAGRAM_HOME/tools" UV_TOOL_BIN_DIR="$ANAGRAM_HOME/tools/bin" \
     UV_PROJECT_ENVIRONMENT="$ANAGRAM_HOME/venv.next" UV_PYTHON_PREFERENCE=only-managed UV_NO_CONFIG=1 UV_NO_MODIFY_PATH=1 \
     XDG_DATA_HOME="$ANAGRAM_HOME/cache/xdg" XDG_CACHE_HOME="$ANAGRAM_HOME/cache/xdg" XDG_CONFIG_HOME="$ANAGRAM_HOME/cache/xdg" \
+    ${PYTHON_FROM:+UV_PYTHON_INSTALL_MIRROR="$PYTHON_FROM"} \
     "$ANAGRAM_HOME/bin/uv" "$@"
 }
 
@@ -184,6 +185,57 @@ if [ "$OS" = Linux ] && { [ -r "${ANAGRAM_TEST_ROOT:-}/proc/driver/nvidia/versio
     || "${ANAGRAM_TEST_ROOT:-}/usr/lib/wsl/lib/nvidia-smi" -L >/dev/null 2>&1; }; then
   CUDA=1; RUNTIMES="PyTorch"
 fi
+
+# Where PyPI, GitHub or the Python builds are slow or blocked (mainland China, a company
+# network), people point pip and uv at a mirror; the installer takes the same one. The
+# lock's hashes, uv's checksums for Python and the pinned checksum of uv still decide every
+# file, so a mirror changes where the files come from, never what they are. When a mirror
+# fails, the original source is tried.
+mirror_url() { # value: an http(s) URL of plain URL characters, else nothing
+  printf '%s\n' "$1" | LC_ALL=C grep -Eq '^https?://[A-Za-z0-9._~:/?#@!$&()*+,;=%-]+$' || return 0
+  printf '%s' "${1%/}"
+}
+url_host() { h="${1#*://}"; h="${h%%/*}"; printf '%s' "${h##*@}"; } # never a password in a log
+first_mirror() { for candidate in "$@"; do candidate="$(mirror_url "$candidate")"; [ -z "$candidate" ] || { printf '%s' "$candidate"; return 0; }; done; }
+# index-url in the [global] or [install] section of a pip configuration file.
+pip_conf_index() {
+  [ -f "$1" ] && [ -r "$1" ] || return 0
+  awk '/^[ \t]*[#;]/ {next}
+    /^[ \t]*\[/ {s = $0; gsub(/[ \t\r]/, "", s); next}
+    s == "[global]" || s == "[install]" {
+      i = index($0, "="); if (!i) next
+      k = substr($0, 1, i - 1); gsub(/[ \t]/, "", k)
+      if (k == "index-url" || k == "index_url") {v = substr($0, i + 1); gsub(/^[ \t]+|[ \t\r]+$/, "", v); print v; exit}
+    }' "$1"
+}
+# From a uv.toml: the [[index]] marked default (or the older index-url), or python-install-mirror.
+uv_toml_value() { # file index|python
+  [ -f "$1" ] && [ -r "$1" ] || return 0
+  awk -v want="$2" '
+    BEGIN {q = sprintf("%c", 39)}
+    function unquote(v) {if (match(v, /"[^"]*"/) || match(v, q "[^" q "]*" q)) return substr(v, RSTART + 1, RLENGTH - 2); return ""}
+    function close_table() {if (t == "[[index]]" && def && url != "" && chosen == "") chosen = url}
+    /^[ \t]*#/ {next}
+    /^[ \t]*\[/ {close_table(); t = $0; sub(/#.*/, "", t); gsub(/[ \t\r]/, "", t); url = ""; def = 0; next}
+    {
+      i = index($0, "="); if (!i) next
+      k = substr($0, 1, i - 1); gsub(/[ \t]/, "", k); v = substr($0, i + 1)
+      if (t == "[[index]]") {if (k == "url") url = unquote(v); else if (k == "default" && v ~ /^[ \t]*true/) def = 1}
+      else if ((t == "" || t == "[pip]") && k == "index-url" && top == "") top = unquote(v)
+      else if (t == "" && k == "python-install-mirror") python = unquote(v)
+    }
+    END {close_table(); print (want == "python") ? python : (chosen != "" ? chosen : top)}' "$1"
+}
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+UV_CONFIG="${UV_CONFIG_FILE:-$CONFIG_HOME/uv/uv.toml}"
+PYPI_INDEX="$(first_mirror "${UV_DEFAULT_INDEX:-}" "${UV_INDEX_URL:-}" "${PIP_INDEX_URL:-}" "$(uv_toml_value "$UV_CONFIG" index)" \
+  "$(pip_conf_index "${PIP_CONFIG_FILE:-}")" "$(pip_conf_index "$CONFIG_HOME/pip/pip.conf")" \
+  "$(pip_conf_index "$HOME/Library/Application Support/pip/pip.conf")" "$(pip_conf_index "$HOME/.pip/pip.conf")" \
+  "$(pip_conf_index /etc/xdg/pip/pip.conf)" "$(pip_conf_index /etc/pip.conf)")"
+PYTHON_MIRROR="$(first_mirror "${UV_PYTHON_INSTALL_MIRROR:-}" "$(uv_toml_value "$UV_CONFIG" python)")"
+UV_GITHUB="$(first_mirror "${UV_INSTALLER_GITHUB_BASE_URL:-}")"
+PYTHON_FROM=""
+mirror_failed() { note "$(tr_msg "$(url_host "$1") did not work; trying the original source" "$(url_host "$1") 无法使用，改用原始来源")"; }
 
 # One installer at a time, including first install before private Python exists. The
 # lock holds its installer's process ID, so the lock of one that was killed or lost
@@ -334,7 +386,11 @@ VERSION_WRITTEN=1
 step 2 "$(tr_msg 'Preparing the package manager' '正在准备依赖管理器')"
 if [ ! -x "$ANAGRAM_HOME/bin/uv" ] || [ "$(clean_env "$ANAGRAM_HOME/bin/uv" --version 2>/dev/null | cut -d' ' -f2)" != "$UV_VERSION" ]; then
   note "$(tr_msg 'Downloading uv' '正在下载 uv') $UV_VERSION"
-  curl -q -fL --retry 3 -o "$TMP/uv.tar.gz" "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
+  uv_release="https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
+  if [ -z "$UV_GITHUB" ] || ! { note "$(tr_msg 'from your mirror,' '来自你配置的镜像') $(url_host "$UV_GITHUB")"; curl -q -fL --retry 3 -o "$TMP/uv.tar.gz" "$UV_GITHUB${uv_release#https://github.com}" && [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ]; }; then
+    [ -z "$UV_GITHUB" ] || mirror_failed "$UV_GITHUB"
+    curl -q -fL --retry 3 -o "$TMP/uv.tar.gz" "$uv_release"
+  fi
   [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ] || die "checksum mismatch for uv-$UV_TARGET.tar.gz"
   tar -xzf "$TMP/uv.tar.gz" -C "$TMP" "uv-$UV_TARGET/uv"
   install_ours "$TMP/uv-$UV_TARGET/uv" "$ANAGRAM_HOME/bin/uv" 755
@@ -344,7 +400,12 @@ fi
 
 # ---------------------------------------------------------------- 3. private Python + locked packages
 step 3 "$(tr_msg 'Installing private Python' '正在安装独立 Python') $PYTHON_VERSION"
-run_uv python install "$PYTHON_VERSION"
+PYTHON_FROM="$PYTHON_MIRROR"
+if [ -z "$PYTHON_FROM" ] || ! { note "$(tr_msg 'from your mirror,' '来自你配置的镜像') $(url_host "$PYTHON_FROM")"; run_uv python install "$PYTHON_VERSION"; }; then
+  [ -z "$PYTHON_FROM" ] || mirror_failed "$PYTHON_FROM"
+  PYTHON_FROM=""
+  run_uv python install "$PYTHON_VERSION"
+fi
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
 note "$(tr_msg "Downloading and installing ${RUNTIMES:+$RUNTIMES, }ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES:+${RUNTIMES}、}ONNX Runtime 等依赖；具体进度显示在下方。")"
 if [ "$OS" = Linux ] && [ -z "$CUDA" ] && ls -d "$ANAGRAM_HOME"/venv/lib/python*/site-packages/torch >/dev/null 2>&1; then
@@ -354,7 +415,22 @@ note "$(tr_msg 'Device-selected model weights will download here after registrat
 CREATED_VENV=1
 # --no-build everywhere: every locked package resolves to a wheel on each supported
 # platform, so no toolchain is ever required to complete an installation.
-( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build ${CUDA:+--extra cuda} --python "$PYTHON_VERSION" )
+# uv sync --frozen fetches the lock's own files.pythonhosted.org addresses whatever index is
+# set, so from a mirror the lock is exported with its hashes and every one is required.
+from_index() {
+  ( cd "$ANAGRAM_HOME/app" && run_uv export --frozen --no-dev --no-emit-project --no-header ${CUDA:+--extra cuda} \
+      --format requirements-txt --quiet --output-file "$TMP/requirements.txt" ) \
+    && run_uv venv --quiet --python "$PYTHON_VERSION" "$ANAGRAM_HOME/venv.next" \
+    && run_uv pip sync --python "$ANAGRAM_HOME/venv.next/bin/python" --require-hashes --no-build \
+      --default-index "$PYPI_INDEX" "$TMP/requirements.txt"
+}
+if [ -z "$PYPI_INDEX" ] || ! { note "$(tr_msg 'from your package index,' '来自你配置的软件包镜像') $(url_host "$PYPI_INDEX")"; from_index; }; then
+  if [ -n "$PYPI_INDEX" ]; then
+    mirror_failed "$PYPI_INDEX"
+    [ ! -e "$ANAGRAM_HOME/venv.next" ] || remove_ours "$ANAGRAM_HOME/venv.next"
+  fi
+  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build ${CUDA:+--extra cuda} --python "$PYTHON_VERSION" )
+fi
 [ -x "$ANAGRAM_HOME/venv.next/bin/python" ] || die "staged virtual environment was not created"
 # Python discovers its venv relative to the executable. The component invokes this
 # interpreter directly, never the generated console scripts with staging shebangs.

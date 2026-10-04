@@ -3,6 +3,8 @@
 set -u
 # An inherited component home or lock would point the installer and CLI cases at it.
 unset ANAGRAM_HOME ANAGRAM_MAINTENANCE_FD
+# Nor may the mirrors this machine's pip and uv use: each case below sets its own.
+unset UV_DEFAULT_INDEX UV_INDEX_URL PIP_INDEX_URL PIP_CONFIG_FILE UV_CONFIG_FILE UV_PYTHON_INSTALL_MIRROR UV_INSTALLER_GITHUB_BASE_URL XDG_CONFIG_HOME
 export ANAGRAM_BROWSER=firefox ANAGRAM_EXTENSION_ID=anagram@coderbak.dev ANAGRAM_LANG=en
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d "${TMPDIR:-/tmp}/anagram-installer-test.XXXXXX")"
@@ -265,6 +267,65 @@ os_install mac-smi "Darwin arm64" smi
 if [ $rc -eq 0 ] && [ -n "$args" ] && [ "${args#*--extra}" = "$args" ] && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
   ok "macOS never syncs the cuda extra"
 else bad "macOS sync" "rc=$rc args=$args $out"; fi
+# A mirror the person's pip or uv already uses serves the packages and Python, with every
+# locked hash required; a mirror that fails gives way to the original source.
+mirror_install() { # name [VAR=value...]: an update whose uv logs each call and the Python mirror it was given
+  h="$T/mirror-$1"; shift; make_home "$h"; rm -rf "$T/mirror-user"; mkdir -p "$T/mirror-user"
+  cat > "$h/bin/uv" <<FAKEUV
+#!/bin/sh
+echo "uv $UVV"
+here="\$(dirname "\$0")/.."
+echo "\$* | python-mirror=\${UV_PYTHON_INSTALL_MIRROR:-}" >> "\$here/uv-log"
+case "\$1" in
+  sync) mkdir -p "\$UV_PROJECT_ENVIRONMENT/bin"; cp "\$here/venv/bin/python" "\$UV_PROJECT_ENVIRONMENT/bin/python" ;;
+  venv) for a; do last="\$a"; done; mkdir -p "\$last/bin"; cp "\$here/venv/bin/python" "\$last/bin/python" ;;
+  pip) [ ! -f "\$here/pip-fails" ] || exit 1 ;;
+  python) [ -z "\${UV_PYTHON_INSTALL_MIRROR:-}" ] || [ ! -f "\$here/python-mirror-fails" ] || exit 1 ;;
+esac
+exit 0
+FAKEUV
+  chmod +x "$h/bin/uv"
+  [ -z "${MIRROR_SETUP:-}" ] || eval "$MIRROR_SETUP"
+  out="$(env HOME="$T/mirror-user" ANAGRAM_HOME="$h" ANAGRAM_RELEASE_URL="file://$RELDIR" "$@" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+  HOME="$T/mirror-user" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$h" >/dev/null 2>&1
+  log="$(cat "$h/uv-log" 2>/dev/null)"
+}
+mirror_install env UV_DEFAULT_INDEX=https://mirror.test/simple/
+if [ $rc -eq 0 ] && echo "$log" | grep -q '^export --frozen --no-dev --no-emit-project' && echo "$log" | grep -q '^venv --quiet --python' \
+   && echo "$log" | grep -q '^pip sync .* --require-hashes --no-build --default-index https://mirror.test/simple ' && ! echo "$log" | grep -q '^sync ' \
+   && echo "$out" | grep -q 'from your package index, mirror.test' && [ -x "$h/venv/bin/python" ]; then
+  ok "UV_DEFAULT_INDEX: the locked packages come from that index, every hash required"
+else bad "UV_DEFAULT_INDEX mirror" "rc=$rc log=$log $out"; fi
+MIRROR_SETUP='mkdir -p "$T/mirror-user/.config/pip"; printf "[global]\ntimeout = 60\nindex-url = https://someone:s3cret@pip.mirror.test/pypi/simple\n" > "$T/mirror-user/.config/pip/pip.conf"'
+mirror_install pip-conf
+if [ $rc -eq 0 ] && echo "$log" | grep -q -- '--default-index https://someone:s3cret@pip.mirror.test/pypi/simple ' \
+   && echo "$out" | grep -q 'from your package index, pip.mirror.test' && ! echo "$out" | grep -q 's3cret'; then
+  ok "pip.conf's index-url is used, and its password never printed"
+else bad "pip.conf mirror" "rc=$rc log=$log $out"; fi
+MIRROR_SETUP='mkdir -p "$T/mirror-user/.config/uv"; printf "python-install-mirror = \"https://py.mirror.test/releases/download\"\n\n[[index]]\nname = \"torch\"\nurl = \"https://torch.mirror.test/whl\"\n\n[[index]]\nurl = '"'"'https://uv.mirror.test/simple'"'"'\ndefault = true # the mirror\n" > "$T/mirror-user/.config/uv/uv.toml"'
+mirror_install uv-toml
+if [ $rc -eq 0 ] && echo "$log" | grep -q -- '--default-index https://uv.mirror.test/simple ' \
+   && echo "$log" | grep -q '^python install .* | python-mirror=https://py.mirror.test/releases/download$' \
+   && echo "$out" | grep -q 'from your mirror, py.mirror.test'; then
+  ok "uv.toml: its default index and its Python mirror are used, not an index it uses for one package"
+else bad "uv.toml mirror" "rc=$rc log=$log $out"; fi
+MIRROR_SETUP='mkdir -p "$T/mirror-user/.config/pip"; printf "[global]\nindex-url = https://pip.mirror.test/simple\n" > "$T/mirror-user/.config/pip/pip.conf"'
+mirror_install precedence PIP_INDEX_URL=https://env.mirror.test/simple
+if [ $rc -eq 0 ] && echo "$log" | grep -q -- '--default-index https://env.mirror.test/simple '; then
+  ok "an index set in the environment comes before one in a configuration file"
+else bad "mirror precedence" "rc=$rc log=$log"; fi
+MIRROR_SETUP=': > "$h/pip-fails"; : > "$h/python-mirror-fails"'
+mirror_install failing UV_DEFAULT_INDEX=https://down.mirror.test/simple UV_PYTHON_INSTALL_MIRROR=https://down.mirror.test/python
+if [ $rc -eq 0 ] && echo "$log" | grep -q '^sync --frozen --no-dev --no-build' && [ ! -e "$h/venv.next" ] && [ -x "$h/venv/bin/python" ] \
+   && [ "$(echo "$out" | grep -c 'down.mirror.test did not work; trying the original source')" -eq 2 ] \
+   && echo "$log" | grep '^python install' | tail -1 | grep -q 'python-mirror=$'; then
+  ok "a mirror that fails gives way to PyPI and the original Python builds"
+else bad "failing mirror" "rc=$rc log=$log $out"; fi
+MIRROR_SETUP=''
+mirror_install malformed "UV_DEFAULT_INDEX=ftp://mirror.test/simple" "PIP_INDEX_URL=https://mirror.test/simple'; touch /tmp/x" UV_PYTHON_INSTALL_MIRROR="https://a b.test/"
+if [ $rc -eq 0 ] && echo "$log" | grep -q '^sync --frozen' && ! echo "$log" | grep -q '^pip ' && ! echo "$log" | grep -q 'python-mirror=.' && ! echo "$out" | grep -q 'mirror,'; then
+  ok "an index that is not a plain http(s) address is ignored"
+else bad "malformed mirror" "rc=$rc log=$log $out"; fi
 # A browser registration conflict must restore the previous app and private env.
 HROLL="$T/rollback-home"; make_home "$HROLL"
 printf '#!/bin/sh\necho "uv %s"\nif [ "$1" = sync ]; then mkdir -p "$UV_PROJECT_ENVIRONMENT/bin"; cp "$(dirname "$0")/../venv/bin/python" "$UV_PROJECT_ENVIRONMENT/bin/python"; fi\nexit 0\n' "$UVV" > "$HROLL/bin/uv"; chmod +x "$HROLL/bin/uv"

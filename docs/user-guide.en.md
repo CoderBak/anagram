@@ -36,7 +36,11 @@ Step 1 decides how Anagram runs its model. Either way the model runs on this com
   talk to a local engine, then shows one command: run it in Terminal. No administrator
   password or system Python is needed. It installs the engine under `~/.anagram`, registers
   it for this exact extension, and downloads the model files with progress in the terminal
-  (`~/.anagram/bin/anagram download` resumes an interrupted download).
+  (`~/.anagram/bin/anagram download` resumes an interrupted download). Where pip or uv is
+  set to a mirror (`PIP_INDEX_URL`, `UV_DEFAULT_INDEX`, `pip.conf`, `uv.toml`,
+  `UV_PYTHON_INSTALL_MIRROR`), the command downloads the packages and Python from it, still
+  checking each file against the locked checksums, and goes back to the original source if
+  the mirror fails.
 - **A computer with less than 4 GB of memory**, or too little free disk space, is told so,
   and nothing is downloaded; with exactly 4 GB it runs, and may slow down while it scores.
   Where the graphics card supports 16-bit maths, that computer, or one short of disk space

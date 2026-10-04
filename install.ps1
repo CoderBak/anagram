@@ -171,6 +171,7 @@ function Invoke-Private([string]$Program,[string[]]$Arguments) {
     $env:UV_PROJECT_ENVIRONMENT = Join-Path $ComponentHome 'venv.next'
     $env:UV_PYTHON_PREFERENCE = 'only-managed'
     $env:UV_NO_CONFIG = '1'; $env:UV_NO_MODIFY_PATH = '1'; $env:UV_NO_PROGRESS = '1'
+    if ($script:PythonFrom) { $env:UV_PYTHON_INSTALL_MIRROR = $script:PythonFrom }
     $env:HF_HOME = Join-Path $ComponentHome 'hf'; $env:XDG_CACHE_HOME = Join-Path $ComponentHome 'cache'
     $env:HF_HUB_DISABLE_IMPLICIT_TOKEN = '1'; $env:HF_HUB_DISABLE_TELEMETRY = '1'
     $env:PYTHONNOUSERSITE = '1'; $env:PYTHONSAFEPATH = '1'
@@ -181,6 +182,61 @@ function Invoke-Private([string]$Program,[string[]]$Arguments) {
     foreach ($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key,$saved[$key],'Process') }
   }
 }
+
+# Where PyPI, GitHub or the Python builds are slow or blocked (mainland China, a company
+# network), people point pip and uv at a mirror; the installer takes the same one. The
+# lock's hashes, uv's checksums for Python and the pinned checksum of uv still decide every
+# file, so a mirror changes where the files come from, never what they are. When a mirror
+# fails, the original source is tried.
+function Mirror-Url([string]$Value) {
+  if ($Value -cmatch '^https?://[A-Za-z0-9._~:/?#@!$&()*+,;=%-]+$') { return $Value.TrimEnd('/') }
+  return $null
+}
+function Url-Host([string]$Url) { return ((($Url -replace '^[a-z]+://','') -replace '/.*$','') -replace '^.*@','') }
+function First-Mirror([object[]]$Candidates) {
+  foreach ($candidate in $Candidates) { $url = Mirror-Url "$candidate"; if ($url) { return $url } }
+  return $null
+}
+function Mirror-Failed([string]$Url) { Say "$(Url-Host $Url) did not work; trying the original source" "$(Url-Host $Url) 无法使用，改用原始来源" }
+function Under([string]$Base,[string]$Child) { if ($Base) { return (Join-Path $Base $Child) } else { return $null } }
+# index-url in the [global] or [install] section of a pip configuration file.
+function Pip-ConfIndex([string]$Path) {
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  $section = ''
+  foreach ($line in [IO.File]::ReadAllLines($Path)) {
+    if ($line -match '^\s*[#;]') { continue }
+    if ($line -match '^\s*\[') { $section = ($line -replace '\s','').ToLowerInvariant(); continue }
+    if (($section -eq '[global]' -or $section -eq '[install]') -and $line -match '^\s*index[-_]url\s*=\s*(.*?)\s*$') { return $Matches[1] }
+  }
+  return $null
+}
+# From a uv.toml: the [[index]] marked default (or the older index-url), or python-install-mirror.
+function Uv-TomlValue([string]$Path,[string]$Want) {
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  $table = ''; $url = $null; $isDefault = $false; $chosen = $null; $top = $null; $python = $null
+  foreach ($line in @([IO.File]::ReadAllLines($Path)) + '[end]') {
+    if ($line -match '^\s*#') { continue }
+    if ($line -match '^\s*\[') {
+      if ($table -eq '[[index]]' -and $isDefault -and $url -and -not $chosen) { $chosen = $url }
+      $table = ($line -replace '#.*$','') -replace '\s',''; $url = $null; $isDefault = $false; continue
+    }
+    if ($line -notmatch '^\s*([A-Za-z0-9_-]+)\s*=\s*(.*)$') { continue }
+    $key = $Matches[1]; $raw = $Matches[2]; $value = $null
+    if ($raw -match '^"([^"]*)"' -or $raw -match "^'([^']*)'") { $value = $Matches[1] }
+    if ($table -eq '[[index]]') { if ($key -eq 'url') { $url = $value } elseif ($key -eq 'default' -and $raw -match '^true') { $isDefault = $true } }
+    elseif (($table -eq '' -or $table -eq '[pip]') -and $key -eq 'index-url' -and -not $top) { $top = $value }
+    elseif ($table -eq '' -and $key -eq 'python-install-mirror') { $python = $value }
+  }
+  if ($Want -eq 'python') { return $python }
+  if ($chosen) { return $chosen }
+  return $top
+}
+$uvConfig = if ($env:UV_CONFIG_FILE) { $env:UV_CONFIG_FILE } else { Under $env:APPDATA 'uv\uv.toml' }
+$PypiIndex = First-Mirror @($env:UV_DEFAULT_INDEX, $env:UV_INDEX_URL, $env:PIP_INDEX_URL, (Uv-TomlValue $uvConfig 'index'),
+  (Pip-ConfIndex $env:PIP_CONFIG_FILE), (Pip-ConfIndex (Under $env:APPDATA 'pip\pip.ini')), (Pip-ConfIndex (Under $env:USERPROFILE 'pip\pip.ini')), (Pip-ConfIndex (Under $env:ProgramData 'pip\pip.ini')))
+$PythonMirror = First-Mirror @($env:UV_PYTHON_INSTALL_MIRROR, (Uv-TomlValue $uvConfig 'python'))
+$UvGithub = First-Mirror @($env:UV_INSTALLER_GITHUB_BASE_URL)
+$script:PythonFrom = $null
 
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { throw 'The locked Windows runtime currently supports x64 Windows only.' }
 if ($Browser -eq 'chrome') { if ($ExtensionId -cnotmatch '^[a-p]{32}$') { throw 'Chrome extension ID must be exactly 32 a-p characters.' } }
@@ -243,7 +299,14 @@ try {
   # `uv --version` appends build details ("uv 0.11.18 (abc123 date)"); compare the version field.
   if (-not (Test-Path -LiteralPath $uv) -or ("$(& $uv --version)" -split ' ')[1] -ne $UvVersion) {
     $uvZip = Join-Path $temporary 'uv.zip'
-    Fetch "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-x86_64-pc-windows-msvc.zip" $uvZip
+    $uvRelease = "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-x86_64-pc-windows-msvc.zip"
+    $fetched = $false
+    if ($UvGithub) {
+      Say "uv from your mirror, $(Url-Host $UvGithub)" "从你配置的镜像 $(Url-Host $UvGithub) 下载 uv"
+      try { Fetch ($UvGithub + $uvRelease.Substring('https://github.com'.Length)) $uvZip; $fetched = (Hash $uvZip) -eq $UvHash } catch { $fetched = $false }
+      if (-not $fetched) { Mirror-Failed $UvGithub }
+    }
+    if (-not $fetched) { Fetch $uvRelease $uvZip }
     if ((Hash $uvZip) -ne $UvHash) { throw 'uv checksum mismatch.' }
     [IO.Compression.ZipFile]::ExtractToDirectory($uvZip,(Join-Path $temporary 'uv'))
     $uvSource = @(Get-ChildItem -LiteralPath (Join-Path $temporary 'uv') -Recurse -Filter uv.exe)[0].FullName
@@ -262,13 +325,38 @@ try {
   }
   Install-OwnedFile (Join-Path $release 'install.ps1') (Join-Path $ComponentHome 'app\install.ps1')
   Say 'Installing private Python and locked runtime packages…' '正在安装独立 Python 和版本锁定的运行依赖…'
-  Invoke-Private $uv @('python','install',$PythonVersion,'--quiet')
+  $installed = $false
+  if ($PythonMirror) {
+    Say "Python from your mirror, $(Url-Host $PythonMirror)" "从你配置的镜像 $(Url-Host $PythonMirror) 下载 Python"
+    $script:PythonFrom = $PythonMirror
+    try { Invoke-Private $uv @('python','install',$PythonVersion,'--quiet'); $installed = $true } catch { Mirror-Failed $PythonMirror }
+    $script:PythonFrom = $null
+  }
+  if (-not $installed) { Invoke-Private $uv @('python','install',$PythonVersion,'--quiet') }
   Push-Location (Join-Path $ComponentHome 'app')
   # Pre-existing staging was refused before any writes. Only this transaction's
   # venv.next may be removed by failure cleanup.
   $createdVenv = $true
-  try { Invoke-Private $uv @('sync','--frozen','--no-dev','--no-build','--python',$PythonVersion,'--quiet') } finally { Pop-Location }
   $stagedVenv = Join-Path $ComponentHome 'venv.next'
+  try {
+    # uv sync --frozen fetches the lock's own files.pythonhosted.org addresses whatever index
+    # is set, so from a mirror the lock is exported with its hashes and every one is required.
+    $synced = $false
+    if ($PypiIndex) {
+      Say "Packages from your package index, $(Url-Host $PypiIndex)" "从你配置的软件包镜像 $(Url-Host $PypiIndex) 下载依赖"
+      $requirements = Join-Path $temporary 'requirements.txt'
+      try {
+        Invoke-Private $uv @('export','--frozen','--no-dev','--no-emit-project','--no-header','--format','requirements-txt','--quiet','--output-file',$requirements)
+        Invoke-Private $uv @('venv','--quiet','--python',$PythonVersion,$stagedVenv)
+        Invoke-Private $uv @('pip','sync','--python',(Join-Path $stagedVenv 'Scripts\python.exe'),'--require-hashes','--no-build','--default-index',$PypiIndex,$requirements)
+        $synced = $true
+      } catch {
+        Mirror-Failed $PypiIndex
+        if (Test-Path -LiteralPath $stagedVenv) { Assert-Plain $stagedVenv $ComponentHome; Remove-Item -LiteralPath $stagedVenv -Recurse -Force }
+      }
+    }
+    if (-not $synced) { Invoke-Private $uv @('sync','--frozen','--no-dev','--no-build','--python',$PythonVersion,'--quiet') }
+  } finally { Pop-Location }
   if (-not (Test-Path -LiteralPath (Join-Path $stagedVenv 'Scripts\python.exe') -PathType Leaf)) { throw 'Staged private Python was not created.' }
   $venv = Join-Path $ComponentHome 'venv'
   Assert-Plain $stagedVenv $ComponentHome; Assert-Plain ($venv + '.old') $ComponentHome

@@ -7,6 +7,10 @@ local component and the installer all carry the same version.
 
 ## [Unreleased]
 
+### Added
+
+- The Terminal installer downloads Python packages from the mirror your pip or uv already uses (`PIP_INDEX_URL`, `UV_DEFAULT_INDEX`, `pip.conf`, `uv.toml`), Python from `UV_PYTHON_INSTALL_MIRROR`, and uv from `UV_INSTALLER_GITHUB_BASE_URL`. Every file is still checked against the lock's hashes or a pinned checksum, a mirror that fails gives way to the original source, and a password in a mirror's address is never printed. It used to ignore them, so PyPI's slowness from mainland China slowed every install.
+
 ### Changed
 
 - Verdicts take four fixed colours, one per word, instead of the continuous scale: green for Human, gold for Lightly edited, orange for Heavily edited and deep crimson for AI-generated, brighter on dark pages. The chip is filled with its word's colour, with no dot, and its number in the ink that reads on it; Human's chip is a tint of its green with a green edge, so a mostly human page stays calm. Where the dot thinned to a ring when its word was likely wrong, the card now says "Unsure: close to" the neighbouring word. The toolbar menu's list and the setup page's legend show the same chips.
