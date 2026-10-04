@@ -13,15 +13,19 @@ export function finish<T>(steps: Generator<void, T>): T {
   }
 }
 
-/** Run `steps` to its end, handing the main thread back whenever a slice has run `sliceMs`. */
-export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = 8): Promise<T> {
+/** Run `steps` to its end, handing the main thread back whenever a slice has run `sliceMs`.
+ *  `meter.waited` adds up the time it was handed back, so that what the work itself cost is
+ *  the time it took less that (Observers' drain pacing, lib/capture/observers.ts). */
+export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = 8, meter?: { waited: number }): Promise<T> {
   let began = performance.now();
   for (;;) {
     const step = steps.next();
     if (step.done) return step.value;
     if (performance.now() - began >= sliceMs) {
+      const handed = performance.now();
       await yieldToMain();
       began = performance.now();
+      if (meter) meter.waited += began - handed;
     }
   }
 }

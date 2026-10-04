@@ -91,6 +91,7 @@ import { WINDOW_CHARS } from "../capture/windows";
 import { clearsFloor, fitsWindow, groupWords, modelSized, orphanHome } from "../plan/group";
 import { MARK_ATTR } from "../types";
 import { cutText } from "./splits";
+import { finish } from "../slices";
 
 /**
  * Formula containers of every renderer in use: raw MathML, MathJax v2/v3, KaTeX,
@@ -466,6 +467,19 @@ export function collectUnits(
   root: ParentNode = document.body,
   opts: CollectOptions = {},
 ): Unit[] {
+  return finish(collectUnitsInSlices(root, opts));
+}
+
+/**
+ * collectUnits, pausing between blocks: run by finishInSlices (lib/slices.ts), a page of a
+ * hundred thousand nodes is walked a few milliseconds at a time and its own work goes on in
+ * between. It pauses only where a block has closed its run, never inside a sentence, and the
+ * observers record what the page changes meanwhile (lib/capture/observers.ts).
+ */
+export function* collectUnitsInSlices(
+  root: ParentNode = document.body,
+  opts: CollectOptions = {},
+): Generator<void, Unit[]> {
   if (!root) return [];
   const rootEl: Element | null = root instanceof Element ? root : null;
   if (rootEl && !rootEl.isConnected) return [];
@@ -478,10 +492,14 @@ export function collectUnits(
   const scopes = scopesOfScan();
   scanScopes = null; // the next scan looks at the page anew
   if (!startEl) return [];
+  // Each of these looks over the whole page once: a pause between them, as between blocks.
+  yield;
   const consentBanners = findConsentBanners(startEl);
   // A consent box known by what it holds can stand around a re-scan's root (its second tab).
   for (const banner of consentBanners) if (banner !== startEl && banner.contains(startEl)) return [];
+  yield;
   const pageText = pageTextSize(document);
+  yield;
   /** The elements a re-scan was asked about (CollectOptions.changed). */
   const changed = opts.changed?.flatMap((n) => {
     const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
@@ -586,7 +604,7 @@ export function collectUnits(
    * read as a paragraph of its own right after it. The run the walk was in the middle of is
    * set aside while the note is walked and taken up again after it.
    */
-  function visitNote(el: Element, ctx: Ctx): void {
+  function* visitNote(el: Element, ctx: Ctx): Generator<void, void> {
     const open = { cur, curContainer, curPreserved, curFormulas, curSkips, skipped, curQuote, curTruncated };
     cur = [];
     curContainer = null;
@@ -597,7 +615,7 @@ export function collectUnits(
     curQuote = -1;
     curTruncated = false;
     inNote++;
-    visitChildren(el, { ...ctx, container: el });
+    yield* visitChildren(el, { ...ctx, container: el });
     closeRun();
     inNote--;
     ({ cur, curContainer, curPreserved, curFormulas, curSkips, skipped, curQuote, curTruncated } = open);
@@ -755,11 +773,11 @@ export function collectUnits(
     findConsentBanners(root, consentBanners);
   };
 
-  function visitChildren(el: Element, ctx: Ctx): void {
-    for (const child of composedChildren(el, onShadowRoot)) visit(child, ctx);
+  function* visitChildren(el: Element, ctx: Ctx): Generator<void, void> {
+    for (const child of composedChildren(el, onShadowRoot)) yield* visit(child, ctx);
   }
 
-  function visit(node: Node, ctx: Ctx): void {
+  function* visit(node: Node, ctx: Ctx): Generator<void, void> {
     if (node.nodeType === Node.TEXT_NODE) {
       visitText(node as Text, ctx);
       return;
@@ -850,7 +868,7 @@ export function collectUnits(
     const preserves = cs ? preservesNewlines(cs) : ctx.preserves;
 
     if (flow === "contents") {
-      visitChildren(el, { container: ctx.container, hidden, preserves });
+      yield* visitChildren(el, { container: ctx.container, hidden, preserves });
       return;
     }
 
@@ -859,12 +877,13 @@ export function collectUnits(
       // into the line (tweet embeds, product tiles) — treat as a block boundary.
       if (cs && cs.display.startsWith("inline-") && hasBlockChildren(el, cs.display)) {
         closeRun();
-        visitChildren(el, { container: el, hidden, preserves });
+        yield* visitChildren(el, { container: el, hidden, preserves });
         closeRun();
+        yield;
         return;
       }
       const blockifies = cs !== null && (cs.display === "inline-flex" || cs.display === "inline-grid");
-      visitChildren(el, { container: ctx.container, hidden, preserves, blockified: blockifies });
+      yield* visitChildren(el, { container: ctx.container, hidden, preserves, blockified: blockifies });
       return;
     }
 
@@ -873,8 +892,8 @@ export function collectUnits(
     // part of the sentence and stays in the run; anything longer is a sidenote.
     const float = cs ? ((cs as any).float ?? cs.cssFloat ?? "none") : "none";
     if (float !== "none" && INLINE_FALLBACK_TAGS.has(tag)) {
-      if (isDropCap(el)) visitChildren(el, { container: ctx.container, hidden, preserves });
-      else visitNote(el, { container: ctx.container, hidden, preserves });
+      if (isDropCap(el)) yield* visitChildren(el, { container: ctx.container, hidden, preserves });
+      else yield* visitNote(el, { container: ctx.container, hidden, preserves });
       return;
     }
     // A heading is a barrier only while it is a LABEL. A container that merely declares
@@ -886,8 +905,10 @@ export function collectUnits(
       return;
     }
     closeRun();
-    visitChildren(el, { container: el, hidden, preserves });
+    yield* visitChildren(el, { container: el, hidden, preserves });
     closeRun();
+    // Between blocks, with no run open: where a walk may pause (collectUnitsInSlices).
+    yield;
   }
 
   function visitText(tn: Text, ctx: Ctx): void {
@@ -991,7 +1012,7 @@ export function collectUnits(
 
   // ---- go ------------------------------------------------------------------------
 
-  visit(startEl, { container: startEl, hidden: false, preserves: false });
+  yield* visit(startEl, { container: startEl, hidden: false, preserves: false });
   closeRun();
   return asm.finish();
 }

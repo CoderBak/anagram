@@ -45,6 +45,13 @@
 //
 // ::highlight() rules cannot take a colour per range: one name per word (SCALE_STEPS + 1),
 // each at rest or active.
+//
+// Only the marks NEAR THE SCREEN are registered (on the page's own DOM; a surface that locates
+// its text itself registers what it has drawn). Chromium validates every registered range
+// again whenever the document changes — a feed's ticking counter, a chat's next message — on
+// screen or not: fifty marked paragraphs off screen added 0.8 s per 10 s to a page changing
+// twenty times a second, as many as on screen. A unit's ranges are kept while its text is
+// more than a screen away, and go back into the registry as it comes within one (park).
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict, WindowVerdict } from "../capture/windows";
@@ -128,6 +135,90 @@ function markHighlight(step: number, active: boolean): Highlight | null {
 const _byUnit = new Map<string, Array<{ step: number; range: Range }>>();
 /** The one unit the reader is on — hovered chip, pinned card, or a jump's target. */
 let _activeUnit: string | null = null;
+
+// ---- marks far from the screen: kept, not registered ----------------------------------
+
+/** How far from the viewport a unit's marks are registered: a screen above and below. */
+const NEAR_MARGIN = "100% 0px";
+/** Units whose ranges are kept out of the registry, being far from the screen. */
+const _parked = new Set<string>();
+/** The containers each marked unit's text is in, and the units each container holds. */
+const _containersOf = new Map<string, Element[]>();
+const _unitsOf = new Map<Element, Set<string>>();
+/** Containers the observer has answered for, and of those the ones near the screen. */
+const _known = new WeakSet<Element>();
+const _near = new WeakSet<Element>();
+let _nearIo: IntersectionObserver | null = null;
+
+function nearObserver(): IntersectionObserver | null {
+  if (typeof IntersectionObserver === "undefined") return null;
+  return (_nearIo ??= new IntersectionObserver((entries) => {
+    const touched = new Set<string>();
+    for (const e of entries) {
+      _known.add(e.target);
+      if (e.isIntersecting) _near.add(e.target);
+      else _near.delete(e.target);
+      for (const id of _unitsOf.get(e.target) ?? []) touched.add(id);
+    }
+    for (const id of touched) {
+      if (isNear(id) === false) park(id);
+      else unpark(id);
+    }
+    // Inside a page's own scroller (the PDF viewer, a mail client's message pane) the margin
+    // does not reach: there a unit's marks are registered as its text comes into view.
+    // (scrollMargin would reach it, but Chromium took "100%" of it to cover the whole page.)
+  }, { rootMargin: NEAR_MARGIN }));
+}
+
+/** Whether a unit's text is near the screen: undefined until the observer has said. */
+function isNear(id: string): boolean | undefined {
+  const els = _containersOf.get(id) ?? [];
+  if (els.some((el) => _near.has(el))) return true;
+  return els.length > 0 && els.every((el) => _known.has(el)) ? false : undefined;
+}
+
+function park(id: string): void {
+  if (_parked.has(id) || !_byUnit.has(id)) return;
+  _parked.add(id);
+  for (const e of _byUnit.get(id)!) {
+    _highlights.get(markName(e.step, false))?.delete(e.range);
+    _highlights.get(markName(e.step, true))?.delete(e.range);
+  }
+}
+
+function unpark(id: string): void {
+  if (!_parked.delete(id)) return;
+  const active = _activeUnit === id;
+  for (const e of _byUnit.get(id) ?? []) markHighlight(e.step, active)?.add(e.range);
+}
+
+function watch(unit: Unit): void {
+  const io = nearObserver();
+  if (!io) return;
+  const els = [...new Set(unit.parts.map((p) => p.container))];
+  _containersOf.set(unit.id, els);
+  for (const el of els) {
+    let units = _unitsOf.get(el);
+    if (!units) {
+      _unitsOf.set(el, (units = new Set()));
+      io.observe(el);
+    }
+    units.add(unit.id);
+  }
+}
+
+function unwatch(id: string): void {
+  _parked.delete(id);
+  for (const el of _containersOf.get(id) ?? []) {
+    const units = _unitsOf.get(el);
+    units?.delete(id);
+    if (units && units.size === 0) {
+      _unitsOf.delete(el);
+      _nearIo?.unobserve(el);
+    }
+  }
+  _containersOf.delete(id);
+}
 
 let _stylesInjected = false;
 let _styleEl: HTMLStyleElement | null = null;
@@ -214,7 +305,8 @@ export function clearActiveUnit(id: string): void {
 function restate(id: string, active: boolean): void {
   if (_painted.has(id)) _painter?.activate(id, active);
   const entries = _byUnit.get(id);
-  if (!entries) return;
+  // A parked unit's ranges go back into the set it is in when it comes near (unpark).
+  if (!entries || _parked.has(id)) return;
   for (const e of entries) {
     markHighlight(e.step, !active)?.delete(e.range);
     markHighlight(e.step, active)?.add(e.range);
@@ -356,15 +448,21 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): vo
     return;
   }
   const entries: Array<{ step: number; range: Range }> = [];
-  for (const { step, ranges } of marks) {
-    const highlight = markHighlight(step, active);
-    if (!highlight) continue;
-    for (const range of ranges) {
-      highlight.add(range);
-      entries.push({ step, range });
+  for (const { step, ranges } of marks) for (const range of ranges) entries.push({ step, range });
+  if (entries.length === 0) return;
+  _byUnit.set(unit.id, entries);
+  // On a surface with a locator of its own (the PDF reader, a preview's pdf.js) the text is
+  // what the surface has drawn, a few pages of it, its layers replaced as it draws others:
+  // what is registered is bounded already, and no observer could follow those layers.
+  if (_locator === null) {
+    watch(unit);
+    // Known to be far (a paragraph read ahead in the background): kept until it comes near.
+    if (isNear(unit.id) === false) {
+      _parked.add(unit.id);
+      return;
     }
   }
-  if (entries.length > 0) _byUnit.set(unit.id, entries);
+  for (const e of entries) markHighlight(e.step, active)?.add(e.range);
 }
 
 /** Remove all highlight ranges associated with a unit id. */
@@ -380,4 +478,5 @@ export function clearHighlight(id: string): void {
     _highlights.get(markName(e.step, true))?.delete(e.range);
   }
   _byUnit.delete(id);
+  unwatch(id);
 }

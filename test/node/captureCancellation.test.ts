@@ -44,7 +44,7 @@ vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {},
   refreshHighlightTheme() {},
 }));
-vi.mock("../../lib/dom/walker", () => ({collectUnits: () => { calls.main(); return calls.units; }, inPageOrder: (units: Unit[]) => [...units]}));
+vi.mock("../../lib/dom/walker", () => ({collectUnits: () => { calls.main(); return calls.units; }, collectUnitsInSlices: function* () { calls.main(); return calls.units; }, inPageOrder: (units: Unit[]) => [...units]}));
 vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {

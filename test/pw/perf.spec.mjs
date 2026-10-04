@@ -42,6 +42,18 @@
 //    longest in, where a cost that grows with the page shows — the worst long task, full
 //    rescans, and the heap kept after a forced GC.
 //
+// G–J) What Anagram costs a page IN ALL, against the same page in a browser without it: the
+//    main thread's whole time (the browser's TaskDuration — style, layout, paint and
+//    compositing included, the work the extension's chips and marks cause the browser to do,
+//    which the content script's own CPU above never shows), and the long tasks. G: the
+//    Reddit-like feed, scrolled at twice reading speed — its chips fading in and the marks
+//    Chromium validates again at every change of the page cost it 9–10.7% of its main
+//    thread, where 6.3–7.5% is left with them gone and the marks off the screen out of the registry
+//    (lib/render/highlight.ts). H: a table of twenty thousand rows, nothing to read in it —
+//    the first walk held the page for a second in one task until it paused between blocks
+//    (lib/dom/walker.ts collectUnitsInSlices). I: a chat adding a message every 300 ms. J: a
+//    page read to the end and left open: nothing to do, nothing done.
+//
 // Every budget is a soft expectation, printed with what was measured, pass or fail.
 import { test as base, expect } from "./fixtures.mjs";
 import { launchPlain, BADGE_SEL } from "../harness.mjs";
@@ -439,3 +451,86 @@ for (const feed of FEEDS) {
     expect(state.chips, "the session was read at all").toBeGreaterThan(0);
   });
 }
+
+// ---- G–J: the page's whole cost, against no extension ----------------------------------------
+
+/** Long tasks from before the page's own scripts run, and a way to read the browser's own
+ *  main-thread totals. */
+async function costOf(ctx, url, act) {
+  const page = await ctx.newPage();
+  await page.addInitScript(() => {
+    window.__longTasks = [];
+    new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__longTasks.push(Math.round(e.duration)); }).observe({ type: "longtask", buffered: true });
+  });
+  const session = await ctx.newCDPSession(page);
+  await session.send("Performance.enable");
+  const read = async () => Object.fromEntries((await session.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
+  const before = await read();
+  await page.goto(url, { waitUntil: "load" });
+  await act(page, read);
+  const after = await read();
+  const longTasks = await page.evaluate(() => window.__longTasks);
+  await page.close();
+  return { taskMs: Math.round((after.TaskDuration - before.TaskDuration) * 1000), scriptMs: Math.round((after.ScriptDuration - before.ScriptDuration) * 1000), worst: Math.max(0, ...longTasks) };
+}
+
+/** The same scenario with Anagram and in a plain browser. */
+async function againstNone(context, url, act) {
+  const ext = await costOf(context, url, act);
+  const browser = await launchPlain({ headless: true });
+  try {
+    const ctl = await costOf(await browser.newContext({ viewport: { width: 1100, height: 850 } }), url, act);
+    return { ext, ctl };
+  } finally {
+    await browser.close();
+  }
+}
+
+const settled = async (page) => { await page.waitForSelector(BADGE_SEL, { timeout: 20000 }).catch(() => {}); await page.waitForTimeout(2500); };
+
+test("G) a Reddit-like feed for 60 s: the main thread's whole time over a plain browser's", async ({ context, pages, budget }) => {
+  test.setTimeout(6 * 60_000);
+  pages.serve({ "/feed.html": REDDIT_FEED });
+  const { ext, ctl } = await againstNone(context, pages.url("/feed.html"), async (page) => {
+    await page.waitForTimeout(2500);
+    await scrollSession(page, 60, { pace: 2 });
+  });
+  const share = (ext.taskMs - ctl.taskMs) / 60_000;
+  // 6.3–7.5% over three runs (2026-10-04, M4); 9–10.7% before the chips stopped fading in and
+  // the marks off the screen left the registry.
+  budget("Reddit-like feed: Anagram adds < 8% to the main thread, the browser's own work included", share < 0.08, `${ext.taskMs - ctl.taskMs}ms in 60 s (${(100 * share).toFixed(1)}%): ${ext.taskMs}ms against ${ctl.taskMs}ms`);
+});
+
+test("H) a table of 20,000 rows: no long task of Anagram's past the page's own", async ({ context, pages, budget }) => {
+  test.setTimeout(4 * 60_000);
+  const rows = Array.from({ length: 20_000 }, (_, i) => `<tr><td>${i}</td><td>item ${i % 97}</td><td>${(i * 37) % 1000}.${i % 100}</td><td>${["ok", "late", "done"][i % 3]}</td><td>2026-0${1 + (i % 9)}-1${i % 10}</td></tr>`).join("");
+  pages.serve({ "/table.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>big table</title></head><body><p>${VOCAB_B.slice(0, 90).join(" ")}.</p><table>${rows}</table></body></html>` });
+  const { ext, ctl } = await againstNone(context, pages.url("/table.html"), async (page) => { await page.waitForTimeout(8000); });
+  budget("20,000-row table: the worst long task with Anagram < the page's own + 50ms", ext.worst < Math.max(ctl.worst, 50) + 50, `${ext.worst}ms against ${ctl.worst}ms`);
+});
+
+test("I) a chat adding a message every 300 ms for 30 s: the main thread's whole time over a plain browser's", async ({ context, pages, budget }) => {
+  test.setTimeout(4 * 60_000);
+  const chat = `let n=0;const log=document.getElementById('log');setInterval(()=>{const d=document.createElement('div');d.innerHTML='<b>user'+(n%17)+'</b> <span>'+${JSON.stringify(VOCAB_B)}.slice(0,8+(n*7)%30).join(' ')+'</span>';log.append(d);if(log.children.length>200)log.firstElementChild.remove();n++;},300);`;
+  pages.serve({ "/chat.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>chat</title></head><body><p>${VOCAB_B.join(" ")} ${VOCAB_A.join(" ")}.</p><div id="log"></div><script>${chat}</script></body></html>` });
+  const { ext, ctl } = await againstNone(context, pages.url("/chat.html"), async (page) => { await page.waitForTimeout(30_000); });
+  const share = (ext.taskMs - ctl.taskMs) / 30_000;
+  budget("chat: Anagram adds < 7% to the main thread, the browser's own work included", share < 0.07, `${ext.taskMs - ctl.taskMs}ms in 30 s (${(100 * share).toFixed(1)}%): ${ext.taskMs}ms against ${ctl.taskMs}ms`);
+  budget("chat: no long task", ext.worst < 50, `${ext.worst}ms`);
+});
+
+test("J) a page read to the end and left open for 30 s: nothing done", async ({ context, pages, budget }) => {
+  test.setTimeout(3 * 60_000);
+  pages.serve({ "/idle.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>idle</title></head><body>${Array.from({ length: 40 }, (_, i) => `<p>${Array.from({ length: 90 }, (_, k) => VOCAB_B[(i * 31 + k * 7) % VOCAB_B.length]).join(" ")}.</p>`).join("")}</body></html>` });
+  let idle = null;
+  await costOf(context, pages.url("/idle.html"), async (page, read) => {
+    await settled(page);
+    for (let i = 0; i < 12; i++) { await page.evaluate(() => window.scrollBy(0, innerHeight)); await page.waitForTimeout(300); }
+    await page.waitForTimeout(4000);
+    const a = await read();
+    await page.waitForTimeout(30_000);
+    const b = await read();
+    idle = { scriptMs: Math.round((b.ScriptDuration - a.ScriptDuration) * 1000), layouts: b.LayoutCount - a.LayoutCount };
+  });
+  budget("idle page: < 20ms of script and no layout in 30 s", idle.scriptMs < 20 && idle.layouts === 0, `${idle.scriptMs}ms of script, ${idle.layouts} layouts`);
+});

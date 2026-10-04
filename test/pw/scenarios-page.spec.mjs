@@ -557,6 +557,35 @@ test("a page flung past for seconds sends nothing of what flashes by, and what i
 
 // Headless Chromium never hides a page, so the content script's own world is told it is
 // hidden, exactly as the browser would tell it: visibilityState and a visibilitychange event.
+// Chromium validates every registered highlight range again whenever the document changes, on
+// screen or not, so only the marks near the screen are registered (lib/render/highlight.ts):
+// a paragraph read far down the page keeps its marks out of the registry until the reader
+// comes within a screen of it, and they go out again as the reader leaves.
+test("the marks of paragraphs far from the screen are kept out of the registry and come back with the reader", async ({ page, pages, storage }) => {
+  await storage.set({ underlineScope: "all" });
+  pages.serve({ "/far.html": PAGE("far marks", Array.from({ length: 40 }, (_, i) => `<p id="fm${i}">${para("FARMARK", i)}</p>`).join("\n")) });
+  await page.goto(pages.url("/far.html"), { waitUntil: "load" });
+  /** The paragraphs whose marks are registered now. */
+  const registered = () => page.evaluate(() => {
+    const ids = new Set();
+    for (const h of CSS.highlights.values()) for (const r of h) { const p = r.startContainer.parentElement?.closest("p[id]"); if (p) ids.add(p.id); }
+    return [...ids];
+  });
+  const frames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))));
+  await expect.poll(registered, { message: "the first screen's marks are registered" }).toContain("fm0");
+  // Read to the end, so that every paragraph has its verdict and its marks.
+  for (let i = 0; i < 40; i += 4) { await page.evaluate((i) => document.getElementById(`fm${i}`).scrollIntoView(), i); await page.waitForTimeout(150); }
+  await expect.poll(async () => (await registered()).includes("fm39"), { message: "the last paragraph is read and marked", timeout: 20_000 }).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await frames();
+  // A verdict that lands now is registered until the observer has said where its text is.
+  const kept = "far marks: back at the top, the last paragraphs' marks are out of the registry";
+  await expect.poll(async () => (await registered()).filter((id) => Number(id.slice(2)) >= 30), { message: kept }).toEqual([]);
+  expect.soft(await registered(), kept).toContain("fm0");
+  await page.evaluate(() => document.getElementById("fm38").scrollIntoView());
+  await expect.poll(registered, { message: "far marks: scrolled to them, they are registered again" }).toContain("fm38");
+});
+
 test("a hidden tab dispatches nothing, not even the idle prefetch, and resumes when shown", async ({ context, page, pages, nativeHost }) => {
   pages.serve({
     "/hidden.html": PAGE("hidden fixture", `<main id="top">${[0, 1].map((i) => `<p>${para("SHOWNFIRST", i)}</p>`).join("")}</main><div style="height:5000px"></div><div id="bottom"></div>`),

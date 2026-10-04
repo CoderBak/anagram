@@ -22,8 +22,8 @@ export default defineConfig({
   timeout: 90_000,
   reporter: [["list"]],
   projects: [
-    { name: "chromium", testMatch: "**/*.spec.mjs", testIgnore: ["**/perf.spec.mjs", "**/scenarios-live.spec.mjs"] },
+    { name: "chromium", testMatch: "**/*.spec.mjs", testIgnore: ["**/perf.spec.mjs", "**/perf-matrix.spec.mjs", "**/scenarios-live.spec.mjs"] },
     ...(LIVE ? [{ name: "live", testMatch: "**/scenarios-live.spec.mjs" }] : []),
-    { name: "perf", testMatch: "**/perf.spec.mjs", dependencies: ["chromium"], workers: 1, fullyParallel: false, timeout: 15 * 60_000 },
+    { name: "perf", testMatch: ["**/perf.spec.mjs", "**/perf-matrix.spec.mjs"], dependencies: ["chromium"], workers: 1, fullyParallel: false, timeout: 15 * 60_000 },
   ],
 });

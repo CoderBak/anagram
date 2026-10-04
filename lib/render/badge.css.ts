@@ -55,11 +55,6 @@ export const BADGE_CSS: string = `
   :host { display: none !important; }
 }
 
-@keyframes anagram-badge-in {
-  from { opacity: 0; transform: translateY(1px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
 .pill {
   display: inline-flex;
   align-items: center;
@@ -79,8 +74,9 @@ export const BADGE_CSS: string = `
   white-space: nowrap;
   direction: ltr; /* the number must not bidi-flip inside RTL paragraphs */
   cursor: default;
-  animation: anagram-badge-in 180ms ease-out both;
-  transition: background-color 130ms ease, border-color 130ms ease;
+  /* No entrance and no colour transition: each runs frames at the display's rate, and on a
+     page that keeps changing every frame costs what the marks and the chips cost to draw — a
+     feed's chips fading in and turning their colour took a third of what Anagram cost it. */
 }
 
 /* A chip where the whole pill has no room (between two columns of a PDF): a square of its
@@ -330,7 +326,6 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
 .pill.pg-flash { animation: anagram-flash 800ms ease-in-out 2; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pill { animation: none; transition: none; }
   .pill.pending .dot { animation: none; opacity: 0.6; }
   .pill.pg-flash { animation: none; outline: 2px solid var(--c, var(--dot, #a3a3a3)); outline-offset: 2px; }
   /* [popover] as well: the .card[popover] rule above outranks a bare .card, so the plain

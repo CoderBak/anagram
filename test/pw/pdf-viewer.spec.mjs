@@ -68,7 +68,14 @@ test("the structure worker's reading marks the page's own glyphs, and the toolba
     { timeout: 60000 },
   );
   await expect.poll(() => chips(page), { timeout: 15000 }).toBeGreaterThanOrEqual(3);
-  const marked = await page.evaluate(() => {
+  // Only the marks within a screen of what the viewer shows are registered
+  // (lib/render/highlight.ts): each page is read with it in view.
+  const marksOn = async (n) => {
+    await page.evaluate((n) => document.querySelector(`#viewer .page[data-page-number="${n}"]`)?.scrollIntoView({ block: "center" }), n);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))));
+    return readMarks();
+  };
+  const readMarks = () => page.evaluate(() => {
     const ranges = [];
     for (const [, highlight] of CSS.highlights) for (const range of highlight) {
       const box = range.getBoundingClientRect();
@@ -78,6 +85,8 @@ test("the structure worker's reading marks the page's own glyphs, and the toolba
     const text = (n) => ranges.filter((r) => r.page === n).map((r) => r.text).join(" ").replace(/\s+/g, " ");
     return { page1: text(1), page2: text(2), all: ranges.map((r) => r.text) };
   });
+  const [first, second] = [await marksOn(1), await marksOn(2)];
+  const marked = { page1: first.page1, page2: second.page2, all: [...first.all, ...second.all] };
   expect(marked.page1).toMatch(/Anagram rebuilds this document from the text runs .* That is the whole idea\./);
   expect(marked.page1, "the mended word is marked on both of its glyph runs").toMatch(/hyphen ation mark is joined again/);
   expect(marked.page2).toMatch(/that the paragraph is sewn back together across the page break/);

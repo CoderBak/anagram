@@ -115,6 +115,9 @@ test("a paragraph longer than the model reads in one pass is counted, read whole
   // every stretch between is a weighted mean, so its word lies between the passes'.
   const stepOf = (score) => `s0${score < 1 / 6 ? 0 : score < 1 / 2 ? 1 : score < 5 / 6 ? 2 : 3}`;
   const steps = verdicts.map((v) => stepOf(v.score));
+  // Its marks are registered while it is near the screen (lib/render/highlight.ts).
+  await page.evaluate(() => document.querySelector("#windowed p").scrollIntoView({ block: "center" }));
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 50)))));
   const bands = await page.evaluate(() => {
     const p = document.querySelector("#windowed p");
     const out = new Set();

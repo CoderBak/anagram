@@ -30,7 +30,8 @@ import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
 import { countWords } from "../dom/text";
 import { repairSplits } from "../dom/splits";
-import { eachShadowRoot, noteShadowHost, shadowAttachedEvent } from "../dom/shadow";
+import { eachShadowRoot, eachShadowRootInSlices, noteShadowHost, shadowAttachedEvent } from "../dom/shadow";
+import { finishInSlices } from "../slices";
 
 export interface Observers {
   observeUnit(unit: Unit): void;
@@ -95,7 +96,9 @@ export function createObservers(opts: {
   onPlaced?(): void;
   /** `quiet`: text that changed without changing shape — the text node that changed (for
    *  one the page replaced, the one that left) and the element it stood in. */
-  onDirty(nodes: Node[], removed: Node[], quiet: Map<Text, Element>): void;
+  /** Re-read what changed. A promise is a drain that walks in slices: it resolves to what it
+   *  cost the main thread, in ms, and no other drain starts before it does. */
+  onDirty(nodes: Node[], removed: Node[], quiet: Map<Text, Element>): void | Promise<number>;
   /** The document element itself was replaced (document.open()/write()). */
   onDocumentReplaced?(): void;
 }): Observers {
@@ -121,6 +124,8 @@ export function createObservers(opts: {
   let dirtySince: number | null = null;
   /** What recent drains cost, in ms: the last one's, or half the one before if more. */
   let drainCost = 0;
+  /** A drain is walking still. */
+  let draining = false;
   let lastDrainAt = 0;
   let documentReplaced = false;
   let started = false;
@@ -228,6 +233,9 @@ export function createObservers(opts: {
 
   function drain(): void {
     drainTimer = null;
+    // A drain still walking (it pauses to let the page run): the dirt waits for it, and is
+    // handed over when it is done.
+    if (draining) return;
     dirtySince = null;
     if (mo) ingest(mo.takeRecords());
     if (documentReplaced) {
@@ -246,9 +254,18 @@ export function createObservers(opts: {
     removed.clear();
     quiet.clear();
     const began = performance.now();
-    opts.onDirty(nodes, rem, still);
-    drainCost = Math.max(performance.now() - began, drainCost / 2);
-    lastDrainAt = Date.now();
+    const done = (cost: number): void => {
+      drainCost = Math.max(cost, drainCost / 2);
+      lastDrainAt = Date.now();
+    };
+    const pending = opts.onDirty(nodes, rem, still);
+    if (!(pending instanceof Promise)) { done(performance.now() - began); return; }
+    // What the drain cost is what it says: its walks' pauses were the page's time.
+    draining = true;
+    void pending.then((cost) => done(typeof cost === "number" ? cost : performance.now() - began), () => done(performance.now() - began)).finally(() => {
+      draining = false;
+      if (dirty.size > 0 || removed.size > 0 || quiet.size > 0) scheduleDrain();
+    });
   }
 
   // TWO observers: with a single rootMargin observer and threshold 0, no event
@@ -375,8 +392,10 @@ export function createObservers(opts: {
     mo.observe(document, MO_OPTIONS);
     for (const root of pendingRoots) mo.observe(root, MO_OPTIONS);
     pendingRoots.clear();
-    // …and every shadow root already on the page, walked into or not.
-    eachShadowRoot(document, observeRoot);
+    // …and every shadow root already on the page, walked into or not: every element of it, a
+    // slice at a time (a table of twenty thousand rows is a hundred thousand of them). The
+    // walk reports the roots it goes into as it does (CollectOptions.onShadowRoot).
+    void finishInSlices(eachShadowRootInSlices(document, (root) => { if (started) observeRoot(root); }));
     const attached = shadowAttachedEvent();
     if (attached) document.addEventListener(attached, onShadowAttached, true);
   }

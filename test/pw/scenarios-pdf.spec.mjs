@@ -201,11 +201,12 @@ test("a thirty-page document: distant pages are not drawn ahead of time, are dra
   await expect
     .poll(() => page.evaluate((sel) => [...document.querySelectorAll(`.anagramPdfChips ${sel}`)].some((el) => el.closest(".page")?.dataset.pageNumber === "1" && el.shadowRoot?.querySelector(".pill:not(.pending)")), BADGE_SEL), { message: restores })
     .toBe(true);
-  const returned = await readReader(page);
+  // The marks of a page come back as it comes near the screen again (lib/render/highlight.ts).
+  let returned;
+  await expect.poll(async () => { returned = await readReader(page); return returned.marks; }, { message: restores }).toBeGreaterThan(0);
   expect.soft(last.page, restores).toBe(30);
   expect.soft(last.text, restores).toBeTruthy();
   expect.soft(returned.placed.some((c) => c.page === 1), restores).toBe(true);
-  expect.soft(returned.marks, restores).toBeGreaterThan(0);
 });
 
 // The viewer draws a few pages at a time and lets the rest go, and their units with them. The

@@ -20,7 +20,8 @@ import { commentOriginsIn } from "../access/commentFrames";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
-import { collectUnits, inPageOrder, type CollectOptions } from "../dom/walker";
+import { collectUnitsInSlices, inPageOrder, type CollectOptions } from "../dom/walker";
+import { finishInSlices } from "../slices";
 import { restoreSplits } from "../dom/splits";
 import { partTextOf, minWordsOf, isShortText, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, type MinWords } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
@@ -80,6 +81,8 @@ const PREFETCH_PASS = 300;
 const URL_REFRESH_DEBOUNCE_MS = 300;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
+/** How long a walk runs before it lets the page's own work through (collectUnitsInSlices). */
+const WALK_SLICE_MS = 8;
 /** How long a jump to a kept paragraph waits for its page to be drawn, and how much of a
  *  regrouped paragraph's opening must match for the jump to land on it. */
 const JUMP_WAIT_MS = 5000;
@@ -659,8 +662,23 @@ export function createOrchestrator(
     };
   }
 
-  /** One walk under `root`: shadow roots it descends into become observer targets. */
-  function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip", changed?: readonly Node[]): Unit[] {
+  /**
+   * WALKS. A walk of the page pauses between blocks to let the page's own work through
+   * (collectUnitsInSlices): a table of twenty thousand rows held the page for a second in
+   * one go. So walks go one at a time — another walk meanwhile would claim the nodes this one
+   * is reading — and what one finds is taken only if the run it was for is still on. A
+   * surface's own collect (OrchestratorOptions.collect) answers at once, as before.
+   */
+  let walks: Promise<unknown> = Promise.resolve();
+  function walkInTurn<T>(job: () => Promise<T>): Promise<T> {
+    const run = walks.then(job);
+    walks = run.catch((e) => log.warn("walk failed", e));
+    return run;
+  }
+
+  /** One walk under `root`: shadow roots it descends into become observer targets. `meter`
+   *  adds up the time the walk handed back to the page (finishInSlices). */
+  function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip", changed?: readonly Node[], meter?: { waited: number }): Unit[] | Promise<Unit[]> {
     const options: CollectOptions = {
       claimFilter,
       mergeShorts,
@@ -674,7 +692,7 @@ export function createOrchestrator(
     };
     return opts.collect
       ? opts.collect(root, claimFilter, options)
-      : collectUnits(root, options);
+      : finishInSlices(collectUnitsInSlices(root, options), WALK_SLICE_MS, meter);
   }
 
   /** Register freshly collected units: claim their nodes, observe, index. */
@@ -1230,11 +1248,10 @@ export function createOrchestrator(
       scheduler.requeue(unit, "background");
     },
     onDirty(nodes, removed, quiet) {
-      try {
-        handleDirty(nodes, removed, quiet);
-      } catch (e) {
+      return walkInTurn(() => handleDirty(nodes, removed, quiet)).catch((e) => {
         log.warn("dirty re-scan failed", e);
-      }
+        return 0;
+      });
     },
     onDocumentReplaced() {
       // document.open()/write() swapped <html> under us (challenge pages, legacy
@@ -1248,8 +1265,13 @@ export function createOrchestrator(
     },
   });
 
-  function handleDirty(dirtyNodes: Node[], removed: Node[], quiet: Map<Text, Element> = new Map()): void {
+  /** Resolves to what it cost the main thread, in ms: its time less the time its walks handed
+   *  back to the page. */
+  async function handleDirty(dirtyNodes: Node[], removed: Node[], quiet: Map<Text, Element> = new Map()): Promise<number> {
     const startedAt = performance.now();
+    const meter = { waited: 0 };
+    const spent = (): number => performance.now() - startedAt - meter.waited;
+    const generation = captureGeneration;
     const seedQueue = new Set<Element>();
     const nodes = [...dirtyNodes];
 
@@ -1315,7 +1337,9 @@ export function createOrchestrator(
       for (const root of queue) {
         if (scanned.has(root) || !root.isConnected) continue;
         scanned.add(root);
-        ingestUnits(collect(root, filter, changed));
+        const units = await collect(root, filter, changed, meter);
+        if (generation !== captureGeneration || !started) return spent();
+        ingestUnits(units);
       }
       queue = [...extra].filter((r) => !scanned.has(r));
       changed.push(...queue);
@@ -1328,8 +1352,9 @@ export function createOrchestrator(
     log.log(
       "dirty scan:", nodes.length, "dirty,", removed.length, "removed,",
       planned, "planned,", scanned.size, "roots,",
-      Math.round(performance.now() - startedAt), "ms,", quiet.size, "quiet",
+      Math.round(spent()), "ms,", quiet.size, "quiet",
     );
+    return spent();
   }
 
   // --- URL / SPA navigation ------------------------------------------------------------
@@ -1369,10 +1394,16 @@ export function createOrchestrator(
       if (!started) return;
       // Another route is another document: its share of the engine's time starts again.
       pace?.newDocument();
-      purgeDisconnected();
-      ingestUnits(collect(document.body, makeClaimFilter()));
-      updateToolbar();
-      log.log("url change refresh", location.href);
+      void walkInTurn(async () => {
+        if (!started) return;
+        purgeDisconnected();
+        const generation = captureGeneration;
+        const units = await collect(document.body, makeClaimFilter());
+        if (generation !== captureGeneration || !started) return;
+        ingestUnits(units);
+        updateToolbar();
+        log.log("url change refresh", location.href);
+      });
     }, URL_REFRESH_DEBOUNCE_MS);
   }
 
@@ -1432,7 +1463,12 @@ export function createOrchestrator(
     watchSettings();
     observers.start();
     booted = true;
-    ingestUnits(collect(document.body, makeClaimFilter()));
+    const generation = captureGeneration;
+    await walkInTurn(async () => {
+      const units = await collect(document.body, makeClaimFilter());
+      if (generation === captureGeneration && started) ingestUnits(units);
+    });
+    if (seq !== bootSeq || !started) return;
     refreshCommentOffer();
 
     watchUrl();
@@ -1624,16 +1660,30 @@ export function createOrchestrator(
     whenSafeToInsert(registerHighlightStyles); // no-op unless the document was replaced under us
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
-    ingestUnits(collect(document.body, makeClaimFilter()));
-    updateToolbar();
-    log.log("rescan");
+    const generation = captureGeneration;
+    void walkInTurn(async () => {
+      const units = await collect(document.body, makeClaimFilter());
+      if (generation !== captureGeneration || !started) return;
+      ingestUnits(units);
+      updateToolbar();
+      log.log("rescan");
+    });
   }
 
   function refresh(): void {
     if (!started || !booted) return;
-    purgeDisconnected();
-    const seen = new Set<string>();
-    const fresh = collect(document.body, makeClaimFilter(undefined, seen));
+    void walkInTurn(async () => {
+      if (!started) return;
+      purgeDisconnected();
+      const generation = captureGeneration;
+      const seen = new Set<string>();
+      const fresh = await collect(document.body, makeClaimFilter(undefined, seen));
+      if (generation !== captureGeneration || !started) return;
+      refreshWith(fresh, seen);
+    });
+  }
+
+  function refreshWith(fresh: Unit[], seen: Set<string>): void {
     ingestUnits(fresh);
     // A unit the surface no longer hands out is one its new reading drew otherwise — the PDF
     // reader's quick reflow read a figure's caption as prose, Zotero's structure does not —

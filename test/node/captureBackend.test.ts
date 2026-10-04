@@ -34,7 +34,7 @@ vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({remove() {},
 vi.mock("../../lib/render/highlight", () => ({
   setHighlight() {}, clearHighlight() {}, registerHighlightStyles() {}, setHighlightsVisible() {}, refreshHighlightTheme() {},
 }));
-vi.mock("../../lib/dom/walker", () => ({collectUnits: () => [], inPageOrder: (units: Unit[]) => [...units]}));
+vi.mock("../../lib/dom/walker", () => ({collectUnits: () => [], collectUnitsInSlices: function* () { return []; }, inPageOrder: (units: Unit[]) => [...units]}));
 vi.mock("../../lib/settings/settings", () => {
   const setting = (value: unknown) => ({getValue: async () => value, watch: () => () => {}});
   return {settings: {

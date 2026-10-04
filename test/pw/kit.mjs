@@ -76,12 +76,24 @@ export const chipsSettle = (page, n, scope = "") =>
   expect.poll(() => chipCounts(page, scope), { message: `${n} settled chips${scope ? ` in ${scope}` : ""}` }).toEqual({ chips: n, pending: 0 });
 
 /** Every range the page's marks are drawn over, as text. */
-export const marked = (page) =>
-  page.evaluate(() => {
+export const marked = async (page) => {
+  // Only the marks near the screen are registered (lib/render/highlight.ts): the page is read
+  // a screen at a time, as a reader would see it, and put back where it was.
+  const registered = () => page.evaluate(() => {
     const out = [];
     for (const h of CSS.highlights?.values() ?? []) for (const r of h) out.push(r.toString());
     return out;
   });
+  const { height, screen, start } = await page.evaluate(() => ({ height: document.documentElement.scrollHeight, screen: innerHeight, start: scrollY }));
+  const seen = new Set(await registered());
+  for (let y = 0; y < height; y += screen) {
+    await page.evaluate((y) => window.scrollTo(0, y), y);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30)))));
+    for (const text of await registered()) seen.add(text);
+  }
+  await page.evaluate((y) => window.scrollTo(0, y), start);
+  return [...seen];
+};
 
 
 /** A paragraph long enough to be scored alone, opening on `tag`. */

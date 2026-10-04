@@ -11,6 +11,7 @@
 // content script any root through chrome.dom.openOrClosedShadowRoot(), Firefox through
 // element.openOrClosedShadowRoot. Everything here reads roots through shadowRootOf().
 
+import { finish } from "../slices";
 import { MARK_ATTR } from "../types";
 
 /**
@@ -54,23 +55,31 @@ export function shadowAttachedEvent(): string | null {
 /** Every shadow root on `node` and below it, the roots inside those roots included — but
  *  none in Anagram's own UI: the ball redrawing its count must not wake the observer. */
 export function eachShadowRoot(node: Node, visit: (root: ShadowRoot) => void): void {
+  finish(eachShadowRootInSlices(node, visit));
+}
+
+/** eachShadowRoot, a few hundred elements at a time (finishInSlices): the whole page's, at
+ *  start, is every element of it. */
+export function* eachShadowRootInSlices(node: Node, visit: (root: ShadowRoot) => void): Generator<void, void> {
   if (node.nodeType === Node.ELEMENT_NODE) {
     if ((node as Element).hasAttribute(MARK_ATTR)) return;
     const own = shadowRootOf(node as Element);
     if (own) {
       visit(own);
-      eachShadowRoot(own, visit);
+      yield* eachShadowRootInSlices(own, visit);
     }
   }
   const doc = node.ownerDocument ?? (node as Document);
   const walker = doc.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, (el) =>
     (el as Element).hasAttribute(MARK_ATTR) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
   );
+  let n = 0;
   for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null) {
+    if (++n % 512 === 0) yield;
     const root = shadowRootOf(el);
     if (!root) continue;
     visit(root);
-    eachShadowRoot(root, visit);
+    yield* eachShadowRootInSlices(root, visit);
   }
 }
 
