@@ -860,8 +860,8 @@ export function readReflowed(pages: PdfPageText[]): ReflowBlock[] {
   const out: ReflowBlock[] = [];
   /** A display equation stands between the last block read and this one. */
   let display = false;
-  /** A block passed over opened a column or a page, or another page of the same writing. */
-  let broken = false, turned = false;
+  /** A block passed over opened a column or a page. */
+  let broken = false;
   for (const block of blocks) {
     const { pieces, located } = reflowPieces(block, byNumber, boxes);
     const { text, runs } = assemble(pieces, located, null, kinds, { keepOpening: true });
@@ -873,12 +873,10 @@ export function readReflowed(pages: PdfPageText[]): ReflowBlock[] {
         if (prev && prev.kind === "paragraph" && !prev.apart && !SENTENCE_END.test(prev.text)) prev.runsOn = true;
       }
       broken ||= block.columnBreak;
-      turned ||= block.pageTurn === true;
       continue;
     }
-    const read: ReflowBlock = { ...block, text, runs, columnBreak: block.columnBreak || broken, ...(block.pageTurn || turned ? { pageTurn: true } : {}) };
+    const read: ReflowBlock = { ...block, text, runs, columnBreak: block.columnBreak || broken };
     broken = false;
-    turned = false;
     if (display && prev?.runsOn && read.kind === "paragraph" && !read.apart && /^\p{Ll}/u.test(text)) {
       const base = prev.text.length + 1;
       prev.text = `${prev.text} ${text}`;
