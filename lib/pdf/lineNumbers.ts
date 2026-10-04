@@ -14,6 +14,7 @@
 //
 // Both readings ask the same question with their own glyphs: lib/pdf/reflow.ts with
 // pdf.js's runs, lib/pdf/structured.ts with Zotero's.
+import { least, most } from "./arrays";
 
 /** A bare number set on a page, and where it stands on its line. */
 export interface NumberMark {
@@ -87,9 +88,9 @@ function counts(marks: NumberMark[]): boolean {
  *  beyond it, in a margin further out, and hardly anything starts (or ends) in line with it. */
 function clear(marks: NumberMark[], side: "first" | "last", content: readonly PageContent[]): boolean {
   const own = new Set<NumberMark>(marks);
-  const h = Math.max(...marks.map((m) => m.h));
-  const x1 = Math.min(...marks.map((m) => m.x1)), x2 = Math.max(...marks.map((m) => m.x2));
-  const top = Math.min(...marks.map((m) => m.y)) - h, bottom = Math.max(...marks.map((m) => m.y)) + h;
+  const h = most(marks, (m) => m.h);
+  const x1 = least(marks, (m) => m.x1), x2 = most(marks, (m) => m.x2);
+  const top = least(marks, (m) => m.y) - h, bottom = most(marks, (m) => m.y) + h;
   let total = 0, outer = 0, inLine = 0;
   for (const c of content) {
     if (c.mark && own.has(c.mark)) continue;
