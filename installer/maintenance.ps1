@@ -1,9 +1,13 @@
-﻿# Fixed Windows maintenance worker. Only launched from the installed trusted helper.
+﻿# Fixed Windows maintenance worker. Launched from the installed trusted helper, or from a
+# terminal (Command Prompt, which expands %LOCALAPPDATA%) to uninstall without the browser, or
+# to finish an uninstall that stopped partway (a file in use, the window closed):
+#   powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Anagram\app\maintenance.ps1" -Operation uninstall -ComponentHome "%LOCALAPPDATA%\Anagram"
 param(
   [Parameter(Mandatory=$true)][ValidateSet('update','uninstall')][string]$Operation,
   [Parameter(Mandatory=$true)][string]$ComponentHome,
-  [Parameter(Mandatory=$true)][int]$HostPid,
-  [Parameter(Mandatory=$true)][string]$Receipt,
+  # The browser's component to wait for, and where to say how it went; a terminal has neither.
+  [int]$HostPid = 0,
+  [string]$Receipt,
   [ValidateSet('en','zh_CN')][string]$Language = 'en',
   # An update requested by the extension installs the extension's own release.
   [ValidatePattern('^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')][string]$Release
@@ -11,6 +15,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $homeLock = $null
 $exitCode = 1
+# An uninstall that already removed the registrations and retired the ownership marker.
+$resuming = $false
+$retired = $false
 # An unnamed, non-inheritable job owns this fixed worker and its descendants.
 # Windows 8+ supports nested jobs; failure to establish one aborts before writes.
 # https://learn.microsoft.com/windows/win32/procthread/job-objects
@@ -70,24 +77,34 @@ public static class AnagramMaintenanceJob {
   [AnagramMaintenanceJob]::Start()
 }
 function Say([string]$En,[string]$Zh) { if ($Language -eq 'zh_CN') { Write-Host $Zh } else { Write-Host $En } }
-function Save-Receipt([string]$Path,$Value) { [IO.File]::WriteAllText($Path,($Value | ConvertTo-Json),[Text.UTF8Encoding]::new($false)) }
+function Save-Receipt([string]$Path,$Value) { if ($Path) { [IO.File]::WriteAllText($Path,($Value | ConvertTo-Json),[Text.UTF8Encoding]::new($false)) } }
 function Check-Home {
   $canonical = [IO.Path]::GetFullPath($ComponentHome).TrimEnd('\')
   if ($canonical -eq [IO.Path]::GetPathRoot($canonical).TrimEnd('\') -or $canonical -eq $env:USERPROFILE) { throw 'Unsafe component home' }
   $item = Get-Item -LiteralPath $canonical -Force
   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Component home is a reparse point' }
-  $marker = Get-Content -LiteralPath (Join-Path $canonical '.native-component.json') -Encoding UTF8 -Raw | ConvertFrom-Json
+  $markerPath = Join-Path $canonical '.native-component.json'
+  $retiredPath = Join-Path $canonical '.native-uninstall.json'
+  if ($Operation -eq 'uninstall' -and -not (Test-Path -LiteralPath $markerPath) -and (Test-Path -LiteralPath $retiredPath -PathType Leaf)) {
+    # Only files remain of an uninstall that stopped partway, and the marker it renamed
+    # says whose they are, as `anagram uninstall` finishes one on macOS and Linux.
+    $markerPath = $retiredPath
+    $script:resuming = $true
+  }
+  $marker = Get-Content -LiteralPath $markerPath -Encoding UTF8 -Raw | ConvertFrom-Json
   if ($marker.schema_version -ne 1 -or $marker.host -ne 'dev.coderbak.anagram' -or $marker.home -ne $canonical) { throw 'Component ownership marker mismatch' }
   if (-not (Test-Path -LiteralPath (Join-Path $canonical '.anagram-home') -PathType Leaf)) { throw 'Component ownership marker missing' }
   return $canonical
 }
 try {
   Start-MaintenanceJob
-  Say 'Waiting for the browser component to stop…' '正在等待浏览器本地组件退出…'
-  $process = Get-Process -Id $HostPid -ErrorAction SilentlyContinue
-  if ($process -and -not $process.WaitForExit(60000)) { throw 'Browser component did not stop. Close Anagram setup and retry.' }
-  # The launcher may exit milliseconds after Python; bounded wait avoids an EXE lock race.
-  Start-Sleep -Milliseconds 500
+  if ($HostPid -gt 0) {
+    Say 'Waiting for the browser component to stop…' '正在等待浏览器本地组件退出…'
+    $process = Get-Process -Id $HostPid -ErrorAction SilentlyContinue
+    if ($process -and -not $process.WaitForExit(60000)) { throw 'Browser component did not stop. Close Anagram setup and retry.' }
+    # The launcher may exit milliseconds after Python; bounded wait avoids an EXE lock race.
+    Start-Sleep -Milliseconds 500
+  }
   $ComponentHome = Check-Home
   $lockPath = Join-Path $ComponentHome '.native-host.lock'
   if (Test-Path -LiteralPath $lockPath) {
@@ -96,7 +113,7 @@ try {
   # Same first-byte exclusive lock used by Python/filelock on Windows. Delete
   # sharing lets uninstall remove the retired tree while this handle remains held.
   $homeLock = [IO.FileStream]::new($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
-  $homeLock.Lock(0,1)
+  try { $homeLock.Lock(0,1) } catch [IO.IOException] { throw 'The local component is in use. Close the browser (or its Anagram connection) and retry.' }
   $null = Check-Home
   $python = Join-Path $ComponentHome 'venv\Scripts\python.exe'
   $helper = Join-Path $ComponentHome 'app\native_registration.py'
@@ -115,17 +132,29 @@ try {
     if ($Release) { $pinned.ReleaseUrl = "https://github.com/CoderBak/anagram/releases/download/v$Release" }
     & $installer -ComponentHome $ComponentHome -Browser $plan.browser -ExtensionId $plan.extension_id -Language $plan.language -MaintenanceLock $homeLock @pinned
   } else {
-    Say 'Removing owned browser registrations and component files…' '正在移除属于 Anagram 的浏览器注册和组件文件…'
-    & $python -I $helper unregister --home $ComponentHome
-    if ($LASTEXITCODE -ne 0) { throw 'Native registration cleanup failed; component files were kept' }
-    $null = Check-Home
+    if ($resuming) {
+      Say 'Finishing an interrupted removal: only component files remain…' '正在完成上次中断的卸载：只剩组件文件…'
+    } else {
+      Say 'Removing owned browser registrations and component files…' '正在移除属于 Anagram 的浏览器注册和组件文件…'
+      & $python -I $helper unregister --home $ComponentHome
+      if ($LASTEXITCODE -ne 0) { throw 'Native registration cleanup failed; component files were kept' }
+      $null = Check-Home
+    }
     foreach ($item in Get-ChildItem -LiteralPath $ComponentHome -Force -Recurse) {
       if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $($item.FullName)" }
     }
-    # Revoke startup authority before the lock pathname can disappear. Both markers
-    # go last, so an interrupted removal is still an Anagram folder a reinstall accepts.
-    Move-Item -LiteralPath (Join-Path $ComponentHome '.native-component.json') -Destination (Join-Path $ComponentHome '.native-uninstall.json') -Force
-    Get-ChildItem -LiteralPath $ComponentHome -Force | Where-Object { $_.Name -notin @('.anagram-home','.native-uninstall.json') } | Remove-Item -Recurse -Force
+    # Revoke startup authority before the lock pathname can disappear. Both markers and
+    # this worker go last, so an interrupted removal is still an Anagram folder a reinstall
+    # accepts, and running this worker again from it finishes the job.
+    if (-not $resuming) {
+      Move-Item -LiteralPath (Join-Path $ComponentHome '.native-component.json') -Destination (Join-Path $ComponentHome '.native-uninstall.json') -Force
+    }
+    $retired = $true
+    Get-ChildItem -LiteralPath $ComponentHome -Force | Where-Object { $_.Name -notin @('.anagram-home','.native-uninstall.json','app') } | Remove-Item -Recurse -Force
+    $appDir = Join-Path $ComponentHome 'app'
+    if (Test-Path -LiteralPath $appDir) {
+      Get-ChildItem -LiteralPath $appDir -Force | Where-Object { $_.Name -ne 'maintenance.ps1' } | Remove-Item -Recurse -Force
+    }
     Remove-Item -LiteralPath $ComponentHome -Recurse -Force
   }
   $deadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -144,13 +173,22 @@ try {
 } catch {
   Save-Receipt $Receipt @{schema_version=1;operation=$Operation;status='failed';error=$_.Exception.Message}
   Write-Host $_.Exception.Message -ForegroundColor Red
-  Say 'Maintenance failed. Files may remain; see the message above.' '操作失败，可能仍有文件保留。请查看上方提示。'
+  $worker = Join-Path $ComponentHome 'app\maintenance.ps1'
+  if ($retired -and (Test-Path -LiteralPath $worker)) {
+    $finish = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$worker`" -Operation uninstall -ComponentHome `"$ComponentHome`""
+    Say "The browser registrations are removed; only files remain. Close whatever is using them, then finish with:`n  $finish" "浏览器注册已移除，只剩文件。关闭正在使用这些文件的程序后，运行下面的命令完成卸载：`n  $finish"
+  } else {
+    Say 'Maintenance failed. Files may remain; see the message above.' '操作失败，可能仍有文件保留。请查看上方提示。'
+  }
 } finally {
   # Never release ownership while a failed/abandoned descendant could still write.
   # On success every descendant has exited. On failure keep the lock through exit;
   # the job closes with this process and terminates its remaining process tree.
   if ($exitCode -eq 0 -and $homeLock) { $homeLock.Dispose(); $homeLock = $null }
-  Say 'Press Enter to close this window.' '按 Enter 关闭此窗口。'
-  $null = Read-Host
+  # The helper's run has a window of its own, which would close with the message unread.
+  if ($HostPid -gt 0) {
+    Say 'Press Enter to close this window.' '按 Enter 关闭此窗口。'
+    $null = Read-Host
+  }
   [Environment]::Exit($exitCode)
 }

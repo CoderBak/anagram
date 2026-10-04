@@ -131,6 +131,34 @@ class RegistrationTests(unittest.TestCase):
         reg.unregister(owners[0], user_home=self.user, platform='linux')
         self.assertFalse(reg.manifest_path(owners[0], self.user, 'chrome', 'linux').exists())
 
+    def test_two_homes_racing_for_one_browser_on_windows_leave_one_hkcu_owner(self):
+        other = self.user / 'second home'
+        for p in ('app', 'bin', 'run'): (other / p).mkdir(parents=True)
+        (other / '.anagram-home').write_text('owned'); (other / 'app/native_host.py').write_text('# fixture')
+        (other / 'bin/anagram-native.exe').write_bytes(b'fixture')
+        write = self.registry.write
+        both_checked = {view: threading.Barrier(2, timeout=1) for view in (32, 64)}
+        def racing(browser, view, value):
+            if value is not None:
+                try: both_checked[view].wait()  # the first writer of each view waits until the other home has read it too
+                except threading.BrokenBarrierError: pass
+            return write(browser, view, value)
+        self.registry.write = racing
+        results = {}
+        def register(home):
+            try: results[home] = reg.register(home, 'chrome', ID, 'en', user_home=self.user, platform='win32', registry=self.registry)
+            except ValueError as exc: results[home] = exc
+        threads = [threading.Thread(target=register, args=(home,)) for home in (self.home, other)]
+        for thread in threads: thread.start()
+        for thread in threads: thread.join(15)
+        owners = [home for home, result in results.items() if isinstance(result, dict)]
+        self.assertEqual(len(owners), 1, results)
+        loser, = {self.home, other} - set(owners)
+        self.assertRegex(str(results[loser]), 'different native host')
+        self.assertEqual(set(self.registry.values.values()), {str(reg.manifest_path(owners[0], self.user, 'chrome', 'win32'))})
+        reg.unregister(owners[0], user_home=self.user, platform='win32', registry=self.registry)
+        self.assertEqual(self.registry.values, {})
+
     @unittest.skipIf(os.name == 'nt', 'unprivileged Windows symlinks vary by policy')
     def test_registration_parent_symlink_refused(self):
         outside = self.user / 'outside'; outside.mkdir()

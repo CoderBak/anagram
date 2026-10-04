@@ -142,7 +142,14 @@ Nightly 中、并在 `about:config` 里把 `xpinstall.signatures.required` 设�
 
 设置中的**卸载**会删除引擎、模型文件、浏览器注册，然后移除插件。只在 Chrome 中移除插件
 会把引擎留在磁盘上；重新安装插件即可回到卸载入口，或运行
-`~/.anagram/bin/anagram uninstall`。`~/.anagram` 只用于 Anagram：卸载会删除其中的所有内容。
+`~/.anagram/bin/anagram uninstall`。Windows 上，在命令提示符（cmd）中运行：
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Anagram\app\maintenance.ps1" -Operation uninstall -ComponentHome "%LOCALAPPDATA%\Anagram"
+```
+
+卸载中途停下（例如某个文件正被占用）时，同一条命令可以把它做完。`~/.anagram`（Windows 上是
+`%LOCALAPPDATA%\Anagram`）只用于 Anagram：卸载会删除其中的所有内容。
 
 ## 隐私
 

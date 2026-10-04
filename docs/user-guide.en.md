@@ -186,8 +186,15 @@ extension removes the in-browser engine's model files with it.
 **Uninstall** in Settings removes the engine, the model files, the browser registration
 and then the extension. Removing the extension from Chrome alone leaves the engine on
 disk; reinstall the extension to reach Uninstall, or run
-`~/.anagram/bin/anagram uninstall`. Keep `~/.anagram` for Anagram only: uninstall removes
-everything inside it.
+`~/.anagram/bin/anagram uninstall`. On Windows, run this in Command Prompt:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Anagram\app\maintenance.ps1" -Operation uninstall -ComponentHome "%LOCALAPPDATA%\Anagram"
+```
+
+The same command finishes an uninstall that stopped partway, for example because a file was
+in use. Keep `~/.anagram` (`%LOCALAPPDATA%\Anagram` on Windows) for Anagram only: uninstall
+removes everything inside it.
 
 ## Privacy
 

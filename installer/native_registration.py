@@ -211,6 +211,48 @@ def lock_registrations(manifest, created):
         time.sleep(0.05)
 
 
+def lock_hkcu(user_home):
+    """Lock the HKCU keys that every component home registering a browser shares (Windows).
+    A key cannot be locked, so a per-user file is, the way the filelock package does it:
+    msvcrt's byte-range lock on Windows (flock where the Windows layout is tested). The
+    function returned releases it."""
+    path = safe_path(user_home / "AppData/Local" / (HOST + ".registration.lock"), user_home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + 10
+    while True:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            if time.monotonic() > deadline:
+                raise ValueError("Another Anagram component is registering with this browser; retry") from None
+            time.sleep(0.05)
+            continue
+        except BaseException:
+            os.close(fd)
+            raise
+
+        def release():
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            os.close(fd)
+            # Windows refuses to delete a file another process has open, as one taking the
+            # lock does, so the last one out removes it and nothing is left behind.
+            if os.name == "nt":
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        return release
+
+
 def register(home, browser, extension_id, language="en", *, user_home=None, platform=None, registry=None):
     validate_selection(browser, extension_id, language)
     home = owned_home(Path(home))
@@ -241,10 +283,12 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
             parent = parent.parent
         changed_files.append((path, path.read_bytes() if path.exists() else None, path.stat().st_mode & 0o777 if path.exists() else mode))
         atomic_write(path, content, mode)
-    lock = None
+    lock = release_hkcu = None
     try:
         if platform != "win32":
             lock = lock_registrations(target, created_dirs)
+        else:
+            release_hkcu = lock_hkcu(user_home)
         before = target.read_bytes() if target.exists() else None
         if before is not None and (old is None or hashlib.sha256(before).hexdigest() != old["sha256"]):
             raise ValueError("A different or modified native registration already exists; refusing to replace it")
@@ -287,6 +331,8 @@ def register(home, browser, extension_id, language="en", *, user_home=None, plat
     finally:
         if lock is not None:
             os.close(lock)
+        if release_hkcu is not None:
+            release_hkcu()
     return entry
 
 
@@ -295,38 +341,43 @@ def unregister(home, *, user_home=None, platform=None, registry=None):
     user_home = Path(user_home or Path.home()).resolve()
     platform = platform or sys.platform
     value = inventory(home, user_home, platform, required=True)
-    # Preflight every path/key before deleting any registration.
-    for entry in value["registrations"]:
-        target = Path(entry["manifest"])
-        safe_path(target, home if platform == "win32" or entry["browser"] == "safari" else user_home)
-        if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() != entry["sha256"]:
-            raise ValueError("Registration was modified after installation; refusing to delete it")
-        if platform == "win32":
-            registry = registry or Registry()
-            for view in (32, 64):
-                current = registry.read(entry["browser"], view)
-                if current is not None and current != str(target):
-                    raise ValueError("HKCU registration no longer belongs to this component")
-    changed_keys, removed_files = [], []
+    release_hkcu = lock_hkcu(user_home) if platform == "win32" else None
     try:
+        # Preflight every path/key before deleting any registration.
         for entry in value["registrations"]:
-            if platform == "win32":
-                for view in (32, 64):
-                    previous = registry.read(entry["browser"], view)
-                    changed_keys.append((entry["browser"], view, previous))
-                    registry.write(entry["browser"], view, None)
             target = Path(entry["manifest"])
-            if target.exists():
-                removed_files.append((target, target.read_bytes()))
-                target.unlink()
-        value["registrations"] = []
-        atomic_write(home / INVENTORY, encoded(value))
-    except BaseException:
-        for target, data in reversed(removed_files):
-            atomic_write(target, data)
-        for browser, view, previous in reversed(changed_keys):
-            registry.write(browser, view, previous)
-        raise
+            safe_path(target, home if platform == "win32" or entry["browser"] == "safari" else user_home)
+            if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() != entry["sha256"]:
+                raise ValueError("Registration was modified after installation; refusing to delete it")
+            if platform == "win32":
+                registry = registry or Registry()
+                for view in (32, 64):
+                    current = registry.read(entry["browser"], view)
+                    if current is not None and current != str(target):
+                        raise ValueError("HKCU registration no longer belongs to this component")
+        changed_keys, removed_files = [], []
+        try:
+            for entry in value["registrations"]:
+                if platform == "win32":
+                    for view in (32, 64):
+                        previous = registry.read(entry["browser"], view)
+                        changed_keys.append((entry["browser"], view, previous))
+                        registry.write(entry["browser"], view, None)
+                target = Path(entry["manifest"])
+                if target.exists():
+                    removed_files.append((target, target.read_bytes()))
+                    target.unlink()
+            value["registrations"] = []
+            atomic_write(home / INVENTORY, encoded(value))
+        except BaseException:
+            for target, data in reversed(removed_files):
+                atomic_write(target, data)
+            for browser, view, previous in reversed(changed_keys):
+                registry.write(browser, view, previous)
+            raise
+    finally:
+        if release_hkcu is not None:
+            release_hkcu()
 
 
 def schedule_windows(home, operation, release=None):
