@@ -17,7 +17,7 @@ function watch(answers: Array<Partial<BackendStatus> | Error>) {
     pollMs: 5000,
     probe: async (force) => {
       log.push(`probe${force ? " (forced)" : ""}`);
-      const next = answers.shift() ?? { active: "none" };
+      const next = answers.shift() ?? { active: "down" };
       if (next instanceof Error) throw next;
       return next as BackendStatus;
     },
@@ -36,7 +36,7 @@ describe("the engine down and back", () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it("goes down once, asks at once and then every poll, and comes back on a probe that finds it, with its model", async () => {
-    const { w, log } = watch([{ active: "none" }, { active: "none" }, { active: "server", model: MODEL }]);
+    const { w, log } = watch([{ active: "down" }, { active: "down" }, { active: "server", model: MODEL }]);
     w.heard("down");
     w.heard("down");
     expect(w.down).toBe(true);
@@ -79,7 +79,7 @@ describe("the engine down and back", () => {
     await dead.w.check(true);
     expect(dead.log).toEqual(["freeze"]);
 
-    const retry = watch([{ active: "none" }, { active: "idle", model: MODEL }]);
+    const retry = watch([{ active: "down" }, { active: "idle", model: MODEL }]);
     retry.w.heard("down");
     await vi.advanceTimersByTimeAsync(0);
     await retry.w.check(true);
