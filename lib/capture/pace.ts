@@ -124,3 +124,75 @@ export function createPacer(seedMsPerK = SEED_MS_PER_K): Pacer {
     newDocument() { spent = 0; },
   };
 }
+
+/** What the reader does that says the page is being read now: the background waits. */
+const READER_INPUT = ["wheel", "scroll", "keydown", "pointerdown", "touchstart"] as const;
+/** At this charge and falling, the background stops (where Chrome's Energy Saver starts
+ *  holding pages back too). */
+const LOW_BATTERY = 0.2;
+
+/**
+ * A web page's background lane, at the pace (lib/capture/orchestrator.ts). The idle prefetch
+ * reads what nobody has scrolled to yet; unpaced, a long page or a feed kept the engine busy
+ * until all of it was read, which on a laptop's processor is minutes of fans and battery for
+ * paragraphs that may never be looked at. Each background batch is timed; after it the lane
+ * rests by the duty cycle, waits for the reader to leave the page alone, and keeps to what is
+ * near the screen (the observers' near lane) where the engine is slow, the page has had its
+ * ten minutes, or the battery is low.
+ */
+export interface BackgroundPace {
+  /** How long the background lane rests yet, in ms (the scheduler's backgroundDelay);
+   *  Infinity while it keeps to what is near the screen. */
+  delay(): number;
+  /** A background batch came back: it took `ms`, and the engine read `chars` of it. */
+  done(ms: number, chars: number): void;
+  /** What the engine's status says it runs on: the first guess of its pace, until measured. */
+  seed(device: string | undefined): void;
+  /** Another document (a route change): its share of the engine's time starts again. */
+  newDocument(): void;
+  /** Follow the reader's input, and the battery, while a run is on. */
+  watch(on: boolean): void;
+}
+
+export function createBackgroundPace(): BackgroundPace {
+  let pacer = createPacer();
+  /** The lane rests until then (performance.now()). */
+  let restUntil = 0;
+  let lastInput = -Infinity;
+  let onBattery = false;
+  let lowBattery = false;
+  let batteryWatched = false;
+  const noteInput = (): void => { lastInput = performance.now(); };
+  return {
+    delay() {
+      if (lowBattery || pacer.limited()) return Infinity;
+      const now = performance.now();
+      return Math.max(0, restUntil - now, lastInput + pacer.quiet() - now);
+    },
+    done(ms, chars) {
+      pacer.done(ms, chars);
+      restUntil = performance.now() + pacer.restAfter(ms, onBattery);
+    },
+    seed(device) {
+      const seed = seedFor(device);
+      if (seed !== null && pacer.samples() === 0 && pacer.msPerK() !== seed) pacer = createPacer(seed);
+    },
+    newDocument: () => pacer.newDocument(),
+    watch(on) {
+      for (const type of READER_INPUT) {
+        if (on) document.addEventListener(type, noteInput, { capture: true, passive: true });
+        else document.removeEventListener(type, noteInput, { capture: true });
+      }
+      if (!on || batteryWatched) return;
+      batteryWatched = true;
+      // On battery the background takes half its share; low and falling, none.
+      void (navigator as { getBattery?: () => Promise<{ charging: boolean; level: number; addEventListener(type: string, listener: () => void): void }> })
+        .getBattery?.().then((battery) => {
+          const read = (): void => { onBattery = !battery.charging; lowBattery = !battery.charging && battery.level <= LOW_BATTERY; };
+          read();
+          battery.addEventListener("chargingchange", read);
+          battery.addEventListener("levelchange", read);
+        }).catch(() => undefined);
+    },
+  };
+}

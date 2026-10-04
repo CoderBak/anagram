@@ -347,7 +347,9 @@ for (const [path, repeat] of [["score", 1], ["count", 2]]) {
     await nativeHost.resume(); // the same native registration
     await expect(settledChips(page, `#down2${path}`), back).toHaveCount(1, { timeout: 30_000 });
     await expect(pill("down1"), back).not.toHaveClass(/band-unknown|pending/, { timeout: 30_000 });
-    await expect.poll(unavailable, { message: back }).toBe(0);
+    // Off screen, what the outage left Unavailable is read again by the background lane, which
+    // keeps to its pace (lib/capture/pace.ts): on a loaded machine that is a few seconds more.
+    await expect.poll(unavailable, { message: back, timeout: 30_000 }).toBe(0);
   });
 }
 
