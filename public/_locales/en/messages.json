@@ -1024,13 +1024,16 @@
     "description": "In-browser edition: status when the engine is unavailable for a reason other than setup."
   },
   "popupEngineLoadFailed": {
-    "message": "The model couldn't start in this browser"
+    "message": "The model couldn't start in this browser",
+    "description": "Toolbar menu status line: the in-browser engine's model is downloaded but failed to start in this browser; the setup page explains and offers Retry."
   },
   "popupEngineCannotRun": {
-    "message": "This device can't run Anagram's model"
+    "message": "This device can't run Anagram's model",
+    "description": "Toolbar menu status line: this device cannot run the model at all (the lighter version failed and the full one does not fit, or Safari has no WebGPU)."
   },
   "engineSeeWhy": {
-    "message": "See why"
+    "message": "See why",
+    "description": "Toolbar menu button shown with popupEngineLoadFailed or popupEngineCannotRun; opens the setup page, which says why and what to do."
   },
   "popupEngineCrashed": {
     "message": "The local engine kept stopping unexpectedly",
