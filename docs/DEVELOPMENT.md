@@ -258,10 +258,51 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   - The local engine parses page text (fastText, tokenizers, ONNX Runtime, MLX) in a process with
     the user's privileges; a sandboxed inference child (Seatbelt, seccomp and Landlock) would
     contain a parser bug.
-  - The router's global limits are shared by all tabs: four large, ever-changing frames can leave
-    other tabs with Unavailable verdicts for as long as their tab is open (per-tab reserves).
+  - A tab holds half the router's admission at most (`ROUTER_LIMITS`), so one page's frames
+    cannot leave the other tabs Unavailable; two tabs of one hostile site still can, for as
+    long as both are open.
   - `CSS.highlights` shows a page the marks on its own text, and so the flag level and whether
     underlines are on; a page can tell chips are there. Whether a content script's `import()` of
     a web-accessible chunk shows in the page's Resource Timing (Firefox, whose address names the
     installation) is unverified.
+  - The extension pages keep `style-src 'unsafe-inline'`. Dropping it needs the `<style>` blocks
+    of the setup page, Settings, the popup and Analyze text moved into files, the `style="…"`
+    the setup page's legend, the reader's print dialog, `lib/render/dist.ts` and the card's
+    pending line write turned into classes, and the `<style>` `lib/render/highlight.ts` adds
+    in the reader and Analyze text made a constructed sheet. It buys little: no script runs
+    inline, and with `img-src` and `font-src` held to the extension, injected CSS has no
+    address to send what it matches to.
+- Hostile pages and documents (fuzzing of 2026-10-04: `test/unit.mjs` "pages built to break the
+  reader", `test/pw/hostile-pages.spec.mjs`, `test/node/pdfStructuredProps.test.ts`, and the
+  hostile-input cases in `test/native_host.py`). The limits are where they apply:
+  `MAX_WALK_DEPTH` and `MOST_NODES_UNPAUSED` (`lib/dom/walker.ts`), `MOST_HELD`
+  (`lib/capture/observers.ts`), `SEARCHES_PER_CHAR` (`lib/pdf/reading.ts`), `MAX_NESTING`
+  (`lib/pdf/structured.ts`), `LONGEST_WORD` (`lib/pdf/reflow.ts`), `lib/pdf/arrays.ts` for
+  spreads; a sweep of every regex in `lib/` over pumped strings found the ones made linear.
+  Left as they are, each linear in what the page or the PDF holds: a paragraph is read in one
+  step once the walk has reached its end, about 1 s of an M4's main thread for one of 10 MB or
+  of a million inline elements (the page's own layout of it costs as much), and a stretch of a
+  hundred thousand short paragraphs of one voice is divided in one step (1.6 s).
+  A run of pdf.js's whose characters Zotero's glyphs do not match is searched from its start
+  for each of them (`locate`), square in the run's length; no PDF has shown it. Chromium itself
+  stops laying out a page at about 2,000 nested blocks, 20,000 nested inline elements, 1,000
+  nested shadow roots of blocks or 500 nested positioned boxes, before any of it reaches Anagram.
+- Dependency audit (2026-10-04). Every package in `package-lock.json` (586) and
+  `anagramd/uv.lock` (68) was checked against OSV (`api.osv.dev/v1/querybatch`) and
+  `npm audit --package-lock-only`, with what Zotero's worker bundles (its pdf.js fork, pako,
+  fastest-levenshtein). The Python lock had no advisories. Of what ships, two have one each, and
+  neither can be reached in Anagram: pdf.js 5.7.284 (GHSA-hq66-cqwq-w95j, fixed in 6.2.108)
+  runs script through the PDF-scripting sandbox's bridge, and the reader sets
+  `enableScripting: false`, never ships the sandbox (quickjs, left out by `scripts/vendor.mjs`)
+  and allows no inline script or eval; DOMPurify 3.4.15 (GHSA-p98j-92pf-mc4p) needs an
+  `afterSanitize` hook that removes nodes, and the Docs reading view registers no hook and
+  sanitizes an inert `DOMParser` document. Zotero's pdf.js fork (f4d05ca, a 5.7 pre-release of
+  2026-08-14) is past the font-eval fix of CVE-2024-4367: it builds glyph paths as number
+  arrays, has no `isEvalSupported` and no scripting; its one `new Function` is ONNX Runtime
+  Web's embind glue, which never sees the PDF and which the extension's CSP refuses like any
+  eval (the worker is an extension resource, under that CSP). The rest are in tools that never
+  ship (postcss and nanoid under Vite, node-forge under web-ext, vitest, esbuild's dev server on
+  Windows). Nothing was upgraded: pdf.js 6 means moving the hash-pinned viewer and engine
+  together, and DOMPurify 3.4.16 can wait for the next dependency refresh. Run the same checks
+  before a release that moves a lock.
 - Windows and Linux have not been exercised on real machines.
