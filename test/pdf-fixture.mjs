@@ -285,13 +285,18 @@ export function buildTwoColumnPdf(pageCount) {
   // Short words only: a 200 pt column of 11 pt Helvetica holds about 39 characters, and a
   // line that overruns its column would close the gutter and turn the page into one that
   // reads straight across — which is a different test from the one this file is for.
-  const WORDS = "the quick brown fox jumps over a lazy dog rain falls on roofs and children read books near warm rooms long quiet nights before a timetable moved off paper until trains ran on time".split(" ");
-  // A cheap hash of the line's own address, so no two lines of the document are alike:
-  // identical paragraphs are deduplicated on their way to the daemon, and a document of
-  // one repeated paragraph would arrive there as a single block.
-  const word = (n) => WORDS[Math.abs(Math.imul(n, 2654435761) >>> 7) % WORDS.length];
-  const line = (seed) => Array.from({ length: 5 }, (_, i) => word(seed * 31 + i)).join(" ");
-  const LINES = 22; // 114 words a paragraph — well clear of the evidence floor
+  const WORDS = [...new Set("the quick brown fox jumps over a lazy dog rain falls on roofs and children read books near warm rooms long quiet nights before a timetable moved off paper until trains ran on time".split(" "))];
+  // No two lines of the document are alike: identical paragraphs are deduplicated on their way
+  // to the daemon, and the same line in the same place on several pages is what a reader takes
+  // for a running head (Zotero's did, for three of these paragraphs, when lines could repeat). A
+  // line's five words are the digits, in base 32, of its own address times an odd number modulo
+  // 32^5 — one to one, and scrambled so that neighbouring lines share no pattern.
+  const SPACE = WORDS.length ** 5;
+  const line = (seed) => {
+    let n = (seed * 2654435761) % SPACE;
+    return Array.from({ length: 5 }, () => { const w = WORDS[n % WORDS.length]; n = Math.floor(n / WORDS.length); return w; }).join(" ");
+  };
+  const LINES = 22; // TALL_WORDS a paragraph — well clear of the evidence floor
   const PER_COLUMN = 2; // paragraphs, which fill the column down to the page number
   const pages = [];
   for (let p = 0; p < pageCount; p++) {
@@ -303,7 +308,8 @@ export function buildTwoColumnPdf(pageCount) {
       for (let para = 0; para < PER_COLUMN; para++) {
         const id = (p * 2 * PER_COLUMN + c * PER_COLUMN + para) * 101;
         for (let i = 0; i < LINES; i++) {
-          const text = i === LINES - 1 ? `${line(id + i)} and so it ends.` : line(id + i);
+          // A paragraph's last line is short, as a typeset one is, never past the column.
+          const text = i === LINES - 1 ? `${line(id + i).split(" ").slice(0, 2).join(" ")} and so it ends.` : line(id + i);
           items.push({ x, y: 700 - (para * (LINES + 1) + i) * 14, size: 11, text });
         }
       }
@@ -361,6 +367,9 @@ export function buildColumnsPdf() {
 
 /** Thirty pages of it — enough that most of the stack is nowhere near the viewport. */
 export const TALL_PDF = buildTwoColumnPdf(30);
+/** The words in each of buildTwoColumnPdf's paragraphs: 21 lines of five, and the last line's
+ *  two and "and so it ends." */
+export const TALL_WORDS = 21 * 5 + 2 + 4;
 
 /** A file that says it is a PDF and is not one — the "cannot be read" line. */
 export const BROKEN_PDF = Buffer.from("%PDF-1.7\nthis file claims to be a PDF and is not one\n", "latin1");

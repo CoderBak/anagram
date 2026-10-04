@@ -29,7 +29,7 @@
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
 import { ACCENT, MARK_NUMBERS, assemble, indexPage, isSpace, mathPagesOf, sameLine, type Box, type Glyph, type Located, type PageIndex, type Piece, type Source } from "./reading";
 import { BARE_NUMBER, lineNumberMarks, mayHoldColumn, type NumberMark, type PageContent } from "./lineNumbers";
-import { SENTENCE_END, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
+import { SENTENCE_END, vocabularyInSlices, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
 import { finish, finishInSlices } from "../slices";
 
 export { isMathFont } from "./reading";
@@ -414,9 +414,12 @@ function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }): { mono: number;
  * quoted as typed (`" final_comment " : " Both i n q u i r i e s …`). Never in a document
  * whose paragraphs are mostly set in a typewriter face.
  */
-function codeTest(content: SdtBlock[]): (block: SdtBlock) => boolean {
+function* codeTest(content: SdtBlock[]): Generator<void, (block: SdtBlock) => boolean> {
   const doc = { mono: 0, all: 0 };
-  for (const node of content) if (!node.flowClass && !node.reference && (node.type === "paragraph" || node.type === "list")) typewriter(node, doc);
+  for (const [i, node] of content.entries()) {
+    if (!node.flowClass && !node.reference && (node.type === "paragraph" || node.type === "list")) typewriter(node, doc);
+    if (i % SLICE_BLOCKS === SLICE_BLOCKS - 1) yield;
+  }
   if (doc.mono >= TYPED_BODY * doc.all) return () => false;
   return (block) => {
     const t = typewriter(block);
@@ -446,28 +449,32 @@ interface BodyFrame {
  *  furniture. PDF space: y grows upward. */
 interface TypeArea { left: number; bottom: number; right: number; top: number }
 
-function typeAreaOf(content: readonly SdtBlock[]): TypeArea | null {
-  const pages = new Map<number, number[]>();
-  for (const block of content) {
-    if (block.type !== "paragraph" || block.flowClass || block.reference) continue;
-    for (const rect of block.anchor?.pageRects ?? []) {
-      const [page, x1, y1, x2, y2] = rect as [number, number, number, number, number];
-      const e = pages.get(page) ?? [Infinity, Infinity, -Infinity, -Infinity];
-      pages.set(page, [Math.min(e[0]!, x1), Math.min(e[1]!, y1), Math.max(e[2]!, x2), Math.max(e[3]!, y2)]);
-    }
-  }
-  if (pages.size === 0) return null;
-  const at = (i: number): number => median([...pages.values()].map((e) => e[i]!));
-  return { left: at(0), bottom: at(1), right: at(2), top: at(3) };
-}
-
-function bodyFrameOf(content: readonly SdtBlock[]): BodyFrame {
+/** The body's frame, in one pass over the content, a few blocks at a time: a book's thousands of
+ *  paragraphs each have their glyph runs read for their sizes. */
+function* bodyFrameOf(content: readonly SdtBlock[]): Generator<void, BodyFrame> {
   const floats = new Map<number, number[][]>();
-  for (const block of content) {
-    if (block.type !== "image" && block.type !== "table") continue;
-    for (const rect of block.anchor?.pageRects ?? []) floats.set(rect[0]!, [...(floats.get(rect[0]!) ?? []), rect]);
+  const sizes: [number, number][] = [];
+  /** Each page's outermost body lines, for the type area. */
+  const pages = new Map<number, number[]>();
+  for (const [i, block] of content.entries()) {
+    if (block.type === "image" || block.type === "table") {
+      for (const rect of block.anchor?.pageRects ?? []) floats.set(rect[0]!, [...(floats.get(rect[0]!) ?? []), rect]);
+    }
+    if (block.type === "paragraph" && !block.flowClass) {
+      runSizes(block, sizes);
+      if (!block.reference) {
+        for (const rect of block.anchor?.pageRects ?? []) {
+          const [page, x1, y1, x2, y2] = rect as [number, number, number, number, number];
+          const e = pages.get(page) ?? [Infinity, Infinity, -Infinity, -Infinity];
+          pages.set(page, [Math.min(e[0]!, x1), Math.min(e[1]!, y1), Math.max(e[2]!, x2), Math.max(e[3]!, y2)]);
+        }
+      }
+    }
+    if (i % SLICE_BLOCKS === SLICE_BLOCKS - 1) yield;
   }
-  return { size: weightedMedian(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runSizes(b) : []))), area: typeAreaOf(content), floats };
+  const at = (k: number): number => median([...pages.values()].map((e) => e[k]!));
+  const area = pages.size === 0 ? null : { left: at(0), bottom: at(1), right: at(2), top: at(3) };
+  return { size: weightedMedian(sizes), area, floats };
 }
 
 /**
@@ -480,10 +487,9 @@ function bodyFrameOf(content: readonly SdtBlock[]): BodyFrame {
  * stamp in the margin are outside the type area. It is read only where the paragraph before it
  * runs on (prepare); anywhere else it stays aside.
  */
-function carriesOnBody(node: SdtBlock, frame: () => BodyFrame): boolean {
-  const first = firstText(node)?.text.trimStart() ?? "";
-  if (!/^\p{Ll}/u.test(first)) return false;
-  const { size, area, floats } = frame();
+function carriesOnBody(node: SdtBlock, frame: BodyFrame): boolean {
+  if (!opensLower(node)) return false;
+  const { size, area, floats } = frame;
   if (!(Math.abs(dominantSize(node) / size - 1) <= BODY_SIZE_TOLERANCE)) return false;
   const rects = node.anchor?.pageRects ?? [];
   if (rects.length === 0 || !area) return false;
@@ -500,25 +506,33 @@ function carriesOnBody(node: SdtBlock, frame: () => BodyFrame): boolean {
   return true;
 }
 
+const opensLower = (node: SdtBlock): boolean => /^\p{Ll}/u.test(firstText(node)?.text.trimStart() ?? "");
+
+/** How many blocks a step of the sliced reading takes before it lets the page go on. */
+const SLICE_BLOCKS = 32;
+
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
  *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
- *  numbered lines (numberedReadings). */
-function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker)[] {
+ *  numbered lines (numberedReadings). A few blocks at a time: a book has thousands. */
+function* readingsOf(content: SdtBlock[], everything: boolean): Generator<void, (Reading | Marker)[]> {
   const out: (Reading | Marker)[] = [];
-  let body: BodyFrame | null = null;
-  const frame = (): BodyFrame => (body ??= bodyFrameOf(content));
+  /** Paragraphs set aside that open in lower case, where `out` has them: read with the body
+   *  where they carry on it (carriesOnBody), which the body's frame decides once it is known. */
+  const restsAside: number[] = [];
   const aside = (node: SdtBlock, path: number[]): void => {
     if (everything) out.push({ kind: "paragraph", block: node, path, origin: originOf(node) });
     else if (node.reference) out.push({ kind: "reference", block: node, path, origin: originOf(node) });
     else if (node.type === "table") out.push({ kind: "table", block: node, path, origin: originOf(node) });
-    else if (node.type === "paragraph" && (node.flowClass === "auxiliary" || node.flowClass === "excluded") && carriesOnBody(node, frame)) {
+    else if (node.type === "paragraph" && (node.flowClass === "auxiliary" || node.flowClass === "excluded") && opensLower(node)) {
+      restsAside.push(out.length);
       out.push({ kind: "paragraph", block: node, path, origin: originOf(node), carriesOn: true });
     } else out.push(node.type === "math" ? "display" : "skip");
   };
-  const isCode = everything ? (): boolean => false : codeTest(content);
-  content.forEach((node, i) => {
-    if (node.flowClass || node.reference) { aside(node, [i]); return; }
-    if ((isNote(node) || (node.type === "paragraph" && (isTitlePageMatter(node) || isCode(node)))) && !everything) { out.push("skip"); return; }
+  const isCode = everything ? (): boolean => false : yield* codeTest(content);
+  for (const [i, node] of content.entries()) {
+    if (i % SLICE_BLOCKS === SLICE_BLOCKS - 1) yield;
+    if (node.flowClass || node.reference) { aside(node, [i]); continue; }
+    if ((isNote(node) || (node.type === "paragraph" && (isTitlePageMatter(node) || isCode(node)))) && !everything) { out.push("skip"); continue; }
     if (node.type === "heading") out.push({ kind: "heading", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "paragraph") out.push({ kind: "paragraph", block: node, path: [i], origin: originOf(node) });
     else if (node.type === "list" || node.type === "blockquote") {
@@ -537,7 +551,11 @@ function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker
         } else aside(child, [i, k]);
       });
     } else aside(node, [i]);
-  });
+  }
+  if (restsAside.length > 0) {
+    const frame = yield* bodyFrameOf(content);
+    for (const k of restsAside) if (!carriesOnBody((out[k] as Reading).block, frame)) out[k] = "skip";
+  }
   if (!everything) leaveOutContents(out);
   return out;
 }
@@ -647,12 +665,21 @@ const NAMES_NEXT = /(?:^|\s)(?:in|of|see|at|from|to|by|on|with|and|or|than|under
  * (notesTable). A reading whose lines are numbered is not one Zotero's paragraph stands for
  * (numberedReadings): `numbered` says which.
  */
-function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], numbered: (k: number) => boolean): void {
+function* leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], numbered: (k: number) => boolean): Generator<void, void> {
   let before: Reading | null = null;
   /** Paragraphs of the tree, by place, read as the rest of the caption or the table above. */
   const carried = new Map<number, "caption" | "table">();
-  let body: number | null = null;
-  const bodySize = (): number => (body ??= median(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runHeights(b) : []))));
+  // The body's run height, which only a table's notes are told by: read a few blocks at a time.
+  let body = NaN;
+  if (content.some((b) => b.type === "table")) {
+    const heights = new Map<number, number>();
+    for (const [i, b] of content.entries()) {
+      if (b.type === "paragraph" && !b.flowClass) for (const h of runHeights(b)) heights.set(h, (heights.get(h) ?? 0) + 1);
+      if (i % SLICE_BLOCKS === SLICE_BLOCKS - 1) yield;
+    }
+    body = medianOfCounts(heights);
+  }
+  const bodySize = (): number => body;
   const restOfFloat = (r: Reading): boolean => {
     if (r.path.length !== 1 || r.block.previousPart) return false;
     const at = r.path[0]!;
@@ -664,23 +691,24 @@ function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], number
     carried.set(at, float);
     return true;
   };
-  out.forEach((r, k) => {
+  for (const [k, r] of out.entries()) {
+    if (k % SLICE_BLOCKS === SLICE_BLOCKS - 1) yield;
     if (typeof r === "string") {
       if (r === "barrier") before = null;
-      return;
+      continue;
     }
     // The rest of a paragraph, or nothing: never a caption, nor what one is told by.
-    if (r.carriesOn) return;
-    const prev = before;
+    if (r.carriesOn) continue;
+    const prev: Reading | null = before;
     before = r;
-    if (r.kind !== "paragraph" || numbered(k)) return;
+    if (r.kind !== "paragraph" || numbered(k)) continue;
     if (!restOfFloat(r)) {
-      if (!CAPTION_LABEL.test(plainText(r.block))) return;
-      if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block)) && setUnder(prev.block, r.block, CAPTION_RUN_ON_GAP)) return;
+      if (!CAPTION_LABEL.test(plainText(r.block))) continue;
+      if (prev?.kind === "paragraph" && NAMES_NEXT.test(plainText(prev.block)) && setUnder(prev.block, r.block, CAPTION_RUN_ON_GAP)) continue;
     }
     out[k] = "skip";
     before = prev;
-  });
+  }
 }
 
 /** The rest of a caption Zotero read as a paragraph starts where the caption's next line
@@ -788,7 +816,10 @@ function dominantSize(block: SdtBlock): number {
 
 /** The median of values counted with their weights. */
 function weightedMedian(pairs: readonly [number, number][]): number {
-  const sorted = pairs.filter(([v, w]) => v > 0 && w > 0).sort((a, b) => a[0] - b[0]);
+  // The weights summed by value first: a book's runs are hundreds of thousands, their sizes a few.
+  const byValue = new Map<number, number>();
+  for (const [v, w] of pairs) if (v > 0 && w > 0) byValue.set(v, (byValue.get(v) ?? 0) + w);
+  const sorted = [...byValue].sort((a, b) => a[0] - b[0]);
   const total = sorted.reduce((n, [, w]) => n + w, 0);
   let seen = 0;
   for (const [v, w] of sorted) {
@@ -802,6 +833,20 @@ function median(values: number[]): number {
   if (values.length === 0) return NaN;
   const s = [...values].sort((a, b) => a - b);
   return s[s.length >> 1]!;
+}
+
+/** median() of values given as how many times each occurs: the same middle value, without
+ *  sorting every one of a book's hundreds of thousands. */
+function medianOfCounts(counts: ReadonlyMap<number, number>): number {
+  const sorted = [...counts].sort((a, b) => a[0] - b[0]);
+  const total = sorted.reduce((n, [, c]) => n + c, 0);
+  if (total === 0) return NaN;
+  let seen = 0;
+  for (const [v, c] of sorted) {
+    seen += c;
+    if (seen > total >> 1) return v;
+  }
+  return NaN;
 }
 
 // ---- the order of a page's columns -----------------------------------------------------------
@@ -1420,7 +1465,7 @@ export interface StructuredReader {
 /** The drafts and the vocabulary, in a scope of their own: the reader's closures then keep
  *  neither the structure nor what was made on the way (39 MB at 300 pages). */
 function* prepare(structure: SdtStructure, everything: boolean): Generator<void, Drafted> {
-  const readings = readInColumns(readingsOf(structure.content, everything));
+  const readings = readInColumns(yield* readingsOf(structure.content, everything));
   yield;
   const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
   // A bibliography is read only where the lines are numbered, and asked about then.
@@ -1440,7 +1485,7 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
   }
   // Numbered lines are read again as the paragraphs they make, and a caption among them is
   // told there, once its lines are one paragraph (numberedReadings).
-  if (!everything) leaveOutCaptions(readings, structure.content, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
+  if (!everything) yield* leaveOutCaptions(readings, structure.content, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
   yield;
   const prepared = numbers.size > 0
     ? numberedReadings(readings, texts, numbers, everything)
@@ -1500,7 +1545,7 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
     d.pages = [...on].sort((a, b) => a - b);
   }
   yield;
-  return { drafts, vocab: vocabularyOf(drafts.map((d) => written(d.pieces))) };
+  return { drafts, vocab: yield* vocabularyInSlices(drafts.map((d) => written(d.pieces))) };
 }
 
 /** What prepare() makes of a structure: the drafts of its blocks and their vocabulary. */

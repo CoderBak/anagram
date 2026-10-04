@@ -8,7 +8,7 @@
 //
 //   npx playwright test pdf-read-ahead
 import { test as base, expect, BADGE_SEL, popupOver, menuReport } from "./kit.mjs";
-import { TALL_PDF, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
+import { TALL_PDF, TALL_WORDS, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
 
 const test = base.extend({
   /** The thirty-page document, served as application/pdf. */
@@ -277,11 +277,22 @@ test("past what it reads without asking, the menu offers the whole document, and
   await expect.poll(async () => { state = await menuState(menu); return state.action; }, { message: offer, timeout: 20_000 }).toBe("Read the whole document");
   expect.soft(state.scope ?? "", `${offer}, and meanwhile counts the pages drawn`).toMatch(SCOPED);
   expect.soft(await page.evaluate(() => performance.getEntriesByName("anagram-structure").length), `${offer}: no structure until asked`).toBe(0);
+  const pressed = nativeHost.textMark();
   await menu.locator("#pageAction").click();
   const ranges = "PDF reader: the whole document read in three page ranges";
+  // From the press on, the menu says the whole document is being read, not what it covered.
+  await expect.poll(() => menu.isClosed(), { message: `${offer}: the menu closes as the reader takes it` }).toBe(true);
+  const asked = await menuState(await popupOver(page));
+  expect.soft(asked.scope ?? "", `${offer}: once pressed, the menu says it is reading the whole document`).not.toMatch(SCOPED);
+  expect.soft(asked.action, `${offer}: once pressed, it is not offered again`).toBeNull();
   await page.waitForFunction(() => performance.getEntriesByName("anagram-structure").length > 0, null, { timeout: 60_000 });
   const ranged = await wholeReport(page, `${ranges}: the report comes to cover every page`);
   expect.soft(ranged.action, `${ranges}: nothing left to offer`).toBeNull();
+  // Every paragraph read from the structure went to the engine as itself — its words ending
+  // "and so it ends.", none run into the next or into the running head — and all 120 were read.
+  const paragraph = (t) => /and so it ends\.$/.test(t) && t.split(/\s+/).length === TALL_WORDS && !t.includes("ANAGRAM TEST DOCUMENT");
+  expect.soft(nativeHost.textsSince(pressed).filter((t) => !paragraph(t)).map((t) => t.slice(0, 60)), `${ranges}: every text read is one paragraph`).toEqual([]);
+  expect.soft(new Set(nativeHost.textsSince().filter(paragraph)).size, `${ranges}: every paragraph is read`).toBe(PAGES * PER_PAGE);
   // A page of the last range shows its own paragraphs' chips, from the cache: its paragraphs
   // were placed on it, not ten or twenty pages before it.
   const requests = nativeHost.stats.requests;

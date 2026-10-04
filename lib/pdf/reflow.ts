@@ -19,6 +19,7 @@
 // (modelText) spells ﬁ/ﬂ out itself.
 import { skipGap } from "../dom/text";
 import { BARE_NUMBER, lineNumberMarks, type NumberMark, type PageContent } from "./lineNumbers";
+import { finish } from "../slices";
 
 /** One run of glyphs as the extractor hands it over. */
 export interface PdfTextItem {
@@ -1257,16 +1258,27 @@ const CONTINUED = 3;
 
 /** Collect the evidence once per document — it is read at every broken line. */
 export function vocabularyOf(texts: string[]): Vocabulary {
+  return finish(vocabularyInSlices(texts));
+}
+
+/** vocabularyOf a few texts at a time, for a book's thousands of paragraphs
+ *  (lib/pdf/structured.ts). */
+export function* vocabularyInSlices(texts: string[]): Generator<void, Vocabulary> {
   const vocab: Vocabulary = { hyphenated: new Set(), heads: new Set(), fused: new Set(), starts: new Set() };
-  for (const text of texts) {
+  for (const [i, text] of texts.entries()) {
     const lower = text.toLowerCase();
     for (const m of lower.matchAll(INLINE_COMPOUND)) {
       vocab.hyphenated.add(`${m[1]}-${m[2]}`);
       vocab.heads.add(m[1]!);
     }
     for (const m of lower.matchAll(WORD)) vocab.fused.add(m[0]);
+    if (i % 32 === 31) yield;
   }
-  for (const word of vocab.fused) for (let k = 2 + CONTINUED; k <= word.length; k++) vocab.starts.add(word.slice(0, k));
+  let n = 0;
+  for (const word of vocab.fused) {
+    for (let k = 2 + CONTINUED; k <= word.length; k++) vocab.starts.add(word.slice(0, k));
+    if (++n % 2048 === 0) yield;
+  }
   return vocab;
 }
 

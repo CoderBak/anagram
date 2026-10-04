@@ -230,6 +230,8 @@ function share(): { done: number; of: number; left: number } {
 function scopeNote(read: number): string {
   const total = app.pdfDocument?.numPages ?? 0;
   if (!plan) {
+    // Asked for: the paragraphs of the whole document are on their way.
+    if (askedWhole) return t("readerReading", "0");
     const ask = askable && read < total;
     if (ask !== asking) {
       asking = ask;
@@ -261,6 +263,8 @@ function scopeNote(read: number): string {
 let askable = false;
 /** The menu shows that button. */
 let asking = false;
+/** The button was pressed, and the structure is being read. */
+let askedWhole = false;
 /** The menu's button asked for the whole of a document past what is read without asking: the
  *  structure is read as it would have been at the start, from pdf.js's copy of the bytes. */
 function readWholeAsked(): void {
@@ -269,10 +273,12 @@ function readWholeAsked(): void {
   orchestrator?.setPageAction(null);
   const owned = generation, signal = controller.signal, count = app.pdfDocument?.numPages ?? 0;
   keepTexts = true;
+  askedWhole = true;
   void (async () => {
     const bytes = await app.pdfDocument?.getData().catch(() => null);
-    if (!bytes || owned !== generation) return;
-    await readAhead(owned, readWholeDocument(bytes, count, owned, signal, true));
+    const read = bytes && owned === generation ? readWholeDocument(bytes, count, owned, signal, true) : Promise.resolve(false);
+    void read.finally(() => { if (owned === generation) askedWhole = false; });
+    await readAhead(owned, read);
   })();
 }
 
@@ -546,7 +552,7 @@ function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void
   cancelDocumentSession();
   setRangeLocator(null);
   pages.clear(); source = null; structure = null; textless = false;
-  texts.clear(); unread.clear(); pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; askable = false; asking = false; shownPercent = 0; tried.clear(); wake?.();
+  texts.clear(); unread.clear(); pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; askable = false; asking = false; askedWhole = false; shownPercent = 0; tried.clear(); wake?.();
   pacer.newDocument();
   originalUrl = null; original.hidden = true;
   site = null;
