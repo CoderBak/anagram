@@ -381,7 +381,13 @@ describe("the English each bundle carries", () => {
       join(ROOT, "public", "_locales", "en", "messages.json"),
     ];
     const builtAt = existsSync(join(OUT, "manifest.json")) ? statSync(join(OUT, "manifest.json")).mtimeMs : 0;
-    const ready = builtAt > 0 && DECIDES.every((path) => statSync(path).mtimeMs <= builtAt);
+    const fresh = builtAt > 0 && DECIDES.every((path) => statSync(path).mtimeMs <= builtAt);
+    // Never in silence: a stale build says so here, and in CI, which builds first, the checks
+    // run whatever the timestamps say, so a missing build fails them.
+    const ready = fresh || !!process.env.CI;
+    if (!ready) {
+      console.warn("i18n: output/ is older than the files that decide its strings (or missing); the four checks of what came out of the build are skipped. Run `npm run build` (or `npm run check`) to run them.");
+    }
 
     it.skipIf(!ready)("gives each bundle exactly one compiled fallback", () => {
       expect(Object.keys(carriers()).sort()).toEqual(["background", "content", "pages"]);

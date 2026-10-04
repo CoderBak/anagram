@@ -62,11 +62,17 @@ the test build reads.
 Node 22 and Python 3.12. Build before browser suites; the test build grants all
 sites and lands in `output-test/`, the shipping build in `output/`.
 
+`npm run check` runs every suite CI runs, in CI's order, and ends with a line per suite; one
+this machine cannot run (no POSIX shell, no `ANAGRAMD_PYTHON`) is named and said why.
+Commits marked `[skip ci]` never reach CI, so run it before handing work over. The suites
+one at a time:
+
 ```sh
 npm ci
 npm run typecheck
 npm run build
-npm run test:node                  # vitest; some suites skip without a fresh build
+npm run test:node                  # vitest; the build checks skip, saying so, without a fresh build
+npm run test:pw                    # every browser suite under test/pw (chromium)
 npx playwright install chromium
 npm run test:unit                  # DOM walker cases in a blank page
 npm run test:e2e                   # extension against a deterministic fake host
