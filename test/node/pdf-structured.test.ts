@@ -1415,6 +1415,43 @@ describe("structuredBlocks — the rest of a paragraph that a float cut off", ()
   });
 });
 
+describe("structuredBlocks — a sentence carried on past what Zotero set apart", () => {
+  const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
+  const head = node(1, [{ text: "This can be viewed as an extended criterion, computed for the model where the entries of", x: 72, y: 700 }]);
+
+  it("reads a paragraph that opens with a formula, then lower case, as the rest of the one before", () => {
+    // arXiv 2609.28841: page 16 opens "E_t are iid…": Zotero's text opens with the formula's
+    // capital, the text as read with the formula left out opens "are".
+    const tail = node(2, [{ text: "E", x: 72, y: 100, font: "f_math" }, { text: "are iid normal, so it is best viewed as a quasi-likelihood criterion.", x: 82, y: 100 }]);
+    const blocks = structuredBlocks(structure([paragraph(1, [head]), paragraph(2, [tail])], 2), [pageText(1, head.items, fonts), pageText(2, tail.items, fonts)]);
+    expect(blocks.map((b) => b.text)).toEqual([`${head.text} are iid normal, so it is best viewed as a quasi-likelihood criterion.`]);
+    expect(new Set(blocks[0]!.runs.map((r) => r.page))).toEqual(new Set([1, 2]));
+    // A paragraph that opens with a word in capitals, after the same open sentence, is its own.
+    const fresh = node(2, [{ text: "Each entry is drawn independently, which the next section relaxes.", x: 72, y: 100 }]);
+    expect(structuredBlocks(structure([paragraph(1, [head]), paragraph(2, [fresh])], 2), [pageText(1, head.items, fonts), pageText(2, fresh.items, fonts)])).toHaveLength(2);
+  });
+
+  it("reads the rest Zotero took for the page's footer, in the type area at the body's size, and not the arXiv stamp in the margin", () => {
+    const body = node(1, [{ text: "A paragraph of the body sets the type area and the size of its text, as every page of the paper does.", x: 72, y: 400 }]);
+    const rest = node(2, [{ text: "of the corresponding oracle residuals, which the next lemma bounds.", x: 72, y: 690 }]);
+    const pages = [pageText(1, [...body.items, ...head.items], fonts), pageText(2, rest.items, fonts)];
+    const footer = (n: typeof rest, rect: number[]): SdtBlock => ({ ...paragraph(2, [n]), flowClass: "excluded", anchor: { pageRects: [rect] } });
+    const inside = structuredBlocks(structure([paragraph(1, [body]), paragraph(1, [head]), footer(rest, [1, 72, 680, 400, 700])], 2), pages);
+    expect(inside.map((b) => b.text)).toEqual([body.text, `${head.text} ${rest.text}`]);
+    // The same words where the arXiv stamp stands, rotated in the left margin: furniture.
+    const stamp = structuredBlocks(structure([paragraph(1, [body]), paragraph(1, [head]), footer(rest, [1, 10, 200, 30, 600])], 2), pages);
+    expect(stamp.map((b) => b.text)).toEqual([body.text, head.text]);
+  });
+
+  it("leaves aside a figure's label set at the body's size inside the figure's box", () => {
+    const label = node(2, [{ text: "a-BiF3 thin film on the substrate", x: 120, y: 300 }]);
+    const figure = { type: "image", flowClass: "auxiliary", anchor: { pageRects: [[1, 100, 250, 450, 560]] }, content: [] } as SdtBlock;
+    const pages = [pageText(1, head.items, fonts), pageText(2, label.items, fonts)];
+    const aside = { ...paragraph(2, [label]), flowClass: "auxiliary", anchor: { pageRects: [[1, 120, 480, 300, 500]] } } as SdtBlock;
+    expect(structuredBlocks(structure([paragraph(1, [head]), figure, aside], 2), pages).map((b) => b.text)).toEqual([head.text]);
+  });
+});
+
 describe("structuredBlocks — text cut off by a display equation", () => {
   /** A display equation as Zotero sets it aside. */
   const display = (page: number, y: number): { block: SdtBlock; items: PdfTextItem[] } => {

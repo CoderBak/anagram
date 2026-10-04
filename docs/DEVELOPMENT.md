@@ -219,19 +219,25 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   book took 12.8 s to its structure, 250 MB of page memory falling to 173 MB as it was read,
   and no main-thread pause over 78 ms (2026-10-04, M4). Past the cap, Zotero's worker would
   have to read the document in page ranges, which its `getFullStructure` does not offer.
-- PDF: the tail of a paragraph set under a figure on the next page, which Zotero tags
-  `auxiliary` ("…simulated INT8 preserves" / figure / "vulnerability rather than…"), is read
-  with its paragraph where it is set at the body's size (`carriesOnBody` in
-  `lib/pdf/structured.ts`): of the 25 lowercase auxiliary paragraphs after a paragraph left
-  open in the benchmark corpus, that takes the 12 continuations at body size and none of the 9
-  labels and notes. Four continuations set among formulas, at 0.82–0.94 of the body's size,
-  are still left out, and the chip then stands mid-sentence at the foot of the page.
+- PDF: the rest of a paragraph Zotero set outside the body — under a figure it cut off
+  (`auxiliary`), or at the foot of a page taken for its footer (`excluded`) — is read with its
+  paragraph where it opens in lower case after a paragraph left open, is set at the body's
+  dominant size (the size most of its characters are in), lies in the type area (the median of
+  the pages' outermost body lines) and in no figure's or table's box (`carriesOnBody` in
+  `lib/pdf/structured.ts`). The type area is what keeps out the arXiv stamp in the margin, which
+  is lower case and at body size on nearly every preprint. A paragraph that opens with a formula
+  and then lower case is sewn to the one before after assembly, when the formula is left out
+  (`sewn`). Measured on the benchmark's dev and held-out test halves alike (2026-10-04):
+  boundary precision 94.7 → 95.1% and 94.8 → 95.2%, leakage unchanged.
   The other tails the benchmark loses (`test/pdf-bench`, 46 of 15,089 paragraphs losing their
   last eight tokens, 2026-10-04) are mostly not losses: formulas the truth leaves out, and
-  acronyms LaTeXML expands. The real ones are Zotero's segmentation, one to four papers each:
-  a line taken into the caption beside it ("Fig. 5: … (right). of our framework beyond…", the
-  line at the body's size and the caption's smaller), into a display equation, or into the
-  page's furniture (`excluded`).
+  acronyms LaTeXML expands. The real ones left are Zotero's segmentation, one to three papers
+  each: a line taken into the caption beside it ("Fig. 5: … (right). of our framework
+  beyond…") or into a display equation. No rule from geometry tells those lines apart without
+  misreading others: over the corpus, 853 captions and thousands of equations follow a
+  paragraph left open, captions are often set at the body's size, and equations open with a
+  line at it, so a split by size would cut far more captions and equations wrongly than it
+  mends. The fix belongs to Zotero's segmentation model.
 - Installer recovery on Windows: two component homes registering one browser race on
   the HKCU keys (`installer/native_registration.py`), and an interrupted uninstall is
   finished only by reinstalling or deleting the folder (`installer/maintenance.ps1`).

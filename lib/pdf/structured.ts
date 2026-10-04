@@ -426,22 +426,78 @@ function codeTest(content: SdtBlock[]): (block: SdtBlock) => boolean {
 
 /** A line set within this share of the body's size is set at it. */
 const BODY_SIZE_TOLERANCE = 0.05;
+/** A block overlapping a figure's or a table's box by more than this share of its own area is
+ *  that float's. */
+const IN_FLOAT = 0.5;
+
+/** What tells the body's text from what is set around it, learnt once per document. */
+interface BodyFrame {
+  /** The size most of the body's characters are set in (dominantSize). */
+  size: number;
+  /** The type area, where the pages set their body text (typeAreaOf), or null. */
+  area: TypeArea | null;
+  /** The figures' and tables' boxes, by page index. */
+  floats: Map<number, number[][]>;
+}
+
+/** The pages' type area: where the body's text is set, as the median, over the pages that set
+ *  body text, of each page's outermost body lines. A running head, a footer, a stamp in the
+ *  margin and a column of line numbers stand outside it; so does anything a printer calls
+ *  furniture. PDF space: y grows upward. */
+interface TypeArea { left: number; bottom: number; right: number; top: number }
+
+function typeAreaOf(content: readonly SdtBlock[]): TypeArea | null {
+  const pages = new Map<number, number[]>();
+  for (const block of content) {
+    if (block.type !== "paragraph" || block.flowClass || block.reference) continue;
+    for (const rect of block.anchor?.pageRects ?? []) {
+      const [page, x1, y1, x2, y2] = rect as [number, number, number, number, number];
+      const e = pages.get(page) ?? [Infinity, Infinity, -Infinity, -Infinity];
+      pages.set(page, [Math.min(e[0]!, x1), Math.min(e[1]!, y1), Math.max(e[2]!, x2), Math.max(e[3]!, y2)]);
+    }
+  }
+  if (pages.size === 0) return null;
+  const at = (i: number): number => median([...pages.values()].map((e) => e[i]!));
+  return { left: at(0), bottom: at(1), right: at(2), top: at(3) };
+}
+
+function bodyFrameOf(content: readonly SdtBlock[]): BodyFrame {
+  const floats = new Map<number, number[][]>();
+  for (const block of content) {
+    if (block.type !== "image" && block.type !== "table") continue;
+    for (const rect of block.anchor?.pageRects ?? []) floats.set(rect[0]!, [...(floats.get(rect[0]!) ?? []), rect]);
+  }
+  return { size: weightedMedian(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runSizes(b) : []))), area: typeAreaOf(content), floats };
+}
 
 /**
- * The rest of a paragraph a figure or a table cut off, which Zotero took for part of the float
- * and set beside the text: "…arguing that simulated INT8 preserves" / table / "vulnerability
- * rather than creating severe gradient obfuscation." It opens in lower case and is set at the
- * body's size; a figure's or a table's own words — "h1 h2 h3", "topology{Rect,Hex}", a table's
- * note — are set smaller. Over the benchmark's papers that told the twelve such continuations
- * from the nine labels and notes among Zotero's lower-case auxiliary paragraphs that follow a
- * paragraph left open; it passes over four continuations set among formulas. It is read only
- * where the paragraph before it runs on (prepare); anywhere else it stays aside.
+ * The rest of a paragraph that Zotero set outside the body's text: under a figure or a table it
+ * cut off ("…arguing that simulated INT8 preserves" / table / "vulnerability rather than
+ * creating severe gradient obfuscation."), or at the foot of a page, taken for its footer. It
+ * opens in lower case, is set at the body's size and in the type area, and lies in no figure's
+ * or table's box. What a printer sets around the text fails one of those: a figure's labels and
+ * a table's notes are smaller or inside the float, a running head or a footer and the arXiv
+ * stamp in the margin are outside the type area. It is read only where the paragraph before it
+ * runs on (prepare); anywhere else it stays aside.
  */
-function carriesOnBody(node: SdtBlock, bodySize: () => number): boolean {
+function carriesOnBody(node: SdtBlock, frame: () => BodyFrame): boolean {
   const first = firstText(node)?.text.trimStart() ?? "";
   if (!/^\p{Ll}/u.test(first)) return false;
-  const size = median(runHeights(node));
-  return Math.abs(size / bodySize() - 1) <= BODY_SIZE_TOLERANCE;
+  const { size, area, floats } = frame();
+  if (!(Math.abs(dominantSize(node) / size - 1) <= BODY_SIZE_TOLERANCE)) return false;
+  const rects = node.anchor?.pageRects ?? [];
+  if (rects.length === 0 || !area) return false;
+  const slack = size;
+  for (const rect of rects) {
+    const [page, x1, y1, x2, y2] = rect as [number, number, number, number, number];
+    if (x1 < area.left - slack || x2 > area.right + slack || y1 < area.bottom - slack || y2 > area.top + slack) return false;
+    const own = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    for (const f of floats.get(page) ?? []) {
+      const w = Math.min(x2, f[3]!) - Math.max(x1, f[1]!), h = Math.min(y2, f[4]!) - Math.max(y1, f[2]!);
+      if (w > 0 && h > 0 && w * h > IN_FLOAT * own) return false;
+    }
+  }
+  return true;
 }
 
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
@@ -449,13 +505,13 @@ function carriesOnBody(node: SdtBlock, bodySize: () => number): boolean {
  *  numbered lines (numberedReadings). */
 function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker)[] {
   const out: (Reading | Marker)[] = [];
-  let body: number | null = null;
-  const bodySize = (): number => (body ??= median(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runHeights(b) : []))));
+  let body: BodyFrame | null = null;
+  const frame = (): BodyFrame => (body ??= bodyFrameOf(content));
   const aside = (node: SdtBlock, path: number[]): void => {
     if (everything) out.push({ kind: "paragraph", block: node, path, origin: originOf(node) });
     else if (node.reference) out.push({ kind: "reference", block: node, path, origin: originOf(node) });
     else if (node.type === "table") out.push({ kind: "table", block: node, path, origin: originOf(node) });
-    else if (node.type === "paragraph" && node.flowClass === "auxiliary" && carriesOnBody(node, bodySize)) {
+    else if (node.type === "paragraph" && (node.flowClass === "auxiliary" || node.flowClass === "excluded") && carriesOnBody(node, frame)) {
       out.push({ kind: "paragraph", block: node, path, origin: originOf(node), carriesOn: true });
     } else out.push(node.type === "math" ? "display" : "skip");
   };
@@ -705,6 +761,41 @@ function runHeights(block: SdtBlock, out: number[] = []): number[] {
     for (const run of runs) if (Array.isArray(run) && run.length >= 6) out.push((run[5] as number) - (run[3] as number));
   }
   return out;
+}
+
+/** Each run of a block's text: its height, and how many glyphs it holds. */
+function runSizes(block: SdtBlock, out: [number, number][] = []): [number, number][] {
+  for (const node of block.content ?? []) {
+    if (!isTextNode(node)) { runSizes(node, out); continue; }
+    let runs: unknown;
+    try {
+      runs = JSON.parse(node.anchor?.textMap ?? "[]");
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(runs)) continue;
+    for (const run of runs) if (Array.isArray(run) && run.length >= 6) out.push([(run[5] as number) - (run[3] as number), Math.max(1, run.length - 6)]);
+  }
+  return out;
+}
+
+/** The size most of a block's characters are set in: its runs' heights, each counted for the
+ *  glyphs it holds, so that the subscripts and superscripts of a line full of formulas do not
+ *  pull it under the size its words are set in. */
+function dominantSize(block: SdtBlock): number {
+  return weightedMedian(runSizes(block));
+}
+
+/** The median of values counted with their weights. */
+function weightedMedian(pairs: readonly [number, number][]): number {
+  const sorted = pairs.filter(([v, w]) => v > 0 && w > 0).sort((a, b) => a[0] - b[0]);
+  const total = sorted.reduce((n, [, w]) => n + w, 0);
+  let seen = 0;
+  for (const [v, w] of sorted) {
+    seen += w;
+    if (seen >= total / 2) return v;
+  }
+  return NaN;
 }
 
 function median(values: number[]): number {
@@ -1470,7 +1561,39 @@ function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): Struc
         }
         if (d.result) out.push(d.result);
       }
-      return out;
+      return sewn(out);
+  }
+
+  /** What two blocks were sewn into, by the first: the same two give back the same block, so
+   *  what is kept by block (planOf's counts, pagesOf) stays kept. */
+  const sewnInto = new WeakMap<StructuredBlock, { next: StructuredBlock; into: StructuredBlock }>();
+  /**
+   * A paragraph that stops mid-sentence and the one after it that carries the sentence on in
+   * lower case are one — the rule prepare() applies to Zotero's text, applied again to the text
+   * as read, with its formulas left out: "…where the entries of" / "E_t are iid…" reads "…where
+   * the entries of are iid…", and the paragraph Zotero cut at a page under a formula is one.
+   */
+  function sewn(blocks: StructuredBlock[]): StructuredBlock[] {
+    const out: StructuredBlock[] = [];
+    for (const block of blocks) {
+      const prev = out.at(-1);
+      if (!prev || !carriesOn(prev, block)) { out.push(block); continue; }
+      let known = sewnInto.get(prev);
+      if (known?.next !== block) {
+        const base = prev.text.length + 1;
+        const into: StructuredBlock = {
+          ...prev, text: `${prev.text} ${block.text}`,
+          runs: [...prev.runs, ...block.runs.map((r) => ({ ...r, at: r.at + base }))],
+          ...(block.runsOn ? { runsOn: true } : {}),
+        };
+        if (!block.runsOn) delete into.runsOn;
+        pagesOfResult.set(into, [...new Set([...(pagesOfResult.get(prev) ?? [prev.page]), ...(pagesOfResult.get(block) ?? [block.page])])].sort((a, b) => a - b));
+        known = { next: block, into };
+        sewnInto.set(prev, known);
+      }
+      out[out.length - 1] = known.into;
+    }
+    return out;
   }
 
   return {
@@ -1478,6 +1601,15 @@ function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): Struc
     blocks: (pages) => finish(blocks(pages)),
     blocksInSlices: (pages) => finishInSlices(blocks(pages)),
   };
+}
+
+/** The second paragraph carries the first one's sentence on: the first, of the body, stops
+ *  without ending it (a broken word's hyphen aside, which prepare() mends), and the second,
+ *  of the body too and with nothing that stops reading between them, opens in lower case. */
+function carriesOn(prev: StructuredBlock, next: StructuredBlock): boolean {
+  if (prev.kind !== "paragraph" || next.kind !== "paragraph" || prev.apart || next.apart || next.columnBreak) return false;
+  const end = prev.text.trimEnd();
+  return end !== "" && !SENTENCE_END.test(end) && !end.endsWith("-") && /^\p{Ll}/u.test(next.text);
 }
 
 /** One reading, for one set of pages: the benchmark's call (test/pdf-bench/pipeline.ts). */
