@@ -1049,6 +1049,27 @@ const results = await page.evaluate(() => {
       check("scopes are a pure function of the page: asked top-down, bottom-up or from inside a reply first, every element gets the same scope — the four comments, and nothing else",
         JSON.stringify(forward) === JSON.stringify(backward) && JSON.stringify(forward) === JSON.stringify(inside) && JSON.stringify([...new Set(forward)]) === JSON.stringify(posts), JSON.stringify([[...new Set(forward)], posts]));
     }
+    // …and the page's as it stands: what one walk surveyed is kept for the next only while
+    // the page is unchanged (lib/dom/kept.ts), whatever the change and however soon it comes.
+    {
+      const html = post("alice", `A ${sent(29)}`, `B ${sent(79)}`, `C ${sent(19)}`, `D ${sent(79)}`) + post("bob", sent(30));
+      const walk = () => JSON.stringify(PW.collectUnits(sandbox).map((x) => [x.parts.length, x.wordCount]));
+      const changes = {
+        "the other post's byline taken away": () => sandbox.querySelectorAll(".meta")[1].remove(),
+        "a class that makes the two posts unlike": () => sandbox.querySelectorAll(".c")[1].setAttribute("class", "d"),
+      };
+      const got = Object.entries(changes).map(([what, change]) => {
+        sandbox.innerHTML = html;
+        const first = walk();
+        change(); // nothing reported yet: the walk right after it must see it all the same
+        const kept = walk();
+        const changed = sandbox.innerHTML;
+        sandbox.innerHTML = changed;
+        return { what, first, kept, fresh: walk() };
+      });
+      check("a walk right after the page changed reads it as a fresh walk does, never with the posts the walk before it recognised (a byline gone, two posts made unlike by a class)",
+        got.every((g) => g.kept === g.fresh && g.first !== g.fresh), JSON.stringify(got));
+    }
   }
 
   {

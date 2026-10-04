@@ -78,6 +78,12 @@ export interface ModelInfo {
   calibration: string;
 }
 
+/** A model's whole identity as one key: JSON avoids delimiter collisions and includes
+ *  calibration, not just model/version. Here, beside ModelInfo, rather than with the worker's
+ *  router: a page that compares two models has no use for the router's cache, and the content
+ *  script carried it, IndexedDB wrapper and all, for this one line. */
+export function modelDim(m: ModelInfo): string { return JSON.stringify([m.id, m.ver, m.calibration]); }
+
 export type ScanPriority = "viewport" | "near" | "background";
 
 /** Batch request: content script → service worker → ScoreClient. */

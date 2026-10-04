@@ -80,8 +80,10 @@ import {
   MIN_LINE_WORDS,
   MODEL_MIN_WORDS,
   MAX_UNIT_TEXT_CHARS,
+  writingSystem,
 } from "./text";
-import { type Scopes, createScopes } from "./scope";
+import { type Scopes, createScopes, surveyScopes } from "./scope";
+import { keptUntilChanged } from "./kept";
 import { isTranslatedInPlace } from "./translation";
 import { WINDOW_CHARS } from "../capture/windows";
 // The arithmetic of grouping — the floor, the window, the even division, the orphan rule
@@ -1410,12 +1412,17 @@ function outsideLists(el: Element): Element {
  * else the page — and runs merge only inside one scope. The answers are cached per scan,
  * and a scan asks twice: `wholePost` before the walk, the walk and its assembler during it.
  * The first to ask creates the scopes of the scan and the walk takes them over, so the page
- * is surveyed for bylines and mail quotations once.
+ * is surveyed for bylines and mail quotations once. What the page's light DOM alone decides
+ * (scope.ts, ScopeSurvey) is kept from one scan to the next until the page changes
+ * (lib/dom/kept.ts): a chat's drain walks the stretch a new message joined and then, one at a
+ * time, the messages the groups it re-divided had held — 24 walks a drain on a chat adding a
+ * message every 300 ms — and every one of them surveyed the whole page again.
  */
 let scanScopes: Scopes | null = null;
+const keptSurvey = keptUntilChanged(() => surveyScopes(document));
 
 function scopesOfScan(): Scopes {
-  return (scanScopes ??= createScopes());
+  return (scanScopes ??= createScopes(document, keptSurvey()));
 }
 
 /** `root` holds `el` in the COMPOSED tree: contains() alone stops at a shadow root. */
@@ -1496,36 +1503,10 @@ function wholePost(root: Element): Element {
   return all.replace(/\s+/g, " ").length <= WHOLE_POST_CHARS ? scope : root;
 }
 
-/** Letters a text needs before its writing system is told. */
-const SCRIPT_MIN_LETTERS = 8;
-/** Share of its letters one writing system must hold to be the text's. */
-const SCRIPT_SHARE = 0.7;
-const SCRIPTS: [string, RegExp][] = [
-  ["cjk", /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu],
-  ["latin", /\p{Script=Latin}/gu],
-  ["cyrillic", /\p{Script=Cyrillic}/gu],
-  ["arabic", /\p{Script=Arabic}/gu],
-  ["greek", /\p{Script=Greek}/gu],
-];
-const scriptKept = new WeakMap<Run, string | null>();
-/** The writing system most of a run's letters are in, Chinese, Japanese and Korean as one;
- *  null where none holds most of them, or the run has too few letters to tell. */
-function scriptOf(r: Run): string | null {
-  if (scriptKept.has(r)) return scriptKept.get(r)!;
-  const letters = (r.text.match(/\p{L}/gu) ?? []).length;
-  let found: string | null = null;
-  if (letters >= SCRIPT_MIN_LETTERS) {
-    for (const [name, pattern] of SCRIPTS) {
-      if ((r.text.match(pattern) ?? []).length >= letters * SCRIPT_SHARE) { found = name; break; }
-    }
-  }
-  scriptKept.set(r, found);
-  return found;
-}
 /** Two runs in two writing systems are two texts: a Chinese paragraph and the English note
  *  after it were read as one, and its chip stood after the English. */
 function sameScript(a: Run, b: Run): boolean {
-  const x = scriptOf(a), y = scriptOf(b);
+  const x = writingSystem(a.text), y = writingSystem(b.text);
   return x === null || y === null || x === y;
 }
 

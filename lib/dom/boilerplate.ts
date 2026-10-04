@@ -14,6 +14,7 @@
 // COMPOUND form ("social-share", "related-articles") — a paper's
 // `<section class="related-work">` is content, not chrome.
 import { CONSENT_BANNER_SELECTORS } from "./consentBanners";
+import { keptUntilChanged } from "./kept";
 import { INLINE_FALLBACK_TAGS } from "./tags";
 
 /** Landmark roles that are page chrome by definition. NOT "tablist": Bootstrap-style
@@ -395,7 +396,8 @@ export function findConsentBanners(root: Element | ShadowRoot, found = new Set<E
     if (el) found.add(el);
   }
   // Over the whole page, as the ids are: a re-scan of the box's second tab holds no list.
-  for (const list of vendorLists(root instanceof ShadowRoot ? root : root.ownerDocument)) {
+  const lists = root instanceof ShadowRoot ? vendorLists(root) : root.ownerDocument === globalThis.document ? keptVendorLists() : vendorLists(root.ownerDocument);
+  for (const list of lists) {
     const box = consentBoxAround(list);
     if (box) found.add(box);
   }
@@ -443,6 +445,10 @@ function vendorLists(root: Document | ShadowRoot): Element[] {
   }
   return [...byList].filter(([, hosts]) => hosts.size >= VENDOR_LIST_MIN).map(([list]) => list);
 }
+
+/** The document's lists of vendors, kept until it changes (lib/dom/kept.ts): every walk asks,
+ *  a drain walks several roots in a row, and the answer reads every link of the page. */
+const keptVendorLists = keptUntilChanged(() => vendorLists(document));
 
 /** The box around a list of vendors that also holds the controls that give or refuse
  *  consent — the whole consent box, its explanations included — or null: a list of policies

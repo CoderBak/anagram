@@ -278,6 +278,25 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
     (the marks' rules are a constructed sheet already, and the card's marker and pending line no
     longer write a style attribute). It buys little: no script runs inline, and with `img-src`
     and `font-src` held to the extension, injected CSS has no address to send what it matches to.
+- Performance, still open (traces of 2026-10-05, M4, against the same page without Anagram):
+  - A changing page's frames: Chromium takes every registered highlight range out of the page's
+    markers and puts it back at every change of the DOM or of style, and repaints every marked
+    text (HighlightRegistry::ValidateHighlightMarkers). On the Reddit-like feed of budget G the
+    marks cost ~230 ms of compositing inputs, ~240 ms of paint and ~150 ms of intersection
+    observing a minute (a build without them). Registering only the marks on screen instead of
+    within a screen of it saved some 50 and 100 ms and would draw marks a frame late on a fast
+    scroll. Chips are not it: 400 chips with their paint layers (`position: relative`,
+    `contain: layout`) or without, ten inserted or removed a second, cost the same frames.
+  - A feed's walks: what the page's light DOM decides is kept between walks
+    (`lib/dom/kept.ts`), but a feed changes it between any two drains (a class on the post
+    entering view, a counter), so recognising its posts (`lib/dom/scope.ts`) is made again
+    each time: half of what a drain costs there.
+  - The content script is 242 KB, parsed and compiled at every load of every granted page and
+    frame: ~11.5 ms (V8's preparse 6 ms; content scripts get no code cache), ~17 ms over a plain
+    browser on a page with nothing to read. V8's explicit compile hint
+    (`//# allFunctionsCalledOnLoad`) made it 16 ms. What would cut it is a small registered
+    script that has the worker inject the reader (`scripting.executeScript`, no web-accessible
+    file) where a frame is large enough and a page has text.
 - Hostile pages and documents (fuzzing of 2026-10-04: `test/unit.mjs` "pages built to break the
   reader", `test/pw/hostile-pages.spec.mjs`, `test/node/pdfStructuredProps.test.ts`, and the
   hostile-input cases in `test/native_host.py`). The limits are where they apply:
