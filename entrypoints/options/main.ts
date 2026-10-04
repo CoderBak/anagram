@@ -43,6 +43,7 @@ showToolbarGuide();
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const underlineEl = document.getElementById("underline") as HTMLSelectElement;
+const flagFromEl = document.getElementById("flagFrom") as HTMLSelectElement;
 const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
 const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
@@ -185,9 +186,13 @@ bindToggle(mergeShortsEl, settings.mergeShorts);
 }
 mountPdfRows(document.getElementById("pdfRows")!, { readAhead: true });
 bindSelect(displayModeEl, settings.displayMode);
-bindSelect<"all" | "off">(underlineEl, {
-  getValue: async () => (await settings.showHighlights.getValue()) ? "all" : "off",
-  setValue: (v) => settings.showHighlights.setValue(v === "all"),
+bindSelect(flagFromEl, settings.flagFrom);
+bindSelect<"flagged" | "all" | "off">(underlineEl, {
+  getValue: async () => (await settings.showHighlights.getValue()) ? await settings.underlineScope.getValue() : "off",
+  setValue: async (v) => {
+    if (v !== "off") await settings.underlineScope.setValue(v);
+    await settings.showHighlights.setValue(v !== "off");
+  },
 });
 
 // --- minimum length ----------------------------------------------------------------------

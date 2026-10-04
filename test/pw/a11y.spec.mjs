@@ -584,10 +584,11 @@ for (const scheme of ["light", "dark"]) {
   test(`the toolbar menu's flagged list over a page [${scheme}]: its rows, names, Tab order, focus rings, hit targets and contrast`, async ({ open, site, axe }) => {
     const page = await keyboardPage(open, site);
     const menu = await menuOver(page, axe, scheme);
-    await expect.poll(async () => (await menuReport(menu))?.rows.length, { message: "the menu's report lists the flagged rows" }).toBe(AI_TAGS.length);
+    const flaggedTags = [...AI_TAGS, ...HEAVY_TAGS];
+    await expect.poll(async () => (await menuReport(menu))?.rows.length, { message: "the menu's report lists the flagged rows" }).toBe(flaggedTags.length);
     const shown = await menuReport(menu);
-    expect.soft(shown.title, "the keyboard fixture's three AI-generated paragraphs are the list's rows (heavily edited ones are not flagged)").toBe(`Flagged paragraphs (${AI_TAGS.length}/${KEY_TAGS.length})`);
-    for (const row of shown.rows) expect.soft(row, "each row is named with its verdict, its score and its text").toMatch(/^AI-generated, (0\.\d\d|1\.0): \S/);
+    expect.soft(shown.title, "the keyboard fixture's three AI-generated and three heavily edited paragraphs are the list's rows (flagged from Heavily edited, the default)").toBe(`Flagged paragraphs (${flaggedTags.length}/${KEY_TAGS.length})`);
+    for (const row of shown.rows) expect.soft(row, "each row is named with its verdict, its score and its text").toMatch(/^(AI-generated|Heavily edited), (0\.\d\d|1\.0): \S/);
     const listName = await menu.evaluate(() => window.__a11y.name(document.querySelector("#pageReport .report-list")));
     expect.soft(listName, "the list is named by the title that counts it").toBe(shown.title);
     await settle(menu, scheme);

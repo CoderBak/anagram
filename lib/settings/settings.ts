@@ -2,6 +2,7 @@
 import { storage } from "#imports";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { DEFAULT_MIN_WORDS, minWordsOf, type MinWords } from "../dom/text";
+import { DEFAULT_FLAG_FROM, type FlagFrom } from "../render/flagLevel";
 export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
@@ -9,8 +10,10 @@ export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheM
 export const settings = {
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
   siteOverrides: storage.defineItem<Record<string, "on" | "off">>("local:siteOverrides", { fallback: {} }),
-  // Underlines on every read paragraph, or none; applies to open tabs.
+  // Underlines, or none; applies to open tabs. Which paragraphs they go on is underlineScope.
   showHighlights: storage.defineItem<boolean>("local:showHighlights", { fallback: true }),
+  // Underlines on the flagged paragraphs (flagFrom and up), or on every paragraph read.
+  underlineScope: storage.defineItem<"flagged" | "all">("local:underlineScope", { fallback: "flagged" }),
   // Replacing the browser's PDF viewer requires opt-in; manual opening stays available.
   autoOpenPdfs: storage.defineItem<boolean>("local:autoOpenPdfs", { fallback: false }),
   // The reader's paragraphs come from Zotero's document-worker (lib/pdf/structured.ts);
@@ -22,10 +25,13 @@ export const settings = {
   pdfReadAhead: storage.defineItem<boolean>("local:pdfReadAhead", { fallback: true }),
   // Console logging (lib/log.ts). No setting in the UI: chrome.storage.local.set({ debug: true }) in devtools.
   debug: storage.defineItem<boolean>("local:debug", { fallback: false }),
-  // Filters rendering, not analysis: all units or only heavily edited / AI-generated ones.
+  // Filters rendering, not analysis: all units or only the flagged ones.
   displayMode: storage.defineItem<"all" | "flagged">("local:displayMode", {
     fallback: "all",
   }),
+  // The word a paragraph is flagged from (lib/render/band.ts): counted, listed in the toolbar
+  // menu and underlined; below it a paragraph has its chip only. Read through flagFromOf.
+  flagFrom: storage.defineItem<FlagFrom>("local:flagFrom", { fallback: DEFAULT_FLAG_FROM }),
   // Group short neighbors to reach the evidence floor; otherwise skip short paragraphs.
   mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
   // The minimum length in words: what is read at all, and what short paragraphs are grouped

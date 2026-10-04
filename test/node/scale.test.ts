@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { lrgb, oklab, parse, wcagContrast } from "culori";
 import type { ScoreResult } from "../../lib/contract";
-import { band, isFlagged } from "../../lib/render/band";
+import { band, flagFromOf, isFlagged } from "../../lib/render/band";
 import { BAND_COLORS, bandColor, levelOf, nearestOtherLevel, scaleColor, scaleGradient, scaleStep, SCALE_STEPS, SCORE_CUTS, spread } from "../../lib/render/scale";
 
 const result = (percent: number[]): ScoreResult => {
@@ -32,10 +32,26 @@ describe("the word follows the score", () => {
     expect(band(result([1, 5, 9, 85]))).toBe("ai");
   });
 
-  it("flags AI-generated verdicts only, exactly where the word turns to AI-generated", () => {
-    expect(isFlagged({ id: "x", bucket: 3, probs: [0, 0, 0.5, 0.5], score: 5 / 6 })).toBe(true);
-    expect(isFlagged({ id: "x", bucket: 2, probs: [0, 0.02, 0.5, 0.48], score: 0.8267 })).toBe(false);
-    expect(isFlagged({ id: "x", bucket: 2, probs: [0, 0.2, 0.6, 0.2], score: 2 / 3 })).toBe(false);
+  it("flags from the word Settings names, exactly where the word turns: Heavily edited unless said", () => {
+    const at = (score: number) => ({ id: "x", bucket: 2, probs: [0, 0, 1, 0], score });
+    // The default: Heavily edited and AI-generated.
+    expect(isFlagged(at(5 / 6))).toBe(true);
+    expect(isFlagged(at(0.5))).toBe(true);
+    expect(isFlagged(at(0.4999))).toBe(false);
+    // AI-generated only: exactly where the word turns to AI-generated.
+    expect(isFlagged(at(5 / 6), "ai")).toBe(true);
+    expect(isFlagged(at(0.8267), "ai")).toBe(false);
+    // Lightly edited and above, from .17; Human never.
+    expect(isFlagged(at(1 / 6), "light")).toBe(true);
+    expect(isFlagged(at(0.16), "light")).toBe(false);
+    // Neither a failure nor another language is ever flagged, from any word.
+    for (const from of ["light", "heavy", "ai"] as const) {
+      expect(isFlagged({ ...at(1), degraded: true }, from)).toBe(false);
+      expect(isFlagged({ ...at(1), unsupported: true }, from)).toBe(false);
+    }
+    // A stored value that is none of the three reads as the default.
+    expect(flagFromOf("nonsense")).toBe("heavy");
+    expect(flagFromOf(undefined)).toBe("heavy");
   });
 
   it("keeps the two verdicts that are not verdicts", () => {

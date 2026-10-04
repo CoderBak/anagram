@@ -101,6 +101,17 @@
             <span class="group-label" id="marksLabel" data-i18n="optMarks">Marks</span>
             <div class="group-body rows" role="group" aria-labelledby="marksLabel">
               <div class="row">
+                <label for="flagFrom" data-i18n="optFlagFrom">Flag</label>
+                <span class="row-body">
+                  <select id="flagFrom" class="select" aria-describedby="flagFromNote">
+                    <option value="light" data-i18n="optFlagLight">Lightly edited and above</option>
+                    <option value="heavy" data-i18n="optFlagHeavy">Heavily edited and above</option>
+                    <option value="ai" data-i18n="optFlagAi">AI-generated only</option>
+                  </select>
+                </span>
+                <p id="flagFromNote" class="row-note" data-i18n="optFlagFromHint">Flagged paragraphs are underlined, counted on the toolbar icon and listed in its menu; the others keep their chip only.</p>
+              </div>
+              <div class="row">
                 <label for="displayMode" data-i18n="optChips">Chips</label>
                 <span class="row-body">
                   <select id="displayMode" class="select">
@@ -113,6 +124,7 @@
                 <label for="underline" data-i18n="optUnderline">Underlines</label>
                 <span class="row-body">
                   <select id="underline" class="select">
+                    <option value="flagged" data-i18n="optUnderlineFlagged">Flagged paragraphs</option>
                     <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
                     <option value="off" data-i18n="optUnderlineOff">Off</option>
                   </select>

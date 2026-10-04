@@ -941,7 +941,7 @@
     "message": "怎么看标记"
   },
   "onbScoreLine": {
-    "message": "每个段落旁都有一个标签，显示 .00（人工撰写）到 1.0（AI 生成）的分数，颜色对应其类别。将鼠标悬停在标签上可查看详情。AI 生成的段落会被标为存疑：工具栏菜单会列出它们，图标上的数字就是它们的数量。"
+    "message": "每个段落旁都有一个标签，显示 .00（人工撰写）到 1.0（AI 生成）的分数，颜色对应其类别。将鼠标悬停在标签上可查看详情。重度 AI 编辑和 AI 生成的段落会被标为存疑：加下划线，列在工具栏菜单中，并计入图标上的数字。可在设置中更改从哪一档开始标记。"
   },
   "onbStepDone": {
     "message": "完成"
@@ -1059,5 +1059,26 @@
   },
   "popupPageActionFailed": {
     "message": "页面已更改或无法访问。请重新打开 Anagram 后重试。"
+  },
+  "optFlagFrom": {
+    "message": "标为存疑"
+  },
+  "optFlagLight": {
+    "message": "轻度 AI 编辑及以上"
+  },
+  "optFlagHeavy": {
+    "message": "重度 AI 编辑及以上"
+  },
+  "optFlagAi": {
+    "message": "仅 AI 生成"
+  },
+  "optFlagFromHint": {
+    "message": "存疑段落会加下划线，计入工具栏图标上的数字，并列在菜单中；其余段落只显示标签。"
+  },
+  "optUnderlineFlagged": {
+    "message": "存疑段落"
+  },
+  "onbEnglishOnly": {
+    "message": "Anagram 只分析英文。其他语言的段落不显示标签；工具栏菜单会显示跳过了多少段。"
   }
 }

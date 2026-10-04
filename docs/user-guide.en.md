@@ -77,12 +77,13 @@ in a frame from a second address, and the switch asks for both; a reader granted
 older version shows as off until you switch it on again.
 
 - A chip after each paragraph shows the score. Hover it for where the score sits on the
-  scale, the four-way breakdown and the word count. Non-English text gets a grey chip
-  with the language code.
-- The chip and the underline take one colour per word: green for Human, gold for
-  Lightly edited, orange for Heavily edited and deep crimson for AI-generated, brighter on
-  dark pages. The chip is filled with it; Human's chip and underline are lighter, so a mostly
-  human page stays calm. The word follows the number: Human below .17, Lightly edited below .50,
+  scale, the four-way breakdown and the word count. Anagram reads English only: a paragraph
+  in another language gets no chip, and the toolbar menu counts how many it passed over.
+- The chip takes one colour per word: green for Human, gold for Lightly edited, orange for
+  Heavily edited and deep crimson for AI-generated, brighter on dark pages. Human's chip is
+  lighter, so a mostly human page stays calm. Heavily edited and AI-generated paragraphs are
+  flagged: underlined in their colour, listed in the toolbar menu and counted on its icon;
+  the others keep their chip only. Settings, Marks, **Flag** changes from which word. The word follows the number: Human below .17, Lightly edited below .50,
   Heavily edited below .83, AI-generated above. When the word is likely wrong, the card
   names the word it is close to: "Unsure: close to Heavily edited".
 - Professionally edited human writing, such as news and magazine articles, often reads
@@ -165,7 +166,9 @@ The toolbar icon's gear opens Settings, one list of rows.
   always the automatic choice; FP16 is used only where FP32 does not fit.
 - **Sites**: allow all sites or remove that access, run on granted sites by default, and per-site rules.
 - **PDFs**: open PDFs in Anagram automatically, and PDFs on this computer.
-- **Marks**: chips on every paragraph or only flagged ones, and underlines.
+- **Marks**: from which word a paragraph is flagged (Lightly edited, Heavily edited, the
+  default, or AI-generated only), chips on every paragraph or only flagged ones, and
+  underlines on flagged paragraphs or none.
 - **Length**: the minimum words, and grouping short paragraphs.
 - **Cache**: how long verdicts are kept, and clearing them.
 

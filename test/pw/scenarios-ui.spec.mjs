@@ -143,7 +143,7 @@ test("the chip sits in the text: at the inline end of an RTL line, scaled with t
     const hr = host.getBoundingClientRect();
     return hr.left >= box.left - 30 && hr.right <= box.right + 30;
   }, BADGE_SEL);
-  expect.soft(vertical, "vertical-rl (Japanese) paragraph badged in-flow").toBe(true);
+  expect.soft(vertical, "vertical-rl paragraph badged in-flow").toBe(true);
 });
 
 test("shadow DOM: an open root's own paragraph, a slotted one, and one appended into the root after the scan", async ({ fixtures: page }) => {
@@ -290,13 +290,20 @@ test("every analyzing chip drains into a verdict, and a paragraph added while a 
   expect(await page.evaluate(() => window.__tickAtChip), `${debounce}: the tick the chip came at, of 60`).toBeLessThan(60);
 });
 
-test("the toolbar menu lists AI-generated paragraphs only, with no verdict filters", async ({ fixtures: page }) => {
-  const menu = await popupOver(page);
-  const lists = "the toolbar menu lists AI-generated paragraphs only, with no verdict filters";
+test("the toolbar menu lists the flagged paragraphs — heavily edited and AI-generated, or what Settings says — with no verdict filters", async ({ fixtures: page, storage }) => {
+  let menu = await popupOver(page);
+  const lists = "the toolbar menu lists the flagged paragraphs, heavily edited and AI-generated unless Settings says otherwise, with no verdict filters";
   await expect.poll(async () => (await menuReport(menu))?.rows.length ?? 0, { message: lists }).toBeGreaterThan(0);
   const shown = await menuReport(menu);
-  expect.soft(shown.rows.filter((row) => !row.startsWith("AI-generated, ")), lists).toEqual([]);
+  expect.soft(shown.rows.filter((row) => !/^(Heavily edited|AI-generated), /.test(row)), lists).toEqual([]);
   expect.soft(await menu.locator("#pageReport [aria-pressed]").count(), lists).toBe(0);
+  await menu.close();
+  // AI-generated only: the page takes the setting at once, and the menu lists fewer.
+  const only = "with Flag set to AI-generated only, the menu lists AI-generated paragraphs only";
+  await storage.set({ flagFrom: "ai" });
+  menu = await popupOver(page);
+  await expect.poll(async () => (await menuReport(menu))?.rows.filter((row) => !row.startsWith("AI-generated, ")).length ?? -1, { message: only }).toBe(0);
+  expect.soft((await menuReport(menu)).rows.length, only).toBeLessThanOrEqual(shown.rows.length);
 });
 
 // The host goes away: the batch in flight renders "Unavailable", which the page counts for the
@@ -311,7 +318,9 @@ for (const [path, repeat] of [["score", 1], ["count", 2]]) {
       if (m.text().includes("dirty scan:")) scans.push(m.text());
     });
     await page.goto(fixturesUrl, { waitUntil: "load" });
-    await expect(settledChips(page, "#topedge")).toHaveCount(1);
+    // The whole page read first, so that the batch which meets the dead socket is the new
+    // paragraph's, not one of the page's own still waiting in the background lane.
+    for (const [id, n] of Object.entries(UNITS)) await expect(settledChips(page, `#${id}`), `#${id} is read`).toHaveCount(n);
     const addPara = (id) =>
       page.evaluate(({ pid, times }) => {
         const el = document.createElement("p");
@@ -359,7 +368,7 @@ for (const [path, repeat] of [["score", 1], ["count", 2]]) {
 // The local engine says "not ready" while it loads, and a page waits for ready (above).
 test("the host comes back loading its model, as the in-browser engine does: the paused page is sent while it loads", async ({ page, fixturesUrl, nativeHost, tell }) => {
   await page.goto(fixturesUrl, { waitUntil: "load" });
-  await expect(settledChips(page, "#topedge")).toHaveCount(1);
+  for (const [id, n] of Object.entries(UNITS)) await expect(settledChips(page, `#${id}`), `#${id} is read`).toHaveCount(n);
   /** What the page tells the toolbar menu: how many of its paragraphs are Unavailable. */
   const unavailable = async () => (await tell(page, { action: "getTabState" }))?.unavailable ?? null;
   const pill = page.locator(`#loading1 ${BADGE_SEL} .pill`);

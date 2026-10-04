@@ -13,6 +13,8 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- Paragraphs are flagged from **Heavily edited** up, not only when AI-generated, and Settings, Marks, **Flag** chooses the word: Lightly edited and above, Heavily edited and above, or AI-generated only. Flagged paragraphs are underlined, listed in the toolbar menu and counted on its icon; the others keep their chip only. **Underlines** can go on the flagged paragraphs (the default), on every paragraph as before, or nowhere.
+- Anagram reads English only, and now says so on the setup page; a paragraph in another language gets no chip at all (it used to get a grey one with the language code). The toolbar menu still counts how many it passed over.
 - The PDF reader reads books and theses whole up to 1,000 pages where the browser says the computer has 8 GB of memory (600 pages at 4 GB), not only up to 300: Zotero's document engine works out their paragraphs, and the toolbar menu's report covers the whole document. An 813-page book took 13 s to be laid out, held 250 MB, falling as it was read, and kept the page responsive. Where the browser does not say (Firefox, Safari), the cap stays at 300.
 - The local engine is ready a fifth sooner after the browser starts it (0.88 s → 0.71 s on an M4, the first score with it): it reads the model in while it checks the model's files against their pinned checksums, rather than after, and keeps what it read only if every file passed and none was written to meanwhile. Nothing is scored before the check is done, and the weights are still read once.
 - When the in-browser engine's model is downloaded but does not start, the toolbar menu says so — "The model couldn't start in this browser", or "This device can't run Anagram's model" — and its button, **See why**, opens the setup page, which has Retry. It used to say only that the engine was not ready, and offered Settings.
@@ -38,6 +40,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A row of the toolbar menu's list whose text was cut at a space carried that space at the end of its spoken name.
 - In the PDF reader, the rest of a paragraph that a figure or a table cut off at the head of the next page went unread when Zotero took it for part of the float ("…arguing that simulated INT8 preserves" / table / "vulnerability rather than creating severe gradient obfuscation."), and the chip stood mid-sentence. Where it is set at the body's size and opens in lower case, it is now read with its paragraph; a figure's or a table's own words, set smaller, still are not.
 - In the PDF reader, the tail of a paragraph that a page cut at a full stop — the next page's only text before a heading, say — went unread when it was too short to stand alone: a page turn stopped it joining the paragraph it came from. It now joins it, as a short paragraph does on one page. Over 207 papers of the benchmark, 1,308 more words are read; paragraph boundaries are as before.
 - The PDF reader's Download button saved a document as "document.pdf" whenever its address did not end in a .pdf file name (arXiv's /pdf/2401.17377, a download script, a viewer page). It now saves it under the name the server gave it, or else one taken from the address (2401.17377.pdf, 42.pdf for download.php?id=42), always ending in .pdf.

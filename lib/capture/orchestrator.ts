@@ -40,7 +40,7 @@ import {
   refreshHighlightTheme,
 } from "../render/highlight";
 import { REPORT_PAGE_SIZE, reportOffset, type PageReport, type ReportCounts } from "./pageReport";
-import { band, isFlagged } from "../render/band";
+import { DEFAULT_FLAG_FROM, band, flagFromOf, flagLevel, isFlagged, type FlagFrom } from "../render/band";
 import { levelOf } from "../render/scale";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
@@ -184,7 +184,9 @@ interface KeptVerdict {
 /** Everything the FIRST collect depends on, read as one snapshot before it runs. */
 interface SettingsSnapshot {
   showHighlights: boolean;
+  underlineScope: "flagged" | "all";
   displayMode: "all" | "flagged";
+  flagFrom: FlagFrom;
   mergeShorts: boolean;
   minWords: MinWords;
 }
@@ -192,7 +194,9 @@ interface SettingsSnapshot {
 /** Storage answered nothing (dead extension context) — boot with the shipped defaults. */
 const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   showHighlights: true,
+  underlineScope: "flagged",
   displayMode: "all",
+  flagFrom: DEFAULT_FLAG_FROM,
   mergeShorts: true,
   minWords: DEFAULT_MIN_WORDS,
 };
@@ -296,10 +300,17 @@ export function createOrchestrator(
   let visible = true;
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
+  /** The word a paragraph is flagged from (Settings): counted, listed, underlined. */
+  let flagFrom: FlagFrom = DEFAULT_FLAG_FROM;
+  /** Underlines on the flagged paragraphs, or on every paragraph read (Settings). */
+  let underlineScope: "flagged" | "all" = "flagged";
+  const flagged = (r: ScoreResult): boolean => isFlagged(r, flagFrom);
   let mergeShorts = true;
   let minWords: MinWords = DEFAULT_MIN_WORDS;
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
+  let unwatchFlagFrom: (() => void) | null = null;
+  let unwatchUnderlineScope: (() => void) | null = null;
   let unwatchMerge: (() => void) | null = null;
   let unwatchMinWords: (() => void) | null = null;
   let lastBadgeSent = -1;
@@ -338,7 +349,7 @@ export function createOrchestrator(
     const units: Unit[] = [];
     for (const [id, v] of verdictsById) {
       const unit = unitsById.get(id);
-      if (unit && isFlagged(v.result)) units.push(unit);
+      if (unit && flagged(v.result)) units.push(unit);
     }
     return readingOrder(units).map((unit) => ({ unit, v: verdictsById.get(unit.id)! }));
   }
@@ -352,7 +363,7 @@ export function createOrchestrator(
    *  pages not drawn now, by page and then place on it. */
   function flaggedEntries(): { id: string; text: string; result: ScoreResult }[] {
     const live = flaggedInOrder().map(({ unit, v }) => ({ id: unit.id, page: unit.page ?? 0, order: unit.order, text: unit.text, result: v.result }));
-    const gone = keptNow().filter((k) => isFlagged(k.result));
+    const gone = keptNow().filter((k) => flagged(k.result));
     if (gone.length === 0) return live;
     return [...live, ...gone].sort((a, b) => a.page - b.page || a.order - b.order);
   }
@@ -368,7 +379,7 @@ export function createOrchestrator(
       documentId: reportDocumentId(), visible, counts: reportCounts(),
       total: flagged.length, offset,
       entries: flagged.slice(offset, offset + REPORT_PAGE_SIZE).map(({ id, text, result }) => ({
-        id, score: result.score, band: band(result), snippet: text.slice(0, 140),
+        id, score: result.score, band: band(result), snippet: text.slice(0, 140).trimEnd(),
       })),
       scopeNote: opts.reportScopeNote?.(pagesRead()) ?? "", commentOrigins: commentOffer,
       pageAction: pageAction ? { id: pageAction.id, label: pageAction.label, enabled: !!pageAction.run } : null,
@@ -508,8 +519,20 @@ export function createOrchestrator(
   }
 
   /** Painted under the current display mode? Everything is analyzed regardless. */
+  /** Whether a verdict has a chip: not on a paragraph in another language (only English is
+   *  read; the toolbar menu counts the rest), and under "Flagged only" only on a flagged one. */
   function visibleUnderMode(v: UnitVerdict): boolean {
-    return displayMode === "all" || isFlagged(v.result);
+    if (v.result.unsupported) return false;
+    return displayMode === "all" || flagged(v.result);
+  }
+
+  /** A painted unit's underlines: only a flagged one's, and of it only the stretches at the
+   *  level or above (setHighlight), so below it a paragraph has its chip only — unless the
+   *  reader asked for underlines on every paragraph. */
+  function mark(unit: Unit, v: UnitVerdict): void {
+    const every = underlineScope === "all";
+    if (highlightsEnabled && (every || flagged(v.result))) setHighlight(unit, v, every ? 0 : flagLevel(flagFrom));
+    else clearHighlight(unit.id);
   }
 
   // --- ownership / invalidation ----------------------------------------------------
@@ -1139,10 +1162,15 @@ export function createOrchestrator(
     for (const v of verdicts) {
       const unit = unitsById.get(v.id);
       if (!unit || verdictsById.get(v.id) !== v) continue; // gone, or already superseded
-      if (!visibleUnderMode(v)) continue; // analyzed but not painted (flagged-only)
+      if (!visibleUnderMode(v)) {
+        // Analyzed but not painted (flagged-only, another language): nor is its pending chip.
+        badges.remove(v.id);
+        clearHighlight(v.id);
+        continue;
+      }
       try {
         badges.render(unit, v);
-        if (highlightsEnabled) setHighlight(unit, v);
+        mark(unit, v);
       } catch (e) {
         log.warn("render failed for", v.id, e);
       }
@@ -1156,13 +1184,33 @@ export function createOrchestrator(
   function applyDisplayMode(v: "all" | "flagged"): void {
     if (v === displayMode) return;
     displayMode = v;
+    repaintAll();
+  }
+
+  /** Flag from another word: what is counted, listed, shown under "Flagged only" and underlined. */
+  function applyFlagFrom(v: unknown): void {
+    const next = flagFromOf(v);
+    if (next === flagFrom) return;
+    flagFrom = next;
+    repaintAll();
+    updateToolbar();
+  }
+
+  function applyUnderlineScope(v: unknown): void {
+    const next = v === "all" ? "all" : "flagged";
+    if (next === underlineScope) return;
+    underlineScope = next;
+    repaintAll();
+  }
+
+  function repaintAll(): void {
     for (const [id, verdict] of verdictsById) {
       const unit = unitsById.get(id);
       if (!unit) continue;
       if (visibleUnderMode(verdict)) {
         try {
           badges.render(unit, verdict);
-          if (highlightsEnabled) setHighlight(unit, verdict);
+          mark(unit, verdict);
         } catch {
           /* detached mid-flight — purge will catch it */
         }
@@ -1453,15 +1501,19 @@ export function createOrchestrator(
   /** One awaited read of every setting the first collect depends on. */
   async function readSettings(): Promise<SettingsSnapshot> {
     try {
-      const [showHighlights, mode, merge, floor] = await Promise.all([
+      const [showHighlights, scope, mode, from, merge, floor] = await Promise.all([
         settings.showHighlights.getValue(),
+        settings.underlineScope.getValue(),
         settings.displayMode.getValue(),
+        settings.flagFrom.getValue(),
         settings.mergeShorts.getValue(),
         settings.minWords.getValue(),
       ]);
       return {
         showHighlights,
+        underlineScope: scope === "all" ? "all" : "flagged",
         displayMode: mode,
+        flagFrom: flagFromOf(from),
         mergeShorts: merge,
         minWords: minWordsOf(floor),
       };
@@ -1478,7 +1530,9 @@ export function createOrchestrator(
    */
   function applySnapshot(s: SettingsSnapshot): void {
     highlightsEnabled = s.showHighlights;
+    underlineScope = s.underlineScope;
     displayMode = s.displayMode;
+    flagFrom = s.flagFrom;
     mergeShorts = s.mergeShorts;
     minWords = s.minWords;
     setHighlightsVisible(visible && highlightsEnabled);
@@ -1491,6 +1545,10 @@ export function createOrchestrator(
       unwatchHighlights = settings.showHighlights.watch(applyHighlightSetting);
       unwatchDisplay?.();
       unwatchDisplay = settings.displayMode.watch(applyDisplayMode);
+      unwatchFlagFrom?.();
+      unwatchFlagFrom = settings.flagFrom.watch(applyFlagFrom);
+      unwatchUnderlineScope?.();
+      unwatchUnderlineScope = settings.underlineScope.watch(applyUnderlineScope);
       unwatchMerge?.();
       unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
       unwatchMinWords?.();
@@ -1533,7 +1591,7 @@ export function createOrchestrator(
         const unit = unitsById.get(id);
         if (unit && visibleUnderMode(verdict)) {
           try {
-            setHighlight(unit, verdict);
+            mark(unit, verdict);
           } catch {
             /* detached mid-flight — purge will catch it */
           }
@@ -1584,6 +1642,10 @@ export function createOrchestrator(
     unwatchHighlights = null;
     unwatchDisplay?.();
     unwatchDisplay = null;
+    unwatchFlagFrom?.();
+    unwatchFlagFrom = null;
+    unwatchUnderlineScope?.();
+    unwatchUnderlineScope = null;
     unwatchMerge?.();
     unwatchMerge = null;
     unwatchMinWords?.();
@@ -1650,8 +1712,8 @@ export function createOrchestrator(
 
   function flaggedCount(): number {
     let n = 0;
-    for (const v of verdictsById.values()) if (isFlagged(v.result)) n++;
-    for (const k of keptNow()) if (isFlagged(k.result)) n++;
+    for (const v of verdictsById.values()) if (flagged(v.result)) n++;
+    for (const k of keptNow()) if (flagged(k.result)) n++;
     return n;
   }
 

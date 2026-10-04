@@ -39,14 +39,14 @@
   </div>
   </section>
 
-  <!-- 3: RTL — chip must follow the logical end of the text -->
+  <!-- 3: RTL — chip must follow the logical end of the text. Only English is read, so the
+       paragraph is an English quotation on a right-to-left page, which inherits its direction. -->
   <section id="rtl" dir="rtl" lang="ar">
-  <p>هذه فقرة تجريبية مكتوبة باللغة العربية من اليمين إلى اليسار وتحتوي على عدد كافٍ من الكلمات
-     لتتجاوز الحد الأدنى المطلوب للتقييم بسهولة، والغرض منها هو التحقق من أن الشارة تظهر في نهاية
-     السطر الأخير من الفقرة في الاتجاه الصحيح وأن الهامش المنطقي يعمل كما هو متوقع في النصوص
-     المكتوبة بالاتجاه المعاكس تماماً للنصوص اللاتينية المعتادة على صفحات الويب الحديثة، ولذلك يجب
-     أن تكون هذه الفقرة طويلة بما يكفي لتتجاوز الحد الأدنى للتقييم وهو خمس وسبعون كلمة، حتى تحصل على
-     شارة خاصة بها مثل أي فقرة أخرى في هذه الصفحة التجريبية دون أن تحتاج إلى جيرانها.</p>
+  <p lang="en">RTL quotation is an English passage quoted on an Arabic page, so it sits in a block
+     whose direction runs from right to left and inherits it, and the chip after it has to land at the
+     logical end of its last line, which on this page is the left side of that line rather than the
+     right, while the paragraph itself still reads as ordinary English prose long enough to clear the
+     seventy-five word minimum on its own, without leaning on any neighbour of its own to reach it at all.</p>
   </section>
 
   <!-- 4: font scaling — the chip must scale with the annotated text -->
@@ -209,14 +209,16 @@
   </div>
   </section>
 
-  <!-- 14: vertical writing mode (Japanese novel layout) — the chip must not wreck
-       the column flow; the unit must still be collected. -->
+  <!-- 14: vertical writing mode — the chip must not wreck the column flow; the unit must still
+       be collected. Only English is read, so the column sets English text, as a page set in a
+       vertical-rl layout (a Japanese site) does when it quotes it. -->
   <section id="vertical">
   <div style="writing-mode:vertical-rl;height:340px;font-size:14px;line-height:1.9">
-    <p>VERTICAL 縦書きの段落は日本の小説や新聞でよく使われる伝統的な組み方であり、右から左へ流れる
-       縦のレイアウトの中でも本文はほかの段落と同じように解析される必要があります。この段落には
-       七十五語の下限を確実に超えるだけの十分な語数が含まれており、チップが行の流れを壊さずに末尾へ
-       挿入されることと、下線が縦書きでも正しく描画されることを検証するための標識文です。</p>
+    <p lang="en">VERTICAL column sets English text in a vertical writing mode, as a page laid out for
+       Japanese does when it quotes a passage in English, and the paragraph has to be collected like any
+       other while the chip goes in at its end without breaking the flow of the columns, which run from
+       right to left across the box, and the underline has to follow the text down each column instead of
+       running across it the way it would on an ordinary horizontal page.</p>
   </div>
   </section>
 

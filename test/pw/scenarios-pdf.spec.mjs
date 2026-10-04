@@ -84,7 +84,9 @@ const readReader = (page) =>
     };
   }, BADGE_SEL);
 
-test("a PDF in the reader: its paragraphs read as written, drawn with a text layer, one chip each beside the text, marks on their glyphs, zoom from the cache and the menu's report", async ({ page, pdfs, nativeHost }) => {
+test("a PDF in the reader: its paragraphs read as written, drawn with a text layer, one chip each beside the text, marks on their glyphs, zoom from the cache and the menu's report", async ({ page, pdfs, nativeHost, storage }) => {
+  // Every paragraph read is underlined, so the marks are checked on all of them.
+  await storage.set({ underlineScope: "all" });
   const extErrors = [];
   page.on("console", (m) => {
     // Only what OUR page said: the browser's own viewer asking the server for a favicon it
@@ -158,7 +160,8 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
 // in a PDF they used to be dropped one by one. The rules are the same ones (lib/plan/group.ts),
 // the reconstruction supplying the barriers: the three under the first heading are one unit,
 // and the two under the second, 48 words with nothing of their section to join, are read by nobody.
-test("short paragraphs under a heading are read as ONE unit: nothing crosses the heading, the chip says ×3 beside the text, the marks lie on all three", async ({ context, pdfs, nativeHost }) => {
+test("short paragraphs under a heading are read as ONE unit: nothing crosses the heading, the chip says ×3 beside the text, the marks lie on all three", async ({ context, pdfs, nativeHost, storage }) => {
+  await storage.set({ underlineScope: "all" });
   const mark = nativeHost.textMark();
   const page = await openPdfInReader(context, pdfs.url("/grouped.pdf"));
   await visitShortPdf(page);

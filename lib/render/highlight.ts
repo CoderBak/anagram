@@ -310,7 +310,9 @@ function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; e
 
 /**
  * Register what was read, stretch by stretch, each in the colour of its own score;
- * "unavailable" and "unsupported" get no mark, and neither does text no scored pass read.
+ * "unavailable" and "unsupported" get no mark, and neither does text no scored pass read,
+ * nor a stretch under `minLevel`, the level paragraphs are flagged from (Settings): below it
+ * a paragraph has its chip only.
  * Detection cannot attribute below what the model read in one pass, so that is the grain
  * of the marks: the whole unit for nearly every paragraph (one pass, marked uniformly in
  * the chip's colour, no offsets resolved), and stretch by stretch between pass edges for a
@@ -320,17 +322,19 @@ function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; e
  * and the verdict), the unit falls back to whole parts in the AGGREGATE colour rather
  * than showing nothing; the mutation observer is about to retire it anyway.
  */
-export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
+export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): void {
   if (!highlightsSupported()) return;
 
   clearHighlight(unit.id);
 
   if (isNoVerdict(band(verdict.result))) return; // no verdict → no mark
+  if (scaleStep(verdict.result.score) < minLevel) return; // not flagged → its chip only
 
   const marks: Array<{ step: number; ranges: Range[] }> = [];
   const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
-  // The stretches the verdict judged, neighbours on one step of the scale drawn as one.
-  const runs = stepRuns(verdict.stretches);
+  // The stretches the verdict judged, neighbours on one step of the scale drawn as one; of a
+  // flagged paragraph, the ones under the level stay unmarked.
+  const runs = stepRuns(verdict.stretches).filter((run) => run.step >= minLevel);
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
   const own = _locator?.(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs);
@@ -339,7 +343,7 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict): void {
     marks.push({ step: scaleStep(verdict.result.score), ranges: located[0] ?? [] });
   } else if (located) {
     // One list of ranges per span asked about (RangeLocator, locateSpans).
-    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i]! }));
+    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i] ?? [] }));
   } else {
     marks.push({ step: scaleStep(verdict.result.score), ranges: wholeParts(unit) });
   }

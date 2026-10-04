@@ -55,7 +55,9 @@ test("a chosen PDF opens offline in the full upstream viewer, byte for byte", as
   expect(digest(Buffer.from(bytes)), "rendering and analysis never rewrite the source bytes").toBe(digest(TEST_PDF));
 });
 
-test("the structure worker's reading marks the page's own glyphs, and the toolbar menu says what it covers", async ({ page, extension }, testInfo) => {
+test("the structure worker's reading marks the page's own glyphs, and the toolbar menu says what it covers", async ({ page, extension, storage }, testInfo) => {
+  // Every paragraph read is underlined, so the marks are checked on all of them.
+  await storage.set({ underlineScope: "all" });
   await openReader(page, extension.extId);
   await expect.poll(() => chips(page), { message: "chips on the reader's pages", timeout: 15000 }).toBeGreaterThan(0);
   // The worker's reading replaces the reflow's: the paragraphs the fixture set, the running

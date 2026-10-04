@@ -17,7 +17,8 @@ async function debugLines(page, storage, re) {
 }
 const markCount = (page) => page.evaluate(() => { let n = 0; for (const h of CSS.highlights.values()) n += h.size; return n; });
 
-test("a page that replaces its own document (document.open/write) gets chips and marks on the new tree, and reports them", async ({ page, pages, tell }) => {
+test("a page that replaces its own document (document.open/write) gets chips and marks on the new tree, and reports them", async ({ page, pages, tell, storage }) => {
+  await storage.set({ underlineScope: "all" });
   // What challenge interstitials and legacy frameworks do: the extension must restart on the new tree.
   pages.serve({
     "/rewrite.html": `<!doctype html><html><head><meta charset="utf-8"><title>rewrite fixture</title></head><body>
@@ -42,7 +43,8 @@ test("a page that replaces its own document (document.open/write) gets chips and
 // Chrome's page translation replaces every text node with <font> copies holding the
 // translation and classes <html> `translated-ltr`; "Show original" puts the nodes back and
 // drops the class. Machine output is nobody's writing.
-test("a page the browser translated: nothing is read or left on it while it is translated, and it is read again once the original is back", async ({ page, pages, nativeHost, tell }) => {
+test("a page the browser translated: nothing is read or left on it while it is translated, and it is read again once the original is back", async ({ page, pages, nativeHost, tell, storage }) => {
+  await storage.set({ underlineScope: "all" });
   pages.serve({
     "/translated.html": PAGE("translated fixture", `<main><p id="t1">${PARA("ORIGINAL-ONE")}</p><p id="t2">${PARA("ORIGINAL-TWO")}</p></main>
 <script>

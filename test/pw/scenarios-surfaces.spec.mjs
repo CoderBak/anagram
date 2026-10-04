@@ -92,6 +92,8 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
 // the page break, P2 and P3 are read again without it, and P5 is read: four units. Page 3
 // makes a fifth. What the engine is sent is the document's paragraphs, not the viewer's lines.
 test("Google Drive preview: the document's paragraphs are read (lines joined, hyphens mended, pages sewn — a page drawn after the first units were sent joins the paragraph running onto it), chips and marks drawn over the page", async ({ context, page, nativeHost, chunkLoads, storage }) => {
+  // Every paragraph read is underlined, so the marks are checked on all of them.
+  await storage.set({ underlineScope: "all" });
   // The document's paragraphs were written around the model's 75 words (P2 and P3 under it,
   // read together): that is the minimum this reading is checked at.
   await storage.set({ minWords: 75 });

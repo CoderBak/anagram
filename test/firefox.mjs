@@ -177,15 +177,13 @@ const snapshot = await page.evaluate((sel) => {
       purecjk: inSection("purecjk"),
       never: inSection("never"),
     },
-    cjkUnsupported: !!document
-      .querySelector(`#purecjk ${sel}`)
-      ?.shadowRoot?.querySelector(".pill.band-unsupported"),
+    cjkChipless: !document.querySelector(`#purecjk ${sel}`),
     hl: { longtail: hlHas("final LONGTAIL sentence"), br1: hlHas("BRPART-ONE"), br2: hlHas("BRPART-TWO") },
   };
 }, BADGE_SEL);
 console.log("SNAPSHOT:", JSON.stringify(snapshot));
 
-check("chips render across the self-test page", snapshot.badgeTotal >= 11, `${snapshot.badgeTotal} chips`);
+check("chips render across the self-test page", snapshot.badgeTotal >= 10, `${snapshot.badgeTotal} chips`);
 check("LONG paragraph is exactly ONE chip", snapshot.sections.longpara === 1, String(snapshot.sections.longpara));
 check("BR-split halves merge into one unit", snapshot.sections.brsplit === 1, String(snapshot.sections.brsplit));
 check("three short siblings merge into one unit", snapshot.sections.mergeshorts === 1, String(snapshot.sections.mergeshorts));
@@ -193,9 +191,9 @@ check("short isolated paragraph stays unbadged", snapshot.sections.short === 0, 
 check("never-score zone stays clean", snapshot.sections.never === 0, String(snapshot.sections.never));
 check("page DOM carries no marker attributes", snapshot.strayMarks === 0, String(snapshot.strayMarks));
 check(
-  "pure-CJK paragraph is an 'unsupported' chip (local language gate)",
-  snapshot.sections.purecjk === 1 && snapshot.cjkUnsupported,
-  JSON.stringify({ chips: snapshot.sections.purecjk, unsupported: snapshot.cjkUnsupported }),
+  "pure-CJK paragraph gets no chip (English only; the local language gate settles it)",
+  snapshot.sections.purecjk === 0 && snapshot.cjkChipless,
+  JSON.stringify({ chips: snapshot.sections.purecjk }),
 );
 check(
   "non-English text never reaches the fixture (browser.i18n.detectLanguage gate)",

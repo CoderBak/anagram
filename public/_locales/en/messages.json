@@ -1220,7 +1220,7 @@
     "description": "Setup page: heading of the block that explains the words, the colours and the dot."
   },
   "onbScoreLine": {
-    "message": "Each paragraph gets a chip with a score from .00 (human) to 1.0 (AI-generated), in its word's colour. Hover the chip for the details. AI-generated paragraphs are flagged: the toolbar menu lists them, and the number on its icon counts them.",
+    "message": "Each paragraph gets a chip with a score from .00 (human) to 1.0 (AI-generated), in its word's colour. Hover the chip for the details. Heavily edited and AI-generated paragraphs are flagged: underlined, listed in the toolbar menu and counted on its icon. Settings changes from which word.",
     "description": "Setup page, under the four words and the coloured scale."
   },
   "onbStepDone": {
@@ -1378,5 +1378,33 @@
   "popupPageActionFailed": {
     "message": "The page changed or is no longer available. Reopen Anagram and try again.",
     "description": "Toolbar menu: the page did not carry out the requested action (jump, document action)."
+  },
+  "optFlagFrom": {
+    "message": "Flag",
+    "description": "Settings, Marks: the row choosing from which verdict word a paragraph counts as flagged."
+  },
+  "optFlagLight": {
+    "message": "Lightly edited and above",
+    "description": "Settings, Flag: flag lightly edited, heavily edited and AI-generated paragraphs."
+  },
+  "optFlagHeavy": {
+    "message": "Heavily edited and above",
+    "description": "Settings, Flag (the default): flag heavily edited and AI-generated paragraphs."
+  },
+  "optFlagAi": {
+    "message": "AI-generated only",
+    "description": "Settings, Flag: flag AI-generated paragraphs only."
+  },
+  "optFlagFromHint": {
+    "message": "Flagged paragraphs are underlined, counted on the toolbar icon and listed in its menu; the others keep their chip only.",
+    "description": "Settings, under the Flag row: what being flagged means."
+  },
+  "optUnderlineFlagged": {
+    "message": "Flagged paragraphs",
+    "description": "Settings, Underlines: underline the flagged paragraphs (the other choice is Off)."
+  },
+  "onbEnglishOnly": {
+    "message": "Anagram reads English only. A paragraph in another language gets no chip; the toolbar menu counts how many it passed over.",
+    "description": "Setup page, Reading the marks: Anagram scores English only, and what happens to other languages."
   }
 }

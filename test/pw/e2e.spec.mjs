@@ -21,7 +21,7 @@ import { fakeScore } from "../fake-native.mjs";
 const SELFTEST = readFileSync(join(import.meta.dirname, "..", "selftest.html"), "utf8");
 
 /** Every unit the page holds before anything is clicked, by the section it sits in. */
-const UNITS = { human: 1, aiwrap: 1, quote: 1, divbased: 2, longpara: 1, windowed: 1, brsplit: 1, mergeshorts: 1, postlines: 1, postwhole: 1, inlinecode: 1, purecjk: 1, prewrap: 1, spa: 1 };
+const UNITS = { human: 1, aiwrap: 1, quote: 1, divbased: 1, longpara: 1, windowed: 1, brsplit: 1, mergeshorts: 1, postlines: 1, postwhole: 1, inlinecode: 1, purecjk: 0, prewrap: 1, spa: 1 };
 
 const test = base.extend({
   /** "no console errors": whatever the page or the content script writes as an error. */
@@ -38,8 +38,10 @@ const test = base.extend({
   ],
 
   /** The self-test page, read: every unit it holds carries its verdict. The page is not
-   *  scrolled — what is off screen is read by the idle prefetch, in reading order. */
-  selftest: async ({ page, pages }, use) => {
+   *  scrolled — what is off screen is read by the idle prefetch, in reading order. Every
+   *  paragraph read is underlined (Settings, Underlines), so the marks are checked on all of them. */
+  selftest: async ({ page, pages, storage }, use) => {
+    await storage.set({ underlineScope: "all" });
     // A favicon too: the browser asks for one, and a 404 is a console error.
     pages.serve({ "/selftest.html": SELFTEST, "/favicon.ico": (req, res) => res.writeHead(204).end() });
     await page.goto(pages.url("/selftest.html"), { waitUntil: "load" });
@@ -55,11 +57,11 @@ const cardOf = (page, id) => page.locator(`#${id} ${BADGE_SEL} .card`).textConte
 const hasMark = (texts, marker) => texts.some((t) => t.includes(marker));
 
 test("the page is read: a chip on every unit, underlines, no floating button, and no marker attribute in the page's own DOM", async ({ selftest: page }) => {
-  expect.soft(await page.locator(BADGE_SEL).count(), "badges rendered across the page").toBeGreaterThanOrEqual(11);
+  expect.soft(await page.locator(BADGE_SEL).count(), "badges rendered across the page").toBeGreaterThanOrEqual(10);
   await expect.soft(page.locator("#anagram-fab"), "no floating toolbar on the page").toHaveCount(0);
   expect.soft((await marked(page)).length, "underlines present").toBeGreaterThan(0);
-  for (const id of ["human", "aiwrap", "quote"]) await expect.soft(chipsIn(page, id), "human/ai/quote/div-EN/div-ZH badged").toHaveCount(1);
-  await expect.soft(chipsIn(page, "divbased"), "human/ai/quote/div-EN/div-ZH badged").toHaveCount(2);
+  for (const id of ["human", "aiwrap", "quote"]) await expect.soft(chipsIn(page, id), "human/ai/quote/div-EN badged").toHaveCount(1);
+  await expect.soft(chipsIn(page, "divbased"), "div-EN badged; div-ZH, in Chinese, gets no chip (English only)").toHaveCount(1);
   const inline = await marked(page);
   await expect.soft(chipsIn(page, "inlinecode"), "inline <code> does not fragment the paragraph").toHaveCount(1);
   expect.soft(hasMark(inline, "ICODE tail marker"), "inline <code> does not fragment the paragraph").toBe(true);
@@ -70,10 +72,9 @@ test("the page is read: a chip on every unit, underlines, no floating button, an
 test("what is not read: a short isolated paragraph, the never-score zones, and Chinese text, which the local language gate settles", async ({ selftest: page, nativeHost }) => {
   await expect.soft(chipsIn(page, "short"), "short isolated paragraph skipped").toHaveCount(0);
   await expect.soft(chipsIn(page, "never"), "never-score zone clean (code/nav-links/editor/aria-hidden)").toHaveCount(0);
-  // The Chinese paragraph never reaches a backend: the content script's language gate
-  // renders an "unsupported language" chip with no number and no mark.
-  await expect.soft(chipsIn(page, "purecjk"), "pure-CJK paragraph badged as 'unsupported' (language gate)").toHaveCount(1);
-  await expect.soft(page.locator(`#purecjk ${BADGE_SEL} .pill.band-unsupported`), "pure-CJK paragraph badged as 'unsupported' (language gate)").toHaveCount(1);
+  // The Chinese paragraph never reaches a backend: the content script's language gate settles
+  // it, and as only English is read it gets no chip (the toolbar menu counts it).
+  await expect.soft(chipsIn(page, "purecjk"), "pure-CJK paragraph: no chip (English only)").toHaveCount(0);
   const stats = nativeHost.stats;
   expect.soft(stats.blocks, "non-English text is gated locally (the fixture received none)").toBeGreaterThan(5);
   expect.soft(stats.nonEnglishBlocks, "non-English text is gated locally (the fixture received none)").toBe(0);

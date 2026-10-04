@@ -7,6 +7,7 @@
 import type { ScoreResult } from "../contract";
 import { messageLocale, t, type MessageKey } from "../i18n";
 import { levelOf } from "./scale";
+import { DEFAULT_FLAG_FROM, flagLevel, type FlagFrom } from "./flagLevel";
 
 export type Band = "human" | "light" | "heavy" | "ai" | "unknown" | "unsupported";
 
@@ -52,15 +53,17 @@ export function languageName(code: string | undefined): string {
   }
 }
 
+export { DEFAULT_FLAG_FROM, flagFromOf, flagLevel, type FlagFrom } from "./flagLevel";
+
 /**
- * Bands that count as "flagged" (counter, triage panel, toolbar badge, flagged-only mode):
- * AI-generated only. It is the word the model gets right most often; "heavily edited" is
- * right under a third of the time against the edit-magnitude buckets EditLens is trained on.
+ * Bands that count as "flagged" — the counter, the toolbar menu's list, the toolbar badge,
+ * flagged-only mode, and the underlines: `from` and every word above it.
  */
-export function isFlaggedBand(b: Band): boolean {
-  return b === "ai";
+export function isFlaggedBand(b: Band, from: FlagFrom = DEFAULT_FLAG_FROM): boolean {
+  const level = BUCKET_BANDS.indexOf(b);
+  return level >= 0 && level >= flagLevel(from);
 }
 
-export function isFlagged(r: ScoreResult): boolean {
-  return isFlaggedBand(band(r));
+export function isFlagged(r: ScoreResult, from: FlagFrom = DEFAULT_FLAG_FROM): boolean {
+  return isFlaggedBand(band(r), from);
 }
