@@ -99,7 +99,8 @@ while True:
     }));
     const panel = page.locator("#componentSettings");
     await panel.getByRole("progressbar").waitFor({ timeout: 20000 });
-    assert.equal(await panel.getByRole("progressbar").getAttribute("aria-valuenow"), "100");
+    // The bar says a percentage: 100 of the fixture's 1000 bytes (lib/ui/progressBar.ts).
+    assert.equal(await panel.getByRole("progressbar").getAttribute("aria-valuenow"), "10");
     // The page only observes: model download intent belongs to the native component.
     const requests = () => readFileSync(logFile, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(requests().filter((r) => r.op === "models.download").length, 0);
@@ -136,7 +137,7 @@ while True:
     state = JSON.parse(readFileSync(stateFile, "utf8"));
     state.state = "needs_models"; state.download.status = "idle"; save();
     // The destructive actions are Settings' line of controls; the setup page has none of them.
-    assert.equal(await controls.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).count(), 0, "the setup page carries no uninstall");
+    assert.equal(await panel.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).count(), 0, "the setup page carries no uninstall");
     const managing = await context.newPage();
     await managing.goto(`chrome-extension://${id}/options.html`);
     const controls = managing.locator("#componentSettings");
