@@ -171,13 +171,17 @@ export interface BackendStatus {
 
 /** How far the in-browser engine's one-time setup has got (lib/backend/engineSetup.ts). */
 export interface EngineSetup {
-  /** "loading": downloaded, and the model is starting. */
-  state: "needed" | "downloading" | "paused" | "failed" | "loading";
+  /** "loading": downloaded, and the model is starting. "error": downloaded, and the model
+   *  could not start (`problem`). */
+  state: "needed" | "downloading" | "paused" | "failed" | "loading" | "error";
   /** Of the model download, 0–100. */
   percent: number;
   /** Why a failed download stopped (lib/webengine/download.ts DownloadFailure), for the
    *  toolbar menu to say. */
   failure?: "network" | "storage" | "server" | "damaged" | "other";
+  /** Why the model could not start: "load", it failed to in this browser (Retry on the setup
+   *  page may do it); "device", this device cannot run it at all. */
+  problem?: "load" | "device";
 }
 
 /** popup/SW → content: force a re-scan of the active tab. */

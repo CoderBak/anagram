@@ -225,6 +225,7 @@ function paint(): void {
       statusEl.textContent = setup.state === "downloading" ? (left === null ? t("popupSetupDownloading", setup.percent) : t("popupSetupDownloadingLeft", setup.percent, timeLeft(left)))
         : setup.state === "paused" ? t("popupSetupPaused", setup.percent)
         : setup.state === "failed" ? t(SETUP_FAILURE[setup.failure ?? "other"])
+        : setup.state === "error" ? t(setup.problem === "device" ? "popupEngineCannotRun" : "popupEngineLoadFailed")
         : t(setup.state === "loading" ? "engineLoading" : "popupSetupNeeded");
       break;
     }
@@ -286,8 +287,10 @@ const SETUP_FAILURE: Record<NonNullable<EngineSetup["failure"]>, MessageKey> = {
   other: "engineSetupFailed",
 };
 
-/** The setup button's words: start it, watch it, or carry on with it. */
+/** The setup button's words: start it, watch it, carry on with it, or see why the model did
+ *  not start (the setup page says what to do, and has Retry). */
 function setupLabel(setup: EngineSetup): MessageKey {
+  if (setup.state === "error") return "engineSeeWhy";
   return setup.state === "needed" ? "engineSetUp" : setup.state === "downloading" || setup.state === "loading" ? "engineShowProgress" : "engineContinueSetup";
 }
 

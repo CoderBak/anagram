@@ -50,6 +50,8 @@ export const STATES = {
   ready_gpu: snapshot({ state: "ready", download: done, runtime: runtime("webgpu:fp32"), storage: { models_bytes: TOTAL + 300 } }),
   ready_cpu: snapshot({ state: "ready", download: done, runtime: runtime("wasm:fp32", "wasm:fp32"), storage: { models_bytes: TOTAL + 300 } }),
   load_failed: snapshot({ state: "error", download: done, runtime: { ...runtime(null), state: "error", error: "WebGPU device lost" }, storage: { models_bytes: TOTAL }, error: { code: "not_ready", message: "WebGPU device lost" } }),
+  // The lighter model failed here and the full one does not fit: nothing can run.
+  cannot_run: snapshot({ state: "error", runtime: runtime(null), error: { code: "cannot_run", message: "This device cannot run the model: the lighter version failed and the full one does not fit" } }),
 };
 
 /** What the background says about the engine while it is in `state` (entrypoints/background.ts). */
@@ -63,6 +65,10 @@ function failureOf(message) {
   return "other";
 }
 
+/** The engine's error codes that say the model did not start, as the background tells the
+ *  toolbar menu (lib/backend/engineSetup.ts START_PROBLEM). */
+const START_PROBLEM = { not_ready: "load", cannot_run: "device", webgpu_unavailable: "device" };
+
 export function backendFor(name, { crashed = false, engine = "inbrowser" } = {}) {
   const s = STATES[name];
   const up = s.state === "ready" && !crashed;
@@ -72,7 +78,8 @@ export function backendFor(name, { crashed = false, engine = "inbrowser" } = {})
     : s.download.status === "paused" ? { state: "paused", percent }
     : s.download.status === "failed" ? { state: "failed", percent, failure: failureOf(s.download.error) }
     : s.state === "needs_models" ? { state: "needed", percent: 0 }
-    : s.state === "loading" ? { state: "loading", percent: 100 } : null;
+    : s.state === "loading" ? { state: "loading", percent: 100 }
+    : s.state === "error" && START_PROBLEM[s.error?.code] ? { state: "error", percent: 100, problem: START_PROBLEM[s.error.code] } : null;
   return up
     ? { active: "server", engine, model: { id: "editlens_roberta-large", ver: "sha256:test-web1", calibration: "editlens-4bucket-cosine(0.03,0.15)" }, server: { ok: true, checkedAt: 1, device: "webgpu", dtype: "fp32" } }
     // A model loading answers health with engine_loading: reachable, not down.

@@ -792,6 +792,15 @@
   "popupEngineInBrowserDown": {
     "message": "浏览器内引擎未就绪"
   },
+  "popupEngineLoadFailed": {
+    "message": "模型无法在此浏览器中启动"
+  },
+  "popupEngineCannotRun": {
+    "message": "此设备无法运行 Anagram 的模型"
+  },
+  "engineSeeWhy": {
+    "message": "查看原因"
+  },
   "popupEngineCrashed": {
     "message": "本地引擎接连意外停止"
   },

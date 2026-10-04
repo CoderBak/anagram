@@ -80,6 +80,18 @@ describe("the stage setup is in", () => {
     for (const state of ["ready", "idle", "stopped", "error"] as const) expect(engineSetup(snapshot({ state, runtime: runtime(null) }))).toBeNull();
   });
 
+  it("says why a downloaded model did not start, where the engine says, for the menu to tell", () => {
+    const failed = (code: string) => engineSetup(snapshot({ state: "error", runtime: runtime(null), error: { code, message: "Failed to load: GPU device lost" } }));
+    // It failed to load in this browser: the setup page's Retry may start it.
+    expect(failed("not_ready")).toEqual({ state: "error", percent: 100, problem: "load" });
+    // Nothing can run here: the lighter model failed and the full one does not fit, or Safari has no WebGPU.
+    expect(failed("cannot_run")).toEqual({ state: "error", percent: 100, problem: "device" });
+    expect(failed("webgpu_unavailable")).toEqual({ state: "error", percent: 100, problem: "device" });
+    // Anything else is not the model starting, and the menu says what it always said.
+    expect(failed("invalid_request")).toBeNull();
+    expect(engineSetup(snapshot({ state: "error", runtime: runtime(null) }))).toBeNull();
+  });
+
   it("rounds a percentage down, so 100% means done", () => {
     expect(percentOf(TOTAL - 1, TOTAL)).toBe(99);
     expect(percentOf(TOTAL, TOTAL)).toBe(100);

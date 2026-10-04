@@ -181,6 +181,16 @@ test.describe("the popup", () => {
     }
   });
 
+  test("says why a downloaded model did not start, and offers the setup page that has Retry", async ({ extension }) => {
+    for (const [state, status] of [["load_failed", "The model couldn't start in this browser"], ["cannot_run", "This device can't run Anagram's model"]]) {
+      const page = await openScripted(extension, "popup.html", state, {}, { width: 360, height: 600 });
+      await page.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
+      await expect(page.locator("#status"), state).toHaveText(status);
+      await expect(page.locator("#action"), state).toHaveText("See why");
+      await page.close();
+    }
+  });
+
   test("offers a PDF file and Analyze text at its foot, beside the one action", async ({ extension, context, page, pages }) => {
     // The popup reads the ACTIVE tab: a page in front, the popup reloaded behind it.
     pages.serve({ "/plain.html": "<!doctype html><html><head><meta charset=\"utf-8\"><title>plain</title></head><body><p>Nothing to read.</p></body></html>" });

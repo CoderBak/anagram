@@ -63,6 +63,13 @@ export function setupStage(s: ComponentSnapshot): SetupStage {
   }
 }
 
+/** The engine's error codes that say the model could not start, and what the menu calls them:
+ *  it failed to load here (lib/webengine/engine.ts "not_ready"), or nothing can run on this
+ *  device (the lighter model failed and the full one does not fit; Safari without WebGPU). */
+const START_PROBLEM: Record<string, NonNullable<EngineSetup["problem"]>> = {
+  not_ready: "load", cannot_run: "device", webgpu_unavailable: "device",
+};
+
 /** What the popup and the panel say instead of "not ready", or null when setup is not the reason. */
 export function engineSetup(s: ComponentSnapshot): EngineSetup | null {
   const stage = setupStage(s);
@@ -71,6 +78,10 @@ export function engineSetup(s: ComponentSnapshot): EngineSetup | null {
     case "downloading": case "paused": return { state: stage.stage, percent: percentOf(stage.received, stage.total) };
     case "failed": return { state: "failed", percent: percentOf(stage.received, stage.total), failure: stage.failure };
     case "loading": return { state: "loading", percent: 100 };
+    case "error": {
+      const problem = s.error ? START_PROBLEM[s.error.code] : undefined;
+      return problem ? { state: "error", percent: 100, problem } : null;
+    }
     default: return null;
   }
 }

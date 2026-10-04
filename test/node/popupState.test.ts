@@ -110,8 +110,9 @@ describe("what the popup leads with", () => {
   });
 
   it("offers the setup page where no engine is set up yet, or the in-browser one is not, on every page but a PDF", () => {
-    // The worker says what setup is doing; for the local engine it never sets `setup`.
-    for (const state of ["needed", "downloading", "paused", "failed", "loading"] as const) {
+    // The worker says what setup is doing; for the local engine it never sets `setup`. "error":
+    // the model is there and did not start, which the setup page says more of, with Retry.
+    for (const state of ["needed", "downloading", "paused", "failed", "loading", "error"] as const) {
       const setup = { state, percent: 45 };
       for (const over of [{}, { tab: null }, { pattern: null }, { hasTab: false }]) {
         expect(lead({ ...over, daemon: "down", setup })).toEqual({ action: "setup", primary: true, status: "setup" });

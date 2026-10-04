@@ -1023,6 +1023,15 @@
     "message": "In-browser engine is not ready",
     "description": "In-browser edition: status when the engine is unavailable for a reason other than setup."
   },
+  "popupEngineLoadFailed": {
+    "message": "The model couldn't start in this browser"
+  },
+  "popupEngineCannotRun": {
+    "message": "This device can't run Anagram's model"
+  },
+  "engineSeeWhy": {
+    "message": "See why"
+  },
   "popupEngineCrashed": {
     "message": "The local engine kept stopping unexpectedly",
     "description": "Popup status when the local engine died several times in a row and is no longer restarted."
