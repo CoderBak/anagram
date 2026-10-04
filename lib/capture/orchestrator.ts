@@ -44,6 +44,7 @@ import { band, isFlagged } from "../render/band";
 import { levelOf } from "../render/scale";
 import { settings } from "../settings/settings";
 import { createLogger } from "../log";
+import { createPacer, seedFor } from "./pace";
 
 const log = createLogger("orchestrator");
 
@@ -66,6 +67,8 @@ const MAX_IN_FLIGHT = 4;
 const MAX_BACKGROUND_IN_FLIGHT = 1;
 /** Units enqueued per idle prefetch pass (huge pages drain in successive passes). */
 const PREFETCH_PASS = 300;
+/** What the reader does that says the page is being read now: the background waits. */
+const READER_INPUT = ["wheel", "scroll", "keydown", "pointerdown", "touchstart"] as const;
 // The Navigation API (window.navigation) fires `currententrychange` for every
 // same-document navigation — pushState/replaceState included — and is reachable
 // from the content script's isolated world, so no MAIN-world history patch is needed.
@@ -248,6 +251,9 @@ export interface OrchestratorOptions {
    *  (its status's device): a request there takes seconds and cannot be interrupted, and one
    *  paragraph at a time puts each chip up as soon as it is read. */
   oneUnitBatches?: () => boolean;
+  /** Whether the background lane keeps to the pace (lib/capture/pace.ts); yes unless said. The
+   *  PDF reader says no: its read-ahead keeps its own, and waits for the page's own queue. */
+  pacedBackground?: boolean;
   /**
    * Where the units come from, when they do not come from a DOM walk. The PDF reader
    * supplies this: a PDF's paragraphs are the document's own reconstruction, decided by
@@ -788,7 +794,21 @@ export function createOrchestrator(
 
   async function send(units: Unit[], lane: Lane): Promise<UnitVerdict[]> {
     const generation = captureGeneration;
-    const read = await readInWindows(units, (blocks, owners) => scoreBlocks(blocks, owners, lane, generation), countTokensFor(generation));
+    const timed = paced && lane === "background";
+    const began = performance.now();
+    let chars = 0;
+    const read = await readInWindows(units, async (blocks, owners) => {
+      if (!timed) return scoreBlocks(blocks, owners, lane, generation);
+      const cached = new Set(blocks.filter((b) => cache.get(b.text)).map((b) => b.id));
+      const out = await scoreBlocks(blocks, owners, lane, generation);
+      chars += engineRead(blocks, cached, out).chars;
+      return out;
+    }, countTokensFor(generation));
+    if (timed && generation === captureGeneration) {
+      const ms = performance.now() - began;
+      pacer.done(ms, chars);
+      restUntil = performance.now() + pacer.restAfter(ms, onBattery);
+    }
     if (generation !== captureGeneration) {
       // Clearing a cache leaves existing verdicts visible, but an abandoned batch
       // must not leave its unfinished chips behind or paint a late result. Where only the
@@ -814,6 +834,18 @@ export function createOrchestrator(
     return out;
   }
 
+  /** What of a batch the engine itself read, which is what the pace learns from
+   *  (lib/capture/pace.ts): not what this page or the service worker had cached
+   *  (`cached`, ScoreResult.cached), not what the language gate settled. */
+  function engineRead(blocks: readonly ScoreBlock[], cached: ReadonlySet<string>, out: ReadonlyMap<string, ScoreResult>): { sent: number; chars: number } {
+    let sent = 0, chars = 0;
+    for (const b of blocks) {
+      const r = out.get(b.id);
+      if (!cached.has(b.id) && r && !r.cached && !r.unsupported && !r.degraded) { sent++; chars += b.text.length; }
+    }
+    return { sent, chars };
+  }
+
   /**
    * Paragraphs with no DOM, read exactly as a unit is (send): windows planned by
    * readInWindows, blocks through scoreBlocks in the background lane — the cache first, the
@@ -830,12 +862,9 @@ export function createOrchestrator(
     const read = await readInWindows(given, async (blocks, owners) => {
       const cached = new Set(blocks.filter((b) => cache.get(b.text)).map((b) => b.id));
       const out = await scoreBlocks(blocks, owners, "background", generation);
-      // What the pace learns from (lib/pdf/readAhead.ts) is the engine's own work: not what
-      // this page or the service worker had cached, not what the language gate settled.
-      for (const b of blocks) {
-        const r = out.get(b.id);
-        if (!cached.has(b.id) && r && !r.cached && !r.unsupported && !r.degraded) { sent++; chars += b.text.length; }
-      }
+      const engine = engineRead(blocks, cached, out);
+      sent += engine.sent;
+      chars += engine.chars;
       return out;
     }, countTokensFor(generation)).catch(() => new Map<string, WindowVerdict[]>());
     if (generation !== captureGeneration) return { ms: performance.now() - began, sent, chars, scored: 0, retired: true, down: backendDown };
@@ -986,6 +1015,7 @@ export function createOrchestrator(
     unwatchUrl();
     stopDownPolling();
     document.removeEventListener("visibilitychange", onVisibilityChange);
+    watchReader(false);
   }
 
   // --- dispatch: held while the daemon is down or nobody can see the tab -----------------
@@ -1222,6 +1252,50 @@ export function createOrchestrator(
   function learnDevice(s: BackendStatus | undefined): void {
     const kind = deviceKind(s?.server?.device);
     if (kind) onProcessor = kind === "cpu";
+    // Before anything is measured, the engine's device is the best guess of its pace.
+    const seed = seedFor(s?.server?.device);
+    if (seed !== null && pacer.samples() === 0 && pacer.msPerK() !== seed) pacer = createPacer(seed);
+  }
+
+  // --- the background's pace (lib/capture/pace.ts) ----------------------------------------
+  // The idle prefetch reads what nobody has scrolled to yet. Unpaced, a long page or a feed
+  // kept the engine busy until all of it was read, which on a laptop's processor is minutes of
+  // fans and battery for paragraphs that may never be looked at. Each background batch is
+  // timed; after it the lane rests by the duty cycle, waits for the reader to leave the page
+  // alone, and keeps to what is near the screen (the observers' near lane) where the engine is
+  // slow, the page has had its ten minutes, or the battery is low.
+  const paced = opts.pacedBackground !== false;
+  let pacer = createPacer();
+  /** The background lane rests until then (performance.now()). */
+  let restUntil = 0;
+  let lastInput = -Infinity;
+  let onBattery = false;
+  let lowBattery = false;
+  let batteryWatched = false;
+  const noteInput = (): void => { lastInput = performance.now(); };
+  function backgroundDelay(): number {
+    if (!paced) return 0;
+    if (lowBattery || pacer.limited()) return Infinity;
+    const now = performance.now();
+    return Math.max(0, restUntil - now, lastInput + pacer.quiet() - now);
+  }
+  function watchReader(on: boolean): void {
+    if (!paced) return;
+    for (const type of READER_INPUT) {
+      if (on) document.addEventListener(type, noteInput, { capture: true, passive: true });
+      else document.removeEventListener(type, noteInput, { capture: true });
+    }
+    if (!on || batteryWatched) return;
+    batteryWatched = true;
+    // On battery the background takes half its share; at 20% and falling it stops (where
+    // Chrome's Energy Saver starts holding pages back too).
+    void (navigator as { getBattery?: () => Promise<{ charging: boolean; level: number; addEventListener(type: string, listener: () => void): void }> })
+      .getBattery?.().then((battery) => {
+        const read = (): void => { onBattery = !battery.charging; lowBattery = !battery.charging && battery.level <= 0.2; };
+        read();
+        battery.addEventListener("chargingchange", read);
+        battery.addEventListener("levelchange", read);
+      }).catch(() => undefined);
   }
 
   const scheduler: Scheduler = createScheduler<UnitVerdict>({
@@ -1230,6 +1304,7 @@ export function createOrchestrator(
     maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
     send,
     render,
+    backgroundDelay,
     // A prefetch pass is capped (PREFETCH_PASS): keep draining while work is left.
     onIdle: () => {
       if (started && !frozen && !backendDown) schedulePrefetch();
@@ -1479,6 +1554,8 @@ export function createOrchestrator(
     urlRefreshTimer = setTimeout(() => {
       urlRefreshTimer = null;
       if (!started) return;
+      // Another route is another document: its share of the engine's time starts again.
+      pacer.newDocument();
       purgeDisconnected();
       ingestUnits(collect(document.body, makeClaimFilter()));
       updateToolbar();
@@ -1513,6 +1590,7 @@ export function createOrchestrator(
     lastHref = location.href;
     pageHidden = document.visibilityState === "hidden";
     document.addEventListener("visibilitychange", onVisibilityChange);
+    watchReader(true);
     syncDispatch();
 
     watchInsertionGate();
@@ -1667,6 +1745,7 @@ export function createOrchestrator(
     scheduler.stop();
     stopDownPolling();
     document.removeEventListener("visibilitychange", onVisibilityChange);
+    watchReader(false);
     backendDown = false;
     commentOffer = [];
     commentAsked++;

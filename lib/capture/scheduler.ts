@@ -46,6 +46,8 @@ export interface Scheduler {
 const LANES: Lane[] = ["viewport", "near", "background"];
 const LANE_RANK: Record<Lane, number> = { viewport: 0, near: 1, background: 2 };
 const DEFAULT_BUDGET = 800;
+/** A background lane held with no end in sight is looked at again this often. */
+const HOLD_LOOK_MS = 30_000;
 
 interface Pending {
   unit: Unit;
@@ -61,6 +63,9 @@ export function createScheduler<V>(opts: {
   render(verdicts: V[], epoch: number): void;
   /** Nothing queued and nothing in flight any more (fired after each batch settles). */
   onIdle?(): void;
+  /** How long background batches wait yet, in ms, asked before each one: the background's
+   *  pace (lib/capture/pace.ts). The lane is asked again when that is up. */
+  backgroundDelay?(): number;
 }): Scheduler {
   const maxInFlight = opts.maxInFlight || 4;
   const maxBackground = Math.max(1, opts.maxBackgroundInFlight ?? 1);
@@ -81,6 +86,9 @@ export function createScheduler<V>(opts: {
   let inFlightBackground = 0;
   let pumpScheduled = false;
   let paused = false;
+  /** The pump that looks at a held background lane again, and when it runs. */
+  let wake: ReturnType<typeof setTimeout> | null = null;
+  let wakeAt = Infinity;
 
   // id → lane it is queued in (for upgrade); in-flight ids are separate.
   const queuedLane = new Map<string, Lane>();
@@ -118,7 +126,14 @@ export function createScheduler<V>(opts: {
     for (const lane of LANES) {
       const q = queues[lane];
       if (q.length === 0) continue;
-      if (lane === "background" && inFlightBackground >= maxBackground) continue;
+      if (lane === "background") {
+        if (inFlightBackground >= maxBackground) continue;
+        const wait = opts.backgroundDelay?.() ?? 0;
+        if (wait > 0) {
+          wakeIn(wait);
+          continue;
+        }
+      }
       const budget = budgetFor(lane);
       const batch: Pending[] = [];
       let chars = 0;
@@ -136,6 +151,18 @@ export function createScheduler<V>(opts: {
       return { lane, batch };
     }
     return null;
+  }
+
+  function wakeIn(ms: number): void {
+    const at = Date.now() + Math.min(ms, HOLD_LOOK_MS);
+    if (wake !== null && wakeAt <= at) return;
+    if (wake !== null) clearTimeout(wake);
+    wakeAt = at;
+    wake = setTimeout(() => {
+      wake = null;
+      wakeAt = Infinity;
+      schedulePump();
+    }, at - Date.now());
   }
 
   function pump(): void {
@@ -190,6 +217,9 @@ export function createScheduler<V>(opts: {
     bumpEpoch();
     inFlightIds.clear();
     paused = false;
+    if (wake !== null) clearTimeout(wake);
+    wake = null;
+    wakeAt = Infinity;
   }
 
   function pendingCount(): number {

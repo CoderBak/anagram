@@ -429,6 +429,8 @@ async function startAnalysis(owned: number): Promise<void> {
     documentTexts: () => planTexts,
     // The page's own paragraphs keep to the pace too: one at a time where it is not fast.
     oneUnitBatches: () => pacer.speed() !== "fast",
+    // The read-ahead keeps its own pace, and waits for the page's own queue to empty.
+    pacedBackground: false,
     collect: (_root, claim, options) => {
       if (answered === claim) return [];
       answered = claim;

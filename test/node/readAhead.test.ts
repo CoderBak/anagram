@@ -1,11 +1,13 @@
 // test/node/readAhead.test.ts — the PDF reader's whole-document reading: how fast, in what
-// order and how much of the document it reads in the background (lib/pdf/readAhead.ts).
+// order and how much of the document it reads in the background (lib/pdf/readAhead.ts), and the
+// pace it keeps to, which a web page's background prefetch keeps to as well (lib/capture/pace.ts).
 //
 // Everything here is arithmetic on one measurement, how long the engine takes for a thousand
 // characters, so the cases are the thresholds, the hysteresis, the bounds and the order,
 // stated as numbers.
 import { describe, expect, it } from "vitest";
-import { createPacer, inScope, readingDistance, seedFor, takeBatch, SLOW_SCOPE, type Pacer } from "../../lib/pdf/readAhead";
+import { createPacer, seedFor, type Pacer } from "../../lib/capture/pace";
+import { inScope, readingDistance, takeBatch, SLOW_SCOPE } from "../../lib/pdf/readAhead";
 
 const TEN_MINUTES = 10 * 60_000;
 /** A batch of `chars` characters the engine read at `msPerK` a thousand. */

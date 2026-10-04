@@ -1,5 +1,5 @@
 // test/node/scheduler.test.ts — the 3-lane scheduler's idle signal and pause/resume.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createScheduler } from "../../lib/capture/scheduler";
 import type { Unit } from "../../lib/types";
 
@@ -149,5 +149,64 @@ describe("scheduler", () => {
     await new Promise((r) => setTimeout(r, 60));
     expect(batches).toEqual(["u1", "u2,u3,u4"]);
     expect(asked).toEqual([1, 10_000]);
+  });
+  it("holds the background lane for as long as its pace says, and nothing else", async () => {
+    const sent: string[] = [];
+    let restUntil = 0;
+    const s = createScheduler({
+      batchCharBudget: 1,
+      maxInFlight: 4,
+      async send(units, lane) {
+        sent.push(`${lane}:${units.map((u) => u.id).join(",")}`);
+        // After each background batch the lane rests 40 ms (lib/capture/pace.ts's duty cycle).
+        if (lane === "background") restUntil = Date.now() + 40;
+        return units.map(score);
+      },
+      render() {},
+      backgroundDelay: () => Math.max(0, restUntil - Date.now()),
+    });
+    s.enqueue(unit(1), "background");
+    s.enqueue(unit(2), "background");
+    await tick();
+    expect(sent).toEqual(["background:u1"]);
+    // On screen and near go at once, rest or no rest.
+    s.enqueue(unit(3), "viewport");
+    s.enqueue(unit(4), "near");
+    await tick();
+    expect(sent).toEqual(["background:u1", "viewport:u3", "near:u4"]);
+    expect(s.pendingCount()).toBe(1);
+    // The rest is up: the lane is looked at again by itself.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(sent).toEqual(["background:u1", "viewport:u3", "near:u4", "background:u2"]);
+  });
+
+  it("looks again at a lane held with no end in sight, and lets nothing of it go after stop()", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: string[] = [];
+      let hold = Infinity;
+      const s = createScheduler({
+        batchCharBudget: 1,
+        maxInFlight: 4,
+        async send(units) { sent.push(...units.map((u) => u.id)); return units.map(score); },
+        render() {},
+        backgroundDelay: () => hold,
+      });
+      s.enqueue(unit(1), "background");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sent).toEqual([]);
+      hold = 0; // plugged in, say
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(sent).toEqual(["u1"]);
+      hold = Infinity;
+      s.enqueue(unit(2), "background");
+      await vi.advanceTimersByTimeAsync(1);
+      s.stop();
+      hold = 0;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sent).toEqual(["u1"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

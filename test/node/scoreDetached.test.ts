@@ -23,6 +23,7 @@ const calls = vi.hoisted(() => ({
   sends: [] as ((units: Unit[], lane: Lane) => Promise<UnitVerdict[]>)[],
   renders: [] as ((verdicts: UnitVerdict[], epoch: number) => void)[],
   budgets: [] as unknown[],
+  delays: [] as ((() => number) | undefined)[],
   enqueued: [] as [string, Lane][],
   observerOptions: null as {onPlaced?: () => void} | null,
   placed: (_unit: Unit): boolean => true,
@@ -43,8 +44,8 @@ vi.mock("../../lib/capture/cache", async (original) => {
     const cache = actual.createScoreCache(); calls.caches.push(cache); return cache;
   } };
 });
-vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send: typeof calls.sends[number]; render: typeof calls.renders[number]; batchCharBudget: unknown}) => {
-  calls.sends.push(options.send); calls.renders.push(options.render); calls.budgets.push(options.batchCharBudget);
+vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send: typeof calls.sends[number]; render: typeof calls.renders[number]; batchCharBudget: unknown; backgroundDelay?: () => number}) => {
+  calls.sends.push(options.send); calls.renders.push(options.render); calls.budgets.push(options.batchCharBudget); calls.delays.push(options.backgroundDelay);
   return {enqueue: (unit: Unit, lane: Lane) => calls.enqueued.push([unit.id, lane]), requeue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => calls.pending};
 }}));
 vi.mock("../../lib/capture/observers", () => ({createObservers: (options: {onPlaced?: () => void}) => (calls.observerOptions = options, {
@@ -76,7 +77,7 @@ let doc: EventTarget & {visibilityState: string};
 beforeEach(() => {
   fakeBrowser.reset();
   vi.spyOn(fakeBrowser.runtime, "getManifest").mockReturnValue({manifest_version: 3, version: "0.4.1", name: "Anagram"});
-  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.renders.length = 0; calls.budgets.length = 0;
+  vi.clearAllMocks(); calls.caches.length = 0; calls.sends.length = 0; calls.renders.length = 0; calls.budgets.length = 0; calls.delays.length = 0;
   calls.detect.mockReset(); calls.request.mockReset();
   calls.detect.mockResolvedValue(null);
   calls.message.mockReset(); calls.message.mockResolvedValue(undefined);
@@ -474,5 +475,56 @@ describe("the idle prefetch", () => {
         expect([...new Set(calls.enqueued.map(([id]) => id))].sort()).toEqual(["bottom", "middle", "top"]);
       } finally {controller.stop();}
     } finally {vi.useRealTimers();}
+  });
+});
+
+// The background lane of a web page keeps to the pace (lib/capture/pace.ts): the orchestrator
+// times each background batch and tells the scheduler how long the lane rests after it.
+describe("the background lane's pace", () => {
+  const unitOf = (tag: string, i: number): Unit => ({id: `b${i}`, text: text(tag), wordCount: 60, order: i, parts: [], isScored: false} as unknown as Unit);
+  const slowEngine = () => calls.request.mockImplementation(async (req: ScoreBatchRequest) => {
+    await new Promise((r) => setTimeout(r, 30));
+    return {backend: "up", model: MODEL, results: req.blocks.map((block) => ({id: block.id, bucket: 3, score: 1, probs: [0, 0, 0, 1]}))};
+  });
+
+  it("rests after a background batch by the duty cycle, and never after one on screen", async () => {
+    slowEngine();
+    const {controller} = await reader();
+    try {
+      const delay = calls.delays[0]!;
+      expect(delay()).toBe(0);
+      await calls.sends[0]!([unitOf("SCREEN", 1)], "viewport");
+      expect(delay()).toBe(0);
+      await calls.sends[0]!([unitOf("FAR", 2)], "background");
+      // Thirty milliseconds of the engine, at a third of its time before anything says it is
+      // fast: about sixty of rest.
+      const rest = delay();
+      expect(rest).toBeGreaterThan(30);
+      expect(rest).toBeLessThan(200);
+      // A batch the cache answered teaches nothing and costs no rest to speak of.
+      await new Promise((r) => setTimeout(r, rest + 5));
+      await calls.sends[0]!([unitOf("FAR", 3)], "background");
+      expect(delay()).toBeLessThan(10);
+    } finally {controller.stop();}
+  });
+
+  it("waits while the reader is scrolling or typing", async () => {
+    const {controller} = await reader();
+    try {
+      const delay = calls.delays[0]!;
+      expect(delay()).toBe(0);
+      doc.dispatchEvent(new Event("wheel"));
+      expect(delay()).toBeGreaterThanOrEqual(500);
+    } finally {controller.stop();}
+  });
+
+  it("is the PDF reader's own business where it says so", async () => {
+    slowEngine();
+    const {controller} = await reader({pacedBackground: false});
+    try {
+      await calls.sends[0]!([unitOf("FAR", 4)], "background");
+      doc.dispatchEvent(new Event("wheel"));
+      expect(calls.delays[0]!()).toBe(0);
+    } finally {controller.stop();}
   });
 });
