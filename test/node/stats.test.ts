@@ -7,7 +7,7 @@
 // (test/pw/stats.spec.mjs) run the real database.
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { addDays, aiShare, bandOf, datesBetween, emptyTally, monthRange, retentionOf, statsLevelOf, tallyOf, viewedWords } from "../../lib/stats/model";
+import { addDays, aiShare, atLeast, bandOf, datesBetween, emptyTally, monthRange, retentionOf, statsLevelOf, tallyOf, viewedWords } from "../../lib/stats/model";
 import { applyReading, MAX_SITES_PER_DAY, pageKey, type DayRecord, type PageRecord, type Reading, type SiteRecord } from "../../lib/stats/record";
 import { createStatsRecorder, type StatsRecorderDeps, type StatsSender } from "../../lib/stats/worker";
 import type { StatsStore } from "../../lib/stats/store";
@@ -52,6 +52,8 @@ function memoryStore(): StatsStore & { days: Map<string, DayRecord>; sites: Map<
       prunes.push(before);
       for (const map of [days, sites, pages] as Map<string, { date: string }>[]) for (const [k, v] of map) if (v.date < before) map.delete(k);
     },
+    async finer(level) { return { sites: atLeast(level, "sites") ? 0 : sites.size, pages: atLeast(level, "pages") ? 0 : pages.size }; },
+    async dropFiner(level) { if (!atLeast(level, "sites")) sites.clear(); if (!atLeast(level, "pages")) pages.clear(); },
     async clear() { days.clear(); sites.clear(); pages.clear(); meta.clear(); },
     async getMeta(key) { return meta.get(key); },
     async setMeta(key, value) { meta.set(key, value); },

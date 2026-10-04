@@ -10,7 +10,7 @@
 // days are deleted with one key range per store.
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { applyReading, pageKey, type DayRecord, type PageRecord, type Reading, type SiteRecord } from "./record";
-import type { StatsLevel } from "./model";
+import { atLeast, type StatsLevel } from "./model";
 
 interface StatsDB extends DBSchema {
   days: { key: string; value: DayRecord };
@@ -21,6 +21,8 @@ interface StatsDB extends DBSchema {
 
 export const STATS_DB = "anagram-stats";
 const STORES = ["days", "sites", "pages", "meta"] as const;
+/** The stores each a level finer than the day's totals. */
+const FINER = ["sites", "pages"] as const;
 
 /** Everything recorded from one date to another, both included. */
 export interface StatsRange {
@@ -39,6 +41,11 @@ export interface StatsStore {
   first(): Promise<string | null>;
   /** Delete every day before `date`. */
   prune(before: string): Promise<void>;
+  /** How many site and page records are kept that `level` would not record: what lowering
+   *  the level to it leaves behind ("off" as "daily": the day's totals are never finer). */
+  finer(level: StatsLevel): Promise<{ sites: number; pages: number }>;
+  /** Delete those; the daily totals stay. */
+  dropFiner(level: StatsLevel): Promise<void>;
   clear(): Promise<void>;
   getMeta(key: string): Promise<unknown>;
   setMeta(key: string, value: unknown): Promise<void>;
@@ -112,6 +119,20 @@ export function openStatsStore(): StatsStore {
         tx.objectStore("pages").delete(IDBKeyRange.upperBound([before], true)),
         tx.done,
       ]);
+    },
+    async finer(level) {
+      const db = await database();
+      const [sites, pages] = await Promise.all([
+        atLeast(level, "sites") ? 0 : db.count("sites"),
+        atLeast(level, "pages") ? 0 : db.count("pages"),
+      ]);
+      return { sites, pages };
+    },
+    async dropFiner(level) {
+      const stores = FINER.filter((name) => !atLeast(level, name));
+      if (stores.length === 0) return;
+      const tx = (await database()).transaction(stores, "readwrite");
+      await Promise.all([...stores.map((name) => tx.objectStore(name).clear()), tx.done]);
     },
     async clear() {
       const db = await database();

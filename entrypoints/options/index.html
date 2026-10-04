@@ -219,6 +219,15 @@
         </div>
       </dialog>
 
+      <dialog class="stats-dialog" id="dropStatsDialog" aria-labelledby="dropStatsTitle" aria-describedby="dropStatsText">
+        <p class="dialog-title" id="dropStatsTitle"></p>
+        <p id="dropStatsText" data-i18n="statsDropText">Anagram records less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.</p>
+        <div class="actions">
+          <button type="button" class="btn" data-variant="outline" data-size="sm" id="dropStatsKeep" data-i18n="statsDropKeep">Keep them</button>
+          <button type="button" class="btn" data-variant="destructive" data-size="sm" id="dropStatsConfirm" data-i18n="statsDropConfirm">Delete them</button>
+        </div>
+      </dialog>
+
       <footer class="links">
         <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
         <span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span>

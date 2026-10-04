@@ -206,7 +206,8 @@ you read could be scored. **Export…** saves a JSON or CSV file of the period, 
 was recorded at or a coarser one, which you can keep or give to somebody (for instance a study
 you take part in); Anagram never uploads it. [statistics.md](statistics.md) describes the file.
 **Clear statistics** deletes everything; days older than **Keep** (30, 90 or 365 days) are
-deleted by themselves.
+deleted by themselves. Lowering **Record** asks whether to delete the sites and pages already
+recorded that the lower level would not keep; the daily totals stay either way.
 
 ## Update and remove
 

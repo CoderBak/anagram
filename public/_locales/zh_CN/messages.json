@@ -1240,6 +1240,27 @@
   "statsCleared": {
     "message": "统计已清除。"
   },
+  "statsDropSitesPagesTitle": {
+    "message": "删除已记录的网站和页面？"
+  },
+  "statsDropSitesTitle": {
+    "message": "删除已记录的网站？"
+  },
+  "statsDropPagesTitle": {
+    "message": "删除已记录的页面？"
+  },
+  "statsDropText": {
+    "message": "从现在起 Anagram 会少记录一些，但已经记下的内容会一直保留，直到你删除。每日总计无论如何都会保留。"
+  },
+  "statsDropKeep": {
+    "message": "保留"
+  },
+  "statsDropConfirm": {
+    "message": "删除"
+  },
+  "statsDropped": {
+    "message": "已删除。每日总计仍然保留。"
+  },
   "statsSettingsLink": {
     "message": "统计设置"
   },

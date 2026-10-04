@@ -1619,6 +1619,34 @@
     "message": "Statistics cleared.",
     "description": "Settings, Statistics: status after the statistics were deleted."
   },
+  "statsDropSitesPagesTitle": {
+    "message": "Delete the sites and pages already recorded?",
+    "description": "Settings, Statistics: dialog shown when the level is lowered below 'Daily totals and sites' while site and page records are kept: its title."
+  },
+  "statsDropSitesTitle": {
+    "message": "Delete the sites already recorded?",
+    "description": "The same dialog when only site records are kept (the level was 'Daily totals and sites')."
+  },
+  "statsDropPagesTitle": {
+    "message": "Delete the pages already recorded?",
+    "description": "The same dialog when the level is lowered from 'Every page' to 'Daily totals and sites': only page records would go."
+  },
+  "statsDropText": {
+    "message": "Anagram records less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.",
+    "description": "The same dialog: what lowering the level does and does not do."
+  },
+  "statsDropKeep": {
+    "message": "Keep them",
+    "description": "The same dialog: button that keeps the records (the default)."
+  },
+  "statsDropConfirm": {
+    "message": "Delete them",
+    "description": "The same dialog: button that deletes the site and page records."
+  },
+  "statsDropped": {
+    "message": "Deleted. The daily totals stay.",
+    "description": "Settings, Statistics: status after the finer records were deleted."
+  },
   "statsSettingsLink": {
     "message": "Statistics settings",
     "description": "Statistics page footer: link to the Statistics group in Settings."

@@ -47,9 +47,11 @@ you switched Anagram off for, even a page of it you analyzed from the menu; Anal
 | Daily totals and sites | and per site and day: the same numbers. The site is the hostname the tab showed, without `www.`; a PDF opened from this computer has none |
 | Every page | and per page and day: the address (origin and path, never the query or the fragment), its title, the minute it was first read that day, the seconds it was shown with somebody reading (two minutes with nothing scrolled, clicked or typed stops the count), its kind, and the same numbers |
 
-A day keeps at most 1,000 sites and 2,000 pages; past them its totals still count. Changing
-the level does not delete what was kept: Clear statistics does. Days older than Settings,
-Statistics, Keep (30, 90 or 365 days) are deleted, at most once a day.
+A day keeps at most 1,000 sites and 2,000 pages; past them its totals still count. Lowering
+the level records less from then on and asks whether to delete the sites and pages already
+kept that the new level would not record (kept, unless you choose to delete them); the daily
+totals go only with Clear statistics. Days older than Settings, Statistics, Keep (30, 90 or
+365 days) are deleted, at most once a day.
 
 ## The exported file
 

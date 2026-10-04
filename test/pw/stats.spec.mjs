@@ -2,7 +2,8 @@
 // while they are off; a paragraph counts once it has been on screen, once however often it is
 // scrolled back to; each level keeps what it says and no more; the PDF reader's paragraphs
 // count as a document; the statistics page shows the numbers recorded, exports them at a
-// coarser level and clears them; and the toolbar menu has today's line.
+// coarser level and clears them; lowering the level offers to delete what it no longer
+// records; and the toolbar menu has today's line.
 //
 // The database is read from the extension's worker (the extension's own origin); its records
 // are seeded from it too where a test is about the page rather than the reading
@@ -244,6 +245,36 @@ test("Settings: the level, what it keeps, the warning for every page, and how lo
   await page.selectOption("#statsLevel", "daily");
   await expect(page.locator("#statsPagesWarn")).toBeHidden();
   await expect(page.locator("#statsLevelNote")).toContainText("No sites, no pages.");
+});
+
+test("Settings: lowering the level asks whether to delete the sites and pages it no longer records, and keeps them unless told", async ({ page, extension, storage }) => {
+  await storage.set({ statsLevel: "pages" });
+  await seedStats(extension.worker(), statsRecords());
+  await page.goto(extension.url("options.html#statistics"), { waitUntil: "load" });
+  await expect(page.locator("#statsLevel")).toHaveValue("pages");
+  const dialog = page.locator("#dropStatsDialog");
+  const kept = async () => { const db = await statsDb(extension); return [db.days.length, db.sites.length, db.pages.length]; };
+  // Every page → sites: only the pages would go. Keeping them is the default, and Escape keeps too.
+  await page.selectOption("#statsLevel", "sites");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#dropStatsTitle")).toHaveText("Delete the pages already recorded?");
+  await expect(page.locator("#dropStatsKeep")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => storage.get("statsLevel")).toEqual({ statsLevel: "sites" });
+  expect(await kept()).toEqual([1, 2, 1]);
+  // Sites → off: the sites and the pages kept before would go; deleted, the day's totals stay.
+  await page.selectOption("#statsLevel", "off");
+  await expect(page.locator("#dropStatsTitle")).toHaveText("Delete the sites and pages already recorded?");
+  await page.click("#dropStatsConfirm");
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#statsStatus")).toHaveText("Deleted. The daily totals stay.");
+  expect(await kept()).toEqual([1, 0, 0]);
+  // Raising it asks nothing, and lowering it with nothing finer kept asks nothing either.
+  await page.selectOption("#statsLevel", "pages");
+  await page.selectOption("#statsLevel", "daily");
+  await expect.poll(() => storage.get("statsLevel")).toEqual({ statsLevel: "daily" });
+  await expect(dialog).toBeHidden();
 });
 
 test("the toolbar menu says today's share while statistics are recorded, and nothing while they are off", async ({ page, pages, extension, storage }) => {

@@ -29,7 +29,7 @@ import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
 import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
-import { RETENTION_CHOICES, retentionOf, statsLevelOf, type StatsLevel } from "../../lib/stats/model";
+import { RETENTION_CHOICES, atLeast, retentionOf, statsLevelOf, type StatsLevel } from "../../lib/stats/model";
 import { openStatsStore } from "../../lib/stats/store";
 
 const log = createLogger("options");
@@ -314,9 +314,38 @@ async function refreshCacheCount(): Promise<void> {
     getValue: async () => statsLevelOf(await settings.statsLevel.getValue()),
     setValue: (v) => settings.statsLevel.setValue(statsLevelOf(v)),
   });
-  settings.statsLevel.watch((v) => { levelEl.value = statsLevelOf(v); describe(); });
-  void settings.statsLevel.getValue().then(describe, () => undefined);
-  levelEl.addEventListener("change", describe);
+  // Lowering the level records less from then on; the sites and pages kept at the finer level
+  // stay until deleted, so lowering it asks, once, whether to delete them now. Keeping them is
+  // the default: a level lowered for a while and raised again loses nothing it was not told to.
+  let was: StatsLevel | null = null;
+  const dropDialog = document.getElementById("dropStatsDialog") as HTMLDialogElement;
+  let dropTo: StatsLevel = "off";
+  const offerToDrop = async (level: StatsLevel): Promise<void> => {
+    const { sites, pages } = await openStatsStore().finer(level).catch(() => ({ sites: 0, pages: 0 }));
+    if (sites + pages === 0 || statsLevelOf(levelEl.value) !== level) return;
+    document.getElementById("dropStatsTitle")!.textContent =
+      t(sites > 0 && pages > 0 ? "statsDropSitesPagesTitle" : pages > 0 ? "statsDropPagesTitle" : "statsDropSitesTitle");
+    dropTo = level;
+    if (!dropDialog.open) dropDialog.showModal();
+    document.getElementById("dropStatsKeep")!.focus();
+  };
+  settings.statsLevel.watch((v) => { levelEl.value = statsLevelOf(v); was = statsLevelOf(v); describe(); });
+  void settings.statsLevel.getValue().then((v) => { was ??= statsLevelOf(v); describe(); }, () => undefined);
+  levelEl.addEventListener("change", () => {
+    describe();
+    const now = statsLevelOf(levelEl.value);
+    const before = was;
+    was = now;
+    if (before !== null && !atLeast(now, before)) void offerToDrop(now);
+  });
+  document.getElementById("dropStatsKeep")!.addEventListener("click", () => dropDialog.close());
+  document.getElementById("dropStatsConfirm")!.addEventListener("click", () => {
+    statusEl.textContent = "";
+    void openStatsStore().dropFiner(dropTo).then(
+      () => { statusEl.textContent = t("statsDropped"); },
+      () => { statusEl.textContent = t("optSaveFailed"); },
+    ).finally(() => dropDialog.close());
+  });
   for (const days of RETENTION_CHOICES) retentionEl.add(new Option(t("optStatsDays", days), String(days)));
   bindSelect<string>(retentionEl, {
     getValue: async () => String(retentionOf(await settings.statsRetentionDays.getValue())),
