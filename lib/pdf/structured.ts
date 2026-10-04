@@ -1351,12 +1351,14 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
     const page = r.page;
     const previous = drafts.at(-1);
     // A page is no break in the writing where the sentence before it goes on over it —
-    // most often into a display equation at the head of the next page. Where it ended, the
-    // page is where the reader's grouping stops, as it always did.
+    // most often into a display equation at the head of the next page. Where it ended, short
+    // paragraphs are not read together across the page, but one that cannot stand alone may
+    // still join the paragraph before it (ReflowBlock.pageTurn).
     const turned = previous !== undefined && endPage(previous) !== page && !(previous.block.kind === "paragraph" && runsOn(previous.pieces));
     const block: StructuredBlock = {
       kind: r.kind, text: "", page, runs: [], apart: false,
-      columnBreak: barrier || !previous || turned,
+      columnBreak: barrier || !previous,
+      ...(turned && !barrier ? { pageTurn: true } : {}),
       ...(everything ? { origin: r.origin } : {}),
     };
     barrier = false;

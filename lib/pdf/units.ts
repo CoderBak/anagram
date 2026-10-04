@@ -169,7 +169,7 @@ export function planOf(blocks: readonly ReflowBlock[], floor: number): PlanBlock
         words, chars: text.length, role: roleOf(block, words, floor)};
       planned.set(block, known);
     }
-    return { words: known.words, chars: known.chars, role: known.role, barrierBefore: block.columnBreak };
+    return { words: known.words, chars: known.chars, role: known.role, barrierBefore: block.columnBreak, turnBefore: block.pageTurn === true };
   });
 }
 

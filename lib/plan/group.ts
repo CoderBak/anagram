@@ -156,6 +156,10 @@ export interface PlanBlock extends Sized {
   /** Nothing is read across the joint in front of this block: another column, another
    *  page, another section. */
   barrierBefore?: boolean;
+  /** Another page of the same writing in front of this block: short blocks are not read
+   *  together across it, but a short text after it that cannot stand alone may still join
+   *  the full paragraph before it. */
+  turnBefore?: boolean;
 }
 
 /**
@@ -205,6 +209,9 @@ export function groupBlocks(blocks: readonly PlanBlock[], floor: number): number
   blocks.forEach((block, index) => {
     const role = block.role ?? "prose";
     if (block.barrierBefore) endGroup(null);
+    // The full paragraph before a page turn stays open for a short text after it; a stretch
+    // of shorts in between is settled on its own page.
+    else if (block.turnBefore && group.length > 0) endGroup(null);
     if (role === "skip") return;
     const item: Item = { index, words: block.words, chars: block.chars };
     if (role === "barrier") {

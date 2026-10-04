@@ -1348,7 +1348,7 @@ describe("structuredBlocks — the document", () => {
     expectRunsToMatch(blocks[0]!, pages);
   });
 
-  it("marks a break after a bibliography entry and at a new page, and none at an equation", () => {
+  it("marks a break after a bibliography entry, a page turn at a new page, and neither at an equation", () => {
     const a = node(1, [{ text: "first paragraph.", x: 72, y: 100 }]);
     const b = node(1, [{ text: "second paragraph.", x: 72, y: 130 }]);
     const eq = node(1, [{ text: "E = mc2", x: 200, y: 160 }]);
@@ -1365,7 +1365,7 @@ describe("structuredBlocks — the document", () => {
       paragraph(1, [d]), paragraph(2, [e]),
     ], 2), pages);
     expect(blocks.map((x) => x.text)).toEqual(["first paragraph.", "second paragraph.", "Third paragraph.", "an appendix paragraph.", "over the page."]);
-    expect(blocks.map((x) => x.columnBreak)).toEqual([true, false, false, true, true]);
+    expect(blocks.map((x) => [x.columnBreak, x.pageTurn === true])).toEqual([[true, false], [false, false], [false, false], [true, false], [false, true]]);
   });
 
   it("carries a paragraph on across a display equation when the sentence runs on", () => {
@@ -1428,7 +1428,8 @@ describe("structuredBlocks — text cut off by a display equation", () => {
   it("reads on across a page break where the sentence runs on, and stops at one where it ended", () => {
     // Page 1 ends "…the correction is given by", the equation opens page 2 and the text
     // after it starts a new sentence: the break is inside the writing, not between two
-    // pieces of it. A paragraph that ended at the foot of page 1 still ends there.
+    // pieces of it. A paragraph that ended at the foot of page 1 still ends there: a page
+    // turn, which only a short text that cannot stand alone reads across.
     const tail = node(1, [{ text: sentence("t", 30), x: 72, y: 600 }]);
     const lead = node(1, [{ text: "and the correction is given by", x: 72, y: 700 }]);
     const eq = display(2, 90);
@@ -1439,7 +1440,7 @@ describe("structuredBlocks — text cut off by a display equation", () => {
     const blocks = structuredBlocks(structure([
       paragraph(1, [tail]), paragraph(1, [lead]), eq.block, paragraph(2, [after]), paragraph(2, [ended]), paragraph(3, [fresh]),
     ], 3), pages);
-    expect(blocks.map((b) => b.columnBreak)).toEqual([true, false, false, false, true]);
+    expect(blocks.map((b) => [b.columnBreak, b.pageTurn === true])).toEqual([[true, false], [false, false], [false, false], [false, false], [false, true]]);
     expect(blocks[1]!.runsOn).toBe(true);
   });
 

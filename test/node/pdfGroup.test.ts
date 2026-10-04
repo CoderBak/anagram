@@ -186,4 +186,21 @@ describe("a PDF's short paragraphs", () => {
     // At 50 the right column's two are enough by themselves — still never read with the left.
     expect(groupsOf(blocks, true, 50)).toEqual([[0, 1, 2], [3, 4]]);
   });
+  it("reads the short tail a page cut off at a full stop with the paragraph before it, and no shorts together across the page", () => {
+    const words = (n: number, end = "."): string => `${Array.from({ length: n }, (_, i) => WORDS[i % WORDS.length]).join(" ")}${end}`;
+    const block = (text: string, page: number, more: Partial<ReflowBlock> = {}): ReflowBlock =>
+      ({ kind: "paragraph", text, page, runs: [], apart: false, columnBreak: false, ...more });
+    const heading: ReflowBlock = { ...block("6. Gravitational microlensing", 4), kind: "heading" };
+    // "…where other accreting systems are abundant." ends page 3; "Separating them will require…"
+    // is all of page 4 before the next heading (arXiv 2609.29211, read as the reader read it).
+    const full = block(words(90), 3), tail = block(words(43), 4, { pageTurn: true });
+    expect(groupsOf([full, tail, heading])).toEqual([[0, 1]]);
+    // Before a full paragraph on the new page it still goes with the one it came from.
+    expect(groupsOf([full, tail, block(words(90), 4)])).toEqual([[0, 1], [2]]);
+    // A column or a page the reading cannot vouch for is still a wall.
+    expect(groupsOf([full, { ...tail, pageTurn: undefined, columnBreak: true }, heading])).toEqual([[0]]);
+    // Shorts on either side of the page are settled each on their own page: the one on page 3
+    // joins the full paragraph, the one on page 4 has nobody and is left, as at a column.
+    expect(groupsOf([full, block(words(20), 3), tail, heading])).toEqual([[0, 1]]);
+  });
 });

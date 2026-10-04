@@ -108,6 +108,14 @@ export interface ReflowBlock {
    */
   columnBreak: boolean;
   /**
+   * The block opens another page of the same writing, where the paragraph before it ended its
+   * sentence (lib/pdf/structured.ts): short paragraphs are not read together across it, but a
+   * short text right after it that cannot stand alone is still read with the paragraph before
+   * it — the tail of a paragraph the page cut at a full stop, the page's only text before a
+   * heading.
+   */
+  pageTurn?: boolean;
+  /**
    * The block stops where a display equation the reader passes over takes its sentence on:
    * "…can be written equivalently as". An open end then says the sentence goes on, not
    * that the block is a label (lib/pdf/units.ts). Only lib/pdf/structured.ts knows it.
