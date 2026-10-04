@@ -220,6 +220,12 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   open in the benchmark corpus, that takes the 12 continuations at body size and none of the 9
   labels and notes. Four continuations set among formulas, at 0.82–0.94 of the body's size,
   are still left out, and the chip then stands mid-sentence at the foot of the page.
+  The other tails the benchmark loses (`test/pdf-bench`, 46 of 15,089 paragraphs losing their
+  last eight tokens, 2026-10-04) are mostly not losses: formulas the truth leaves out, and
+  acronyms LaTeXML expands. The real ones are Zotero's segmentation, one to four papers each:
+  a line taken into the caption beside it ("Fig. 5: … (right). of our framework beyond…", the
+  line at the body's size and the caption's smaller), into a display equation, or into the
+  page's furniture (`excluded`).
 - Installer recovery on Windows: two component homes registering one browser race on
   the HKCU keys (`installer/native_registration.py`), and an interrupted uninstall is
   finished only by reinstalling or deleting the folder (`installer/maintenance.ps1`).
