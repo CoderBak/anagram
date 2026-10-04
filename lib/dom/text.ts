@@ -227,7 +227,12 @@ export function skipGap(text: string, at: number): [number, number] | null {
  * either side of it into another, so those steps repeat until none applies, and so does
  * the whole after look-alikes are folded: "$\аlpha$" is a LaTeX span only then.
  */
-export function modelText(s: string): string {
+export function modelText(text: string): string {
+  const f = foundOf(text);
+  return (f.model ??= modelTextOf(text));
+}
+
+function modelTextOf(s: string): string {
   for (;;) {
     s = modelForm(s);
     const folded = foldLookalikes(s);
@@ -252,6 +257,49 @@ export function hasLetters(text: string): boolean {
   return /\p{L}/u.test(text);
 }
 
+// ---- what a text was found to be, kept -----------------------------------------------
+//
+// A page that keeps changing is read again and again, and the same paragraphs with it: a
+// chat's every new message has the walk read the two hundred before it once more, to see
+// which of them it joins; a feed's post is read again when its class or its counter changes;
+// the text of a unit is put in the model's form for its cache key, its passes and its blocks.
+// What a text IS — its words, their shape, one phrase said over and over — does not change
+// while the text does not, and finding out (Intl.Segmenter, a regular expression per
+// character) was the most of what reading a known paragraph cost: a quarter of the content
+// script's time on that chat. So each answer is kept with the text, for the texts seen last:
+// up to KEPT_CHARS characters of them, then all forgotten at once and found again as asked.
+// A text longer than KEPT_TEXT_CHARS is not kept: a whole card's or page's textContent, asked
+// once.
+
+/** What has been found about one text, each the first time it was asked. */
+interface Found {
+  words?: number;
+  shape?: WordShape;
+  repetitive?: boolean;
+  noise?: number;
+  names?: boolean;
+  model?: string;
+}
+
+const KEPT_CHARS = 1 << 19;
+const KEPT_TEXT_CHARS = 1 << 13;
+const found = new Map<string, Found>();
+let foundChars = 0;
+
+function foundOf(text: string): Found {
+  if (text.length > KEPT_TEXT_CHARS) return {};
+  let f = found.get(text);
+  if (!f) {
+    if (foundChars + text.length > KEPT_CHARS) {
+      found.clear();
+      foundChars = 0;
+    }
+    found.set(text, (f = {}));
+    foundChars += text.length;
+  }
+  return f;
+}
+
 // ---- segmenters (cached — constructing Intl.Segmenter per call is expensive) -------
 //
 // Every browser Anagram runs in has Intl.Segmenter (Chrome 87, Firefox 125; the Firefox
@@ -271,6 +319,11 @@ function sentenceSegmenter(): Seg {
 
 /** Word count via Intl.Segmenter (CJK counts correctly). */
 export function countWords(text: string): number {
+  const f = foundOf(text);
+  return (f.words ??= wordsIn(text));
+}
+
+function wordsIn(text: string): number {
   const t = text.trim();
   if (!t) return 0;
   let n = 0;
@@ -390,6 +443,11 @@ export interface WordShape {
 }
 
 export function wordShape(text: string): WordShape {
+  const f = foundOf(text);
+  return (f.shape ??= shapeOf(text));
+}
+
+function shapeOf(text: string): WordShape {
   let letterWords = 0;
   let casedWords = 0;
   let lowerStart = false;
@@ -490,6 +548,11 @@ const STRUCTURAL_SYMBOLS = new Set([
  * around 0.02–0.06 even with heavy hyphenation) — used as a merge barrier.
  */
 export function symbolNoiseRatio(text: string): number {
+  const f = foundOf(text);
+  return (f.noise ??= symbolShare(text));
+}
+
+function symbolShare(text: string): number {
   let sym = 0;
   let total = 0;
   for (const ch of text) {
@@ -519,6 +582,11 @@ export function hasColumnGaps(rawText: string): boolean {
  * capitalised share; title-case headlines are too short to matter.
  */
 export function looksLikeNameList(text: string): boolean {
+  const f = foundOf(text);
+  return (f.names ??= listsNames(text));
+}
+
+function listsNames(text: string): boolean {
   const tokens = text.split(/\s+/).filter((t) => /\p{L}/u.test(t));
   if (tokens.length < 12) return false;
   let capitalised = 0;
@@ -540,6 +608,11 @@ const MAX_REPEATED_WORDS = 8;
  * different ones.
  */
 export function isRepetitive(text: string): boolean {
+  const f = foundOf(text);
+  return (f.repetitive ??= repeatsItself(text));
+}
+
+function repeatsItself(text: string): boolean {
   const seen = new Set<string>();
   let words = 0;
   for (const s of wordSegmenter().segment(text)) {

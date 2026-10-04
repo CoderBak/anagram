@@ -841,8 +841,26 @@ function countSharedIn(list: Element, shape: string): Set<string> {
   return shared;
 }
 
-/** The scopes of one scan of `doc`. Cheap to create: the page is surveyed on first use. */
-export function createScopes(doc: Document = document): Scopes {
+/**
+ * What the scopes know of a page that its LIGHT DOM alone decides: the bylines, the posts and
+ * threads recognised, the quoted mail, the reviews. None of it reaches into a shadow root (the
+ * surveys are the document's own querySelectorAll, and an element in a shadow tree has no
+ * byline in them), so it holds for as long as the document's light DOM does not change, and
+ * a walker may keep it from one scan to the next until it does (lib/dom/walker.ts). Every
+ * answer is surveyed or worked out on first use.
+ */
+export interface ScopeSurvey {
+  /** `el` is a post recognised by its structure (see RECOGNISED). */
+  isPost(el: Element): boolean;
+  /** The quoted history `el` stands in at its own level, or null. */
+  historyAt(el: Element): Element | null;
+  /** Every element with byline evidence below it → the first such evidence. */
+  bylines(): Map<Element, Element>;
+  mail(): MailHistory;
+  reviews(): Reviews;
+}
+
+export function surveyScopes(doc: Document = document): ScopeSurvey {
   /** Every element with byline evidence below it (light DOM) → the FIRST such evidence. */
   let bylines: Map<Element, Element> | null = null;
   const shapes = new Map<Element, string>();
@@ -854,7 +872,6 @@ export function createScopes(doc: Document = document): Scopes {
   const followed = new Map<Element, Set<Element>>();
   const several = new Map<Element, boolean>();
   const posts = new Map<Element, boolean>();
-  const nearest = new Map<Element, Element | null>();
   let mail: MailHistory | null = null;
   let reviews: Reviews | null = null;
 
@@ -1040,6 +1057,21 @@ export function createScopes(doc: Document = document): Scopes {
     return false;
   }
 
+  return {
+    isPost,
+    historyAt,
+    bylines: () => (bylines ??= survey()),
+    mail: () => (mail ??= surveyMail(doc)),
+    reviews: () => (reviews ??= surveyReviews(doc)),
+  };
+}
+
+/** The scopes of one scan of `doc`. Cheap to create: the page is surveyed on first use, unless
+ *  the scan is given a survey of the page kept from an earlier one (ScopeSurvey). Which voice
+ *  an element stands in is answered once per scan: the way up to it can cross shadow roots. */
+export function createScopes(doc: Document = document, page: ScopeSurvey = surveyScopes(doc)): Scopes {
+  const nearest = new Map<Element, Element | null>();
+
   /**
    * THE LIST'S OWN WORDS. A sentence every card of a list repeats is the site's, not the
    * writer's: Tripadvisor ends each review with the same 38 words — "This review is the
@@ -1073,11 +1105,11 @@ export function createScopes(doc: Document = document): Scopes {
           break;
         }
         path.push(cur);
-        if (cur.matches(DECLARED_SCOPE_SELECTOR) || (reviews ??= surveyReviews(doc)).cards.has(cur) || isPost(cur)) {
+        if (cur.matches(DECLARED_SCOPE_SELECTOR) || page.reviews().cards.has(cur) || page.isPost(cur)) {
           scope = cur;
           break;
         }
-        const history = historyAt(cur);
+        const history = page.historyAt(cur);
         if (history) {
           scope = history;
           break;
@@ -1088,7 +1120,7 @@ export function createScopes(doc: Document = document): Scopes {
     },
 
     recognised(scope: Element | null): boolean {
-      return scope !== null && !scope.matches(DECLARED_SCOPE_SELECTOR) && !(reviews ??= surveyReviews(doc)).cards.has(scope) && !(mail ??= surveyMail(doc)).starts.has(scope);
+      return scope !== null && !scope.matches(DECLARED_SCOPE_SELECTOR) && !page.reviews().cards.has(scope) && !page.mail().starts.has(scope);
     },
 
     oneBody(a: Element, b: Element, scope: Element): boolean {
@@ -1101,12 +1133,12 @@ export function createScopes(doc: Document = document): Scopes {
       }
       if (!body || body === scope) return false; // they meet at the post itself, where its byline is
       for (let cur = composedParent(a); cur && cur !== body; cur = composedParent(cur)) if (!TEXT_MARKUP.has(tagOf(cur))) return false;
-      return !(bylines ??= survey()).has(body);
+      return !page.bylines().has(body);
     },
 
     holds(outer: Element, inner: Element): boolean {
       if (outer.contains(inner)) return true;
-      if (!(mail ??= surveyMail(doc)).starts.has(outer)) return false;
+      if (!page.mail().starts.has(outer)) return false;
       for (let cur: Element | null = inner; cur; cur = cur.parentElement) {
         if (cur.parentElement === outer.parentElement) return (outer.compareDocumentPosition(cur) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
       }
@@ -1114,11 +1146,11 @@ export function createScopes(doc: Document = document): Scopes {
     },
 
     header(el: Element): boolean {
-      return (mail ??= surveyMail(doc)).headers.has(el);
+      return page.mail().headers.has(el);
     },
 
     furniture(node: Node): boolean {
-      const r = (reviews ??= surveyReviews(doc));
+      const r = page.reviews();
       const parent = node.parentElement;
       // A text standing directly in a box between the card and its body is outside the body;
       // so is an element, unless it is the body or leads down to it.

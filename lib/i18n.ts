@@ -51,13 +51,30 @@ function fill(message: string, subs: string[]): string {
   return message.replace(/\$([1-9])/g, (whole, d: string) => subs[Number(d) - 1] ?? whole);
 }
 
+/**
+ * The platform's answers, per platform: its language does not change while a page is open,
+ * and asking it crosses into the extension's bindings each time — a chip's card asks a dozen
+ * times whenever it is drawn, and on a chat that keeps them coming that was 12 ms in 30 s.
+ */
+const answered = new WeakMap<I18nApi, Map<string, string>>();
+const MAX_ANSWERED = 2000;
+
 /** One message, in the browser's UI language, English if there is nothing else. */
 export function t(key: MessageKey, ...subs: (string | number)[]): string {
   const list = subs.map(String);
+  const api = platform();
+  const asked = list.length === 0 ? key : `${key}\u0000${list.join("\u0000")}`;
+  const known = api && answered.get(api)?.get(asked);
+  if (known) return known;
   try {
-    const answer = platform()?.getMessage(key, list);
+    const answer = api?.getMessage(key, list);
     // "" is the platform's way of saying it has no such message — fall through to ours.
-    if (answer) return answer;
+    if (answer) {
+      let kept = answered.get(api!);
+      if (!kept) answered.set(api!, (kept = new Map()));
+      if (kept.size < MAX_ANSWERED) kept.set(asked, answer);
+      return answer;
+    }
   } catch {
     /* an extension context that has just been invalidated — the English still works */
   }

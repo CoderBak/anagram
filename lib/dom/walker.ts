@@ -81,7 +81,8 @@ import {
   MODEL_MIN_WORDS,
   MAX_UNIT_TEXT_CHARS,
 } from "./text";
-import { type Scopes, createScopes } from "./scope";
+import { type Scopes, createScopes, surveyScopes } from "./scope";
+import { keptUntilChanged } from "./kept";
 import { isTranslatedInPlace } from "./translation";
 import { WINDOW_CHARS } from "../capture/windows";
 // The arithmetic of grouping — the floor, the window, the even division, the orphan rule
@@ -1336,12 +1337,17 @@ function outsideLists(el: Element): Element {
  * else the page — and runs merge only inside one scope. The answers are cached per scan,
  * and a scan asks twice: `wholePost` before the walk, the walk and its assembler during it.
  * The first to ask creates the scopes of the scan and the walk takes them over, so the page
- * is surveyed for bylines and mail quotations once.
+ * is surveyed for bylines and mail quotations once. What the page's light DOM alone decides
+ * (scope.ts, ScopeSurvey) is kept from one scan to the next until the page changes
+ * (lib/dom/kept.ts): a chat's drain walks the stretch a new message joined and then, one at a
+ * time, the messages the groups it re-divided had held — 24 walks a drain on a chat adding a
+ * message every 300 ms — and every one of them surveyed the whole page again.
  */
 let scanScopes: Scopes | null = null;
+const keptSurvey = keptUntilChanged(() => surveyScopes(document));
 
 function scopesOfScan(): Scopes {
-  return (scanScopes ??= createScopes());
+  return (scanScopes ??= createScopes(document, keptSurvey()));
 }
 
 /** `root` holds `el` in the COMPOSED tree: contains() alone stops at a shadow root. */
