@@ -1313,10 +1313,13 @@ export function createOrchestrator(
       return el?.isConnected ? [el] : [];
     });
     if (bases.length > 0) {
+      // A part is touched where a base holds its container, or its container holds a base:
+      // one climb from each, not a question of every base about every part.
+      const underBase = heldBy(new Set(bases));
+      const overBase = new Set<Node>();
+      for (const b of bases) for (let at: Node | null = b; at && !overBase.has(at); at = at.parentNode) overBase.add(at);
       for (const unit of [...unitsById.values()]) {
-        const touched = bases.some((b) =>
-          unit.parts.some((p) => b.contains(p.container) || p.container.contains(b)),
-        );
+        const touched = unit.parts.some((p) => overBase.has(p.container) || underBase(p.container));
         if (touched && currentTextOf(unit) !== unit.text) invalidateUnit(unit, seedQueue);
       }
     }
@@ -1754,8 +1757,34 @@ function intersectsViewport(el: Element): boolean {
 
 /** Merge scan roots, dropping disconnected ones and any contained by another. */
 function dedupeRoots(all: Element[]): Element[] {
-  const uniq = [...new Set(all)].filter((el) => el.isConnected);
-  return uniq.filter((r) => !uniq.some((o) => o !== r && o.contains(r)));
+  const uniq = new Set(all.filter((el) => el.isConnected));
+  const held = heldBy(uniq);
+  return [...uniq].filter((r) => !held(r.parentNode));
+}
+
+/**
+ * Whether one of `holders` is `node` or an ancestor of it, as contains() has it (in the
+ * node's own tree). Every node a question climbs through is remembered, so the questions
+ * about a burst cost one climb through the part of the page they pass, however many there
+ * are: asking each holder about each node cost their product, and a page that changed
+ * fifty thousand nodes at once held its main thread for minutes.
+ */
+function heldBy(holders: ReadonlySet<Node>): (node: Node | null) => boolean {
+  const known = new Map<Node, boolean>();
+  return (node) => {
+    const path: Node[] = [];
+    let held = false;
+    for (let at = node; at; at = at.parentNode) {
+      const k = known.get(at);
+      if (k !== undefined || holders.has(at)) {
+        held = k ?? true;
+        break;
+      }
+      path.push(at);
+    }
+    for (const n of path) known.set(n, held);
+    return held;
+  };
 }
 
 /**

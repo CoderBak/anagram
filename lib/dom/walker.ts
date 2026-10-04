@@ -90,7 +90,7 @@ import { WINDOW_CHARS } from "../capture/windows";
 // walk can say: which runs stand beside each other, and in whose voice.
 import { clearsFloor, fitsWindow, groupWords, modelSized, orphanHome } from "../plan/group";
 import { MARK_ATTR } from "../types";
-import { cutText } from "./splits";
+import { cutTextAt } from "./splits";
 import { finish } from "../slices";
 
 /**
@@ -295,8 +295,30 @@ function inCardLink(r: Run): boolean {
  *  badge, anchor label), not content — skipped without breaking the sentence. */
 const SMALL_OUT_OF_FLOW_CHARS = 40;
 
+/**
+ * How deep in the composed tree, shadow trees included, the walk goes. The walk is a
+ * generator per level of the tree, and a page's script can nest elements as deep as it
+ * likes: at some 1,500 levels Chromium ran out of stack, the walk threw, and nothing on the
+ * page was read, at its first walk or any after. The HTML parsers of Chromium and WebKit nest
+ * no deeper than 512 (markup past that is set as siblings), so only a script builds a tree
+ * deeper, and what it puts there is left unread: an element this deep closes the run like a
+ * block of its own, and the walk does not go into it.
+ */
+export const MAX_WALK_DEPTH = 512;
+
+/**
+ * The most nodes the walk visits without a pause. It pauses between blocks, where no run is
+ * open, and on a page that comes every few dozen nodes; but a paragraph of a million inline
+ * elements held its page for five seconds without one. Past this many nodes in one stretch
+ * the walk pauses inside the paragraph too: what the page changes meanwhile, the observers
+ * record, as across any other pause.
+ */
+const MOST_NODES_UNPAUSED = 4096;
+
 /** Blank line inside preserved-whitespace text == paragraph gap. */
 const PARA_GAP_RE = /\n[ \t\r]*\n/;
+/** A step of splitPreservedText that closes the run; its other steps are pieces to read. */
+const CLOSE = -1;
 
 /** How far a clamping box may sit above the text, and a control above its label or after
  *  the text it cuts. */
@@ -483,6 +505,9 @@ export function* collectUnitsInSlices(
   if (!root) return [];
   const rootEl: Element | null = root instanceof Element ? root : null;
   if (rootEl && !rootEl.isConnected) return [];
+  // Before anything climbs from it: a re-scan root past the depth the walk goes to has
+  // nothing to read, and every ancestor of it is a step of the climbs below.
+  if (rootEl && composedPath(rootEl).length > MAX_WALK_DEPTH) return [];
   if (rootEl && isExcludedByAncestry(rootEl)) return [];
 
   const plainTextDoc = document.contentType === "text/plain";
@@ -492,6 +517,10 @@ export function* collectUnitsInSlices(
   const scopes = scopesOfScan();
   scanScopes = null; // the next scan looks at the page anew
   if (!startEl) return [];
+  /** The composed depth of the element being visited, the document counted (MAX_WALK_DEPTH). */
+  let level = composedPath(startEl).length;
+  /** Nodes visited since the walk last paused (MOST_NODES_UNPAUSED). */
+  let unpaused = 0;
   // Each of these looks over the whole page once: a pause between them, as between blocks.
   yield;
   const consentBanners = findConsentBanners(startEl);
@@ -774,16 +803,26 @@ export function* collectUnitsInSlices(
   };
 
   function* visitChildren(el: Element, ctx: Ctx): Generator<void, void> {
+    level++;
     for (const child of composedChildren(el, onShadowRoot)) yield* visit(child, ctx);
+    level--;
   }
 
   function* visit(node: Node, ctx: Ctx): Generator<void, void> {
+    if (++unpaused >= MOST_NODES_UNPAUSED) {
+      unpaused = 0;
+      yield;
+    }
     if (node.nodeType === Node.TEXT_NODE) {
-      visitText(node as Text, ctx);
+      if (visitText(node as Text, ctx)) yield* splitPreservedText(node as Text, ctx);
       return;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as Element;
+    if (level >= MAX_WALK_DEPTH) {
+      closeRun();
+      return;
+    }
     const tag = tagOf(el); // normalized — SVG/MathML/XHTML report lowercase nodeName
 
     if (tag === "BR") {
@@ -879,6 +918,7 @@ export function* collectUnitsInSlices(
         closeRun();
         yield* visitChildren(el, { container: el, hidden, preserves });
         closeRun();
+        unpaused = 0;
         yield;
         return;
       }
@@ -908,18 +948,21 @@ export function* collectUnitsInSlices(
     yield* visitChildren(el, { container: el, hidden, preserves });
     closeRun();
     // Between blocks, with no run open: where a walk may pause (collectUnitsInSlices).
+    unpaused = 0;
     yield;
   }
 
-  function visitText(tn: Text, ctx: Ctx): void {
-    if (ctx.hidden) return;
-    if (scopes.furniture(tn)) return; // "by alice" beside a review's declared text (lib/dom/scope.ts)
+  /** Read a text node into the open run; true where it holds paragraph breaks of its own,
+   *  which splitPreservedText reads instead. */
+  function visitText(tn: Text, ctx: Ctx): boolean {
+    if (ctx.hidden) return false;
+    if (scopes.furniture(tn)) return false; // "by alice" beside a review's declared text (lib/dom/scope.ts)
     const s = tn.textContent ?? "";
     if (s.length <= MAX_EXPAND_LABEL_CHARS) {
       const label = s.trim();
       if (isExpandLabel(label)) {
         const control = controlOf(tn, label);
-        if (control && markCut(label, control)) return; // the control is not the text
+        if (control && markCut(label, control)) return false; // the control is not the text
       }
     }
     if (ctx.preserves && s.trim() !== "" && curQuote >= 0 && (curQuote > 0 || s.indexOf(">") >= 0)) {
@@ -930,19 +973,17 @@ export function* collectUnitsInSlices(
       const opensLine = /^[ \t]*\n/.test(s) || atLineStart();
       if (opensLine && runQuoteDepth(s) !== curQuote) closeRun();
     }
-    if (ctx.preserves && (PARA_GAP_RE.test(s) || nextQuoteBoundary(s) > 0)) {
-      splitPreservedText(tn, ctx);
-      return;
-    }
+    if (ctx.preserves && (PARA_GAP_RE.test(s) || nextQuoteBoundary(s) > 0)) return true;
     if (s.trim().length === 0) {
       // A whitespace-only node BETWEEN inline elements is the space between two
       // words (`<b>Alan</b> <i>Turing</i>`); dropping it glued them into one token
       // and starved the word count. Keep it while a run is open; leading ones are
       // nothing, trailing ones are trimmed in closeRun.
       if (cur.length > 0) pushNode(tn, ctx);
-      return;
+      return false;
     }
     pushNode(tn, ctx);
+    return false;
   }
 
   /**
@@ -953,41 +994,71 @@ export function* collectUnitsInSlices(
    * (idempotent — the resulting chunk nodes contain no further breaks) so parts stay
    * whole-node spans. Every cut is recorded (lib/dom/splits.ts), so the page gets its
    * node back the moment it writes to it, removes it or moves it.
+   *
+   * The cuts are found in one pass over the text and made together (cutTextAt): found and
+   * made one at a time, each looked through, and copied, all the text after it, and a 10 MB
+   * chat log of short paragraphs held its page for minutes. The walk may pause after each
+   * paragraph, as it does after a block.
    */
-  function splitPreservedText(tn: Text, ctx: Ctx): void {
-    let node: Text = tn;
-    for (;;) {
-      const s = node.textContent ?? "";
-      const m = PARA_GAP_RE.exec(s);
-      const quoteAt = nextQuoteBoundary(s);
-      if (quoteAt > 0 && (m === null || quoteAt < m.index)) {
-        const rest = cutText(node, quoteAt); // the boundary is a line start: never 0
-        if ((node.textContent ?? "").trim()) pushNode(node, ctx);
-        closeRun();
-        node = rest;
+  function* splitPreservedText(tn: Text, ctx: Ctx): Generator<void, void> {
+    const s = tn.data;
+    /** Where the node is cut, and what the walk does with the pieces: a piece's number is
+     *  read (when it holds text), CLOSE closes the run. */
+    const cuts: number[] = [];
+    const steps: number[] = [];
+    const gaps = new RegExp(PARA_GAP_RE.source, "g");
+    /** The first gap at or after the piece being read; null when none is left. */
+    let m: RegExpExecArray | null = gaps.exec(s);
+    /** The first quotation marker at or after the piece being read; -1 when none is left. */
+    let marker = s.indexOf(">");
+    for (let from = 0; ; ) {
+      // The gap found last, for as long as it lies ahead.
+      if (m !== null && m.index < from) {
+        gaps.lastIndex = from;
+        m = gaps.exec(s);
+      }
+      // A quotation's edge counts only before the gap: past it, the gap cuts first. Each is
+      // looked for no further than that, and the next marker once the pieces have passed it.
+      const to = m === null ? s.length : m.index;
+      if (marker >= 0 && marker < from) marker = s.indexOf(">", from);
+      const quoteAt = marker >= 0 && marker < to ? nextQuoteBoundary(s, from, to) : -1;
+      if (quoteAt > from) {
+        steps.push(cuts.length, CLOSE);
+        cuts.push(quoteAt); // the boundary is a line start: never `from`
+        from = quoteAt;
         continue;
       }
-      if (!m) {
-        if (s.trim()) pushNode(node, ctx);
-        return;
+      if (m === null) {
+        steps.push(cuts.length);
+        break;
       }
-      if (m.index > 0) {
-        const rest = cutText(node, m.index); // node keeps the paragraph text
-        if ((node.textContent ?? "").trim()) pushNode(node, ctx);
-        closeRun();
-        node = rest; // rest begins with the gap → next iteration hits index 0
+      if (m.index > from) {
+        steps.push(cuts.length, CLOSE);
+        cuts.push(m.index); // the piece keeps the paragraph text, the rest begins with the gap
+        from = m.index;
         continue;
       }
-      // Gap at position 0: consume it (and any following blank space).
+      // A gap where the piece begins: it and any blank space after it are read by nobody.
       let end = m.index + m[0].length;
       while (end < s.length && /\s/.test(s[end]!)) end++;
-      closeRun();
-      // Whole node is gap: NOTHING to split. splitText(length) would be a mutating
+      steps.push(CLOSE);
+      // Whole piece is gap: NOTHING to split. splitText(length) would be a mutating
       // no-op that fires fresh mutation records — the first scan already left this
       // gap in its own node, and re-splitting it forever fed an infinite
       // observe→rescan loop with one leaked empty text node per cycle.
-      if (end >= s.length) return;
-      node = cutText(node, end);
+      if (end >= s.length) break;
+      cuts.push(end);
+      from = end;
+    }
+    const pieces = cuts.length > 0 ? cutTextAt(tn, cuts) : [tn];
+    for (const step of steps) {
+      if (step !== CLOSE) {
+        if (pieces[step]!.data.trim()) pushNode(pieces[step]!, ctx);
+        continue;
+      }
+      closeRun();
+      unpaused = 0;
+      yield;
     }
   }
 
@@ -1027,23 +1098,24 @@ export function* collectUnitsInSlices(
  * all). Slots resolve to what is assigned to them, so light children are counted where
  * they render rather than twice or not at all.
  */
-function composedTextLength(root: Element | ShadowRoot, limit: number): number {
-  // The light tree, in one native call and exactly as this rule always measured it.
-  let total = (root.textContent ?? "").trim().length;
-  if (total > limit) return total;
-  // Then the shadow trees: the element's own first — that is the Docs overlay — and the
-  // ones hanging inside it. What a slot renders is the host's light children, already
-  // counted above, so only a shadow tree's own text is added to them.
-  const own = root instanceof Element ? shadowRootOf(root) : null;
-  if (own !== null) {
-    total += composedTextLength(own, limit - total);
+function composedTextLength(root: Element, limit: number): number {
+  let total = 0;
+  // The trees still to count, rather than a call per tree inside a tree: a page can nest
+  // shadow trees deeper than the stack goes.
+  const trees: (Element | ShadowRoot)[] = [root];
+  for (let tree = trees.pop(); tree !== undefined; tree = trees.pop()) {
+    // The light tree, in one native call and exactly as this rule always measured it.
+    total += (tree.textContent ?? "").trim().length;
     if (total > limit) return total;
-  }
-  for (const el of root.querySelectorAll("*")) {
-    const sr = shadowRootOf(el);
-    if (sr === null) continue;
-    total += composedTextLength(sr, limit - total);
-    if (total > limit) break;
+    // Then the shadow trees: the element's own — that is the Docs overlay — and the ones
+    // hanging inside it. What a slot renders is the host's light children, already counted,
+    // so only a shadow tree's own text is added to them.
+    const own = tree instanceof Element ? shadowRootOf(tree) : null;
+    if (own !== null) trees.push(own);
+    for (const el of tree.querySelectorAll("*")) {
+      const sr = shadowRootOf(el);
+      if (sr !== null) trees.push(sr);
+    }
   }
   return total;
 }
@@ -1240,23 +1312,25 @@ function firstLineQuoteDepth(nodes: Text[]): number {
   return 0;
 }
 
-/** Offset of the first line whose quote depth differs from the line before it, or -1.
- *  Blank lines carry no depth of their own and never break the comparison. The text of
- *  a page has no quote marker in it at all nine times out of ten — that is one indexOf,
- *  and the line scan never runs. */
-function nextQuoteBoundary(s: string): number {
-  if (s.indexOf(">") < 0) return -1;
-  let lineStart = 0;
+/** Offset of the first line whose quote depth differs from the line before it, or -1, among
+ *  the lines that open in [from, to) — `from` read as a line's start. Blank lines carry no
+ *  depth of their own and never break the comparison. The text of a page has no quote
+ *  marker in it at all nine times out of ten — that is one indexOf, and the line scan never
+ *  runs. */
+function nextQuoteBoundary(s: string, from = 0, to = s.length): number {
+  const marker = s.indexOf(">", from);
+  if (marker < 0 || marker >= to) return -1;
   let depth = -1;
-  for (let i = 0; i <= s.length; i++) {
-    if (i < s.length && s[i] !== "\n") continue;
-    const line = s.slice(lineStart, i);
+  for (let lineStart = from; lineStart < to; ) {
+    let end = s.indexOf("\n", lineStart);
+    if (end < 0) end = s.length;
+    const line = s.slice(lineStart, end);
     if (line.trim() !== "") {
       const d = quoteDepth(line);
-      if (depth >= 0 && d !== depth && lineStart > 0) return lineStart;
+      if (depth >= 0 && d !== depth && lineStart > from) return lineStart;
       depth = d;
     }
-    lineStart = i + 1;
+    lineStart = end + 1;
   }
   return -1;
 }

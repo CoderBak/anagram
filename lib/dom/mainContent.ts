@@ -24,26 +24,31 @@ export function findMainContent(doc: Document = document): Element | null {
 /** Text mass per element, skipping machine-text subtrees. One pass, memoized. */
 function buildMassMap(root: Element): Map<Element, number> {
   const mass = new Map<Element, number>();
-
-  function measure(el: Element): number {
-    if (SKIP_MASS_TAGS.has(el.nodeName.toUpperCase())) {
-      mass.set(el, 0);
-      return 0;
-    }
+  // Parents before their children, without a call per level: a page can nest elements
+  // deeper than the stack goes. Summed back to front, every child is measured before its
+  // parent adds it up.
+  const order: Element[] = [];
+  for (const stack = [root]; stack.length > 0; ) {
+    const el = stack.pop()!;
+    order.push(el);
+    if (SKIP_MASS_TAGS.has(el.nodeName.toUpperCase())) continue;
+    for (let c = el.firstElementChild; c; c = c.nextElementSibling) stack.push(c);
+  }
+  for (let i = order.length - 1; i >= 0; i--) {
+    const el = order[i]!;
     let total = 0;
-    for (let n = el.firstChild; n; n = n.nextSibling) {
-      if (n.nodeType === Node.TEXT_NODE) {
-        const t = n.textContent;
-        if (t) total += t.trim().length;
-      } else if (n.nodeType === Node.ELEMENT_NODE) {
-        total += measure(n as Element);
+    if (!SKIP_MASS_TAGS.has(el.nodeName.toUpperCase())) {
+      for (let n = el.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === Node.TEXT_NODE) {
+          const t = n.textContent;
+          if (t) total += t.trim().length;
+        } else if (n.nodeType === Node.ELEMENT_NODE) {
+          total += mass.get(n as Element) ?? 0;
+        }
       }
     }
     mass.set(el, total);
-    return total;
   }
-
-  measure(root);
   return mass;
 }
 

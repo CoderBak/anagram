@@ -324,7 +324,9 @@ function isPersonLink(a: Element): boolean {
 /** Where a link goes, tracking parameters and fragments aside (LinkedIn's avatar and name
  *  links differ in `?trk=` only); null for links that go nowhere else. */
 function placeOf(a: Element): string | null {
-  const place = (a.getAttribute("href") ?? "").replace(/[?#].*$/, "");
+  const href = a.getAttribute("href") ?? "";
+  const cut = href.search(/[?#]/);
+  const place = cut < 0 ? href : href.slice(0, cut);
   return place.length > 1 && !/^javascript:/i.test(place) ? place : null;
 }
 
@@ -397,15 +399,26 @@ function isByKind(el: Element, tag: string, pictured: Set<string>): boolean {
 const CONTROL_SELECTOR =
   'button,select,textarea,input,option,template,script,style,[hidden],[popover],[role="menu"],[role="menuitem"],details:not([open])';
 
-/** The text under `node` that is content, counted no further than `limit` matters. */
+/** The text under `node` that is content, counted no further than `limit` matters. In
+ *  document order, from a list of the nodes still to count rather than a call per level: a
+ *  page can nest elements deeper than the stack goes. */
 function contentChars(node: Node, limit: number): number {
-  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim().length;
-  if (node.nodeType !== Node.ELEMENT_NODE) return 0;
-  const el = node as Element;
-  if (el.matches(CONTROL_SELECTOR)) return 0;
-  if (!el.querySelector(CONTROL_SELECTOR)) return (el.textContent ?? "").trim().length;
   let chars = 0;
-  for (let child = el.firstChild; child && chars <= limit; child = child.nextSibling) chars += contentChars(child, limit - chars);
+  for (const stack = [node]; stack.length > 0 && chars <= limit; ) {
+    const at = stack.pop()!;
+    if (at.nodeType === Node.TEXT_NODE) {
+      chars += (at.textContent ?? "").trim().length;
+      continue;
+    }
+    if (at.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = at as Element;
+    if (el.matches(CONTROL_SELECTOR)) continue;
+    if (!el.querySelector(CONTROL_SELECTOR)) {
+      chars += (el.textContent ?? "").trim().length;
+      continue;
+    }
+    for (let child = el.lastChild; child; child = child.previousSibling) stack.push(child);
+  }
   return chars;
 }
 
