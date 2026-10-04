@@ -85,17 +85,46 @@ describe("groupBlocks", () => {
     });
   });
 
-  it("keeps a group inside one model window unless the floor forbids the cut", () => {
+  it("keeps a group inside one model window unless the floor forbids the cut or an orphan would be lost", () => {
     forSeeds(300, (r) => {
       const floor = r.pick(MIN_WORDS_CHOICES);
       const blocks = sequence(r, floor);
       for (const g of groupBlocks(blocks, floor)) {
         const parts = g.map((i) => blocks[i]!);
         if (fitsWindow(parts) || parts.length === 1) continue;
-        // The only group allowed past the window is a stretch of SHORT blocks that cannot
-        // be divided without leaving a piece under the floor (thirty-letter words).
-        expect(parts.every((p) => p.words < floor)).toBe(true);
+        // Past the window: a stretch of SHORT blocks that cannot be divided without leaving a
+        // piece under the floor (thirty-letter words), or ONE full paragraph with the short
+        // text beside it that no side could take inside a window, which is read with it
+        // rather than not at all.
+        const full = parts.filter((p) => p.words >= floor).length;
+        expect(full <= 1, JSON.stringify(parts.map((p) => p.words))).toBe(true);
       }
+    });
+  });
+
+  it("drops a short text only where no full paragraph of its stretch stands next to it", () => {
+    forSeeds(300, (r) => {
+      const floor = r.pick(MIN_WORDS_CHOICES);
+      const blocks = sequence(r, floor);
+      const placed = new Set(groupBlocks(blocks, floor).flat());
+      blocks.forEach((b, i) => {
+        if (placed.has(i) || roleOf(b) !== "prose" || b.words >= floor) return;
+        // Left out: its run of short blocks, up to the nearest boundary on each side, has no
+        // full paragraph at either end that it could have joined.
+        const bounded = (at: number, step: number): boolean => {
+          for (let k = at; k >= 0 && k < blocks.length; k += step) {
+            const block = blocks[k]!;
+            if (step > 0 && block.barrierBefore) return true;
+            if (roleOf(block) === "skip") { if (step < 0 && block.barrierBefore) return true; continue; }
+            if (roleOf(block) !== "prose") return true;
+            if (block.words >= floor) return false;
+            if (step < 0 && block.barrierBefore) return true;
+          }
+          return true;
+        };
+        const before = bounded(i - 1, -1) || blocks[i]!.barrierBefore === true, after = bounded(i + 1, 1);
+        expect(before && after, `block ${i} (${b.words} words) dropped beside a full paragraph`).toBe(true);
+      });
     });
   });
 

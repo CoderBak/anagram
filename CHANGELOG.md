@@ -41,6 +41,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- A short paragraph next to a long one of the same text went unread when the two together were longer than the model reads at once (a 40-word close after a 290-word paragraph, the 43-word rest of a paragraph a PDF page cut off): it now joins the paragraph before it, or the one after, all the same, and the unit is read in passes like any long paragraph.
 - A row of the toolbar menu's list whose text was cut at a space carried that space at the end of its spoken name.
 - In the PDF reader, the rest of a paragraph that a figure or a table cut off at the head of the next page went unread when Zotero took it for part of the float ("…arguing that simulated INT8 preserves" / table / "vulnerability rather than creating severe gradient obfuscation."), and the chip stood mid-sentence. Where it is set at the body's size and opens in lower case, it is now read with its paragraph; a figure's or a table's own words, set smaller, still are not.
 - In the PDF reader, the tail of a paragraph that a page cut at a full stop — the next page's only text before a heading, say — went unread when it was too short to stand alone: a page turn stopped it joining the paragraph it came from. It now joins it, as a short paragraph does on one page. Over 207 papers of the benchmark, 1,308 more words are read; paragraph boundaries are as before.

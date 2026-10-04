@@ -111,8 +111,9 @@ export type OrphanHome = "before" | "after" | null;
  * article lost 570 of its 2407 words that way (isolated paragraphs of 40 to 47 words
  * between full ones), a Zhihu answer the 13-word lead-in before a 57-word paragraph and
  * the 40-word close after an 82-word one. Such a text joins the full paragraph standing
- * next to it — the one BEFORE it by preference, else the one after — when the two still
- * fit one model window together. The chip then reads ×2.
+ * next to it — the one BEFORE it by preference, else the one after — preferring a side the
+ * two still fit one model window with, and taking a side all the same where neither does.
+ * The chip then reads ×2.
  *
  * `beside` answers whether the paragraph on that side really stands next to this text;
  * what that means is the caller's, because it is the one thing that is not arithmetic
@@ -126,8 +127,16 @@ export function orphanHome<T extends Sized>(
   beside: (side: "before" | "after") => boolean,
 ): OrphanHome {
   if (group.length === 0) return null;
-  if (before !== null && beside("before") && fitsWindow([...before, ...group])) return "before";
-  if (after !== null && beside("after") && fitsWindow([...group, after])) return "after";
+  const nearBefore = before !== null && beside("before");
+  const nearAfter = after !== null && beside("after");
+  if (nearBefore && fitsWindow([...before, ...group])) return "before";
+  if (nearAfter && fitsWindow([...group, after])) return "after";
+  // Neither side takes it inside one window. A unit longer than a window is read in windows
+  // anyway (lib/capture/windows.ts plans overlapping passes), and text of one voice that
+  // nobody reads is worse than a unit a window longer: the 43-word rest of a paragraph a page
+  // cut off, after the 224 words before it, was dropped. The side before by preference.
+  if (nearBefore) return "before";
+  if (nearAfter) return "after";
   return null;
 }
 
