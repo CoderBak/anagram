@@ -242,7 +242,10 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   paragraph left open, captions are often set at the body's size, and equations open with a
   line at it, so a split by size would cut far more captions and equations wrongly than it
   mends. The fix belongs to Zotero's segmentation model.
-- Installer recovery on Windows: two component homes registering one browser race on
-  the HKCU keys (`installer/native_registration.py`), and an interrupted uninstall is
-  finished only by reinstalling or deleting the folder (`installer/maintenance.ps1`).
+- In-browser engine on the processor: ONNX Runtime Web's published binaries use fixed-width
+  WebAssembly SIMD only (none of the relaxed-SIMD opcodes, 0xFD 0x100–0x113, is in the 1.30.0
+  binaries' code). Its build has `--enable_wasm_relaxed_simd` (`-mrelaxed-simd`, which MLAS's
+  kernels can use for fused multiply-adds), but no published artefact is built with it; using
+  it means building ONNX Runtime with Emscripten ourselves, shipping a binary that is not the
+  pinned npm package's, and keeping the plain one for Safari, which has no relaxed SIMD.
 - Windows and Linux have not been exercised on real machines.
