@@ -20,6 +20,7 @@
 import { skipGap } from "../dom/text";
 import { BARE_NUMBER, lineNumberMarks, type NumberMark, type PageContent } from "./lineNumbers";
 import { finish } from "../slices";
+import { append, least, most } from "./arrays";
 
 /** One run of glyphs as the extractor hands it over. */
 export interface PdfTextItem {
@@ -558,8 +559,8 @@ function makeLine(page: number, items: PdfTextItem[], index: ItemIndex): Line {
   return {
     page,
     y: dominant.y,
-    x0: Math.min(...sorted.map((i) => i.x)),
-    x1: Math.max(...sorted.map((i) => i.x + i.width)),
+    x0: least(sorted, (i) => i.x),
+    x1: most(sorted, (i) => i.x + i.width),
     size: dominant.height,
     font: dominant.fontName ?? "",
     text: line.text,
@@ -713,8 +714,8 @@ interface Band {
 function findGutters(lines: Line[], pageWidth: number, pageHeight: number): Gutters {
   if (lines.length < MIN_LINES_FOR_COLUMNS) return NO_GUTTERS;
   const items = lines.flatMap((l) => l.items);
-  const left = Math.min(...lines.map((l) => l.x0));
-  const right = Math.max(...lines.map((l) => l.x1));
+  const left = least(lines, (l) => l.x0);
+  const right = most(lines, (l) => l.x1);
   const span = right - left;
   if (span < pageWidth * 0.4) return NO_GUTTERS;
   const size = median(lines.map((l) => l.size));
@@ -768,8 +769,8 @@ interface Banding {
 }
 
 function bandsOf(items: PdfTextItem[], left: number, cell: number): Banding {
-  const top = Math.min(...items.map((it) => it.y));
-  const depth = (Math.max(...items.map((it) => it.y)) - top) / GUTTER_BANDS || 1;
+  const top = least(items, (it) => it.y);
+  const depth = (most(items, (it) => it.y) - top) / GUTTER_BANDS || 1;
   // Which cells each band's runs cover, accumulated as differences so one pass over the
   // runs is enough however finely the page is scanned.
   const covers = Array.from({ length: GUTTER_BANDS }, () => new Float64Array(GUTTER_CELLS + 1));
@@ -1019,7 +1020,7 @@ function orderColumns(lines: Line[], columns: number): Line[] {
   const out: Line[] = [];
   let held: Line[][] = Array.from({ length: columns }, () => []);
   const flush = (): void => {
-    for (const column of held) out.push(...column);
+    for (const column of held) append(out, column);
     held = Array.from({ length: columns }, () => []);
   };
   for (const line of lines) {
@@ -1034,8 +1035,10 @@ function orderColumns(lines: Line[], columns: number): Line[] {
 
 // ---- front matter -----------------------------------------------------------------------
 
-/** An e-mail address or a URL: not something a paragraph of prose has in it. */
-const CONTACT = /\S+@\S+|https?:\/\/|www\./;
+/** An e-mail address or a URL: not something a paragraph of prose has in it. An "@" with
+ *  something on either side, not a run of non-spaces around one: tried at each character of a
+ *  long run with no "@" in it, that search took time as the square of the run's length. */
+const CONTACT = /\S@\S|https?:\/\/|www\./;
 /** The front matter never reaches past this share of the first page. */
 const FRONT_MATTER_MAX_Y = 0.5;
 /** …nor past this many lines, however centred the page under them goes on being. */
@@ -1218,8 +1221,11 @@ const KEEP_HYPHEN = new Set([
   "so",
 ]);
 
-/** Hyphens that are NOT at a line end: the document telling us its own compounds. */
-const INLINE_COMPOUND = /(\p{L}{2,})-(\p{L}{2,})/gu;
+/** Hyphens that are NOT at a line end: the document telling us its own compounds. A match
+ *  starts where a word does: tried at every letter of a word with no hyphen in it, the
+ *  search ran to the word's end from each, and a run of fifty thousand letters (a sequence,
+ *  an encoded blob, a PDF's own making) took time as the square of its length. */
+const INLINE_COMPOUND = /(?<!\p{L})(\p{L}{2,})-(\p{L}{2,})/gu;
 
 /** Whole words, for the fused spellings a document that writes "nonlinear" attests. */
 const WORD = /\p{L}{3,}/gu;
@@ -1256,6 +1262,11 @@ export interface Vocabulary {
  */
 const CONTINUED = 3;
 
+/** The longest word the vocabulary keeps. Every beginning of a word is kept (`starts`), and
+ *  a "word" of fifty thousand letters had fifty thousand beginnings, gigabytes of them. No
+ *  dictionary's longest word is half this long; German's longest compounds are not over it. */
+const LONGEST_WORD = 64;
+
 /** Collect the evidence once per document — it is read at every broken line. */
 export function vocabularyOf(texts: string[]): Vocabulary {
   return finish(vocabularyInSlices(texts));
@@ -1271,7 +1282,7 @@ export function* vocabularyInSlices(texts: string[]): Generator<void, Vocabulary
       vocab.hyphenated.add(`${m[1]}-${m[2]}`);
       vocab.heads.add(m[1]!);
     }
-    for (const m of lower.matchAll(WORD)) vocab.fused.add(m[0]);
+    for (const m of lower.matchAll(WORD)) if (m[0].length <= LONGEST_WORD) vocab.fused.add(m[0]);
     if (i % 32 === 31) yield;
   }
   let n = 0;
@@ -1328,6 +1339,17 @@ interface Break {
   short?: boolean;
 }
 
+/**
+ * The text's last token: what follows its last space, "" where it ends in one. Found from the
+ * end: a regex anchored at the end (`(\S+)$`) is still tried from every character of the text
+ * before it, and a paragraph asked at each of its lines took time as the square of its length.
+ */
+export function lastToken(text: string): string {
+  let i = text.length;
+  while (i > 0 && !/\s/.test(text[i - 1]!)) i--;
+  return text.slice(i);
+}
+
 /** Append `next` to a paragraph that already reads `t.text`, mending the break. */
 function appendLine(t: Traced, next: Traced, vocab: Vocabulary, br: Break = {}): void {
   if (t.text === "") {
@@ -1336,7 +1358,7 @@ function appendLine(t: Traced, next: Traced, vocab: Vocabulary, br: Break = {}):
   }
   // The whole token is captured, hyphens and all, so "state-of-the-" arrives at the
   // test below as "state-of-the" and is refused for carrying a hyphen of its own.
-  const hyphen = /(\S+)[-‐­]$/u.exec(t.text);
+  const hyphen = /^(\S+)[-‐­]$/u.exec(lastToken(t.text));
   if (hyphen && !br.short && dehyphenates(hyphen[1]!, next.text, vocab)) {
     dropLastChar(t);
   } else if (!hyphen && !(CJK.test(t.text.slice(-1)) && CJK.test(next.text.slice(0, 1)))) {
@@ -1655,7 +1677,7 @@ function classifyHeadings(drafts: Draft[], bodySize: number, displayFonts: Set<s
  */
 function classifyFrontMatter(front: Draft[], bodySize: number): void {
   if (front.length === 0) return;
-  const largest = Math.max(...front.map((d) => d.size));
+  const largest = most(front, (d) => d.size);
   front.forEach((d, i) => {
     const words = d.text.split(/\s+/).length;
     const title = d.size === largest && d.size >= bodySize * HEADING_SIZE;

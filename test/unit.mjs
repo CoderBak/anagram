@@ -2613,6 +2613,154 @@ const results = await page.evaluate(() => {
   await ob.close();
 }
 
+// ---- pages built to break the reader ------------------------------------------------------
+// A page's script controls everything the walk and the observers read: how deep the tree is,
+// how long a text node is, how much changes at once. None of it may throw out of the walk —
+// the page would get nothing read, at its first walk or any after — or hold the page for long.
+// Each case has a page of its own: they are heavy, and a broken one must not take the rest.
+{
+  const hp = await browser.newPage();
+  await hp.setContent("<!doctype html><html><body></body></html>");
+  await hp.addScriptTag({ path: BUNDLE });
+  const r = await hp.evaluate(async () => {
+    const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    const words = (n, from = 0) => Array.from({ length: n }, (_, i) => WORDS[(i + from) % WORDS.length]).join(" ") + ".";
+    const attempt = (f) => { try { return f(); } catch (e) { return String(e); } };
+    const out = {};
+    // Nested past what any parser builds: inline elements (a block this deep breaks Chromium's
+    // own layout first), and shadow roots inside shadow roots.
+    const nest = (levels, make) => {
+      document.body.innerHTML = `<p id="plain">${words(80)}</p>`;
+      let at = document.body;
+      for (let i = 0; i < levels; i++) at = make(at);
+      at.append(words(80, 3));
+      return at;
+    };
+    for (const [name, make] of [
+      ["spans", (at) => at.appendChild(document.createElement("span"))],
+      ["shadowRoots", (at) => at.appendChild(document.createElement("span")).attachShadow({ mode: "open" }).appendChild(document.createElement("span"))],
+    ]) {
+      const deepest = nest(3000, make);
+      const units = attempt(() => PW.collectUnits(document.body));
+      const rescan = attempt(() => PW.collectUnits(deepest));
+      out[name] = {
+        units: Array.isArray(units) ? units.map((u) => u.text.slice(0, 20)) : units,
+        rescan: Array.isArray(rescan) ? rescan.length : rescan,
+      };
+    }
+    // At the depth limit and just inside it.
+    document.body.innerHTML = "";
+    let at = document.body;
+    const base = 3; // the document, <html>, <body>
+    for (let i = base; i < PW.MAX_WALK_DEPTH - 1; i++) at = at.appendChild(document.createElement("span"));
+    at.append(words(80));
+    at.appendChild(document.createElement("span")).append(words(80, 7));
+    out.edge = PW.collectUnits(document.body).map((u) => [u.text.slice(0, 20), u.wordCount]);
+    return out;
+  });
+  const plain = (units) => Array.isArray(units) && units.length === 1 && units[0].startsWith("the quick");
+  results.push({
+    name: `a page nested deeper than ${3000} levels, of elements or of shadow roots, is read down to the depth limit and never throws: its other paragraphs keep their chips`,
+    ok: plain(r.spans.units) && plain(r.shadowRoots.units) && r.spans.rescan === 0 && r.shadowRoots.rescan === 0,
+    note: JSON.stringify(r),
+  });
+  results.push({
+    name: "the depth limit: text an element just inside it holds is read, text one level deeper is not",
+    ok: r.edge.length === 1 && r.edge[0][0].startsWith("the quick") && r.edge[0][1] === 80,
+    note: JSON.stringify(r.edge),
+  });
+  await hp.close();
+}
+{
+  const hp = await browser.newPage();
+  await hp.setContent("<!doctype html><html><body></body></html>");
+  await hp.addScriptTag({ path: BUNDLE });
+  const r = await hp.evaluate(async () => {
+    const WORDS = "the quick brown fox jumps over a lazy dog while rain falls gently on rooftops and children read books near warm windows during long quiet evenings".split(" ");
+    const words = (n, from = 0) => Array.from({ length: n }, (_, i) => WORDS[(i + from) % WORDS.length]).join(" ") + ".";
+    const out = {};
+    // One text node of 20,000 short paragraphs, 4 MB, as a chat log or a mailing-list archive
+    // set with `pre-wrap`: cut in one pass, read paragraph by paragraph. Cutting it a paragraph
+    // at a time took minutes.
+    for (const [name, sep, quote] of [["paragraphs", "\n\n", false], ["quotations", "\n", true], ["oneMarkerAtTheEnd", "\n\n", false]]) {
+      const box = document.createElement("div");
+      box.style.whiteSpace = "pre-wrap";
+      const text = Array.from({ length: 20000 }, (_, i) => (quote && i % 2 ? "> " : "") + words(35, i)).join(sep) + (name === "oneMarkerAtTheEnd" ? " a > b" : "");
+      box.textContent = text;
+      document.body.replaceChildren(box);
+      const began = performance.now();
+      const steps = PW.collectUnitsInSlices(document.body, { minWords: 75 });
+      let step;
+      let pauses = 0;
+      while (!(step = steps.next()).done) pauses++;
+      out[name] = {
+        ms: Math.round(performance.now() - began),
+        pauses,
+        units: step.value.length,
+        pieces: box.childNodes.length,
+        same: box.textContent === text,
+      };
+    }
+    // A paragraph of 50,000 inline elements: the walk pauses inside it too.
+    const p = document.createElement("p");
+    for (let i = 0; i < 50000; i++) p.appendChild(document.createElement("span")).textContent = `${WORDS[i % WORDS.length]} `;
+    document.body.replaceChildren(p);
+    const steps = PW.collectUnitsInSlices(document.body, { minWords: 75 });
+    let step;
+    let pauses = 0;
+    while (!(step = steps.next()).done) pauses++;
+    out.manyNodes = { pauses, units: step.value.length };
+    return out;
+  });
+  const { paragraphs: g, quotations: q, oneMarkerAtTheEnd: m } = r;
+  results.push({
+    name: "a 4 MB text node of 20,000 paragraphs is cut once at each, in one pass, and walked a paragraph at a time: in seconds, not minutes",
+    ok: g.pieces >= 20000 && g.same && g.units > 0 && g.pauses >= 20000 && g.ms < 8000 &&
+      m.pieces === g.pieces && m.same && m.units > 0 && m.ms < 8000 &&
+      q.pieces === 20000 && q.same && q.ms < 8000,
+    note: JSON.stringify(r),
+  });
+  results.push({
+    name: "a paragraph of 50,000 inline elements is read whole, the walk pausing inside it",
+    ok: r.manyNodes.units === 1 && r.manyNodes.pauses >= 10,
+    note: JSON.stringify(r.manyNodes),
+  });
+  await hp.close();
+}
+{
+  const hp = await browser.newPage();
+  await hp.setContent("<!doctype html><html><body><p id='p'>a paragraph</p></body></html>");
+  await hp.addScriptTag({ path: BUNDLE });
+  const r = await hp.evaluate(async () => {
+    const drains = [];
+    const observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes, removed, quiet) => { drains.push({ nodes, removed: removed.length, quiet: quiet.size }); } });
+    // Shadow roots nested 2,000 deep, there before the observers start, and the deepest
+    // changed afterwards: it is watched like any other.
+    let at = document.body;
+    for (let i = 0; i < 2000; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" });
+    const deepest = at.appendChild(document.createElement("span"));
+    observers.start();
+    await new Promise((done) => setTimeout(done, 300));
+    deepest.textContent = "changed in the deepest shadow root";
+    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    const deep = drains.splice(0).some((d) => d.nodes.some((n) => deepest.contains(n) || n === deepest));
+    // A storm: thirty thousand nodes added one by one, then thrown away, between two drains.
+    // The observers hold none of them: the drain reads the page again instead.
+    for (let i = 0; i < 30000; i++) document.body.appendChild(document.createElement("i")).textContent = String(i);
+    for (const el of [...document.body.querySelectorAll("i")]) el.remove();
+    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    observers.stop();
+    const storm = drains[0];
+    return { deep, storm: { nodes: storm.nodes.map((n) => n.nodeName), removed: storm.removed, quiet: storm.quiet } };
+  });
+  results.push({
+    name: "shadow roots nested 2,000 deep are all watched; a storm past ten thousand changed nodes is handed over as the whole page, none of them held",
+    ok: r.deep && JSON.stringify(r.storm) === JSON.stringify({ nodes: ["BODY"], removed: 0, quiet: 0 }),
+    note: JSON.stringify(r),
+  });
+  await hp.close();
+}
+
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
 // The placement is measured once, when the verdict lands, and the page does not stand still:
 // on a Goodreads book page the reviews grow as their images and web fonts arrive, and a chip

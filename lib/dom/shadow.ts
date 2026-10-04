@@ -61,25 +61,27 @@ export function eachShadowRoot(node: Node, visit: (root: ShadowRoot) => void): v
 /** eachShadowRoot, a few hundred elements at a time (finishInSlices): the whole page's, at
  *  start, is every element of it. */
 export function* eachShadowRootInSlices(node: Node, visit: (root: ShadowRoot) => void): Generator<void, void> {
-  if (node.nodeType === Node.ELEMENT_NODE) {
-    if ((node as Element).hasAttribute(MARK_ATTR)) return;
-    const own = shadowRootOf(node as Element);
-    if (own) {
-      visit(own);
-      yield* eachShadowRootInSlices(own, visit);
-    }
-  }
+  if (node.nodeType === Node.ELEMENT_NODE && (node as Element).hasAttribute(MARK_ATTR)) return;
   const doc = node.ownerDocument ?? (node as Document);
-  const walker = doc.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, (el) =>
-    (el as Element).hasAttribute(MARK_ATTR) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
-  );
-  let n = 0;
-  for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null) {
-    if (++n % 512 === 0) yield;
-    const root = shadowRootOf(el);
-    if (!root) continue;
+  const skipOurs = (el: Node): number =>
+    (el as Element).hasAttribute(MARK_ATTR) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+  // The trees still to look in, rather than a call per root inside a root: a page can nest
+  // shadow trees deeper than the stack goes.
+  const trees: Node[] = [];
+  const found = (root: ShadowRoot): void => {
     visit(root);
-    yield* eachShadowRootInSlices(root, visit);
+    trees.push(root);
+  };
+  const own = node.nodeType === Node.ELEMENT_NODE ? shadowRootOf(node as Element) : null;
+  if (own) found(own);
+  let n = 0;
+  for (let tree: Node | undefined = node; tree !== undefined; tree = trees.pop()) {
+    const walker = doc.createTreeWalker(tree, NodeFilter.SHOW_ELEMENT, skipOurs);
+    for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null) {
+      if (++n % 512 === 0) yield;
+      const root = shadowRootOf(el);
+      if (root) found(root);
+    }
   }
 }
 

@@ -14,7 +14,7 @@ import { MODEL_MIN_WORDS } from "../lib/dom/text";
 export function collectUnits(root?: ParentNode, opts: CollectOptions = {}) {
   return walk(root, { minWords: MODEL_MIN_WORDS, ...opts });
 }
-export { inPageOrder } from "../lib/dom/walker";
+export { inPageOrder, collectUnitsInSlices, MAX_WALK_DEPTH } from "../lib/dom/walker";
 export { noteShadowHost } from "../lib/dom/shadow";
 export { createScopes } from "../lib/dom/scope";
 export {

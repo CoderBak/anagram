@@ -31,6 +31,7 @@ import { ACCENT, MARK_NUMBERS, assemble, indexPage, isSpace, mathPagesOf, sameLi
 import { BARE_NUMBER, lineNumberMarks, mayHoldColumn, type NumberMark, type PageContent } from "./lineNumbers";
 import { SENTENCE_END, vocabularyInSlices, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
 import { finish, finishInSlices } from "../slices";
+import { append, least, most } from "./arrays";
 
 export { isMathFont } from "./reading";
 
@@ -154,6 +155,9 @@ function centreOf(g: Glyph, m: number[]): { cx: number; cy: number; h: number } 
  */
 function boxesFor(index: PageIndex, g: Glyph): Box[] {
   const { cx, cy, h } = centreOf(g, index.transform);
+  // A glyph that is nowhere (a box a PDF's matrices took to infinity) is on no run, and a
+  // band around it would hold every one.
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) return [];
   const boxes = index.boxes;
   // Baselines lie below a glyph's centre by up to its ascent; scan the band around it.
   let lo = 0, hi = boxes.length;
@@ -165,6 +169,7 @@ function boxesFor(index: PageIndex, g: Glyph): Box[] {
   for (let i = lo; i < boxes.length; i++) {
     const b = boxes[i]!;
     if (b.y > cy + 4 * h) break;
+    if (--index.searches < 0) return []; // the page has had all the search it is worth
     const slack = b.h * BOX_SLACK;
     if (cy < b.y - b.h * ASCENT - slack || cy > b.y + b.h * DESCENT + slack) continue;
     const dx = cx < b.x1 ? b.x1 - cx : cx > b.x2 ? cx - b.x2 : 0;
@@ -185,13 +190,22 @@ function isTextNode(node: SdtBlock | SdtTextNode): node is SdtTextNode {
   return typeof (node as SdtTextNode).text === "string";
 }
 
+/**
+ * How deep inside a block its text is read. Zotero nests a list's items and the paragraphs an
+ * item holds, a few levels; but the structure is what a parser made of an untrusted PDF, and
+ * each reading of a block calls itself once a level down: a block nested ten thousand deep
+ * threw out of the reader. Blocks deeper than this are not read.
+ */
+const MAX_NESTING = 32;
+
 /** The pieces of a block: its text nodes' units, each with its glyph, nested blocks' too.
  *  `raised` says which nodes are raised citations. */
-function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: Piece[] = []): Piece[] {
+function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: Piece[] = [], depth = 0): Piece[] {
   for (const node of block.content ?? []) {
     if (!isTextNode(node)) {
+      if (depth >= MAX_NESTING) continue;
       if (out.length && out[out.length - 1]!.ch !== " ") out.push({ ch: " ", glyph: null });
-      piecesOf(node, raised, out);
+      piecesOf(node, raised, out, depth + 1);
       continue;
     }
     const glyphs = glyphsOf(node.anchor?.textMap);
@@ -238,7 +252,7 @@ function placeMarks(pieces: Piece[]): Piece[] {
   pieces.forEach((p, i) => {
     if (home.has(i)) return;
     out.push(p);
-    out.push(...(after.get(i) ?? []));
+    append(out, after.get(i) ?? []);
   });
   return out;
 }
@@ -340,10 +354,10 @@ function originOf(node: SdtBlock): string {
 }
 
 /** The first text node of a block, however deep. */
-function firstText(block: SdtBlock): SdtTextNode | null {
+function firstText(block: SdtBlock, depth = 0): SdtTextNode | null {
   for (const node of block.content ?? []) {
     if (isTextNode(node)) { if (node.text.trim() !== "") return node; continue; }
-    const inner = firstText(node);
+    const inner = depth < MAX_NESTING ? firstText(node, depth + 1) : null;
     if (inner) return inner;
   }
   return null;
@@ -399,9 +413,9 @@ const CODE_CHARS = 20;
 const TYPED_BODY = 0.5;
 
 /** The letters of a block, and those of them Zotero styles monospace. */
-function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }): { mono: number; all: number } {
+function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }, depth = 0): { mono: number; all: number } {
   for (const node of block.content ?? []) {
-    if (!isTextNode(node)) { typewriter(node, out); continue; }
+    if (!isTextNode(node)) { if (depth < MAX_NESTING) typewriter(node, out, depth + 1); continue; }
     const n = node.text.replace(/\s+/gu, "").length;
     out.all += n;
     if (node.style?.monospace) out.mono += n;
@@ -561,9 +575,9 @@ function* readingsOf(content: SdtBlock[], everything: boolean): Generator<void, 
 }
 
 /** A block's text as Zotero has it, a nested block's a space apart. */
-function plainText(block: SdtBlock): string {
+function plainText(block: SdtBlock, depth = 0): string {
   let out = "";
-  for (const node of block.content ?? []) out += isTextNode(node) ? node.text : ` ${plainText(node)} `;
+  for (const node of block.content ?? []) out += isTextNode(node) ? node.text : depth < MAX_NESTING ? ` ${plainText(node, depth + 1)} ` : " ";
   return out.replace(/\s+/gu, " ").trim();
 }
 
@@ -591,7 +605,7 @@ function isBibliography(list: SdtBlock): boolean {
  *  the page it points to. An entry whose caption fills its last line keeps a leader of two
  *  or three dots ("…prediction [276].. .187"), taken only where the entry opens with its
  *  number. */
-const CONTENTS_ENTRY = /(?:[.·…]\s*){4,}(?:\d{1,4}|[ivxlc]{1,7})$/iu;
+const CONTENTS_ENTRY = /(?<![.·…]\s*)(?:[.·…]\s*){4,}(?:\d{1,4}|[ivxlc]{1,7})$/iu;
 const SHORT_LEADER = /[^.\s](?:\s*\.){2,3}\s*(?:\d{1,4}|[ivxlc]{1,7})$/iu;
 /** What an entry opens with: its figure's, table's or section's number. */
 const ENTRY_NUMBER = /^(?:[A-Z]\.?)?\d/u;
@@ -729,7 +743,7 @@ function extentOn(block: SdtBlock, which: "first" | "last"): number[] | null {
   if (!rects?.length) return null;
   const page = rects[which === "first" ? 0 : rects.length - 1]![0]!;
   const on = rects.filter((r) => r[0] === page);
-  return [page, Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))];
+  return [page, least(on, (r) => r[1]!), least(on, (r) => r[2]!), most(on, (r) => r[3]!), most(on, (r) => r[4]!)];
 }
 
 /**
@@ -776,9 +790,9 @@ function setUnder(above: SdtBlock, para: SdtBlock, limit: number, least = -1): b
 }
 
 /** The heights of the runs of a block's text, as its glyph maps give them. */
-function runHeights(block: SdtBlock, out: number[] = []): number[] {
+function runHeights(block: SdtBlock, out: number[] = [], depth = 0): number[] {
   for (const node of block.content ?? []) {
-    if (!isTextNode(node)) { runHeights(node, out); continue; }
+    if (!isTextNode(node)) { if (depth < MAX_NESTING) runHeights(node, out, depth + 1); continue; }
     let runs: unknown;
     try {
       runs = JSON.parse(node.anchor?.textMap ?? "[]");
@@ -792,9 +806,9 @@ function runHeights(block: SdtBlock, out: number[] = []): number[] {
 }
 
 /** Each run of a block's text: its height, and how many glyphs it holds. */
-function runSizes(block: SdtBlock, out: [number, number][] = []): [number, number][] {
+function runSizes(block: SdtBlock, out: [number, number][] = [], depth = 0): [number, number][] {
   for (const node of block.content ?? []) {
-    if (!isTextNode(node)) { runSizes(node, out); continue; }
+    if (!isTextNode(node)) { if (depth < MAX_NESTING) runSizes(node, out, depth + 1); continue; }
     let runs: unknown;
     try {
       runs = JSON.parse(node.anchor?.textMap ?? "[]");
@@ -876,7 +890,7 @@ function boxOf(block: SdtBlock): { page: number; box: number[]; spans: boolean }
   const on = rects.filter((r) => r[0] === page);
   return {
     page,
-    box: [Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))],
+    box: [least(on, (r) => r[1]!), least(on, (r) => r[2]!), most(on, (r) => r[3]!), most(on, (r) => r[4]!)],
     spans: on.length < rects.length,
   };
 }
@@ -901,7 +915,7 @@ function readInColumns(out: (Reading | Marker)[]): (Reading | Marker)[] {
   let stretch: Item[] = [];
   let page = -1;
   const flush = (): void => {
-    for (const item of orderRuns(stretch)) result.push(...item.parts);
+    for (const item of orderRuns(stretch)) append(result, item.parts);
     stretch = [];
   };
   for (const r of out) {
@@ -1045,7 +1059,7 @@ function* lineNumberPieces(texts: Piece[][]): Generator<void, Set<Piece>> {
         while (k < pieces.length && DIGIT.test(pieces[k]!.ch) && glued(pieces[k - 1], pieces[k])) k++;
         const folded = !(BARE_NUMBER.test(pieces.slice(i, k).map((p) => p.ch).join("")) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[k - 1], pieces[k]));
         marks.push({
-          page: g.page, x1: Math.min(...glyphs.map((q) => q.x1)), x2: Math.max(...glyphs.map((q) => q.x2)),
+          page: g.page, x1: least(glyphs, (q) => q.x1), x2: most(glyphs, (q) => q.x2),
           y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run, folded,
         });
       }
@@ -1252,7 +1266,7 @@ function joinRows(rows: Row[]): Piece[] {
       if (out.length && HYPHEN_PIECE.test(out[out.length - 1]!.ch) && first && /\p{Ll}/u.test(first.ch)) out.pop();
       else out.push({ ch: " ", glyph: null });
     }
-    out.push(...pieces);
+    append(out, pieces);
   }
   while (out.length && out[0]!.ch === " ") out.shift();
   return out;
@@ -1317,7 +1331,7 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
     }
     for (const row of rows) row.from = pool.readings.length;
     pool.readings.push(r);
-    pool.rows.push(...rows);
+    append(pool.rows, rows);
   });
   // Each page's margins and line pitch, from all its numbered prose.
   const byPage = new Map<number, { rows: Row[]; steps: number[] }>();
@@ -1512,7 +1526,7 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
       const first = pieces.find((p) => p.ch !== " ");
       if (last && last.ch === "-" && first && /\p{Ll}/u.test(first.ch)) prev.pieces.pop();
       else prev.pieces.push({ ch: " ", glyph: null });
-      prev.pieces.push(...pieces);
+      append(prev.pieces, pieces);
       prev.display = false;
       for (const path of r.paths) byPath.set(path, prev);
       continue;
