@@ -968,8 +968,8 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual({p.name for p in artifact_files(path, INT8)}, {"model_int8.onnx", "tensors.data"})
             self.assertEqual(digest(path / "config.json"), digest(path / "config.json"))
 
-    def test_verified_weights_are_read_once_and_changed_weights_again(self):
-        from download_modelkit import matches
+    def test_weights_a_start_took_at_the_pin_are_not_read_for_the_version_and_changed_ones_are(self):
+        from safe_files import remember
         class Engine:
             max_length, dtype_name = 512, "float32"
             lid = SimpleNamespace(enabled=False, name=None, digest=None)
@@ -981,21 +981,19 @@ class ProvenanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)
             weights = path / "model.safetensors"
-            weights.write_bytes(b"verified weights")
-            entry = {"path": weights.name, "size_bytes": weights.stat().st_size,
-                     "sha256": hashlib.sha256(b"verified weights").hexdigest()}
+            weights.write_bytes(b"pinned weights")
             reads, real_open = [], io.open
             def counting_open(file, mode="r", *args, **kwargs):
                 if isinstance(file, Path) and file.name == weights.name and "r" in mode:
                     reads.append(file)
                 return real_open(file, mode, *args, **kwargs)
             with patch("io.open", counting_open):
-                self.assertTrue(matches(weights, entry))  # the component's verification
+                remember(weights, hashlib.sha256(b"pinned weights").hexdigest())  # what a start does
                 first = load_candidate(path, FP32, 512, 32, None, api, {})[0].version
-                self.assertEqual(len(reads), 1)
+                self.assertEqual(len(reads), 0)
                 weights.write_bytes(b"replaced weights!")
                 self.assertNotEqual(load_candidate(path, FP32, 512, 32, None, api, {})[0].version, first)
-                self.assertEqual(len(reads), 2)
+                self.assertEqual(len(reads), 1)
 
 
 class PassTests(unittest.TestCase):

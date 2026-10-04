@@ -720,26 +720,21 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(component.status()["state"], "ready")
         self.assertEqual(component.handle("health", {})[0], 200)
 
-    def test_the_model_loads_while_its_files_are_checked_and_is_kept_only_if_they_pass_unchanged(self):
+    def test_the_files_are_checked_before_the_model_loads_and_a_failed_check_loads_nothing(self):
         first = self.make()
         self.first_run(first)
         first.close()
         seen = {}
-        def verify_while_loading():
-            # The runtime is already reading the model in, and nothing may be scored yet.
+        def check():
             seen["controller"] = component.controller
-            seen["state"] = component.status()["state"]
             return (self.home / "models/fixture").is_file()
-        component = self.make(verifier=verify_while_loading)
+        component = self.make(verifier=check)
         component.start()
         self.finish(component)
-        self.assertIsNotNone(seen["controller"], "the load starts before the check ends")
-        self.assertEqual(seen["state"], "starting")
-        self.assertIs(component.controller, seen["controller"])
+        self.assertIsNone(seen["controller"], "nothing loads before the check")
         self.assertEqual(component.status()["state"], "ready")
         component.close()
 
-        # A check that fails throws the loaded runtime away: nothing it read is ever scored.
         failing = self.make(verifier=lambda: False)
         failing.start()
         self.finish(failing)
@@ -749,20 +744,6 @@ class LifecycleTests(unittest.TestCase):
             failing.handle("score", {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]})
         self.assertEqual(error.exception.code, "not_ready")
         failing.close()
-
-        # A file written to while it was checked: what was loaded may not be what was checked,
-        # so the runtime is read in again from the checked files.
-        def verify_after_a_write():
-            seen["during"] = component.controller
-            (self.home / "models/lid.176.ftz").write_bytes(b"written while checked")
-            return True
-        component = self.make(verifier=verify_after_a_write)
-        component.start()
-        self.finish(component)
-        self.assertIsNotNone(seen["during"])
-        self.assertIsNot(component.controller, seen["during"])
-        self.assertEqual(component.status()["state"], "ready")
-        component.close()
 
     def test_a_stopped_engine_starts_no_load_while_its_files_are_checked(self):
         first = self.make()
@@ -1084,9 +1065,9 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text())["model_profile"], "recommended")
         self.assertEqual(component.status()["runtime"]["active_id"], "torch:cpu:fp32")
 
-    def test_model_files_are_read_in_full_once_and_then_taken_as_they_are_until_one_changes(self):
+    def test_a_start_reads_no_model_file_and_needs_each_at_its_pinned_size(self):
         from urllib.parse import unquote
-        import native_component
+        import safe_files
         contents = {"model.safetensors": b"weights!", "config.json": b"config"}
         entries = [{"path": name, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
                    for name, data in contents.items()]
@@ -1100,11 +1081,11 @@ class LifecycleTests(unittest.TestCase):
             result = io.BytesIO(b"lid" if request.full_url.endswith("/lid.176.ftz") else contents[name])
             result.status, result.headers = 200, {}
             return result
-        checks = []
-        real = native_component.invalid_files
-        def counted(*args, **kwargs):
-            checks.append(1)
-            return real(*args, **kwargs)
+        hashed = []
+        real = safe_files.hashlib.file_digest
+        def counted(stream, *args, **kwargs):
+            hashed.append(Path(getattr(stream, "name", "?")).name.removesuffix(".part"))
+            return real(stream, *args, **kwargs)
         def start():
             component = self.make(downloader=None, verifier=None, planner=planner)
             component.start()
@@ -1112,35 +1093,25 @@ class LifecycleTests(unittest.TestCase):
             state = component.status()["state"]
             component.close()
             return state
-        with patch("native_component.LID_ENTRY", lid), patch("native_component.invalid_files", counted), \
+        with patch("native_component.LID_ENTRY", lid), patch("safe_files.hashlib.file_digest", counted), \
                 patch("download_modelkit.transfer_asset", lambda *a, **kw: transfer_with(open_fixture)(*a, **{k: v for k, v in kw.items() if k != "notice"})):
-            # The first start downloads and checks every file in full, and records them.
+            # The download checks every file against the pin as it comes.
             self.assertEqual(start(), "ready")
-            self.assertEqual(len(checks), 1)
-            self.assertTrue((self.home / "models-verified.json").is_file())
-            # The next starts read none of them: each is the entry on disk its check passed on.
-            self.assertEqual(start(), "ready")
-            self.assertEqual(start(), "ready")
-            self.assertEqual(len(checks), 1)
+            self.assertTrue({"model.safetensors", "config.json", "lid.176.ftz"} <= set(hashed))
+            # A start reads none of them, whatever happened to them since: the pin's digests stand.
+            hashed.clear()
             weights = self.home / "models/editlens_roberta-large/model.safetensors"
-            # Its modification time changed, nothing else: it is checked in full again, passes,
-            # and is taken as it is after that.
             os.utime(weights, ns=(time.time_ns(), time.time_ns() + 10**9))
             self.assertEqual(start(), "ready")
-            self.assertEqual(len(checks), 2)
-            self.assertEqual(start(), "ready")
-            self.assertEqual(len(checks), 2)
-            # Written to with other bytes of the same size: the full check finds it and nothing loads.
             weights.write_bytes(b"WEIGHTS?")
-            self.assertEqual(start(), "needs_models")
-            self.assertEqual(len(checks), 3)
-            # The pin asks for other bytes than those recorded (an update): checked in full again.
-            weights.write_bytes(b"weights!")
             self.assertEqual(start(), "ready")
-            checked = len(checks)
-            entries[1]["sha256"] = hashlib.sha256(b"other config").hexdigest()
+            self.assertEqual(hashed, [])
+            self.assertEqual(safe_files.sha256_file(weights), entries[0]["sha256"])
+            # A file missing, or not its pinned size, is not a model to load: setup asks for it.
+            weights.write_bytes(b"short")
             self.assertEqual(start(), "needs_models")
-            self.assertEqual(len(checks), checked + 1)
+            weights.unlink()
+            self.assertEqual(start(), "needs_models")
 
     def test_selected_download_verification_expansion_and_restart_use_the_same_plan(self):
         from urllib.parse import unquote

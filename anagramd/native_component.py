@@ -21,15 +21,13 @@ import time
 import tomllib
 
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
-                               install_streaming, invalid_files, load_pin, matches, plain_tree, selected_entries)
+                               install_streaming, load_pin, plain_tree, selected_entries)
 from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes
 from safe_files import atomic_json, is_link, read_json, regular_stat, remember
 
 HOST_NAME = "dev.coderbak.anagram"
 #: How often a score asked while the component starts looks again (NativeComponent._runtime).
 STARTING_POLL_S = 0.02
-#: Each model file's identity beside the digest a check passed it against (_verify_models).
-VERIFIED_FILE = "models-verified.json"
 STATE_DEFAULT = {"schema_version": 1, "initialized": False, "download_pending": False,
                  "download_paused": False, "download_failed": False,
                  "engine_stopped": False, "models_deleted": False, "idle_unload_s": 300,
@@ -312,28 +310,13 @@ class NativeComponent:
             self._download_work()
         else:
             self._ensure_plan()
-            # The model is read in while its files are checked (half a second for the real
-            # weights, and the load a quarter more): a score waits for both, the state staying
-            # "starting". The runtime is kept only where no file was written to from before it
-            # began loading until the check was done — then what it read is what was checked.
-            stamps = self._model_stamps()
-            early = self._start_runtime(hold=True)
-            verified = self.verifier()
-            if early and (not verified or self._model_stamps() != stamps):
-                self._stop_runtime()
-                early = False
-            if not verified:
+            if not self.verifier():
                 with self.lock:
                     self.state = "needs_models"
                 return
             with self.lock:
                 self.download.update(status="completed", phase="complete", bytes_received=self.download["total_bytes"])
-            if early:
-                with self.lock:
-                    if self.state == "starting" and self.controller is not None and not self.closed:
-                        self.state = "loading"
-            else:
-                self._start_runtime()
+            self._start_runtime()
 
     def _build_model_plan(self, profile):
         from model_plan import build_plan, discover_hardware
@@ -366,62 +349,24 @@ class NativeComponent:
                                  plan={"devices": plan.get("devices", []), "total_bytes": total})
 
     def _verify_models(self):
-        """The model files are the pinned ones. Read and hashed in full once — after a download,
-        or where anything about a file changed — and then taken as they are: a start finds each
-        file the same entry on disk as when its check passed (_verified_before), and reads none
-        of the 1.4 GB again."""
+        """The model files are there, each at its pinned size. Their bytes are not read: each
+        was checked against its pinned digest as it downloaded (download_modelkit), and a start
+        takes them as they are. The digests every verdict's version is made of are the pin's
+        (safe_files.remember), so the runtime reads the weights once, to load them."""
         plain_tree(self.home / "models")
-        if self._verified_before():
-            return True
-        ok = not invalid_files(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"]) and matches(self.lid_path, LID_ENTRY)
-        if ok:
-            self._record_verified()
-        return ok
+        entries = self._model_entries()
+        try:
+            if any(is_link(path) or not path.is_file() or path.stat().st_size != entry["size_bytes"] for path, entry in entries):
+                return False
+            for path, entry in entries:
+                remember(path, entry["sha256"])
+        except OSError:
+            return False
+        return True
 
     def _model_entries(self):
-        """The files the check covers, each with what it must be: the plan's and fastText's."""
+        """The files a start needs, each with what it must be: the plan's and fastText's."""
         return [(self.model_dir / entry["path"], entry) for entry in selected_entries(self.pin, self.plan["selected_paths"])] + [(self.lid_path, LID_ENTRY)]
-
-    @staticmethod
-    def _identity(path):
-        """A file's entry on disk: any write to it changes its modification time, and a file put
-        in its place has another inode."""
-        info = path.stat()
-        return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
-
-    def _record_verified(self):
-        """After a check passed: each file's identity beside the digest it was checked against."""
-        files = {}
-        try:
-            for path, entry in self._model_entries():
-                files[str(path.relative_to(self.home))] = {"identity": self._identity(path), "sha256": entry["sha256"]}
-            atomic_json(self.home / VERIFIED_FILE, {"schema_version": 1, "files": files})
-        except (OSError, ValueError):
-            pass  # the next start checks in full again
-
-    def _verified_before(self):
-        """Every file the check covers is the one a check passed on — the same identity, and the
-        digest the pin asks for now — so its digest is known without reading it, the runtime's
-        version included (safe_files.remember)."""
-        try:
-            saved = read_json(self.home / VERIFIED_FILE, max_bytes=65536)
-        except (OSError, ValueError):
-            return False
-        if not isinstance(saved, dict) or saved.get("schema_version") != 1 or not isinstance(saved.get("files"), dict):
-            return False
-        known = []
-        try:
-            for path, entry in self._model_entries():
-                record = saved["files"].get(str(path.relative_to(self.home)))
-                if (is_link(path) or not path.is_file() or not isinstance(record, dict)
-                        or record.get("sha256") != entry["sha256"] or record.get("identity") != self._identity(path)):
-                    return False
-                known.append((path, entry["sha256"]))
-        except (OSError, ValueError):
-            return False
-        for path, digest in known:
-            remember(path, digest)
-        return True
 
     def _download_models(self, cancel, progress):
         plain_tree(self.home / "models")
@@ -478,14 +423,11 @@ class NativeComponent:
         from runtime_adapters import create_controller
         return create_controller(self.model_dir, self.home / "runtime.json", self.lid_path, plan=self.plan)
 
-    def _start_runtime(self, hold=False):
-        """Start the runtime loading. `hold`: while the model files are still being checked —
-        the state stays as it is, so nothing is scored, and nothing starts where the engine is
-        stopped (the check decides first). Returns whether it started."""
+    def _start_runtime(self):
+        """Start the runtime loading. Returns whether it started."""
         with self.lock:
             if self.closed or self.settings["engine_stopped"]:
-                if not hold:
-                    self.state = "stopped"
+                self.state = "stopped"
                 return False
         controller = self.controller_factory()
         with self.lock:
@@ -495,22 +437,9 @@ class NativeComponent:
             self.controller = controller
             controller.set_idle_unload(self.settings["idle_unload_s"])
             self.runtime_draining = False
-            if not hold:
-                self.state = "loading"
+            self.state = "loading"
         controller.start()
         return True
-
-    def _model_stamps(self):
-        """What the start's check reads, as the file system has it: any write to a file
-        changes its entry (its change time, which nothing sets back)."""
-        out = []
-        for path in [*(self.model_dir / name for name in self.plan["selected_paths"]), self.lid_path]:
-            try:
-                info = path.stat()
-                out.append((str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
-            except OSError:
-                out.append((str(path), None))
-        return out
 
     def _stop_runtime(self):
         """Close the runtime and drain its work; a closed controller refuses new leases.
