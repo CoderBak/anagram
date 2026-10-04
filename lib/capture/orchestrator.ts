@@ -50,6 +50,9 @@ import { createInsertionGate } from "./insertionGate";
 import { createFling } from "./fling";
 import { createBackendWatch } from "./backendWatch";
 import { createKeptLedger, type KeptVerdict } from "./keptLedger";
+import { createReadingMeter, inPrivateWindow } from "../stats/meter";
+import { pageKindOf } from "../stats/pageKind";
+import { statsLevelOf, type PageKind } from "../stats/model";
 
 const log = createLogger("orchestrator");
 
@@ -238,6 +241,9 @@ export interface OrchestratorOptions {
    * (see BadgeLayerOptions.place). Left out everywhere else, which is every other surface.
    */
   placeBadge?: BadgeLayerOptions["place"];
+  /** The kind of page, for the reading statistics, where the caller knows it: "document" on
+   *  a surface and in the PDF reader. Elsewhere it is told from the page (lib/stats/pageKind.ts). */
+  pageKind?: () => PageKind;
 }
 
 export function createOrchestrator(
@@ -315,6 +321,21 @@ export function createOrchestrator(
   const pace = opts.pacedBackground !== false ? createBackgroundPace() : null;
   /** While the page is flung past, what is on screen for a moment waits (lib/capture/fling.ts). */
   const fling = createFling();
+  /**
+   * What of the page is read, for the reading statistics — only while the reader has asked
+   * for them (Settings, Statistics), and never in a private window (lib/stats/meter.ts).
+   */
+  const reading = createReadingMeter({
+    fling,
+    verdictOf: (unit) => verdictsById.get(unit.id)?.result,
+    stillShort: (node) => shortTexts.has(node),
+    kind: () => opts.pageKind?.() ?? pageKindOf(document, location, firstUnits(64)),
+    ownsDwell: toolbarOwner,
+    send: (message) => sendDocumentMessage(message),
+  });
+  let unwatchStats: (() => void) | null = null;
+  /** The address of the page view `reading` counts: a route to another path is another. */
+  let statsView = location.origin + location.pathname;
   /** The daemon stopped answering: dispatch is paused until a probe succeeds
    *  (lib/capture/backendWatch.ts). */
   const backend = createBackendWatch({
@@ -350,6 +371,16 @@ export function createOrchestrator(
    */
   const readingOrder = (units: readonly Unit[]): Unit[] =>
     opts.collect ? [...units].sort((a, b) => a.order - b.order) : inPageOrder(units);
+
+  /** The first units found: what the page kind is told from. */
+  function firstUnits(n: number): Unit[] {
+    const out: Unit[] = [];
+    for (const unit of unitsById.values()) {
+      if (out.length >= n) break;
+      out.push(unit);
+    }
+    return out;
+  }
 
   /** Flagged units with their verdicts, in reading order. */
   function flaggedInOrder(): { unit: Unit; v: UnitVerdict }[] {
@@ -559,6 +590,7 @@ export function createOrchestrator(
     badges.remove(unit.id);
     clearHighlight(unit.id);
     observers.dropUnit(unit);
+    reading.forget(unit);
     for (const part of unit.parts) {
       for (const n of part.nodes) {
         if (nodeOwner.get(n) === unit) nodeOwner.delete(n);
@@ -687,6 +719,7 @@ export function createOrchestrator(
       ...(changed ? { changed } : {}),
       onShortText: (nodes) => {
         if (nodes[0]) shortTexts.add(nodes[0]);
+        reading.trackShort(nodes);
       },
       onShadowRoot: observers.observeRoot,
     };
@@ -715,6 +748,7 @@ export function createOrchestrator(
         }
       }
       observers.observeUnit(u);
+      reading.track(u);
     }
     if (pendingJump && Date.now() > pendingJump.until) pendingJump = null;
     if (pendingJump) {
@@ -999,6 +1033,7 @@ export function createOrchestrator(
     try {
       observers.stop();
       scheduler.stop();
+      reading.stop(false); // no message can reach the worker any more
     } catch {
       /* observers may be half-dead — freezing must never throw */
     }
@@ -1104,6 +1139,7 @@ export function createOrchestrator(
       verdictsById.set(v.id, v);
       unit.isScored = true;
       observers.dropUnit(unit); // analyzed — stop viewport tracking
+      reading.verdict(unit, v.result);
     }
     // A verdict is KNOWN the moment it arrives; PAINTING it touches the page, and on a
     // page that has still to hydrate that waits (see whenSafeToInsert). Scoring early
@@ -1378,6 +1414,13 @@ export function createOrchestrator(
     lastHref = location.href;
     const live = unitsById.size;
     purgeDisconnected();
+    // Another path is another page view for the statistics: what is still on the page may be
+    // read again in it. A query or a fragment that changes is the same page.
+    const view = location.origin + location.pathname;
+    if (view !== statsView) {
+      statsView = view;
+      reading.newView(unitsById.values());
+    }
     if (kind === "rewrite" && unitsById.size === live) {
       updateToolbar();
       return;
@@ -1463,6 +1506,14 @@ export function createOrchestrator(
     watchSettings();
     observers.start();
     booted = true;
+    statsView = location.origin + location.pathname;
+    try {
+      unwatchStats?.();
+      unwatchStats = settings.statsLevel.watch(applyStatsLevel);
+      void settings.statsLevel.getValue().then((level) => { if (seq === bootSeq && started) applyStatsLevel(level); }, () => undefined);
+    } catch {
+      /* dead extension context: no statistics either */
+    }
     const generation = captureGeneration;
     await walkInTurn(async () => {
       const units = await collect(document.body, makeClaimFilter());
@@ -1473,6 +1524,14 @@ export function createOrchestrator(
 
     watchUrl();
     log.log("started", { session, domain });
+  }
+
+  /** The reader turned the statistics on or off (Settings, Statistics). Never in a private
+   *  window: the worker would not record it, and nothing need be measured for nothing. */
+  function applyStatsLevel(value: unknown): void {
+    const wanted = started && statsLevelOf(value) !== "off" && !inPrivateWindow();
+    if (wanted && !reading.running()) reading.start(unitsById.values());
+    else if (!wanted && reading.running()) reading.stop(false);
   }
 
   /** One awaited read of every setting the first collect depends on. */
@@ -1581,6 +1640,7 @@ export function createOrchestrator(
   }
 
   function clearAllResults(): void {
+    reading.drop();
     for (const id of unitsById.keys()) clearHighlight(id);
     badges.teardownAll();
     flaggedCursor = null; // the ids it names are about to stop existing
@@ -1595,6 +1655,10 @@ export function createOrchestrator(
 
   function stop(): void {
     if (!started) return;
+    // What was read goes out before the units it was read in are let go.
+    reading.stop();
+    unwatchStats?.();
+    unwatchStats = null;
     captureGeneration++;
     started = false;
     booted = false;

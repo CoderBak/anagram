@@ -1434,5 +1434,357 @@
   "pasteByParagraph": {
     "message": "By paragraph",
     "description": "Analyze text: heading above the text shown with a chip after each paragraph."
+  },
+  "statsTitle": {
+    "message": "Reading statistics",
+    "description": "Statistics page: its title and heading."
+  },
+  "statsOffTitle": {
+    "message": "Statistics are off",
+    "description": "Statistics page, while nothing is recorded: the heading of the card that explains the levels."
+  },
+  "statsOffLead": {
+    "message": "Anagram can keep a record of how much of what you read reads as AI-generated. It stays on this computer, and nothing is ever sent anywhere.",
+    "description": "Statistics page, while nothing is recorded: what the feature is, and that it never leaves the computer."
+  },
+  "statsLevelOff": {
+    "message": "Off",
+    "description": "Settings, Statistics, Record: nothing is recorded (the default)."
+  },
+  "statsLevelDaily": {
+    "message": "Daily totals",
+    "description": "Settings and the statistics page: the level that records each day's totals only."
+  },
+  "statsLevelSites": {
+    "message": "Daily totals and sites",
+    "description": "Settings and the statistics page: the level that also records each site's share of a day."
+  },
+  "statsLevelPages": {
+    "message": "Every page",
+    "description": "Settings and the statistics page: the level that also records every page read (its address and title)."
+  },
+  "statsLevelOffHint": {
+    "message": "Nothing is recorded.",
+    "description": "Settings, Statistics: the note under Record while it is Off."
+  },
+  "statsLevelDailyHint": {
+    "message": "Each day: how many words you read, how they read from human to AI-generated, and on what kind of page. No sites, no pages.",
+    "description": "What the 'Daily totals' level records."
+  },
+  "statsLevelSitesHint": {
+    "message": "The same, and each site's share of the day. No page addresses.",
+    "description": "What the 'Daily totals and sites' level records."
+  },
+  "statsLevelPagesHint": {
+    "message": "The same, and each page you read: its address, its title, when you opened it and for how long.",
+    "description": "What the 'Every page' level records."
+  },
+  "statsNeverNote": {
+    "message": "Never any text from a page. Never private windows, sites you switched Anagram off for, or Analyze text.",
+    "description": "Statistics page, while off: what is never recorded at any level. 'Analyze text' is the extension's own page for pasted text."
+  },
+  "optStatsLevel": {
+    "message": "Record",
+    "description": "Settings, Statistics: label of the level choice (Off, Daily totals, …); also the choice's accessible name on the statistics page."
+  },
+  "statsTurnOn": {
+    "message": "Turn on",
+    "description": "Statistics page, while off: button that starts recording at the level chosen beside it."
+  },
+  "statsPagesWarning": {
+    "message": "This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it.",
+    "description": "Shown when 'Every page' is chosen: plainly, that it is a reading history."
+  },
+  "statsPeriod": {
+    "message": "Period",
+    "description": "Statistics page: accessible name of the Today / 7 days / 30 days choice."
+  },
+  "statsToday": {
+    "message": "Today",
+    "description": "Statistics page: the period choice for today."
+  },
+  "statsLast7": {
+    "message": "7 days",
+    "description": "Statistics page: the period choice for the last seven days, today included."
+  },
+  "statsLast30": {
+    "message": "30 days",
+    "description": "Statistics page: the period choice for the last thirty days, today included."
+  },
+  "statsMonth": {
+    "message": "Month",
+    "description": "Statistics page: accessible name of the month picker."
+  },
+  "statsMonthPick": {
+    "message": "A month…",
+    "description": "Statistics page: the month picker's first entry, before a month is chosen."
+  },
+  "statsExport": {
+    "message": "Export…",
+    "description": "Statistics page and Settings: button that opens the export dialog."
+  },
+  "statsClear": {
+    "message": "Clear statistics",
+    "description": "Statistics page and Settings: button that deletes everything recorded (after a confirmation)."
+  },
+  "statsNothing": {
+    "message": "Nothing was recorded in this period.",
+    "description": "Statistics page: the chosen period has no records."
+  },
+  "statsHeadline": {
+    "message": "What you read",
+    "description": "Statistics page: heading of the headline card (the AI-generated share and the four verdicts)."
+  },
+  "statsExpectedNote": {
+    "message": "Shares are expected words: each paragraph's words are split by how likely the model finds each verdict, so a doubtful paragraph counts partly on both sides.",
+    "description": "Statistics page: how the shares are computed (expected values, not counts of verdicts)."
+  },
+  "statsTrend": {
+    "message": "Day by day",
+    "description": "Statistics page: heading of the daily trend chart."
+  },
+  "statsTrendHint": {
+    "message": "Words read and scored each day, split into the four verdicts.",
+    "description": "Statistics page: what the daily trend chart shows."
+  },
+  "statsShowTable": {
+    "message": "Show as a table",
+    "description": "Statistics page: disclosure that shows the trend chart's numbers as a table."
+  },
+  "statsByKind": {
+    "message": "By kind of page",
+    "description": "Statistics page: heading of the table by kind of page (feeds, articles, …)."
+  },
+  "statsFeeds": {
+    "message": "Feeds and everything else",
+    "description": "Statistics page: heading of the comparison between feeds and all other pages."
+  },
+  "statsFeedsHint": {
+    "message": "Social feeds and timelines against articles, forums, documents and the rest.",
+    "description": "Statistics page: what the feeds comparison compares."
+  },
+  "statsBySite": {
+    "message": "By site",
+    "description": "Statistics page: heading of the table of sites (recorded from the 'Daily totals and sites' level)."
+  },
+  "statsCoverage": {
+    "message": "What could be scored",
+    "description": "Statistics page: heading of the coverage card (how much of what was read could be scored, and why not)."
+  },
+  "statsPages": {
+    "message": "Pages",
+    "description": "Statistics page: heading of the list of pages (recorded at the 'Every page' level)."
+  },
+  "statsExportTitle": {
+    "message": "Export statistics",
+    "description": "Export dialog: its title."
+  },
+  "statsExportLevel": {
+    "message": "Detail",
+    "description": "Export dialog: label of the level the file is saved at (as recorded, or coarser)."
+  },
+  "statsExportFormat": {
+    "message": "Format",
+    "description": "Export dialog: label of the file format choice."
+  },
+  "statsExportJson": {
+    "message": "JSON (everything at this detail)",
+    "description": "Export dialog: the JSON format."
+  },
+  "statsExportCsv": {
+    "message": "CSV (one row a day)",
+    "description": "Export dialog: the CSV format, daily rows only."
+  },
+  "statsExportNote": {
+    "message": "The file is saved on this computer. Anagram never uploads it: whether to share it is up to you. You can open it and see everything it holds.",
+    "description": "Export dialog: that the file stays local and sharing it is the reader's decision."
+  },
+  "statsExportSave": {
+    "message": "Save file",
+    "description": "Export dialog: button that saves the file."
+  },
+  "statsExportRange": {
+    "message": "Period: $1",
+    "description": "Export dialog: the period the file covers. $1 is a date or a date range."
+  },
+  "statsClearTitle": {
+    "message": "Clear statistics?",
+    "description": "Confirmation dialog before deleting every recorded day: its title."
+  },
+  "statsClearConfirm": {
+    "message": "Every day recorded is deleted from this computer. This can't be undone.",
+    "description": "Confirmation dialog before deleting every recorded day: what happens."
+  },
+  "statsCleared": {
+    "message": "Statistics cleared.",
+    "description": "Settings, Statistics: status after the statistics were deleted."
+  },
+  "statsSettingsLink": {
+    "message": "Statistics settings",
+    "description": "Statistics page footer: link to the Statistics group in Settings."
+  },
+  "statsKindFeed": {
+    "message": "Feeds",
+    "description": "Kind of page: social feeds and timelines (many posts by different people)."
+  },
+  "statsKindArticle": {
+    "message": "Articles",
+    "description": "Kind of page: one author's article, news story or blog post."
+  },
+  "statsKindForum": {
+    "message": "Forums and Q&A",
+    "description": "Kind of page: a discussion thread or a question with its answers."
+  },
+  "statsKindDocument": {
+    "message": "Documents and PDFs",
+    "description": "Kind of page: the PDF reader, Google Docs and document previews."
+  },
+  "statsKindOther": {
+    "message": "Other pages",
+    "description": "Kind of page: everything else."
+  },
+  "statsEverythingElse": {
+    "message": "Everything else",
+    "description": "Statistics page, feeds comparison: the row of every page that is not a feed."
+  },
+  "statsHeroLine": {
+    "message": "expected to be AI-generated, of $1 words read and scored",
+    "description": "Statistics page: the line under the big percentage. $1 is the number of words scored."
+  },
+  "statsHeroNone": {
+    "message": "None of the words read in this period could be scored.",
+    "description": "Statistics page: under the headline when words were read but none could be scored."
+  },
+  "statsCompare30": {
+    "message": "Your average over the last 30 days: $1.",
+    "description": "Statistics page: the AI-generated share over the last thirty days, for comparison. $1 is a percentage."
+  },
+  "statsColWords": {
+    "message": "Words read",
+    "description": "Statistics tables: column of words read (scored or not)."
+  },
+  "statsColAi": {
+    "message": "AI-generated",
+    "description": "Statistics tables: column of the expected AI-generated share."
+  },
+  "statsColKind": {
+    "message": "Kind of page",
+    "description": "Statistics tables: column of kinds of page."
+  },
+  "statsColSite": {
+    "message": "Site",
+    "description": "Statistics tables: column of sites."
+  },
+  "statsColDate": {
+    "message": "Day",
+    "description": "Statistics trend table: column of days."
+  },
+  "statsColScored": {
+    "message": "Scored",
+    "description": "Statistics trend table: column of words scored."
+  },
+  "statsColOpened": {
+    "message": "Opened",
+    "description": "Statistics pages table: when the page was first read that day."
+  },
+  "statsColPage": {
+    "message": "Page",
+    "description": "Statistics pages table: the page's title, linking to its address."
+  },
+  "statsColShown": {
+    "message": "Time shown",
+    "description": "Statistics pages table: how long the page was shown while somebody was reading."
+  },
+  "statsTrendAria": {
+    "message": "Words read and scored each day, $1, split into the four verdicts. The table below gives the numbers.",
+    "description": "Accessible description of the trend chart. $1 is the date range."
+  },
+  "statsTrendTip": {
+    "message": "$1 words scored, $2 AI-generated",
+    "description": "Trend chart: tooltip of a day's column, after the date. $1 is words, $2 a percentage."
+  },
+  "statsCoverageLine": {
+    "message": "$1 of the $2 words you read could be scored ($3).",
+    "description": "Statistics page, coverage: $1 words scored, $2 words read, $3 the percentage."
+  },
+  "statsCovScored": {
+    "message": "Scored: $1 words",
+    "description": "Statistics page, coverage list: words that were scored."
+  },
+  "statsCovShort": {
+    "message": "Too short to score: $1 words",
+    "description": "Statistics page, coverage list: words in paragraphs under the minimum length."
+  },
+  "statsCovLanguage": {
+    "message": "Not in English: $1 words",
+    "description": "Statistics page, coverage list: words in another language, which the model does not read."
+  },
+  "statsCovUnavailable": {
+    "message": "Engine unavailable: $1 words",
+    "description": "Statistics page, coverage list: words read while the engine could not score them."
+  },
+  "statsNoPages": {
+    "message": "No page was recorded in this period.",
+    "description": "Statistics page, pages list: nothing in the period."
+  },
+  "statsMorePages": {
+    "message": "The latest $1 of $2 pages. The export has them all.",
+    "description": "Statistics page, under the pages list when it is cut short."
+  },
+  "statsNoSites": {
+    "message": "No site was recorded in this period.",
+    "description": "Statistics page, sites table: nothing in the period."
+  },
+  "statsMoreSites": {
+    "message": "And $1 more sites. The export has them all.",
+    "description": "Statistics page, under the top sites."
+  },
+  "statsLocalFile": {
+    "message": "A PDF on this computer",
+    "description": "Statistics pages list: a PDF opened from this computer, which has no address."
+  },
+  "statsLocalFiles": {
+    "message": "PDFs on this computer",
+    "description": "Statistics sites table: PDFs opened from this computer, which have no site."
+  },
+  "statsRecordingOff": {
+    "message": "Recording is off.",
+    "description": "Statistics page, under the title: nothing is being recorded."
+  },
+  "statsRecordingLine": {
+    "message": "Recording: $1, kept for $2 days.",
+    "description": "Statistics page, under the title. $1 is the level's name, $2 the retention in days."
+  },
+  "optStats": {
+    "message": "Statistics",
+    "description": "Settings: label of the reading statistics group."
+  },
+  "optStatsKeep": {
+    "message": "Keep",
+    "description": "Settings, Statistics: label of how long days are kept."
+  },
+  "optStatsDays": {
+    "message": "$1 days",
+    "description": "Settings, Statistics, Keep: one choice. $1 is 30, 90 or 365."
+  },
+  "optStatsOpen": {
+    "message": "Open statistics",
+    "description": "Settings, Statistics: button that opens the statistics page."
+  },
+  "popupStatsLink": {
+    "message": "Statistics",
+    "description": "Toolbar menu: link to the statistics page, after today's line."
+  },
+  "popupStatsNothing": {
+    "message": "Today: nothing read yet.",
+    "description": "Toolbar menu, while statistics are recorded: nothing read today."
+  },
+  "popupStatsNoneScored": {
+    "message": "Today: $1 words read, none of them scored.",
+    "description": "Toolbar menu: words were read today but none could be scored. $1 is the number of words."
+  },
+  "popupStatsToday": {
+    "message": "Today: $1 AI-generated, of $2 words read.",
+    "description": "Toolbar menu, while statistics are recorded: $1 is the expected AI-generated share (a percentage), $2 the words read and scored today."
   }
 }

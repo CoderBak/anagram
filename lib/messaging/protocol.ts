@@ -103,6 +103,11 @@ export const ACTIONS = {
   /** SW → content / popup: the in-browser engine's download has moved, while it runs and they
    *  show it (lib/backend/setupFeed.ts). */
   ENGINE_SETUP: "engineSetup",
+  /** content / reader → SW: words read since the last one, as numbers only — each paragraph's
+   *  words and probabilities, the words that had no verdict — and the kind of page. The worker
+   *  takes the site, the date and whether the window is private from the browser, and adds
+   *  them to the statistics if the reader asked for them (lib/stats/worker.ts). */
+  STATS_RECORD: "statsRecord",
 } as const;
 
 /** SW → content (response to COMMENT_ACCESS): the providers' patterns nothing grants. */

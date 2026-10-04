@@ -69,6 +69,8 @@
       .tools .btn > svg { color: var(--muted-foreground); }
       .engine { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 11px; color: var(--muted-foreground); }
       .engine::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #00a06a; flex: none; }
+      .stats-today { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 6px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
+      .stats-today button { min-height: 24px; padding: 2px 0; border: 0; background: transparent; color: var(--foreground); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
       .toolbar-help { display: block; min-height: 24px; margin: 4px 0 0; padding: 2px 0; border: 0; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer; }
       /* Hit areas, not paint: an invisible 24x24 box centred on each small control. */
       input[type="checkbox"][role="switch"] { position: relative; }
@@ -142,6 +144,8 @@
             <span data-i18n="pasteTitle">Analyze text</span>
           </button>
         </div>
+        <!-- Today's reading, while statistics are recorded (lib/stats/). -->
+        <p class="stats-today" id="statsToday" hidden><span id="statsTodayText"></span><button type="button" id="openStats" data-i18n="popupStatsLink">Statistics</button></p>
         <p class="engine" id="backend" hidden></p>
         <button id="toolbarHelp" class="toolbar-help" type="button" hidden data-i18n="toolbarPinHelp">How to keep Anagram in the toolbar</button>
       </footer>

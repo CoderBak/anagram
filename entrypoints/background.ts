@@ -49,6 +49,10 @@ import { closeWebEngine, webEngineRunning } from "../lib/webengine/client";
 import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
 import { createWarmup } from "../lib/backend/warmup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
+import { createStatsRecorder } from "../lib/stats/worker";
+import { openStatsStore } from "../lib/stats/store";
+import { retentionOf, statsLevelOf } from "../lib/stats/model";
+import { minWordsOf } from "../lib/dom/text";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 /** Where a text was read, for the caches pages share (RequestOrigin.partition in
@@ -179,6 +183,20 @@ export default defineBackground(() => {
     warm: () => transportOf("inbrowser").request("warm"),
   });
   browser.webNavigation.onBeforeNavigate.addListener((details) => void warmup(details));
+
+  // The reading statistics, which pages send their numbers to and which only this worker
+  // writes (lib/stats/worker.ts). Off unless the reader chose a level.
+  const stats = createStatsRecorder({
+    store: openStatsStore(),
+    level: async () => statsLevelOf(await settings.statsLevel.getValue()),
+    retention: async () => retentionOf(await settings.statsRetentionDays.getValue()),
+    enabledFor: (hostname) => hostname ? enabledForSite(hostname) : settings.enabled.getValue(),
+    model: () => {
+      const { id, ver, calibration } = getScoreClient().model();
+      return id === "none" ? null : { id, ver, calibration };
+    },
+    minWords: async () => minWordsOf(await settings.minWords.getValue()),
+  });
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -490,6 +508,10 @@ export default defineBackground(() => {
         for (const origin of msg.origins) if (!(await browser.permissions.contains({origins:[origin]}).catch(()=>false))) missing.push(origin);
         return {missing} satisfies CommentAccessReply;
       }
+      case ACTIONS.STATS_RECORD:
+        // Answered the same whether anything was kept: a page learns nothing of the level.
+        await stats.record(msg,sender,role === "reader" ? "reader" : "content").catch(()=>false);
+        return {ok:true};
       case ACTIONS.COUNT_TOKENS: {
         const counts=await tokenCounter.count(msg.texts,document!.signal,await partitionOf(sender,document!)).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
