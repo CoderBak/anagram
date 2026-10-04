@@ -526,7 +526,7 @@ test("a fast scroll: what is on screen when it stops is sent before anything scr
 // engine answers in 300 ms: slots free up as the page goes by, and what flashes past is not
 // sent; what is on screen when it stops is (lib/capture/fling.ts).
 test("a page flung past for seconds sends nothing of what flashes by, and what it stops at at once", async ({ context, page, pages, nativeHost }) => {
-  pages.serve({ "/fling.html": PAGE("fling fixture", Array.from({ length: 120 }, (_, i) => `<p id="fp${i}">${para("FLUNGPAST", i)}</p>`).join("\n")) });
+  pages.serve({ "/fling.html": PAGE("fling fixture", Array.from({ length: 160 }, (_, i) => `<p id="fp${i}">${para("FLUNGPAST", i)}</p>`).join("\n")) });
   nativeHost.setState({ latency: [300, 300] });
   await page.addInitScript(chipClock);
   await sendOrder(context, page);
@@ -537,18 +537,20 @@ test("a page flung past for seconds sends nothing of what flashes by, and what i
   const flung = await page.evaluate(async () => {
     const before = window.__sent.length;
     const frame = () => new Promise((r) => requestAnimationFrame(r));
-    const began = performance.now();
-    let y = scrollY, frames = 0, scrolls = 0;
+    // By the clock, not by the frame: a frame's length is the machine's.
+    const began = performance.now(), from = scrollY;
+    let frames = 0, scrolls = 0;
     addEventListener("scroll", () => scrolls++, { capture: true });
     while (performance.now() - began < 4000) {
-      y += innerHeight * 0.06;
-      scrollTo(0, y);
+      scrollTo(0, from + ((performance.now() - began) / 1000) * 3.5 * innerHeight);
       await frame();
       frames++;
     }
-    return { frames, scrolls, sent: window.__sent.length - before, which: window.__sent.slice(before, before + 12).map((t) => /FLUNGPAST-(\d+)/.exec(t)?.[1]).join(","), stopped: [...document.querySelectorAll("p[id]")].filter((el) => { const b = el.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; }).map((el) => el.id) };
+    const bottom = scrollY + innerHeight >= document.documentElement.scrollHeight - 1;
+    return { frames, scrolls, bottom, sent: window.__sent.length - before, which: window.__sent.slice(before, before + 12).map((t) => /FLUNGPAST-(\d+)/.exec(t)?.[1]).join(","), stopped: [...document.querySelectorAll("p[id]")].filter((el) => { const b = el.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; }).map((el) => el.id) };
   });
   const note = `a page flung past: ${JSON.stringify(flung)}`;
+  expect(flung.bottom, `${note} (the fling ran out of page)`).toBe(false);
   expect.soft(flung.sent, note).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate((ids) => ids.filter((id) => !(id in window.__chipAt)), flung.stopped), { message: `${note} (what it stopped at is read)`, timeout: 20_000 }).toEqual([]);
 });

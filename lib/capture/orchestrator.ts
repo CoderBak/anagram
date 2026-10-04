@@ -47,6 +47,8 @@ import { createLogger } from "../log";
 import { createBackgroundPace } from "./pace";
 import { createInsertionGate } from "./insertionGate";
 import { createFling } from "./fling";
+import { createBackendWatch } from "./backendWatch";
+import { createKeptLedger, type KeptVerdict } from "./keptLedger";
 
 const log = createLogger("orchestrator");
 
@@ -171,17 +173,6 @@ export interface DetachedReport {
   down: boolean;
 }
 
-/** A verdict on a paragraph of a paged document that is not drawn now (Unit.page). */
-interface KeptVerdict {
-  /** "k…": an id of its own, for the report's list. */
-  id: string;
-  page: number;
-  order: number;
-  text: string;
-  wordCount: number;
-  result: ScoreResult;
-}
-
 /** Everything the FIRST collect depends on, read as one snapshot before it runs. */
 interface SettingsSnapshot {
   showHighlights: boolean;
@@ -268,17 +259,10 @@ export function createOrchestrator(
   const shortTexts = new Set<Text>();
   /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
   let verdictsById = new Map<string, UnitVerdict>();
-  /**
-   * PAGED DOCUMENTS. The PDF reader's viewer draws a few pages at a time and lets the rest go,
-   * and a unit goes with its page (purgeDisconnected); the reader also reads pages it has not
-   * drawn (scoreDetached). Both verdicts are kept here, by the paragraph's text, and counted
-   * and listed as long as no live unit has that text: the report is the document read so far,
-   * not the two pages on screen. A paragraph on screen counts by its live unit, and when its
-   * page is let go once more its kept verdict is replaced.
-   */
-  let kept = new Map<string, KeptVerdict>();
+  /** PAGED DOCUMENTS: the verdicts on paragraphs whose page is not drawn now, let go with it
+   *  (purgeDisconnected) or read without it (scoreDetached) — lib/capture/keptLedger.ts. */
+  const kept = createKeptLedger();
   let detachedSeq = 0;
-  let keptSeq = 0;
   /** A kept paragraph the report's list asked for: jumped to once its page is read again, if
    *  that is soon — later, the reader has moved on. */
   let pendingJump: { page: number; text: string; until: number } | null = null;
@@ -328,11 +312,28 @@ export function createOrchestrator(
   const pace = opts.pacedBackground !== false ? createBackgroundPace() : null;
   /** While the page is flung past, what is on screen for a moment waits (lib/capture/fling.ts). */
   const fling = createFling();
-  /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
-  let backendDown = false;
+  /** The daemon stopped answering: dispatch is paused until a probe succeeds
+   *  (lib/capture/backendWatch.ts). */
+  const backend = createBackendWatch({
+    pollMs: DOWN_POLL_MS,
+    probe: async (force) => (await sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: force })) as BackendStatus | undefined,
+    alive: contextAlive,
+    freeze: () => freeze(),
+    changed(down) {
+      syncDispatch();
+      if (down) log.warn("scoring daemon not answering — dispatch paused, re-checking every", DOWN_POLL_MS, "ms");
+      else {
+        retryUnavailable();
+        log.log("scoring daemon back");
+      }
+    },
+    learned: (s) => learnDevice(s),
+    // The daemon may have come back as a DIFFERENT model.
+    adopt: (m) => adoptBackend(m),
+    generation: () => captureGeneration,
+  });
   /** The tab is in the background: dispatch is paused until it is shown again. */
   let pageHidden = false;
-  let downTimer: ReturnType<typeof setInterval> | null = null;
   /** The flagged unit the last jump parked on. Without it a second next-flagged press
    *  would re-pick the paragraph the first one centred, since "the next one past the
    *  scroll position" is that very paragraph. */
@@ -585,7 +586,7 @@ export function createOrchestrator(
       // the reflow reads a run of drawn pages as a whole, and a paragraph across the edge of
       // the run reads differently with every run — each would be counted again.
       if (unit.page !== undefined && v && !v.result.degraded && opts.documentTexts?.()) {
-        keep({ page: unit.page, order: unit.order, text: unit.text, wordCount: unit.wordCount }, v.result);
+        kept.keep({ page: unit.page, order: unit.order, text: unit.text, wordCount: unit.wordCount }, v.result);
         left = true;
       }
       invalidateUnit(unit, rescanQueue);
@@ -593,23 +594,14 @@ export function createOrchestrator(
     if (left) updateToolbar();
   }
 
-  function keep(p: DetachedParagraph, result: ScoreResult): void {
-    kept.set(p.text, { id: `k${(keptSeq++).toString(36)}`, page: p.page, order: p.order, text: p.text, wordCount: p.wordCount, result });
-  }
-
   /** What is kept of the paragraphs not on screen now. */
   function keptNow(): KeptVerdict[] {
-    if (kept.size === 0) return [];
-    const live = new Set<string>();
-    for (const unit of unitsById.values()) live.add(unit.text);
-    const current = opts.documentTexts?.() ?? null;
-    return [...kept.values()].filter((k) => !live.has(k.text) && (!current || current.has(k.text)));
+    return kept.now(Array.from(unitsById.values(), (unit) => unit.text), opts.documentTexts?.() ?? null);
   }
 
   /** Pages with verdicts, drawn now or kept. */
   function pagesRead(): number {
-    const pages = new Set<number>();
-    for (const k of kept.values()) pages.add(k.page);
+    const pages = new Set<number>(kept.pages());
     for (const id of verdictsById.keys()) {
       const page = unitsById.get(id)?.page;
       if (page !== undefined) pages.add(page);
@@ -631,7 +623,7 @@ export function createOrchestrator(
   // Anything of the page's own out or waiting holds the read-ahead: on screen it comes
   // first, and whatever a batch waits behind would be timed as the engine's pace.
   function busy(): boolean {
-    return !started || !booted || frozen || backendDown || pageHidden || scheduler.pendingCount() > 0;
+    return !started || !booted || frozen || backend.down || pageHidden || scheduler.pendingCount() > 0;
   }
 
   /**
@@ -772,8 +764,7 @@ export function createOrchestrator(
   const countTokensFor = (generation: number) => async (texts: string[]) => {
     const reply = await requestTokenCounts(texts);
     if (generation === captureGeneration) {
-      if (reply.backend === "down") enterDown();
-      else if (reply.backend === "up") leaveDown();
+      backend.heard(reply.backend);
     }
     return reply.counts;
   };
@@ -838,7 +829,7 @@ export function createOrchestrator(
   async function scoreDetached(items: readonly DetachedParagraph[]): Promise<DetachedReport> {
     const began = performance.now();
     const generation = captureGeneration;
-    if (busy() || items.length === 0) return { ms: 0, sent: 0, chars: 0, scored: 0, retired: false, down: backendDown };
+    if (busy() || items.length === 0) return { ms: 0, sent: 0, chars: 0, scored: 0, retired: false, down: backend.down };
     const given = items.map((p) => ({ id: `d${(detachedSeq++).toString(36)}`, text: p.text, order: p.order, p }));
     let sent = 0, chars = 0;
     const read = await readInWindows(given, async (blocks, owners) => {
@@ -849,18 +840,18 @@ export function createOrchestrator(
       chars += engine.chars;
       return out;
     }, countTokensFor(generation)).catch(() => new Map<string, WindowVerdict[]>());
-    if (generation !== captureGeneration) return { ms: performance.now() - began, sent, chars, scored: 0, retired: true, down: backendDown };
+    if (generation !== captureGeneration) return { ms: performance.now() - began, sent, chars, scored: 0, retired: true, down: backend.down };
     let scored = 0;
     for (const { id, text, p } of given) {
       const windows = read.get(id);
       if (!windows?.length) continue;
       const verdict = unitVerdict(id, text.length, windows);
       if (verdict.result.degraded) continue;
-      keep(p, verdict.result);
+      kept.keep(p, verdict.result);
       scored++;
     }
     if (scored > 0) updateToolbar();
-    return { ms: performance.now() - began, sent, chars, scored, retired: false, down: backendDown };
+    return { ms: performance.now() - began, sent, chars, scored, retired: false, down: backend.down };
   }
 
   /**
@@ -948,8 +939,7 @@ export function createOrchestrator(
         const reply = await requestScores(req);
         if (!current()) return new Map();
         const fresh = reply.results;
-        if (reply.backend === "down") enterDown();
-        else if (reply.backend === "up") leaveDown();
+        backend.heard(reply.backend);
         // The reply names the backend that produced it — adopt it, dropping whatever the
         // previous one left behind (both cached and already painted).
         adoptBackend(reply.model ?? null);
@@ -995,7 +985,7 @@ export function createOrchestrator(
       /* observers may be half-dead — freezing must never throw */
     }
     unwatchUrl();
-    stopDownPolling();
+    backend.halt();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     pace?.watch(false);
     fling.watch(false);
@@ -1005,7 +995,7 @@ export function createOrchestrator(
 
   /** Queued units wait (in-flight batches finish) for as long as either reason holds. */
   function syncDispatch(): void {
-    if (backendDown || pageHidden) scheduler.pause();
+    if (backend.down || pageHidden) scheduler.pause();
     else scheduler.resume();
   }
 
@@ -1016,62 +1006,7 @@ export function createOrchestrator(
     syncDispatch();
   }
 
-  // --- daemon down / back --------------------------------------------------------------
-  // In-flight batches render "Unavailable" (degraded results, never cached). Nothing
-  // else is dispatched until the worker's probe finds the engine up, idle or loading
-  // again; then every Unavailable unit is re-observed so it re-dispatches by visibility,
-  // and the queue resumes. Loading is the in-browser engine's, which holds what it is sent
-  // until its model is in (the local engine says "not ready" while it loads: down).
-
-  function enterDown(): void {
-    if (backendDown) return;
-    backendDown = true;
-    syncDispatch();
-    if (downTimer === null) downTimer = setInterval(() => void checkBackend(false), DOWN_POLL_MS);
-    // The engine may be down for want of setup, which the popup says at once.
-    void checkBackend(false);
-    log.warn("scoring daemon not answering — dispatch paused, re-checking every", DOWN_POLL_MS, "ms");
-  }
-
-  function leaveDown(): void {
-    if (!backendDown) return;
-    backendDown = false;
-    stopDownPolling();
-    syncDispatch();
-    retryUnavailable();
-    log.log("scoring daemon back");
-  }
-
-  function stopDownPolling(): void {
-    if (downTimer !== null) {
-      clearInterval(downTimer);
-      downTimer = null;
-    }
-  }
-
-  async function checkBackend(force: boolean): Promise<void> {
-    const generation = captureGeneration;
-    if (!contextAlive()) {
-      freeze();
-      return;
-    }
-    try {
-      const s = (await sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: force })) as
-        | BackendStatus
-        | undefined;
-      if (generation !== captureGeneration) return;
-      learnDevice(s);
-      if (s?.active === "server" || s?.active === "idle" || s?.active === "loading") {
-        leaveDown();
-        // The daemon may have come back as a DIFFERENT model. A page whose paragraphs
-        // are all cache hits sends no request at all, so the probe is the only place
-        // such a tab can ever notice.
-        adoptBackend(s.model);
-      }
-    } catch {
-      /* worker restarting — next tick */
-    }
-  }
+  // --- daemon down / back: lib/capture/backendWatch.ts --------------------------------
 
   /**
    * Adopt the identity of the backend that answered. A different one than this tab's L1
@@ -1114,15 +1049,15 @@ export function createOrchestrator(
 
   function retryBackend(): void {
     if (!started) return;
-    if (backendDown) void checkBackend(true);
+    if (backend.down) void backend.check(true);
     else retryUnavailable();
   }
 
   /** The worker pushes setup progress to paused pages
    *  (lib/backend/setupFeed.ts); whatever comes after the download is asked for at once. */
   function setupProgress(setup: EngineSetup | null): boolean {
-    if (!started || frozen || !backendDown) return false;
-    if (setup?.state !== "downloading") void checkBackend(false);
+    if (!started || frozen || !backend.down) return false;
+    if (setup?.state !== "downloading") void backend.check(false);
     return true;
   }
 
@@ -1273,7 +1208,7 @@ export function createOrchestrator(
     foregroundDelay: () => fling.delay(),
     // A prefetch pass is capped (PREFETCH_PASS): keep draining while work is left.
     onIdle: () => {
-      if (started && !frozen && !backendDown) schedulePrefetch();
+      if (started && !frozen && !backend.down) schedulePrefetch();
     },
   });
 
@@ -1615,7 +1550,7 @@ export function createOrchestrator(
     flaggedCursor = null; // the ids it names are about to stop existing
     unitsById = new Map();
     verdictsById = new Map();
-    kept = new Map();
+    kept.clear();
     pendingJump = null;
     shortTexts.clear();
     nodeOwner = new WeakMap();
@@ -1632,11 +1567,10 @@ export function createOrchestrator(
     gate.reset();
     observers.stop();
     scheduler.stop();
-    stopDownPolling();
+    backend.reset();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     pace?.watch(false);
     fling.watch(false);
-    backendDown = false;
     commentOffer = [];
     commentAsked++;
     clearAllResults();
