@@ -19,7 +19,7 @@ import type { BackendStatus, CommentAccessReply, EngineSetup } from "../messagin
 import { commentOriginsIn } from "../access/commentFrames";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
-import { CONTRACT_VERSION } from "../contract";
+import { CONTRACT_VERSION, modelDim } from "../contract";
 import { collectUnitsInSlices, inPageOrder, type CollectOptions } from "../dom/walker";
 import { finishInSlices } from "../slices";
 import { restoreSplits } from "../dom/splits";
@@ -30,7 +30,6 @@ import { createScoreCache, type ScoreCache } from "./cache";
 import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict, type WindowVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, requestTokenCounts, contextAlive } from "../messaging/client";
-import { modelDim } from "../backend/router";
 import { deviceKind } from "../backend/deviceKind";
 import { createBadgeLayer, type BadgeLayer, type BadgeLayerOptions } from "../render/badge";
 import {

@@ -263,13 +263,13 @@ export function hasLetters(text: string): boolean {
 // chat's every new message has the walk read the two hundred before it once more, to see
 // which of them it joins; a feed's post is read again when its class or its counter changes;
 // the text of a unit is put in the model's form for its cache key, its passes and its blocks.
-// What a text IS — its words, their shape, one phrase said over and over — does not change
-// while the text does not, and finding out (Intl.Segmenter, a regular expression per
-// character) was the most of what reading a known paragraph cost: a quarter of the content
-// script's time on that chat. So each answer is kept with the text, for the texts seen last:
-// up to KEPT_CHARS characters of them, then all forgotten at once and found again as asked.
-// A text longer than KEPT_TEXT_CHARS is not kept: a whole card's or page's textContent, asked
-// once.
+// What a text IS — its words, their shape, its writing system, a phrase said over and over —
+// does not change while the text does not, and finding out (Intl.Segmenter, a regular
+// expression per character) was the most of what reading a known paragraph cost: a quarter of
+// the content script's time on that chat. So each answer is kept with the text, for the texts
+// seen last: up to KEPT_CHARS characters of them, then all forgotten at once and found again
+// as asked. A text longer than KEPT_TEXT_CHARS is not kept: a whole card's or page's
+// textContent, asked once.
 
 /** What has been found about one text, each the first time it was asked. */
 interface Found {
@@ -279,6 +279,7 @@ interface Found {
   noise?: number;
   names?: boolean;
   model?: string;
+  script?: string | null;
 }
 
 const KEPT_CHARS = 1 << 19;
@@ -298,6 +299,33 @@ function foundOf(text: string): Found {
     foundChars += text.length;
   }
   return f;
+}
+
+/** Letters a text needs before its writing system is told. */
+const SCRIPT_MIN_LETTERS = 8;
+/** Share of its letters one writing system must hold to be the text's. */
+const SCRIPT_SHARE = 0.7;
+const SCRIPTS: [string, RegExp][] = [
+  ["cjk", /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu],
+  ["latin", /\p{Script=Latin}/gu],
+  ["cyrillic", /\p{Script=Cyrillic}/gu],
+  ["arabic", /\p{Script=Arabic}/gu],
+  ["greek", /\p{Script=Greek}/gu],
+];
+
+/** The writing system most of a text's letters are in, Chinese, Japanese and Korean as one;
+ *  null where none holds most of them, or the text has too few letters to tell. */
+export function writingSystem(text: string): string | null {
+  const f = foundOf(text);
+  if (f.script === undefined) f.script = scriptIn(text);
+  return f.script;
+}
+
+function scriptIn(text: string): string | null {
+  const letters = (text.match(/\p{L}/gu) ?? []).length;
+  if (letters < SCRIPT_MIN_LETTERS) return null;
+  for (const [name, pattern] of SCRIPTS) if ((text.match(pattern) ?? []).length >= letters * SCRIPT_SHARE) return name;
+  return null;
 }
 
 // ---- segmenters (cached — constructing Intl.Segmenter per call is expensive) -------

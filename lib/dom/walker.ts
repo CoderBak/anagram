@@ -80,6 +80,7 @@ import {
   MIN_LINE_WORDS,
   MODEL_MIN_WORDS,
   MAX_UNIT_TEXT_CHARS,
+  writingSystem,
 } from "./text";
 import { type Scopes, createScopes, surveyScopes } from "./scope";
 import { keptUntilChanged } from "./kept";
@@ -1502,36 +1503,10 @@ function wholePost(root: Element): Element {
   return all.replace(/\s+/g, " ").length <= WHOLE_POST_CHARS ? scope : root;
 }
 
-/** Letters a text needs before its writing system is told. */
-const SCRIPT_MIN_LETTERS = 8;
-/** Share of its letters one writing system must hold to be the text's. */
-const SCRIPT_SHARE = 0.7;
-const SCRIPTS: [string, RegExp][] = [
-  ["cjk", /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu],
-  ["latin", /\p{Script=Latin}/gu],
-  ["cyrillic", /\p{Script=Cyrillic}/gu],
-  ["arabic", /\p{Script=Arabic}/gu],
-  ["greek", /\p{Script=Greek}/gu],
-];
-const scriptKept = new WeakMap<Run, string | null>();
-/** The writing system most of a run's letters are in, Chinese, Japanese and Korean as one;
- *  null where none holds most of them, or the run has too few letters to tell. */
-function scriptOf(r: Run): string | null {
-  if (scriptKept.has(r)) return scriptKept.get(r)!;
-  const letters = (r.text.match(/\p{L}/gu) ?? []).length;
-  let found: string | null = null;
-  if (letters >= SCRIPT_MIN_LETTERS) {
-    for (const [name, pattern] of SCRIPTS) {
-      if ((r.text.match(pattern) ?? []).length >= letters * SCRIPT_SHARE) { found = name; break; }
-    }
-  }
-  scriptKept.set(r, found);
-  return found;
-}
 /** Two runs in two writing systems are two texts: a Chinese paragraph and the English note
  *  after it were read as one, and its chip stood after the English. */
 function sameScript(a: Run, b: Run): boolean {
-  const x = scriptOf(a), y = scriptOf(b);
+  const x = writingSystem(a.text), y = writingSystem(b.text);
   return x === null || y === null || x === y;
 }
 

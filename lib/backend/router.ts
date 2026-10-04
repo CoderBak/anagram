@@ -2,7 +2,7 @@
 // inference, and complete model provenance. Browser authority supplies document keys.
 import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult,
   ScoreBatchRequest, ScoreBatchResponse } from "../contract";
-import { BUCKET_COUNT } from "../contract";
+import { BUCKET_COUNT, modelDim } from "../contract";
 import { modelText } from "../dom/text";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { createSwCache, type SwCache } from "./swCache";
@@ -50,8 +50,6 @@ export interface BackendRouter {
   setCacheMode(mode: ScoreCacheMode, restored?: boolean): Promise<void>;
   count(): Promise<number>;
 }
-/** JSON avoids delimiter collisions and includes calibration, not just model/version. */
-export function modelDim(m: ModelInfo): string { return JSON.stringify([m.id, m.ver, m.calibration]); }
 const snapshot = (m: ModelInfo): ModelInfo => ({ id: m.id, ver: m.ver, calibration: m.calibration });
 function neutral(block: ScoreBlock): ScoreResult {
   return { id: block.id, bucket: 0, probs: new Array<number>(BUCKET_COUNT).fill(1 / BUCKET_COUNT),
