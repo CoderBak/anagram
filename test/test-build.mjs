@@ -111,3 +111,18 @@ export function shippingWithNative() {
     manifest.permissions = [...manifest.permissions, "nativeMessaging"];
   });
 }
+
+/**
+ * The shipping build with this machine's own pages granted (localhost and 127.0.0.1, as a
+ * person grants a site) and Native Messaging granted: what a web page meets when Anagram runs
+ * on it as shipped — closed chips (lib/render/shadowMode.ts), no test-only code. Nothing else
+ * differs. output-test/shipping-sites/chrome-mv3.
+ */
+export function shippingWithSites() {
+  const from = join(ROOT, "output", "chrome-mv3");
+  return derivedBuild(from, join(TEST_OUT, "shipping-sites", "chrome-mv3"), (manifest) => {
+    manifest.optional_permissions = (manifest.optional_permissions ?? []).filter((p) => p !== "nativeMessaging");
+    manifest.permissions = [...manifest.permissions, "nativeMessaging"];
+    manifest.host_permissions = [...(manifest.host_permissions ?? []), "http://localhost/*", "http://127.0.0.1/*"];
+  });
+}

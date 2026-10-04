@@ -338,8 +338,8 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/anagram-install.XXXXXX")"
 
 # ---------------------------------------------------------------- 1. release tarball
 step 1 "$(tr_msg 'Downloading the Anagram release' '正在下载 Anagram 安装包')"
-curl -q -fL --retry 3 -o "$TMP/anagram.tar.gz" "$RELEASE_URL/anagram.tar.gz"
-curl -q -fsSL --retry 3 -o "$TMP/anagram.tar.gz.sha256" "$RELEASE_URL/anagram.tar.gz.sha256"
+curl -q --proto =https,file --proto-redir =https -fL --retry 3 -o "$TMP/anagram.tar.gz" "$RELEASE_URL/anagram.tar.gz"
+curl -q --proto =https,file --proto-redir =https -fsSL --retry 3 -o "$TMP/anagram.tar.gz.sha256" "$RELEASE_URL/anagram.tar.gz.sha256"
 expected="$(cut -c1-64 "$TMP/anagram.tar.gz.sha256")"
 actual="$(sha256_of "$TMP/anagram.tar.gz")"
 [ "$expected" = "$actual" ] || die "checksum mismatch for anagram.tar.gz (expected $expected, got $actual)"
@@ -355,6 +355,11 @@ mkdir -p "$TMP/x" && tar -xzf "$TMP/anagram.tar.gz" -C "$TMP/x"
 REL="$TMP/x/anagram"
 [ -f "$REL/VERSION" ] && [ -d "$REL/app" ] && [ -d "$REL/extension" ] && [ -f "$REL/bin/anagram" ] || die "unexpected release layout"
 VERSION="$(cat "$REL/VERSION")"
+# A release asked for by its version (the extension's own, from Settings) must be that
+# version: a release that says otherwise is not the one its address names.
+case "$RELEASE_URL" in
+  */download/v*) [ "$VERSION" = "${RELEASE_URL##*/download/v}" ] || die "the release says it is $VERSION, not ${RELEASE_URL##*/download/v} as asked" ;;
+esac
 note "version $VERSION"
 # Staged swap: the new trees are placed beside the old ones, then renamed into place.
 STAGE="$(mktemp -d "$ANAGRAM_HOME/.staging.XXXXXX")"
@@ -387,9 +392,9 @@ step 2 "$(tr_msg 'Preparing the package manager' '正在准备依赖管理器')"
 if [ ! -x "$ANAGRAM_HOME/bin/uv" ] || [ "$(clean_env "$ANAGRAM_HOME/bin/uv" --version 2>/dev/null | cut -d' ' -f2)" != "$UV_VERSION" ]; then
   note "$(tr_msg 'Downloading uv' '正在下载 uv') $UV_VERSION"
   uv_release="https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-$UV_TARGET.tar.gz"
-  if [ -z "$UV_GITHUB" ] || ! { note "$(tr_msg 'from your mirror,' '来自你配置的镜像') $(url_host "$UV_GITHUB")"; curl -q -fL --retry 3 -o "$TMP/uv.tar.gz" "$UV_GITHUB${uv_release#https://github.com}" && [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ]; }; then
+  if [ -z "$UV_GITHUB" ] || ! { note "$(tr_msg 'from your mirror,' '来自你配置的镜像') $(url_host "$UV_GITHUB")"; curl -q --proto =https,file --proto-redir =https -fL --retry 3 -o "$TMP/uv.tar.gz" "$UV_GITHUB${uv_release#https://github.com}" && [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ]; }; then
     [ -z "$UV_GITHUB" ] || mirror_failed "$UV_GITHUB"
-    curl -q -fL --retry 3 -o "$TMP/uv.tar.gz" "$uv_release"
+    curl -q --proto =https,file --proto-redir =https -fL --retry 3 -o "$TMP/uv.tar.gz" "$uv_release"
   fi
   [ "$(sha256_of "$TMP/uv.tar.gz")" = "$UV_SHA" ] || die "checksum mismatch for uv-$UV_TARGET.tar.gz"
   tar -xzf "$TMP/uv.tar.gz" -C "$TMP" "uv-$UV_TARGET/uv"

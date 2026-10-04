@@ -155,11 +155,14 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 
 ### IndexedDB `anagram-scores`
 
-The persistent score cache. A row holds the model identity plus a 53-bit hash of the
-text the model read, the verdict (bucket, four probabilities, score), token count, truncation
-flag, detected language and write time. **No raw page text is stored in the score cache.**
-An unsalted hash is not anonymous: someone with local cache access can test guesses about
-known text. The store keeps at most 20 000 rows, pruned back to 15 000 oldest first, and
+The persistent score cache. A row holds the model identity, a 128-bit SHA-256 digest of
+where the text was read (the tab's top-level site, the frame's origin) and one of the text the
+model read, the verdict (bucket, four probabilities, score), token count, truncation flag,
+detected language and write time. **No raw page text is stored in the score cache.** Nor is
+any site's name. A verdict is shared only within the site it was read on: one that came back at
+once would tell a page the user had read the same text elsewhere. A private window's verdicts
+are kept in memory, apart from the rest. An unsalted digest is not anonymous: someone with
+local cache access can test guesses about known text and sites. The store keeps at most 20 000 rows, pruned back to 15 000 oldest first, and
 rows expire 30 days after they were written.
 
 ### Other browser storage

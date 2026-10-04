@@ -678,12 +678,14 @@ test("a shadow root attached after the walk, or filled after it, is read: a late
 // Anagram once used, watches dispatchEvent, the window's globals and its messages, and every
 // answer must be the native's. The roots it attaches late, open and closed, are read all the
 // same: the event still reaches the content script, under a name the page never learns.
-test("the page cannot tell the page-world script is there: attachShadow and toString answer as natives, and no name, global or message gives Anagram away", async ({ page, pages }) => {
+test("the page cannot tell the page-world script is there: attachShadow and toString answer as natives, and no name, global or message gives Anagram away", async ({ page, pages, extension }) => {
   const quiet = "the page cannot tell the page-world script is there";
   pages.serve({
     "/quiet.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>quiet fixture</title><script>
 window.__seen = { events: 0, dispatched: 0, messages: [] };
-for (const type of ["anagram-shadow-attached", "anagram-shadow-port"]) {
+// …and the names WXT's content-script context announced every script under, the extension's
+// id in them (lib/quietContext.ts).
+for (const type of ["anagram-shadow-attached", "anagram-shadow-port", ...["content", "shadowPort"].map((name) => "${extension.extId}:" + name + ":wxt:content-script-started")]) {
   document.addEventListener(type, () => __seen.events++, true);
   window.addEventListener(type, () => __seen.events++, true);
 }
@@ -791,7 +793,9 @@ window.__first = (() => {
 // A closed root keeps the page's other scripts out, not the extension: Chrome gives a content
 // script every root through chrome.dom.openOrClosedShadowRoot. The page keeps its own
 // references in window.__closed, which is how this test looks inside.
-test("a closed shadow root is read: a custom element's at load, a <div>'s attached later", async ({ page, pages }) => {
+test("a closed shadow root is read: a custom element's at load, a <div>'s attached later — and no mark there hands the page its root", async ({ page, pages, storage }) => {
+  // Every paragraph read is underlined, so a mark would be registered if any were.
+  await storage.set({ underlineScope: "all" });
   const LONG = (tag) => `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that a component may keep its shadow root closed to the scripts of the page it sits in, which is its own business, while the reader who asked for the page to be analyzed still sees every word it renders there and expects a verdict for them like for any other paragraph.`;
   pages.serve({
     "/shadow-closed.html": PAGE("closed shadow roots", `<h1>Closed shadow roots</h1>
@@ -812,4 +816,13 @@ test("a closed shadow root is read: a custom element's at load, a <div>'s attach
   await page.goto(pages.url("/shadow-closed.html"), { waitUntil: "load" });
   const count = () => page.evaluate((sel) => Object.fromEntries(["cc", "cd"].map((id) => [id, window.__closed[id]?.querySelectorAll(sel).length ?? -1])), BADGE_SEL);
   await expect.poll(count, { message: "a closed shadow root is read: a custom element's at load, a <div>'s attached later" }).toEqual({ cc: 1, cd: 1 });
+  // CSS.highlights is the page's to read, and a Range is not retargeted: a mark in a closed tree
+  // would hand the page the root it was closed to (lib/render/highlight.ts inClosedTree).
+  const leaked = await page.evaluate(() => {
+    const roots = new Set([window.__closed.cc, window.__closed.cd]);
+    let n = 0, marks = 0;
+    for (const h of CSS.highlights.values()) for (const r of h) { marks++; if (roots.has(r.startContainer.getRootNode()) || roots.has(r.endContainer.getRootNode())) n++; }
+    return { n, marks };
+  });
+  expect.soft(leaked.n, `no registered mark lies in a closed shadow tree (${leaked.marks} marks registered)`).toBe(0);
 });

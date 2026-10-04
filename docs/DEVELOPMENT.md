@@ -249,4 +249,19 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   kernels can use for fused multiply-adds), but no published artefact is built with it; using
   it means building ONNX Runtime with Emscripten ourselves, shipping a binary that is not the
   pinned npm package's, and keeping the plain one for Safari, which has no relaxed SIMD.
+- Security, still open (review of 2026-10-04):
+  - Releases are verified against the `.sha256` beside them, from the same place: whoever can
+    replace release assets can ship code that every update installs and that receives every
+    scored paragraph. The fix is signing (minisign or Sigstore) with an offline key whose public
+    half `install.sh`, `install.ps1` and `native_registration.py` carry; it needs a key the
+    maintainer keeps, so it waits on that decision.
+  - The local engine parses page text (fastText, tokenizers, ONNX Runtime, MLX) in a process with
+    the user's privileges; a sandboxed inference child (Seatbelt, seccomp and Landlock) would
+    contain a parser bug.
+  - The router's global limits are shared by all tabs: four large, ever-changing frames can leave
+    other tabs with Unavailable verdicts for as long as their tab is open (per-tab reserves).
+  - `CSS.highlights` shows a page the marks on its own text, and so the flag level and whether
+    underlines are on; a page can tell chips are there. Whether a content script's `import()` of
+    a web-accessible chunk shows in the page's Resource Timing (Firefox, whose address names the
+    installation) is unverified.
 - Windows and Linux have not been exercised on real machines.

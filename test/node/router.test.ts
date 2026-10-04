@@ -135,6 +135,34 @@ describe("router provenance", () => {
     expect(client.calls.length).toBe(2); // A's verdict was still there
   });
 
+  // A verdict that came back at once would tell a page the user had read the same text
+  // elsewhere: the cache and the work in flight are shared within a partition only.
+  it("cache hits and joined work stay within the partition the text was read in", async () => {
+    const client = fakeClient(A);
+    const router = createRouter(client);
+    const news = { partition: "normal news.example https://news.example" };
+    const probe = { partition: "normal probe.example https://probe.example" };
+    const privateNews = { private: true, partition: "private news.example https://news.example" };
+    await router.handle(req(["a paragraph read on one site"]), news);
+    expect(client.calls.length).toBe(1);
+    await router.handle(req(["a paragraph read on one site"]), news);
+    expect(client.calls.length).toBe(1); // the same site: a hit
+    const elsewhere = await router.handle(req(["a paragraph read on one site"]), probe);
+    expect(client.calls.length).toBe(2); // another site: asked again, never told
+    expect(elsewhere.results[0]!.cached).toBeUndefined();
+    await router.handle(req(["a paragraph read on one site"]), privateNews);
+    expect(client.calls.length).toBe(3); // a private window is a partition of its own
+    // In flight: another partition does not join the work, so its answer takes as long.
+    client.hold();
+    const first = router.handle(req(["read in two places at once"]), news);
+    await settle();
+    const second = router.handle(req(["read in two places at once"]), probe);
+    await settle();
+    expect(client.calls.length).toBe(5);
+    client.release();
+    await Promise.all([first, second]);
+  });
+
   it("backend failure yields degraded results that are never cached", async () => {
     const client = fakeClient(A);
     const router = createRouter(client);

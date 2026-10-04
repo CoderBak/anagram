@@ -448,7 +448,7 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): vo
     return;
   }
   const entries: Array<{ step: number; range: Range }> = [];
-  for (const { step, ranges } of marks) for (const range of ranges) entries.push({ step, range });
+  for (const { step, ranges } of marks) for (const range of ranges) if (!inClosedTree(range)) entries.push({ step, range });
   if (entries.length === 0) return;
   _byUnit.set(unit.id, entries);
   // On a surface with a locator of its own (the PDF reader, a preview's pdf.js) the text is
@@ -463,6 +463,20 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): vo
     }
   }
   for (const e of entries) markHighlight(e.step, active)?.add(e.range);
+}
+
+/**
+ * A range in a CLOSED shadow tree — another extension's panel, a component the page keeps
+ * closed, which the walk reads through the extension API (lib/dom/shadow.ts) — is never
+ * registered: the registry is the page's to read, and a Range is not retargeted, so its
+ * startContainer would hand the page a root it was closed to. Such text keeps its chip.
+ */
+function inClosedTree(range: Range): boolean {
+  for (const node of [range.startContainer, range.endContainer]) {
+    const root = node.getRootNode();
+    if (typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot && root.mode === "closed") return true;
+  }
+  return false;
 }
 
 /** Remove all highlight ranges associated with a unit id. */

@@ -28,6 +28,7 @@
 // autoUpdate re-places it while it shows (scroll, resize, content growth). Hover and
 // pin drive show/hide from JS; where the Popover API is missing the card falls back to
 // an absolutely positioned element with the same rules.
+import { chipShadowMode } from "./shadowMode";
 import { arrow, autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
@@ -368,7 +369,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const host = ensureHost(unit);
     if (!host) return;
 
-    const root = host.shadowRoot!;
+    const root = rootOf(host)!;
     const pill = root.querySelector(".pill") as HTMLElement;
     const num = root.querySelector(".num") as HTMLElement;
     const score = formatScore(result.score);
@@ -391,10 +392,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
   }
 
   function renderPending(unit: Unit): void {
-    if (hosts.get(unit.id)?.shadowRoot?.querySelector(".card .head")) return; // verdict already painted
+    const painted = hosts.get(unit.id);
+    if (painted && rootOf(painted)?.querySelector(".card .head")) return; // verdict already painted
     const host = ensureHost(unit);
     if (!host) return;
-    const root = host.shadowRoot!;
+    const root = rootOf(host)!;
     const pill = root.querySelector(".pill") as HTMLElement;
     if (pill.classList.contains("pending")) return;
     pill.className = "pill band-unknown pending";
@@ -440,7 +442,8 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       clearActiveUnit(id);
     });
     _hostUnit.set(host, id);
-    const shadow = host.attachShadow({ mode: "open" });
+    const shadow = host.attachShadow({ mode: chipShadowMode() });
+    _roots.set(host, shadow);
     shadow.adoptedStyleSheets = [badgeSheet()];
 
     const pill = document.createElement("span");
@@ -562,7 +565,8 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
   }
 
   function flash(id: string): void {
-    const pill = hosts.get(id)?.shadowRoot?.querySelector(".pill");
+    const host = hosts.get(id);
+    const pill = host ? rootOf(host)?.querySelector(".pill") : undefined;
     if (!pill) return;
     pill.classList.remove("pg-flash"); // restart if already flashing
     void (pill as HTMLElement).offsetWidth;
@@ -666,8 +670,15 @@ function installOutsideCloser(): void {
 
 const _floating = new WeakMap<HTMLElement, () => void>();
 
+/** A chip's shadow root, kept here rather than read off its host, which in a web page is
+ *  closed (lib/render/shadowMode.ts). */
+const _roots = new WeakMap<HTMLElement, ShadowRoot>();
+export function rootOf(host: HTMLElement): ShadowRoot | null {
+  return _roots.get(host) ?? null;
+}
+
 function cardOf(host: HTMLElement): HTMLElement | null {
-  return (host.shadowRoot?.querySelector(".card") as HTMLElement | null) ?? null;
+  return (rootOf(host)?.querySelector(".card") as HTMLElement | null) ?? null;
 }
 
 /** Make the card visible (top-layer popover, or the CSS fallback) and keep it placed. */
@@ -711,7 +722,7 @@ function hideCard(host: HTMLElement): void {
  *  the card slides over the chip rather than off the screen; the caret then points at
  *  nothing and is hidden. */
 function positionCard(host: HTMLElement): void {
-  const root = host.shadowRoot;
+  const root = rootOf(host);
   const pill = root?.querySelector(".pill") as HTMLElement | null;
   const card = root?.querySelector(".card") as HTMLElement | null;
   if (!pill || !card) return;
@@ -742,7 +753,7 @@ function positionCard(host: HTMLElement): void {
 /** Keep the card placed while it shows (scroll, resize, content growth). Idempotent. */
 function startFloating(host: HTMLElement): void {
   if (_floating.has(host)) return;
-  const root = host.shadowRoot;
+  const root = rootOf(host);
   const pill = root?.querySelector(".pill");
   const card = root?.querySelector(".card") as HTMLElement | null;
   if (!pill || !card) return;

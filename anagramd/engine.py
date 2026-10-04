@@ -266,6 +266,8 @@ class EditLens:
                 dtype=self.dtype,
                 local_files_only=True,
                 trust_remote_code=False,
+                # Never a pickled checkpoint, which runs code as it loads.
+                use_safetensors=True,
             )
         except TypeError:
             return cls.from_pretrained(
@@ -273,6 +275,7 @@ class EditLens:
                 torch_dtype=self.dtype,
                 local_files_only=True,
                 trust_remote_code=False,
+                use_safetensors=True,
             )
 
     def _warmup(self) -> None:

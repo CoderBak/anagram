@@ -149,3 +149,28 @@ def open_partial(path: Path, offset: int):
     except BaseException:
         os.close(fd)
         raise
+
+
+def private_tree(home: Path, parts=("app", "venv", "python")) -> None:
+    """POSIX: the component's code is the user's alone. The home and the trees code runs from
+    belong to this user and no one else may write to them, and no directory above the home is
+    one another user could swap it out of — owned by this user or root, and writable by others
+    only where the sticky bit lets no one but an entry's owner rename it (/tmp). The rule
+    OpenSSH's StrictModes applies to ~/.ssh. Another local user able to write here could edit
+    the host every scored paragraph passes through."""
+    if os.name == "nt":
+        return
+    import stat as st
+    uid = os.getuid()
+    for path in (home, *(home / part for part in parts)):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            continue
+        if info.st_uid != uid or info.st_mode & 0o022:
+            raise ValueError(f"{path} must belong to you and be writable by you alone")
+    for parent in Path(home).parents:
+        info = parent.stat()
+        if info.st_uid not in (uid, 0) or (info.st_mode & 0o022 and not info.st_mode & st.S_ISVTX):
+            raise ValueError(f"{parent} could let another user replace {home}")
+

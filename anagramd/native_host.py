@@ -21,6 +21,8 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+#: Operations whose request carries a page's text: their failures are logged without it.
+TEXT_OPS = frozenset({"score", "tokens"})
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024 - 1024
 MAX_PENDING_SCORES = 8
@@ -124,13 +126,18 @@ def dispatch(component, request):
     except RuntimeFailure as exc:
         # The runtime reported a failure on this batch and is still loaded: the browser
         # may ask again (lib/backend/retry.ts retries a 503).
-        logging.warning("Runtime failed on a %s batch: %s", request["op"], exc)
+        logging.warning("Runtime failed on a %s batch: %s", request["op"], exc if request["op"] not in TEXT_OPS else type(exc).__name__)
         return error_reply(request["id"], "engine_failed", str(exc), 503)
-    except (Exception, SystemExit):
+    except (Exception, SystemExit) as exc:
         # Only request validation is a client error (422, raised as ComponentError
         # by the component). Anything else, including invalid model output or a
-        # response that fails its own schema, is a host failure.
-        logging.exception("Native operation failed: %s", request["op"])
+        # response that fails its own schema, is a host failure. Of a request that carries a
+        # page's text, only what failed is said: a library's message can repeat its
+        # arguments, and stderr can end up on disk (the journal, ~/.xsession-errors).
+        if request["op"] in TEXT_OPS:
+            logging.error("Native operation failed: %s (%s)", request["op"], type(exc).__name__)
+        else:
+            logging.exception("Native operation failed: %s", request["op"])
         return error_reply(request["id"], "internal_error", "The local component operation failed", 500)
 
 
@@ -265,6 +272,9 @@ def configure_environment(home):
     token = home / "hf/token"
     if is_link(token) or (token.exists() and regular_stat(token).st_nlink != 1):
         raise ValueError("Dependency token path must not be linked")
+    # The user's own temporary folder, before it is pointed into the home: the Windows
+    # maintenance worker is copied out of the tree it may remove (native_registration.py).
+    os.environ.setdefault("ANAGRAM_OUTER_TEMP", os.environ.get("TEMP") or os.environ.get("TMP") or tempfile.gettempdir())
     for name, relative in directories.items():
         os.environ[name] = str(home / relative)
     os.environ["HF_TOKEN_PATH"] = str(token)
@@ -279,7 +289,24 @@ def configure_environment(home):
     tempfile.tempdir = None
 
 
+def no_core_dumps():
+    """A crash of this process must not write its memory — the text it was scoring — to disk
+    (a core file, systemd-coredump), nor let another process of the user's read it (Linux)."""
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    except (ImportError, OSError, ValueError):
+        pass
+    if sys.platform.startswith("linux"):
+        try:
+            import ctypes
+            ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE, 0
+        except (OSError, AttributeError):
+            pass
+
+
 def main():
+    no_core_dumps()
     output = protected_stdout()
     args = parse_args()
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s: %(message)s")

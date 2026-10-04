@@ -294,6 +294,11 @@ try {
   foreach ($name in @('app\native_host.py','app\native_registration.py','app\uv.lock','app\NativeLauncher.cs','install.ps1','VERSION')) {
     if (-not (Test-Path -LiteralPath (Join-Path $release $name) -PathType Leaf)) { throw "Release file missing: $name" }
   }
+  # A release asked for by its version (the extension's own, from Settings) must be that version.
+  if ($ReleaseUrl -match '/download/v([0-9]+\.[0-9]+\.[0-9]+)/?$') {
+    $released = (Get-Content -LiteralPath (Join-Path $release 'VERSION') -Raw).Trim()
+    if ($released -ne $Matches[1]) { throw "The release says it is $released, not $($Matches[1]) as asked." }
+  }
   # Fetch/bootstrap before replacing app; preserve previous app until registration succeeds.
   $uv = Join-Path $ComponentHome 'bin\uv.exe'
   # `uv --version` appends build details ("uv 0.11.18 (abc123 date)"); compare the version field.

@@ -30,7 +30,7 @@ export interface CopyResult {
   /** Size of what was copied, so the worker's badge flash only claims what happened. */
   bytes: number;
   /** Which route took it — worth knowing, because the two fail on different platforms. */
-  via: "clipboard" | "execCommand" | "none";
+  via: "clipboard" | "none";
 }
 
 /** Is the daemon up, and if not, why not — the shape the report prints from. */
@@ -70,32 +70,21 @@ function uiLanguage(): string {
 }
 
 /**
- * Copy with the execCommand fallback, the way the chip's own "Copy" action does
- * (lib/render/badge.ts). The async API is tried first because it is the one that answers
- * without a live user gesture: a context-menu click focuses the tab, which is all Chrome
- * asks of it, and no clipboard permission is declared there. Firefox wants the gesture
- * that is already over by the time this runs, so the worker asks it for the OPTIONAL
- * `clipboardWrite` inside the click itself; without that both routes below refuse, and
- * "none" is what the badge is told.
+ * Copy with the async clipboard API, the one that answers without a live user gesture: a
+ * context-menu click focuses the tab, which is all Chrome asks of it, and no clipboard
+ * permission is declared there. Firefox wants the gesture that is already over by the time
+ * this runs, so the worker asks it for the OPTIONAL `clipboardWrite` inside the click itself.
+ * Where it refuses all the same, "none" is what the badge is told: there is no fallback
+ * through the page — a <textarea> in its DOM, selected and copied, would hand the page the
+ * report (the version, the settings, the site's rule, the engine, the device), and a `copy`
+ * listener of its own could put something else on the clipboard in its place.
  */
 async function copyText(text: string): Promise<CopyResult["via"]> {
   try {
     await navigator.clipboard.writeText(text);
     return "clipboard";
   } catch {
-    /* not focused, or the permission was refused — the old route still works */
-  }
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    return document.execCommand("copy") ? "execCommand" : "none";
-  } catch {
     return "none";
-  } finally {
-    ta.remove();
   }
 }
 

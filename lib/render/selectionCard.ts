@@ -8,6 +8,7 @@
 // each pass's own number in the card), so "Words analyzed" is the selection again.
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
 import { MARK_ATTR } from "../types";
+import { chipShadowMode } from "./shadowMode";
 import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 import { CONTRACT_VERSION } from "../contract";
 import { isScoredWindow, readInWindows, requestSlices, unitVerdict } from "../capture/windows";
@@ -156,7 +157,9 @@ export async function analyzeSelection(): Promise<void> {
   host.setAttribute(MARK_ATTR, "host");
   _host = host;
   host.classList.toggle("pg-dark", isDarkPage());
-  const shadow = host.attachShadow({ mode: "open" });
+  // Closed in a web page (chipShadowMode): the card says what the reader asked about their
+  // own selection — a draft in a form, say — which is none of the page's business.
+  const shadow = host.attachShadow({ mode: chipShadowMode() });
   shadow.adoptedStyleSheets = [sheet()];
   const card = document.createElement("div");
   card.className = "card";

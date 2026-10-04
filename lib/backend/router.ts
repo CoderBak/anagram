@@ -22,8 +22,16 @@ export const ROUTER_LIMITS = Object.freeze({
 });
 
 export interface RequestOrigin {
-  /** Private-only work may read existing disk rows but never writes persistent data. */
+  /** Private-only work never writes persistent data. */
   private?: boolean;
+  /**
+   * Where the text was read: the tab's top-level site, the frame's own origin and whether the
+   * window is private (partitionOf, entrypoints/background.ts). Verdicts — cached and being
+   * worked out — are shared within a partition only, as the browser partitions storage: a
+   * verdict that came back at once would tell a page that the user had read the same text on
+   * another site, or in a private window, within the cache's thirty days.
+   */
+  partition?: string;
   /** Trusted document identity; independent of a page-supplied scan/session id. */
   documentKey?: string;
   signal?: AbortSignal;
@@ -48,7 +56,7 @@ interface Reader {
   cancelled: Promise<undefined>; cancel(): void;
 }
 interface Entry {
-  key: string; block: ScoreBlock; batch: Batch; readers: Set<Reader>;
+  key: string; block: ScoreBlock; partition: string; batch: Batch; readers: Set<Reader>;
   promise: Promise<Produced>; resolve(value: Produced): void;
 }
 interface Batch {
@@ -126,7 +134,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
         const result = entry.readers.size ? results.get(entry.block.id) ?? neutral(entry.block) : neutral(entry.block);
         if (model && !result.degraded && entry.readers.size) {
           const persist = [...entry.readers].some((reader) => reader.active && reader.persist);
-          cache.set(entry.block.text, result, modelDim(model), persist, batch.cacheEpoch);
+          cache.set(entry.block.text, result, modelDim(model), persist, batch.cacheEpoch, entry.partition);
         }
         settle(entry, { result, model: result.degraded ? null : model });
       }
@@ -169,6 +177,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
     const response = (results = req.blocks.map(neutral)): ScoreBatchResponse =>
       ({ v: req.v, model, results });
     const document = origin.documentKey ?? `anonymous:${++serial}`;
+    const partition = origin.partition ?? "";
     const usage = documentUsage.get(document) ?? { requests: 0, blocks: 0, chars: 0 };
     const chars = req.blocks.reduce((sum, block) => sum + block.text.length, 0), blocks = req.blocks.length;
     if (origin.signal?.aborted || !blocks || total.requests >= ROUTER_LIMITS.requests ||
@@ -197,7 +206,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       // The cache and the actual payload use precisely the same bytes: the model form, which
       // a page's blocks are in already (modelText is a fixed point).
       const sent = req.blocks.map((block) => ({ ...block, text: modelText(block.text) }));
-      const keys = sent.map((block) => cache.keyOf(block.text, dim));
+      const keys = sent.map((block) => cache.keyOf(block.text, dim, partition));
       const hits = await Promise.race([cache.getMany(keys, reader.persist), reader.cancelled]);
       if (!alive() || !hits || !revisionMatches(revision)) return unanswered();
       const results = new Map<string, ScoreResult>();
@@ -224,7 +233,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
           }
           let resolve!: (value: Produced) => void;
           const promise = new Promise<Produced>((done) => { resolve = done; });
-          entry = { key, block: first, batch, readers: new Set(), promise, resolve };
+          entry = { key, block: first, partition, batch, readers: new Set(), promise, resolve };
           batch.entries.push(entry); size += first.text.length; inFlight.set(key, entry);
         }
         entry.readers.add(reader); reader.entries.add(entry);

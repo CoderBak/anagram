@@ -117,6 +117,31 @@ describe("model download", () => {
     });
   });
 
+  it("refuses a download its redirects took off the model's hosts, and reads none of it", async () => {
+    const transport = (async () => {
+      const body = new ReadableStream<Uint8Array>({ pull(c) { c.enqueue(FILE); c.close(); } });
+      const response = new Response(body, { status: 200 });
+      Object.defineProperty(response, "url", { value: "https://attacker.example/model.bin" });
+      return response;
+    }) as unknown as typeof fetch;
+    const store = new MemoryStore();
+    expect(await failure(downloadFile(store, entry(), { transport, ...NO_WAIT }))).toMatch(/somewhere other than the model's host/);
+    // Nothing of it was written: no file, no part.
+    expect(await store.size("model.bin")).toBeNull();
+    expect(await store.size("model.bin.part")).toBeNull();
+  });
+
+  it("takes a body that stops arriving for a lost connection, not a wait for ever, and keeps what came", async () => {
+    const transport = (async () => new Response(new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(FILE.subarray(0, 100)); }, // and nothing more, ever
+    }), { status: 200 })) as unknown as typeof fetch;
+    const store = new MemoryStore();
+    const error = await downloadFile(store, entry(), { transport, stallTimeout: 20, ...NO_WAIT }).then(() => null, (e: unknown) => e);
+    expect(error).toBeInstanceOf(DownloadFailed);
+    expect(failureKind((error as Error).message)).toBe("network");
+    expect(await store.size("model.bin.part")).toBe(100);
+  });
+
   it("pauses on abort and keeps the part for the next attempt", async () => {
     const store = new MemoryStore();
     const server = fakeServer({ "/model.bin": FILE }, { stallAfter: 200 });

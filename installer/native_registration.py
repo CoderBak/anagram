@@ -51,6 +51,27 @@ def safe_path(path: Path, boundary: Path) -> Path:
     return path
 
 
+def private_tree(home: Path) -> None:
+    """POSIX: the component's code is the user's alone (anagramd/safe_files.py private_tree,
+    which this standalone helper cannot import): the home and the trees code runs from belong
+    to this user, writable by no one else, and no directory above it could let another user
+    swap it — the rule of OpenSSH's StrictModes."""
+    if os.name == "nt":
+        return
+    uid = os.getuid()
+    for path in (home, home / "app", home / "venv", home / "python"):
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            continue
+        if info.st_uid != uid or info.st_mode & 0o022:
+            raise ValueError(f"{path} must belong to you and be writable by you alone")
+    for parent in home.parents:
+        info = parent.stat()
+        if info.st_uid not in (uid, 0) or (info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX):
+            raise ValueError(f"{parent} could let another user replace {home}")
+
+
 def owned_home(home: Path, require_owner=False) -> Path:
     raw = Path(home)
     if not raw.is_absolute() or ".." in raw.parts or raw == Path(raw.anchor):
@@ -59,6 +80,7 @@ def owned_home(home: Path, require_owner=False) -> Path:
     home = raw.resolve()
     if home == Path.home().resolve() or not (home / ".anagram-home").is_file():
         raise ValueError("Not an owned Anagram component directory")
+    private_tree(home)
     for name in (".anagram-home", OWNER, UNINSTALLING, INVENTORY, "app", "bin", "venv", "models", "run"):
         safe_path(home / name, home)
     if require_owner:
@@ -386,7 +408,11 @@ def schedule_windows(home, operation, release=None):
     worker = safe_path(home / "app/maintenance.ps1", home)
     # The verified payload is copied outside the tree it will remove. No message
     # can provide a script, command line, URL or alternative component directory.
-    temporary = Path(tempfile.mkdtemp(prefix="anagram-maintenance-"))
+    # Outside the home: the host points TMP/TEMP into it (native_host.configure_environment),
+    # and an uninstall removes it, the receipt the extension waits for included.
+    outer = os.environ.get("ANAGRAM_OUTER_TEMP")
+    base = outer if outer and Path(outer).is_dir() and not Path(outer).resolve().is_relative_to(home) else None
+    temporary = Path(tempfile.mkdtemp(prefix="anagram-maintenance-", dir=base))
     copied = temporary / "maintenance.ps1"
     shutil.copyfile(worker, copied)
     receipt = temporary / "receipt.json"

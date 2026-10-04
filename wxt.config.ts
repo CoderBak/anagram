@@ -55,6 +55,10 @@ function publicLinksInDev() {
   };
 }
 
+/** WXT's content-script context, which announces each script to the page (lib/quietContext.ts). */
+const QUIET_CONTEXT = resolve(ROOT, "lib/quietContext.ts");
+const ALIASED = [QUIET_CONTEXT];
+
 function englishFallback() {
   let entries: string[] | undefined;
   let scanned: string[] = [];
@@ -66,7 +70,9 @@ function englishFallback() {
     enforce: "pre" as const,
     configResolved(config: Parameters<typeof entryFilesOf>[0]) {
       entries = entryFilesOf(config);
-      scanned = entries ? reachableSources(entries, ROOT) : [];
+      // Our modules a dependency's import is pointed at (resolve.alias) are reached from it,
+      // not from our entries: scanned as entries of their own.
+      scanned = entries ? reachableSources([...entries, ...ALIASED], ROOT) : [];
     },
     transform(_code: string, id: string) {
       loaded.add(id);
@@ -176,6 +182,9 @@ export default defineConfig({
   vite: ({ command }) => ({
     // The test build reads a stand-in device (lib/ui/deviceInputs.ts); the shipping one has no such code.
     define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify(TEST_GRANT_ALL ? "1" : "") },
+    // WXT's own context announces every content script to the page it runs in, with the
+    // extension's id (lib/quietContext.ts).
+    resolve: { alias: { "wxt/utils/content-script-context": QUIET_CONTEXT } },
     plugins: [englishFallback(), ...(command === "serve" ? [publicLinksInDev()] : [thirdPartyNotices()])],
     // The extension's pages are cross-origin isolated (require-corp), and in a dev build their
     // stylesheets come from the dev server: it has to say they may be embedded.
@@ -355,9 +364,8 @@ export default defineConfig({
             "vendor/purify.min.mjs",
             "vendor/diagnostics.min.mjs",
             "vendor/surfaces.min.mjs",
-            // The Google Docs reading bar's icon on a light and on a dark page (lib/render/logo.ts).
-            "icons/icon-96.png",
-            "icons/icon-light-96.png",
+            // No icon: the Google Docs bar's is inlined (lib/render/logo.ts), and an extension
+            // address in a page's DOM would name the extension, in Firefox the installation.
           ],
           matches: ["<all_urls>"],
           ...(!safari ? { use_dynamic_url: true } : {}),

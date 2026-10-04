@@ -80,10 +80,9 @@ def artifact_files(model_dir: Path, candidate: Candidate):
         # do not, so replacing INT8 alone cannot relabel the FP32 graph.
         return [graph, *sorted(p for p in directory.rglob("*") if p.is_file()
                               and p.suffix != ".onnx" and not any(x.startswith(".") for x in p.relative_to(directory).parts))]
-    files = sorted(model_dir.glob("*.safetensors"))
-    if not files:
-        files = sorted(model_dir.glob("pytorch_model*.bin"))
-    return files + sorted(model_dir.glob("*.index.json"))
+    # safetensors only: a pytorch_model*.bin is a pickle, which runs code as it loads, and the
+    # pinned model has none (engine.py loads with use_safetensors=True as well).
+    return sorted(model_dir.glob("*.safetensors")) + sorted(model_dir.glob("*.index.json"))
 
 
 def artifact_stamp(files):

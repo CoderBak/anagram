@@ -101,16 +101,10 @@ describe("the stage setup is in", () => {
 
 describe("the panel's way to setup", () => {
   const session = "11111111-2222-4333-8444-555555555555";
-  const top: AccessSender = { id: "ext", url: "https://example.com/post", tab: { id: 3, url: "https://example.com/post" }, frameId: 0 };
 
-  it("is asked for by a page's top frame or the reader, and names nothing but itself", () => {
-    const open = parseWorkerMessage({ action: ACTIONS.OPEN_ENGINE_SETUP, session })!;
-    expect(open).not.toBeNull();
-    expect(permitsMessage("content", open, top)).toBe(true);
-    expect(permitsMessage("reader", open, top)).toBe(true);
-    expect(permitsMessage("content", open, { ...top, frameId: 7 })).toBe(false);
-    expect(permitsMessage("paste", open, top)).toBe(false);
-    // Where it opens is the worker's to say: a page cannot name an address.
-    expect(parseWorkerMessage({ action: ACTIONS.OPEN_ENGINE_SETUP, session, url: "https://example.org/" })).toBeNull();
+  // The toolbar menu opens the setup page itself; no content script may ask the worker to open
+  // an extension page any more (the action had no sender left).
+  it("is not a message a page's content script can send", () => {
+    expect(parseWorkerMessage({ action: "openEngineSetup", session })).toBeNull();
   });
 });

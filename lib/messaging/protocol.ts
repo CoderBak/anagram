@@ -90,11 +90,9 @@ export const ACTIONS = {
   /** content (top frame) → SW: the reader asked to allow a comment provider. A content script
    *  cannot ask the browser for a site, so the worker opens the settings page, where the
    *  reader's click can. */
-  OPEN_COMMENT_ACCESS: "openCommentAccess",
   /** content (top frame) / reader → SW: a setup action when no engine is set up yet, or
    *  the in-browser one is not. A content script cannot open an extension page, so the worker
    *  opens setup. */
-  OPEN_ENGINE_SETUP: "openEngineSetup",
   /** setup page / Settings / popup → SW: which engine scores (lib/backend/engines.ts). */
   GET_ENGINE: "getEngine",
   /** setup page / Settings / popup → SW: score with this engine from now on, and start the
@@ -296,7 +294,7 @@ export interface CopyDiagnosticsMessage {
 export interface CopyDiagnosticsReply {
   ok: boolean;
   bytes: number;
-  via: "clipboard" | "execCommand" | "none";
+  via: "clipboard" | "none";
 }
 
 /** popup → content: the user pressed Retry — re-check the local engine, re-queue Unavailable units. */

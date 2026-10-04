@@ -21,16 +21,17 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { ScoreResult } from "../contract";
 import { modelText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
-import { cyrb53 } from "../hash";
+import { digest128 } from "../hash";
 import { SCORE_CACHE_MAX_AGE_MS, type ScoreCacheMode } from "../cachePolicy";
 import { createLogger } from "../log";
 
 const log = createLogger("swcache");
 
 export interface SwCache {
-  /** Sync key: `<normalization version>:<dim>:<hash of modelText(text)>`;
+  /** Sync key: `<normalization version>:<dim>:<digest of the partition>:<digest of modelText(text)>`
+   *  — `partition` is where the text was read (lib/backend/router.ts RequestOrigin.partition);
    * `dim` is the complete backend identity snapshotted by router.ts modelDim. */
-  keyOf(text: string, dim: string): string;
+  keyOf(text: string, dim: string, partition?: string): string;
   /**
    * Resolve many keys at once: memory first, then one IndexedDB transaction for the misses.
    * `persist` false — the reader is a private tab — means the lookup itself writes nothing,
@@ -39,7 +40,7 @@ export interface SwCache {
   getMany(keys: string[], persist?: boolean): Promise<Map<string, ScoreResult>>;
   /** Store a REAL result under the identity that produced it. `persist` false keeps it in
    *  memory alone: it exists only because of a private tab. */
-  set(text: string, r: ScoreResult, dim: string, persist?: boolean, epoch?: number): void;
+  set(text: string, r: ScoreResult, dim: string, persist?: boolean, epoch?: number, partition?: string): void;
   /** Forget every verdict: the memory layer, the writes still waiting for their flush, and
    *  the persistent store (options → "Clear cached verdicts"). */
   clear(): Promise<void>;
@@ -147,8 +148,10 @@ function db(): Promise<IDBPDatabase<ScoreDB> | null> {
   if (!_db) {
     _db = (async () => {
       try {
-        const d = await openDB<ScoreDB>(DB_NAME, 1, {
-          upgrade(u) {
+        // 2: keys carry the partition and a SHA-256 digest; the rows keyed the old way go.
+        const d = await openDB<ScoreDB>(DB_NAME, 2, {
+          upgrade(u, from) {
+            if (from >= 1 && u.objectStoreNames.contains(STORE)) u.deleteObjectStore(STORE);
             u.createObjectStore(STORE, { keyPath: "key" }).createIndex("byTime", "t");
           },
         });
@@ -260,8 +263,8 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
     writeTail = operation.catch(() => undefined);
     return operation;
   }
-  const keyOf = (text: string, dim: string): string =>
-    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${cyrb53(modelText(text)).toString(36)}`;
+  const keyOf = (text: string, dim: string, partition = ""): string =>
+    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${digest128(partition)}:${digest128(modelText(text))}`;
   const current = (seq: number): boolean => seq === generation;
   const fresh = (at: number): boolean => Number.isFinite(at) && Date.now() - at < MAX_AGE_MS;
 
@@ -326,10 +329,10 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
     });
     return out;
   }
-  function set(text: string, result: ScoreResult, dim: string, persist = true, seq = generation): void {
+  function set(text: string, result: ScoreResult, dim: string, persist = true, seq = generation, partition = ""): void {
     if (result.degraded || !current(seq)) return;
     if (persist) expireOnce();
-    const key = keyOf(text, dim), at = Date.now();
+    const key = keyOf(text, dim, partition), at = Date.now();
     remember(key, result, at);
     memoryOnly.add(key);
     if (persist) queueWrite(key, result, at);

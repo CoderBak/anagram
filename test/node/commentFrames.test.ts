@@ -65,17 +65,15 @@ describe("the worker's two questions about them", () => {
 
   it("are asked by a page's top frame, about comment providers only", () => {
     const ask = parseWorkerMessage({ action: ACTIONS.COMMENT_ACCESS, session, origins: ["https://disqus.com/*"] });
-    const open = parseWorkerMessage({ action: ACTIONS.OPEN_COMMENT_ACCESS, session, origin: "https://www.facebook.com/*" });
     expect(ask && permitsMessage("content", ask, top)).toBe(true);
-    expect(open && permitsMessage("content", open, top)).toBe(true);
     expect(ask && permitsMessage("content", ask, frame)).toBe(false);
-    expect(open && permitsMessage("popup", open, top)).toBe(false);
+    // The offer is opened from the toolbar menu; a page cannot have the worker open Settings.
+    expect(parseWorkerMessage({ action: "openCommentAccess", session, origin: "https://www.facebook.com/*" })).toBeNull();
   });
 
   it("refuse any other site: a page cannot use them to learn what was granted, or to be offered anything", () => {
     expect(parseWorkerMessage({ action: ACTIONS.COMMENT_ACCESS, session, origins: ["https://example.org/*"] })).toBeNull();
     expect(parseWorkerMessage({ action: ACTIONS.COMMENT_ACCESS, session, origins: ["https://*/*"] })).toBeNull();
-    expect(parseWorkerMessage({ action: ACTIONS.OPEN_COMMENT_ACCESS, session, origin: "https://bank.example/*" })).toBeNull();
     expect(parseWorkerMessage({ action: ACTIONS.COMMENT_ACCESS, session, origins: Array(9).fill("https://disqus.com/*") })).toBeNull();
   });
 });

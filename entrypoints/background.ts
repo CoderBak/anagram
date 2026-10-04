@@ -51,6 +51,15 @@ import { createWarmup } from "../lib/backend/warmup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
+/** Where a text was read, for the caches pages share (RequestOrigin.partition in
+ *  lib/backend/router.ts): the tab's top-level site, the frame's own origin, and a private
+ *  window apart from the rest — the way the browser partitions a page's own storage. */
+function partitionOf(sender: { tab?: { url?: string; incognito?: boolean } }, document: { origin: string }): string {
+  let top = "?";
+  try { if (sender.tab?.url) top = new URL(sender.tab.url).host; } catch { /* no address: its own partition */ }
+  return `${sender.tab?.incognito ? "private" : "normal"} ${top} ${document.origin}`;
+}
+
 export default defineBackground(() => {
   // A native port can keep this worker alive. Preserve an available extension
   // update for Settings rather than interrupting analysis with an automatic reload.
@@ -463,34 +472,19 @@ export default defineBackground(() => {
         await closeWebEngine();
         try { await deleteEngineFiles(); return {ok:true}; } catch { return {ok:false,error:"delete_failed"}; }
       }
-      case ACTIONS.OPEN_ENGINE_SETUP: {
-        // The setup page beside the tab, where the download is started and followed; a content
-        // script cannot open an extension page.
-        const tab=sender.tab as {id?:number;index?:number}|undefined;
-        await browser.tabs.create({url:browser.runtime.getURL("/onboarding.html"),...(tab?.index !== undefined ? {index:tab.index+1} : {}),...(tab?.id !== undefined ? {openerTabId:tab.id} : {})});
-        return {ok:true};
-      }
       case ACTIONS.COMMENT_ACCESS: {
         const missing:string[]=[];
         for (const origin of msg.origins) if (!(await browser.permissions.contains({origins:[origin]}).catch(()=>false))) missing.push(origin);
         return {missing} satisfies CommentAccessReply;
       }
-      case ACTIONS.OPEN_COMMENT_ACCESS: {
-        // The settings page beside the tab, at the offer: the request must be the reader's
-        // own click on an extension page, which a content script cannot make.
-        const tab=sender.tab as {id?:number;index?:number}|undefined;
-        const url=`${browser.runtime.getURL("/options.html")}#comments=${encodeURIComponent(commentHost(msg.origin))}`;
-        await browser.tabs.create({url,...(tab?.index !== undefined ? {index:tab.index+1} : {}),...(tab?.id !== undefined ? {openerTabId:tab.id} : {})});
-        return {ok:true};
-      }
       case ACTIONS.COUNT_TOKENS: {
-        const counts=await tokenCounter.count(msg.texts,document!.signal).catch(()=>null);
+        const counts=await tokenCounter.count(msg.texts,document!.signal,partitionOf(sender,document!)).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);
-          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,documentKey:document!.documentKey,signal:document!.signal});
+          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:partitionOf(sender,document!),documentKey:document!.documentKey,signal:document!.signal});
           if(document!.signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.

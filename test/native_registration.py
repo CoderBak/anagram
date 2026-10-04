@@ -166,6 +166,19 @@ class RegistrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'link'): self.register()
         self.assertEqual(list(outside.iterdir()),[])
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX permissions')
+    def test_a_home_others_could_write_to_is_refused(self):
+        for path in (self.home, self.home / 'app'):
+            os.chmod(path, 0o770)
+            with self.assertRaisesRegex(ValueError, 'writable by you alone'): self.register()
+            os.chmod(path, 0o700)
+        os.chmod(self.user, 0o777)  # a parent others could rename the home out of, no sticky bit
+        try:
+            with self.assertRaisesRegex(ValueError, 'could let another user replace'): self.register()
+        finally:
+            os.chmod(self.user, 0o700)
+        self.register()
+
     def test_modified_registration_is_not_deleted(self):
         e = self.register(); path = Path(e['manifest']); path.write_text('another owner')
         with self.assertRaisesRegex(ValueError,'modified'): self.unregister()

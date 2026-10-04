@@ -22,7 +22,9 @@ const BUNDLE = join(__dirname, ".unit-bundle.js");
 
 // esbuild's JS API rather than node_modules/.bin/esbuild: the .bin shim is a shell script on
 // macOS/Linux and a .cmd on Windows, and only one of those can be exec'd directly.
-buildSync({ entryPoints: [join(__dirname, "unit-entry.ts")], bundle: true, format: "iife", globalName: "PW", outfile: BUNDLE, logLevel: "error" });
+// As the test build: chips here are read through their open shadow roots (lib/render/shadowMode.ts).
+buildSync({ entryPoints: [join(__dirname, "unit-entry.ts")], bundle: true, format: "iife", globalName: "PW", outfile: BUNDLE, logLevel: "error",
+  define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify("1") } });
 
 const browser = await launchPlain({ headless: true });
 const page = await browser.newPage();

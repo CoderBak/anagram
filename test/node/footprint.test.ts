@@ -205,7 +205,7 @@ describe("the storage inventory in docs/footprint.md", () => {
     // The row shape is spelt out on the page; this pins the claim underneath it, which is
     // that what goes into a row is derived from the text and is not the text.
     const cache = read("lib/backend/swCache.ts");
-    expect(cache).toMatch(/keyOf\(text: string, dim: string\): string/);
+    expect(cache).toMatch(/keyOf\(text: string, dim: string, partition\?: string\): string/);
     expect(DOC).toContain("No raw page text is stored in the score cache.");
   });
 });
@@ -248,15 +248,13 @@ describe.each(["chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
     expect(existsSync(join(OUT, "pdf-loader.html"))).toBe(true);
   });
 
-  it.skipIf(!ready)("makes only the three content-script chunks and the ball's two icons web accessible", () => {
+  it.skipIf(!ready)("makes only the three content-script chunks web accessible, and no icon, whose address in a page would name the extension", () => {
     expect(manifest().web_accessible_resources).toEqual([
       {
         resources: [
           "vendor/purify.min.mjs",
           "vendor/diagnostics.min.mjs",
           "vendor/surfaces.min.mjs",
-          "icons/icon-96.png",
-          "icons/icon-light-96.png",
         ],
         matches: ["<all_urls>"],
         use_dynamic_url: true,

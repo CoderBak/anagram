@@ -1,10 +1,23 @@
-// lib/hash.ts — shared string hash for cache keys.
+// lib/hash.ts — string hashes for cache keys.
+//
+// digest128: what the worker's caches, shared by every page, key by. Collision-resistant —
+// a page that could make its own text collide with another page's would set that page's
+// verdict (cyrb53 is unkeyed and invertible step by step) — and keyed with the partition the
+// text was read in (lib/backend/router.ts), never the site's name itself.
 //
 // cyrb53 (https://github.com/bryc/code, jshash/experimental/cyrb53.js, public domain,
 // © 2018 bryc): 53-bit output. Both cache layers key results by hashed normalized text;
 // a 32-bit hash (the SW side used FNV-1a) makes wrong-badge collisions realistic
 // over a long session of heavy browsing — birthday bound ~1 in 2^16 per ~300
 // unique paragraphs vs ~1 in 2^26 here.
+import { Sha256 } from "./webengine/sha256";
+
+const encoder = new TextEncoder();
+/** SHA-256 of `text` (UTF-8), its first 128 bits as hex. */
+export function digest128(text: string): string {
+  return new Sha256().update(encoder.encode(text)).digest().slice(0, 32);
+}
+
 export function cyrb53(str: string, seed = 0): number {
   let h1 = 0xdeadbeef ^ seed;
   let h2 = 0x41c6ce57 ^ seed;

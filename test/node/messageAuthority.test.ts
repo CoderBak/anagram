@@ -34,6 +34,17 @@ describe("document-scoped authorization",()=>{
     expect(await env.authority.authorize(child,b.session)).toBeNull();
     const renewed=env.open(child);expect(await env.authority.authorize(child,renewed.session)).toBeNull();
   });
+  it("serves at most 128 documents of one tab, so a page of tiny frames cannot take every other tab's place",async()=>{
+    const env=environment();
+    const frames=Array.from({length:200},(_,i)=>{const s=sender(i+1,"https://frame.test/embed",`doc-${i}`);return {s,port:env.open(s)};});
+    const served=frames.filter((f)=>!f.port.port.disconnect.mock.calls.length).length;
+    expect(served).toBe(128);
+    // Another tab still gets its own.
+    const other={...sender(0,"https://top.test/other","doc-other"),tab:{id:8,url:"https://top.test/other"}};
+    const port=env.open(other);
+    expect(port.port.disconnect).not.toHaveBeenCalled();
+    expect(await env.authority.authorize(other,port.session)).not.toBeNull();
+  });
   it("rejects another frame, document, origin or extension using a copied session",async()=>{
     const env=environment(),source=sender(),port=env.open(source);
     for(const forged of [{...source,frameId:2},{...source,documentId:"new"},{...source,url:"https://other.test/"},{...source,id:"foreign"}])

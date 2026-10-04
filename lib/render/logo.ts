@@ -1,16 +1,16 @@
 // lib/render/logo.ts — the icon as an <img>, for the parts of a page Anagram draws itself
-// (the Google Docs overlay's bar). The PNGs under public/icons/ are web
-// accessible (wxt.config.ts); the extension's own scheme is not subject to a page's CSP, so
-// a strict img-src cannot blank the reading bar's icon.
-import { browser } from "#imports";
-import type { PublicPath } from "wxt/browser";
+// (the Google Docs overlay's bar). Inlined as a data: URL, not loaded from the extension: an
+// extension URL in the page's DOM names the extension to the page, and in Firefox, whose
+// moz-extension address is drawn once per install, names this very installation — an
+// identifier the site could keep across private windows and accounts.
+import lightTile from "../../public/icons/icon-light-96.png?inline";
 
-/** The light tile for light surfaces, the dark tile for dark ones (96 px: sharp at 2x). */
-export function logoImage(tile: "light" | "dark", className: string): HTMLImageElement {
+/** The light tile (96 px: sharp at 2x). */
+export function logoImage(_tile: "light", className: string): HTMLImageElement {
   const img = document.createElement("img");
   img.className = className;
   img.alt = "";
   img.draggable = false;
-  img.src = browser.runtime.getURL(`/icons/${tile === "dark" ? "icon" : "icon-light"}-96.png` as PublicPath);
+  img.src = lightTile;
   return img;
 }

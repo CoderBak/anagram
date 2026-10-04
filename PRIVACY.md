@@ -82,7 +82,10 @@ with Zotero's document-worker, in a worker inside the reader's own tab that load
 models and data from the extension; the document is not sent anywhere else. On granted
 sites a tiny second script runs in the page's own context: it reads nothing and only tells
 the content script when the page attaches a shadow root, so text a web component draws
-later is read too.
+later is read too. What Anagram draws in a page keeps its words from the page: the chips
+and the selection card are closed shadow trees the page's scripts cannot read or change,
+and no mark is drawn over text inside another component's closed tree. The page can still
+see that chips are there, and the marks on its own text.
 
 The local engine runs with your ordinary user privileges. When you install, download models or
 request an update, it contacts GitHub releases, the Astral Python and uv distributions,
@@ -97,11 +100,15 @@ requests carry normal download metadata and never page text.
 
 - **Settings** in `chrome.storage.local`: switches, per-site rules, marking style, scope,
   cache mode. Nothing is synced.
-- **The score cache** in IndexedDB, keyed by the model identity plus a 53-bit hash of the
-  normalized text. No text is stored. Rows expire after 30 days, the store is capped at
-  20 000 rows, and **Clear cached verdicts** in Settings empties it. **Memory only** mode
-  keeps scores out of disk entirely. Private windows never write to disk. The hash is
-  unsalted, so someone with access to the cache can test guesses about known text.
+- **The score cache** in IndexedDB, keyed by the model identity plus SHA-256 digests of
+  where the text was read (the tab's site and the frame's origin) and of the normalized
+  text. No text and no site name is stored. A verdict is reused only on the site it was
+  read on, so a page cannot tell from how fast a verdict comes back what you read elsewhere,
+  and a private window's verdicts are kept apart from the rest. Rows expire after 30 days,
+  the store is capped at 20 000 rows, and **Clear cached verdicts** in Settings empties it.
+  **Memory only** mode keeps scores out of disk entirely. Private windows never write to
+  disk. The digests are unsalted, so someone with access to the cache can test guesses
+  about known text and sites.
 - **PDF viewer state** (`pdfjs.history`, `pdfjs.preferences`) in the extension's local
   storage: page, zoom and layout for recent documents. No text or password.
 - **The local engine** under `~/.anagram` (macOS/Linux) or `%LOCALAPPDATA%\Anagram`

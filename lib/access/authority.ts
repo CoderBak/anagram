@@ -9,6 +9,9 @@ interface Identity {tabId:number;frameId:number;url:string;origin:string;documen
 export interface DocumentAccess extends Identity { documentKey:string; signal:AbortSignal }
 interface Live extends DocumentAccess {key:string;controller:AbortController;port:ReturnType<typeof browser.runtime.connect>}
 const frameKey = (tabId:number,frameId:number) => `${tabId}:${frameId}`;
+/** The most documents of one tab served at once: a page with more frames than this has the
+ *  rest of them unread, and no tab can take the other tabs' places. */
+const PER_TAB_SESSIONS = 128;
 /** What a sender is checked against: the page a content script speaks for (for a srcdoc or
  *  about:blank frame, the origin it took from its page), an extension page's own URL. */
 const addressOf = (sender: AccessSender): string | undefined => pageAddress(sender) ?? sender.url;
@@ -57,7 +60,11 @@ export function createDocumentAuthority() {
         port.onMessage.addListener((value) => {
           if (record) return;
           const parsed=v.safeParse(v.strictObject({session:SessionSchema}),value);
-          if (!parsed.success || live.size >= 1024) {port.disconnect();return;}
+          // No tab may take every document's place: a page of a thousand tiny frames would
+          // otherwise leave every other tab with none (PER_TAB_SESSIONS).
+          const tabId=sender.tab?.id;
+          const ofTab=tabId === undefined ? 0 : [...live.values()].filter((r)=>r.tabId===tabId && r.key!==frameKey(tabId,sender.frameId ?? 0)).length;
+          if (!parsed.success || live.size >= 1024 || ofTab >= PER_TAB_SESSIONS) {port.disconnect();return;}
           clearTimeout(timer);
           const key=sender.tab?.id === undefined ? `page:${parsed.output.session}` : frameKey(sender.tab.id,sender.frameId ?? 0);
           const old=live.get(key); if(old)retire(old);

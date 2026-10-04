@@ -23,7 +23,7 @@ import tomllib
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
                                install_streaming, load_pin, plain_tree, selected_entries)
 from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes
-from safe_files import atomic_json, is_link, read_json, regular_stat, remember
+from safe_files import atomic_json, is_link, private_tree, read_json, regular_stat, remember
 
 HOST_NAME = "dev.coderbak.anagram"
 #: How often a score asked while the component starts looks again (NativeComponent._runtime).
@@ -46,6 +46,10 @@ def validate_home(home: Path) -> Path:
     if is_link(home) or home.resolve() in (Path(home.anchor), Path.home().resolve()):
         raise ComponentError("invalid_request", "The component needs its own non-symlink installation directory", 422)
     home = home.resolve()
+    try:
+        private_tree(home)
+    except (OSError, ValueError) as exc:
+        raise ComponentError("not_installed", str(exc), 503) from exc
     marker = home / ".native-component.json"
     if is_link(marker) or not marker.is_file():
         raise ComponentError("not_installed", "The owned native component marker is missing", 503)

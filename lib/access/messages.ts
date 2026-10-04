@@ -48,8 +48,6 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.GET_TOP_HOST),session}),
   v.strictObject({action:v.literal(ACTIONS.GET_BACKEND_STATUS),session,probe:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.COMMENT_ACCESS),session,origins:v.pipe(v.array(commentOrigin),v.maxLength(8))}),
-  v.strictObject({action:v.literal(ACTIONS.OPEN_COMMENT_ACCESS),session,origin:commentOrigin}),
-  v.strictObject({action:v.literal(ACTIONS.OPEN_ENGINE_SETUP),session}),
   v.strictObject({action:v.literal(ACTIONS.GET_ENGINE)}),
   v.strictObject({action:v.literal(ACTIONS.SET_ENGINE),engine:v.picklist(["native","inbrowser"]),setup:v.optional(v.picklist(["now","auto"])),tier:v.optional(v.picklist(["fp32","fp16"])),fallback:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.DELETE_INBROWSER_MODEL)}),
@@ -113,9 +111,8 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
     case ACTIONS.GET_TOP_HOST: return role === "content";
     case ACTIONS.UPDATE_BADGE: return (role === "content" || role === "reader") && sender.frameId === 0;
     case ACTIONS.GET_BACKEND_STATUS: return true;
-    case ACTIONS.COMMENT_ACCESS: case ACTIONS.OPEN_COMMENT_ACCESS: return role === "content" && sender.frameId === 0;
+    case ACTIONS.COMMENT_ACCESS: return role === "content" && sender.frameId === 0;
     // The panel's Set up: from the page it is drawn on, the top frame's, or the reader.
-    case ACTIONS.OPEN_ENGINE_SETUP: return (role === "content" && sender.frameId === 0) || role === "reader";
     // The engine is chosen on the setup page and in Settings, and the popup offers the
     // in-browser one when the local one keeps crashing.
     case ACTIONS.GET_ENGINE: case ACTIONS.SET_ENGINE: return role === "onboarding" || role === "options" || role === "popup";

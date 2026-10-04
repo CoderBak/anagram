@@ -204,6 +204,15 @@ if [ "$before_out" = "$(snapshot "$T/outside")" ] && [ "$before_fake" = "$(snaps
   ok "update: the new app/ and extension/ landed, and nothing outside the folder moved"
 else bad "offline update side effects" "app=$(cat "$HU/app/engine.py" 2>/dev/null)"; fi
 
+# A release asked for by its version must be that version: the one at .../download/v9.9.11 that
+# says it is 9.9.10 is refused, and nothing in the folder changes.
+mkdir -p "$T/relpin/download/v9.9.11"
+cp "$RELDIR/anagram.tar.gz" "$RELDIR/anagram.tar.gz.sha256" "$T/relpin/download/v9.9.11/"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HU" ANAGRAM_RELEASE_URL="file://$T/relpin/download/v9.9.11" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q "not 9.9.11 as asked" && [ "$(cat "$HU/VERSION")" = "9.9.10" ]; then
+  ok "update: a release that is not the version asked for is refused, the folder untouched"
+else bad "pinned release version" "rc=$rc VERSION=$(cat "$HU/VERSION") $(echo "$out" | tail -1)"; fi
+
 # Default installation registers the host, then invokes terminal model preparation.
 HFIRST="$T/first-start"; make_home "$HFIRST"
 rm -f "$HFIRST/VERSION"

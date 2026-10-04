@@ -49,6 +49,8 @@ export interface DownloadOptions {
   route?: { mirror?: boolean };
   /** How long a request may go without an answer before its host counts as unreachable, in ms. */
   connectTimeout?: number;
+  /** How long a body may send nothing before the connection counts as lost, in ms. */
+  stallTimeout?: number;
 }
 
 const RETRY_WAITS = [2_000, 5_000, 15_000];
@@ -84,6 +86,16 @@ export function outOfSpace(error: unknown): boolean {
 /** What a full disk stops a download with: never retried, and the part stays for when there is room. */
 export const noRoomFor = (name: string): DownloadFailed => new DownloadFailed(`There is not enough free disk space for ${name}`);
 
+/** A body that sends nothing for this long, in ms, is a lost connection (attemptDownload). */
+const STALL_TIMEOUT = 60_000;
+
+/** The model hub's own hosts (its file CDNs included), the mirror's, and this machine (the
+ *  suites serve the files themselves): where a download may end up after its redirects. */
+export function fromTheHub(url: string): boolean {
+  const host = new URL(url).hostname;
+  return /(^|\.)(huggingface\.co|hf\.co|hf-mirror\.com)$/.test(host) || ["127.0.0.1", "localhost", "[::1]"].includes(host);
+}
+
 /** HTTPS, or plain HTTP to this machine only (the suites serve the files themselves). */
 export function secure(url: string): boolean {
   const parsed = new URL(url);
@@ -114,7 +126,7 @@ export async function readPackaged(entry: PinnedFile): Promise<Uint8Array> {
  * DownloadPaused when `signal` aborts (the part stays), DownloadFailed otherwise.
  */
 export async function downloadFile(store: FileStore, entry: PinnedFile, options: DownloadOptions = {}): Promise<void> {
-  const { signal, onProgress = () => {}, onNotice = () => {}, transport, retryWaits = RETRY_WAITS, route = {}, connectTimeout = CONNECT_TIMEOUT } = options;
+  const { signal, onProgress = () => {}, onNotice = () => {}, transport, retryWaits = RETRY_WAITS, route = {}, connectTimeout = CONNECT_TIMEOUT, stallTimeout = STALL_TIMEOUT } = options;
   const part = `${entry.name}.part`;
   const paused = () => { if (signal?.aborted) throw new DownloadPaused(); };
   paused();
@@ -125,7 +137,7 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
   if (source > 0) onNotice(mirrorNotice(hostOf(sources[source]!)));
   for (let attempt = 0; ; attempt++) {
     try {
-      await attemptDownload(store, { ...entry, url: sources[source]! }, part, transport, signal, onProgress, connectTimeout);
+      await attemptDownload(store, { ...entry, url: sources[source]! }, part, transport, signal, onProgress, connectTimeout, stallTimeout);
       return;
     } catch (error) {
       if (error instanceof DownloadPaused) throw error;
@@ -155,7 +167,7 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
 }
 
 async function attemptDownload(store: FileStore, entry: PinnedFile, part: string, transport: typeof fetch | undefined,
-  signal: AbortSignal | undefined, onProgress: (bytes: number) => void, connectTimeout: number): Promise<void> {
+  signal: AbortSignal | undefined, onProgress: (bytes: number) => void, connectTimeout: number, stallTimeout: number): Promise<void> {
   const paused = () => { if (signal?.aborted) throw new DownloadPaused(); };
   // Already there, and the pinned bytes exactly.
   if ((await store.size(entry.name)) === entry.size_bytes) {
@@ -192,6 +204,12 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
     throw new DownloadFailed(`The network request for ${entry.name} failed`, true, true);
   }).finally(() => clearTimeout(timer));
   paused();
+  // Followed redirects end on the hub's own hosts or the mirror's: anywhere else is not the
+  // pinned repository (the bytes would fail their hash anyway), and is not read at all.
+  if (response.url && !(secure(response.url) && fromTheHub(response.url))) {
+    await response.body?.cancel().catch(() => {});
+    throw new DownloadFailed(`The download of ${entry.name} was sent somewhere other than the model's host`);
+  }
   let resumed = false;
   if (response.status === 206) {
     const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get("Content-Range") ?? "");
@@ -214,10 +232,19 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   try {
     for (;;) {
       let next: ReadableStreamReadResult<Uint8Array>;
-      try { next = await reader.read(); }
-      catch (error) {
+      // A body that stops arriving would leave the read waiting for ever: past STALL_TIMEOUT
+      // with nothing, the connection is taken for lost, and the part stays for a retry.
+      let stalled: ReturnType<typeof setTimeout> | undefined;
+      try {
+        next = await Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) => { stalled = setTimeout(() => reject(new Error("stalled")), stallTimeout); }),
+        ]);
+      } catch (error) {
         if (signal?.aborted || (error as { name?: string }).name === "AbortError") throw new DownloadPaused();
         throw new DownloadFailed(`The connection for ${entry.name} was lost`, true);
+      } finally {
+        clearTimeout(stalled);
       }
       if (next.done) break;
       const chunk = next.value;
