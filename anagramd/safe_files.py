@@ -55,6 +55,17 @@ def sha256_file(path: Path, *, reuse: bool = True) -> str:
         done.set()
 
 
+def remember(path: Path, digest: str) -> None:
+    """The digest of the bytes a file holds now, known without reading them: a check passed on
+    this very file, whose identity has not changed since (native_component). Keyed as
+    sha256_file keys what it read, so a loading runtime finds it."""
+    path = Path(path)
+    info = path.stat()
+    key = (str(path.resolve()), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    with _GUARD:
+        _DIGESTS[key] = digest
+
+
 def is_link(path: Path) -> bool:
     return path.is_symlink() or getattr(path, "is_junction", lambda: False)()
 

@@ -1084,6 +1084,64 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text())["model_profile"], "recommended")
         self.assertEqual(component.status()["runtime"]["active_id"], "torch:cpu:fp32")
 
+    def test_model_files_are_read_in_full_once_and_then_taken_as_they_are_until_one_changes(self):
+        from urllib.parse import unquote
+        import native_component
+        contents = {"model.safetensors": b"weights!", "config.json": b"config"}
+        entries = [{"path": name, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                   for name, data in contents.items()]
+        self.pin = {"schema_version": 1, "repository": "fixture/model", "revision": "b" * 40, "files": entries}
+        lid = {"path": "lid.176.ftz", "size_bytes": 3, "sha256": hashlib.sha256(b"lid").hexdigest()}
+        def planner(profile):
+            return {"profile": profile, "devices": ["CPU"], "candidate_ids": ["torch:cpu:fp32"],
+                    "selected_paths": [e["path"] for e in entries], "total_bytes": sum(e["size_bytes"] for e in entries)}
+        def open_fixture(request, timeout):
+            name = unquote(request.full_url.split(self.pin["revision"] + "/", 1)[-1])
+            result = io.BytesIO(b"lid" if request.full_url.endswith("/lid.176.ftz") else contents[name])
+            result.status, result.headers = 200, {}
+            return result
+        checks = []
+        real = native_component.invalid_files
+        def counted(*args, **kwargs):
+            checks.append(1)
+            return real(*args, **kwargs)
+        def start():
+            component = self.make(downloader=None, verifier=None, planner=planner)
+            component.start()
+            self.finish(component)
+            state = component.status()["state"]
+            component.close()
+            return state
+        with patch("native_component.LID_ENTRY", lid), patch("native_component.invalid_files", counted), \
+                patch("download_modelkit.transfer_asset", lambda *a, **kw: transfer_with(open_fixture)(*a, **{k: v for k, v in kw.items() if k != "notice"})):
+            # The first start downloads and checks every file in full, and records them.
+            self.assertEqual(start(), "ready")
+            self.assertEqual(len(checks), 1)
+            self.assertTrue((self.home / "models-verified.json").is_file())
+            # The next starts read none of them: each is the entry on disk its check passed on.
+            self.assertEqual(start(), "ready")
+            self.assertEqual(start(), "ready")
+            self.assertEqual(len(checks), 1)
+            weights = self.home / "models/editlens_roberta-large/model.safetensors"
+            # Its modification time changed, nothing else: it is checked in full again, passes,
+            # and is taken as it is after that.
+            os.utime(weights, ns=(time.time_ns(), time.time_ns() + 10**9))
+            self.assertEqual(start(), "ready")
+            self.assertEqual(len(checks), 2)
+            self.assertEqual(start(), "ready")
+            self.assertEqual(len(checks), 2)
+            # Written to with other bytes of the same size: the full check finds it and nothing loads.
+            weights.write_bytes(b"WEIGHTS?")
+            self.assertEqual(start(), "needs_models")
+            self.assertEqual(len(checks), 3)
+            # The pin asks for other bytes than those recorded (an update): checked in full again.
+            weights.write_bytes(b"weights!")
+            self.assertEqual(start(), "ready")
+            checked = len(checks)
+            entries[1]["sha256"] = hashlib.sha256(b"other config").hexdigest()
+            self.assertEqual(start(), "needs_models")
+            self.assertEqual(len(checks), checked + 1)
+
     def test_selected_download_verification_expansion_and_restart_use_the_same_plan(self):
         from urllib.parse import unquote
         contents = {"model.safetensors": b"source", "onnx/model.onnx": b"fp32",

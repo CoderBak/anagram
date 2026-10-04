@@ -21,13 +21,15 @@ import time
 import tomllib
 
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
-                               install_streaming, invalid_files, load_pin, matches, plain_tree)
+                               install_streaming, invalid_files, load_pin, matches, plain_tree, selected_entries)
 from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes
-from safe_files import atomic_json, is_link, read_json, regular_stat
+from safe_files import atomic_json, is_link, read_json, regular_stat, remember
 
 HOST_NAME = "dev.coderbak.anagram"
 #: How often a score asked while the component starts looks again (NativeComponent._runtime).
 STARTING_POLL_S = 0.02
+#: Each model file's identity beside the digest a check passed it against (_verify_models).
+VERIFIED_FILE = "models-verified.json"
 STATE_DEFAULT = {"schema_version": 1, "initialized": False, "download_pending": False,
                  "download_paused": False, "download_failed": False,
                  "engine_stopped": False, "models_deleted": False, "idle_unload_s": 300,
@@ -364,8 +366,62 @@ class NativeComponent:
                                  plan={"devices": plan.get("devices", []), "total_bytes": total})
 
     def _verify_models(self):
+        """The model files are the pinned ones. Read and hashed in full once — after a download,
+        or where anything about a file changed — and then taken as they are: a start finds each
+        file the same entry on disk as when its check passed (_verified_before), and reads none
+        of the 1.4 GB again."""
         plain_tree(self.home / "models")
-        return not invalid_files(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"]) and matches(self.lid_path, LID_ENTRY)
+        if self._verified_before():
+            return True
+        ok = not invalid_files(self.model_dir, self.pin, selected_paths=self.plan["selected_paths"]) and matches(self.lid_path, LID_ENTRY)
+        if ok:
+            self._record_verified()
+        return ok
+
+    def _model_entries(self):
+        """The files the check covers, each with what it must be: the plan's and fastText's."""
+        return [(self.model_dir / entry["path"], entry) for entry in selected_entries(self.pin, self.plan["selected_paths"])] + [(self.lid_path, LID_ENTRY)]
+
+    @staticmethod
+    def _identity(path):
+        """A file's entry on disk: any write to it changes its modification time, and a file put
+        in its place has another inode."""
+        info = path.stat()
+        return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns]
+
+    def _record_verified(self):
+        """After a check passed: each file's identity beside the digest it was checked against."""
+        files = {}
+        try:
+            for path, entry in self._model_entries():
+                files[str(path.relative_to(self.home))] = {"identity": self._identity(path), "sha256": entry["sha256"]}
+            atomic_json(self.home / VERIFIED_FILE, {"schema_version": 1, "files": files})
+        except (OSError, ValueError):
+            pass  # the next start checks in full again
+
+    def _verified_before(self):
+        """Every file the check covers is the one a check passed on — the same identity, and the
+        digest the pin asks for now — so its digest is known without reading it, the runtime's
+        version included (safe_files.remember)."""
+        try:
+            saved = read_json(self.home / VERIFIED_FILE, max_bytes=65536)
+        except (OSError, ValueError):
+            return False
+        if not isinstance(saved, dict) or saved.get("schema_version") != 1 or not isinstance(saved.get("files"), dict):
+            return False
+        known = []
+        try:
+            for path, entry in self._model_entries():
+                record = saved["files"].get(str(path.relative_to(self.home)))
+                if (is_link(path) or not path.is_file() or not isinstance(record, dict)
+                        or record.get("sha256") != entry["sha256"] or record.get("identity") != self._identity(path)):
+                    return False
+                known.append((path, entry["sha256"]))
+        except (OSError, ValueError):
+            return False
+        for path, digest in known:
+            remember(path, digest)
+        return True
 
     def _download_models(self, cancel, progress):
         plain_tree(self.home / "models")
