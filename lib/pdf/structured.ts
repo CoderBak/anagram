@@ -329,7 +329,9 @@ function blockAt(content: SdtBlock[], path: number[]): SdtBlock | undefined {
  * and often halves of one paragraph (see `continues`), and the reader's grouping of short
  * paragraphs (lib/plan/group.ts) must be free to read them together.
  */
-type Reading = { kind: "heading" | "paragraph" | "table" | "reference"; block: SdtBlock; path: number[]; origin: string };
+/** `carriesOn`: a paragraph Zotero set beside the text, read only as the rest of the paragraph
+ *  before it (carriesOnBody). */
+type Reading = { kind: "heading" | "paragraph" | "table" | "reference"; block: SdtBlock; path: number[]; origin: string; carriesOn?: true };
 type Marker = "barrier" | "display" | "skip";
 
 /** What Zotero called a block, for the benchmark's accounting. */
@@ -422,16 +424,40 @@ function codeTest(content: SdtBlock[]): (block: SdtBlock) => boolean {
   };
 }
 
+/** A line set within this share of the body's size is set at it. */
+const BODY_SIZE_TOLERANCE = 0.05;
+
+/**
+ * The rest of a paragraph a figure or a table cut off, which Zotero took for part of the float
+ * and set beside the text: "…arguing that simulated INT8 preserves" / table / "vulnerability
+ * rather than creating severe gradient obfuscation." It opens in lower case and is set at the
+ * body's size; a figure's or a table's own words — "h1 h2 h3", "topology{Rect,Hex}", a table's
+ * note — are set smaller. Over the benchmark's papers that told the twelve such continuations
+ * from the nine labels and notes among Zotero's lower-case auxiliary paragraphs that follow a
+ * paragraph left open; it passes over four continuations set among formulas. It is read only
+ * where the paragraph before it runs on (prepare); anywhere else it stays aside.
+ */
+function carriesOnBody(node: SdtBlock, bodySize: () => number): boolean {
+  const first = firstText(node)?.text.trimStart() ?? "";
+  if (!/^\p{Ll}/u.test(first)) return false;
+  const size = median(runHeights(node));
+  return Math.abs(size / bodySize() - 1) <= BODY_SIZE_TOLERANCE;
+}
+
 /** The readings of the content tree. A table is skipped like the rest of what is set aside,
  *  and a bibliography entry is a barrier, unless either is the prose of a manuscript with
  *  numbered lines (numberedReadings). */
 function readingsOf(content: SdtBlock[], everything: boolean): (Reading | Marker)[] {
   const out: (Reading | Marker)[] = [];
+  let body: number | null = null;
+  const bodySize = (): number => (body ??= median(content.flatMap((b) => (b.type === "paragraph" && !b.flowClass ? runHeights(b) : []))));
   const aside = (node: SdtBlock, path: number[]): void => {
     if (everything) out.push({ kind: "paragraph", block: node, path, origin: originOf(node) });
     else if (node.reference) out.push({ kind: "reference", block: node, path, origin: originOf(node) });
     else if (node.type === "table") out.push({ kind: "table", block: node, path, origin: originOf(node) });
-    else out.push(node.type === "math" ? "display" : "skip");
+    else if (node.type === "paragraph" && node.flowClass === "auxiliary" && carriesOnBody(node, bodySize)) {
+      out.push({ kind: "paragraph", block: node, path, origin: originOf(node), carriesOn: true });
+    } else out.push(node.type === "math" ? "display" : "skip");
   };
   const isCode = everything ? (): boolean => false : codeTest(content);
   content.forEach((node, i) => {
@@ -587,6 +613,8 @@ function leaveOutCaptions(out: (Reading | Marker)[], content: SdtBlock[], number
       if (r === "barrier") before = null;
       return;
     }
+    // The rest of a paragraph, or nothing: never a caption, nor what one is told by.
+    if (r.carriesOn) return;
     const prev = before;
     before = r;
     if (r.kind !== "paragraph" || numbered(k)) return;
@@ -793,6 +821,8 @@ interface Prepared {
   paths: string[];
   previousPart?: string;
   origin: string;
+  /** Read only as the rest of the paragraph before it (carriesOnBody). */
+  carriesOn?: true;
 }
 
 // ---- a manuscript's numbered lines ---------------------------------------------------------
@@ -1103,7 +1133,7 @@ interface Margins {
 function plain(r: Reading, pieces: Piece[]): Prepared | Marker {
   if (r.kind === "table") return "skip";
   if (r.kind === "reference") return "barrier";
-  return { kind: r.kind, pieces, page: startPage(r.block), paths: [r.path.join(".")], ...(r.block.previousPart ? { previousPart: r.block.previousPart.join(".") } : {}), origin: r.origin };
+  return { kind: r.kind, pieces, page: startPage(r.block), paths: [r.path.join(".")], ...(r.block.previousPart ? { previousPart: r.block.previousPart.join(".") } : {}), origin: r.origin, ...(r.carriesOn ? { carriesOn: true } : {}) };
 }
 
 /**
@@ -1309,6 +1339,9 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
     yield;
   }
   let numbers = yield* lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  // A manuscript's numbered lines are read again as the paragraphs they make, which a float's
+  // supposed rest is no part of.
+  if (numbers.size > 0) readings.forEach((r, k) => { if (typeof r !== "string" && r.carriesOn) { readings[k] = "skip"; texts[k] = null; } });
   if (numbers.size > 0) {
     readings.forEach((r, k) => { if (typeof r !== "string" && r.kind === "reference") texts[k] = read(r); });
     yield;
@@ -1348,6 +1381,8 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
       for (const path of r.paths) byPath.set(path, prev);
       continue;
     }
+    // Not the rest of the paragraph before it: what Zotero set beside the text stays there.
+    if (r.carriesOn) continue;
     const page = r.page;
     const previous = drafts.at(-1);
     // A page is no break in the writing where the sentence before it goes on over it —

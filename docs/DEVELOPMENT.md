@@ -213,11 +213,13 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   book took 12.8 s to its structure, 250 MB of page memory falling to 173 MB as it was read,
   and no main-thread pause over 78 ms (2026-10-04, M4). Past the cap, Zotero's worker would
   have to read the document in page ranges, which its `getFullStructure` does not offer.
-- PDF: the tail of a paragraph set under a figure on the next page is lost when Zotero tags it
-  `auxiliary` ("…simulated INT8 preserves" / figure / "vulnerability rather than…"), and the
-  chip then stands mid-sentence at the foot of the page. Thirty such lowercase continuations
-  in the benchmark corpus, half of them table or figure text, so joining them needs more than
-  the run-on test of `continues()`.
+- PDF: the tail of a paragraph set under a figure on the next page, which Zotero tags
+  `auxiliary` ("…simulated INT8 preserves" / figure / "vulnerability rather than…"), is read
+  with its paragraph where it is set at the body's size (`carriesOnBody` in
+  `lib/pdf/structured.ts`): of the 25 lowercase auxiliary paragraphs after a paragraph left
+  open in the benchmark corpus, that takes the 12 continuations at body size and none of the 9
+  labels and notes. Four continuations set among formulas, at 0.82–0.94 of the body's size,
+  are still left out, and the chip then stands mid-sentence at the foot of the page.
 - Installer recovery on Windows: two component homes registering one browser race on
   the HKCU keys (`installer/native_registration.py`), and an interrupted uninstall is
   finished only by reinstalling or deleting the folder (`installer/maintenance.ps1`).

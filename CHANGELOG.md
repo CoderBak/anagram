@@ -38,6 +38,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- In the PDF reader, the rest of a paragraph that a figure or a table cut off at the head of the next page went unread when Zotero took it for part of the float ("…arguing that simulated INT8 preserves" / table / "vulnerability rather than creating severe gradient obfuscation."), and the chip stood mid-sentence. Where it is set at the body's size and opens in lower case, it is now read with its paragraph; a figure's or a table's own words, set smaller, still are not.
 - In the PDF reader, the tail of a paragraph that a page cut at a full stop — the next page's only text before a heading, say — went unread when it was too short to stand alone: a page turn stopped it joining the paragraph it came from. It now joins it, as a short paragraph does on one page. Over 207 papers of the benchmark, 1,308 more words are read; paragraph boundaries are as before.
 - The PDF reader's Download button saved a document as "document.pdf" whenever its address did not end in a .pdf file name (arXiv's /pdf/2401.17377, a download script, a viewer page). It now saves it under the name the server gave it, or else one taken from the address (2401.17377.pdf, 42.pdf for download.php?id=42), always ending in .pdf.
 - The confirmation to cancel the model's download opened in the corner of the setup page instead of its middle.

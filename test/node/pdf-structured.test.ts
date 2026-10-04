@@ -1384,6 +1384,37 @@ describe("structuredBlocks — the document", () => {
   });
 });
 
+describe("structuredBlocks — the rest of a paragraph that a float cut off", () => {
+  // arXiv 2609.30037: "…arguing that simulated INT8 preserves" ends page 3; page 4 opens with a
+  // table, its caption and a chart, and under them "vulnerability rather than creating severe
+  // gradient obfuscation.", which Zotero set beside the text with the float.
+  const head = node(3, [{ text: "Quantized models keep their robustness under direct attacks, arguing that simulated INT8 preserves", x: 72, y: 700 }]);
+  const caption = node(4, [{ text: "Table 3: Native TensorRT PTQ fidelity.", x: 72, y: 90, size: 8 }]);
+  const cell = node(4, [{ text: "topology{Rect,Hex}Rect", x: 72, y: 120, size: 8 }]);
+  const rest = node(4, [{ text: "vulnerability rather than creating severe gradient obfuscation.", x: 72, y: 300 }]);
+  const pages = [pageText(3, head.items), pageText(4, [...caption.items, ...cell.items, ...rest.items])];
+  const aside = (page: number, n: typeof rest, type = "paragraph"): SdtBlock => ({ ...paragraph(page, [n]), type, flowClass: "auxiliary" });
+
+  it("reads the rest, set at the body's size and opening in lower case, as the paragraph it carries on", () => {
+    const blocks = structuredBlocks(structure([
+      paragraph(3, [head]), aside(4, caption, "caption"), { type: "table", flowClass: "auxiliary", content: [] } as SdtBlock, aside(4, rest),
+    ], 4), pages);
+    expect(blocks.map((b) => b.text)).toEqual([`${head.text} ${rest.text}`]);
+    expect(new Set(blocks[0]!.runs.map((r) => r.page))).toEqual(new Set([3, 4]));
+  });
+
+  it("leaves a float's own words aside: set smaller, after a sentence that ended, or opening in capitals", () => {
+    const small = structuredBlocks(structure([paragraph(3, [head]), aside(4, cell)], 4), pages);
+    expect(small.map((b) => b.text)).toEqual([head.text]);
+    const ended = node(3, [{ text: "Quantized models keep their robustness under direct attacks.", x: 72, y: 700 }]);
+    const afterEnd = structuredBlocks(structure([paragraph(3, [ended]), aside(4, rest)], 4), [pageText(3, ended.items), pages[1]!]);
+    expect(afterEnd.map((b) => b.text)).toEqual([ended.text]);
+    const capital = node(4, [{ text: "Vulnerability is preserved in every configuration.", x: 72, y: 300 }]);
+    const capitals = structuredBlocks(structure([paragraph(3, [head]), aside(4, capital)], 4), [pages[0]!, pageText(4, capital.items)]);
+    expect(capitals.map((b) => b.text)).toEqual([head.text]);
+  });
+});
+
 describe("structuredBlocks — text cut off by a display equation", () => {
   /** A display equation as Zotero sets it aside. */
   const display = (page: number, y: number): { block: SdtBlock; items: PdfTextItem[] } => {
