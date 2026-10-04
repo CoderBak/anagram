@@ -180,6 +180,27 @@ describe("scheduler", () => {
     expect(sent).toEqual(["background:u1", "viewport:u3", "near:u4", "background:u2"]);
   });
 
+  it("holds the on-screen and near lanes while the page is flung past, and the background keeps its own pace", async () => {
+    const sent: string[] = [];
+    let flungUntil = Date.now() + 40;
+    const s = createScheduler({
+      batchCharBudget: 1,
+      maxInFlight: 4,
+      async send(units, lane) { sent.push(`${lane}:${units.map((u) => u.id).join(",")}`); return units.map(score); },
+      render() {},
+      foregroundDelay: () => Math.max(0, flungUntil - Date.now()),
+    });
+    s.enqueue(unit(1), "viewport");
+    s.enqueue(unit(2), "near");
+    s.enqueue(unit(3), "background");
+    await tick();
+    // The background was never the on-screen lanes' to hold.
+    expect(sent).toEqual(["background:u3"]);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(sent).toEqual(["background:u3", "viewport:u1", "near:u2"]);
+    flungUntil = 0;
+  });
+
   it("looks again at a lane held with no end in sight, and lets nothing of it go after stop()", async () => {
     vi.useFakeTimers();
     try {

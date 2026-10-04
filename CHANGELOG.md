@@ -13,6 +13,7 @@ local component and the installer all carry the same version.
 
 ### Changed
 
+- While a page is flung past faster than anyone reads (two screens a second), the paragraphs that flash across the screen are no longer sent to be read; what is on screen when it settles is, at once. On a processor, where a paragraph takes seconds, the one you stopped at used to wait behind four that went by.
 - **Analyze text** reads a text paragraph by paragraph, as a page is read (blank lines part paragraphs; short ones are read together under the same minimum length): the text comes back with a chip after each paragraph and the flagged ones underlined, under the whole text's verdict and a bar of how much of it, in words, reads as each word. The copied report has a line per paragraph. It used to give one verdict for the whole text and list the model's passes.
 - Paragraphs are flagged from **Heavily edited** up, not only when AI-generated, and Settings, Marks, **Flag** chooses the word: Lightly edited and above, Heavily edited and above, or AI-generated only. Flagged paragraphs are underlined, listed in the toolbar menu and counted on its icon; the others keep their chip only. **Underlines** can go on the flagged paragraphs (the default), on every paragraph as before, or nowhere.
 - Anagram reads English only, and now says so on the setup page; a paragraph in another language gets no chip at all (it used to get a grey one with the language code). The toolbar menu still counts how many it passed over.

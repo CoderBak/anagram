@@ -66,6 +66,9 @@ export function createScheduler<V>(opts: {
   /** How long background batches wait yet, in ms, asked before each one: the background's
    *  pace (lib/capture/pace.ts). The lane is asked again when that is up. */
   backgroundDelay?(): number;
+  /** How long the viewport and near lanes wait yet, in ms: while the reader flings the page
+   *  past, what is on screen for a moment is not what will be read. Asked like backgroundDelay. */
+  foregroundDelay?(): number;
 }): Scheduler {
   const maxInFlight = opts.maxInFlight || 4;
   const maxBackground = Math.max(1, opts.maxBackgroundInFlight ?? 1);
@@ -123,9 +126,17 @@ export function createScheduler<V>(opts: {
 
   /** Pull the next batch from the highest-priority eligible non-empty lane, up to its budget. */
   function pickBatch(): { lane: Lane; batch: Pending[] } | null {
+    let held = -1;
     for (const lane of LANES) {
       const q = queues[lane];
       if (q.length === 0) continue;
+      if (lane !== "background") {
+        if (held < 0) held = opts.foregroundDelay?.() ?? 0;
+        if (held > 0) {
+          wakeIn(held);
+          continue;
+        }
+      }
       if (lane === "background") {
         if (inFlightBackground >= maxBackground) continue;
         const wait = opts.backgroundDelay?.() ?? 0;

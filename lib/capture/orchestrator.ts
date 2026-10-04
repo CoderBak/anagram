@@ -46,6 +46,7 @@ import { settings } from "../settings/settings";
 import { createLogger } from "../log";
 import { createBackgroundPace } from "./pace";
 import { createInsertionGate } from "./insertionGate";
+import { createFling } from "./fling";
 
 const log = createLogger("orchestrator");
 
@@ -325,6 +326,8 @@ export function createOrchestrator(
   /** The idle prefetch reads what nobody has scrolled to yet at a pace (lib/capture/pace.ts);
    *  the PDF reader keeps its own (OrchestratorOptions.pacedBackground). */
   const pace = opts.pacedBackground !== false ? createBackgroundPace() : null;
+  /** While the page is flung past, what is on screen for a moment waits (lib/capture/fling.ts). */
+  const fling = createFling();
   /** The daemon stopped answering: dispatch is paused until a probe succeeds. */
   let backendDown = false;
   /** The tab is in the background: dispatch is paused until it is shown again. */
@@ -995,6 +998,7 @@ export function createOrchestrator(
     stopDownPolling();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     pace?.watch(false);
+    fling.watch(false);
   }
 
   // --- dispatch: held while the daemon is down or nobody can see the tab -----------------
@@ -1266,6 +1270,7 @@ export function createOrchestrator(
     send,
     render,
     backgroundDelay: () => pace?.delay() ?? 0,
+    foregroundDelay: () => fling.delay(),
     // A prefetch pass is capped (PREFETCH_PASS): keep draining while work is left.
     onIdle: () => {
       if (started && !frozen && !backendDown) schedulePrefetch();
@@ -1464,6 +1469,7 @@ export function createOrchestrator(
     pageHidden = document.visibilityState === "hidden";
     document.addEventListener("visibilitychange", onVisibilityChange);
     pace?.watch(true);
+    fling.watch(true);
     syncDispatch();
 
     gate.watch();
@@ -1629,6 +1635,7 @@ export function createOrchestrator(
     stopDownPolling();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     pace?.watch(false);
+    fling.watch(false);
     backendDown = false;
     commentOffer = [];
     commentAsked++;

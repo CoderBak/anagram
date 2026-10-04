@@ -473,6 +473,7 @@ test("a fast scroll: what is on screen when it stops is sent before anything scr
     const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     const step = Math.round(innerHeight * 0.9);
     const bottom = document.documentElement.scrollHeight - innerHeight;
+    const sentAtStart = window.__sent.length;
     for (let y = step; y < bottom; y += step) {
       scrollTo(0, y);
       await frames();
@@ -482,8 +483,10 @@ test("a fast scroll: what is on screen when it stops is sent before anything scr
     const rows = [...document.querySelectorAll("p[id]")].map((el) => ({ id: el.id, box: el.getBoundingClientRect() }));
     return {
       t0: performance.now(),
-      // How many paragraphs had been sent when the scroll stopped.
+      // How many paragraphs had been sent when the scroll stopped, and how many of them went
+      // while the page was flung past (lib/capture/fling.ts holds what flashes by).
       sentBefore: window.__sent.length,
+      sentWhileFlung: window.__sent.length - sentAtStart,
       onScreen: rows.filter((r) => r.box.bottom > 0 && r.box.top < innerHeight).map((r) => r.id),
       // Well outside the 1200 px the prefetch margin reaches above the viewport.
       far: rows.filter((r) => r.box.bottom < -1500).map((r) => r.id),
@@ -514,6 +517,40 @@ test("a fast scroll: what is on screen when it stops is sent before anything scr
   // The order was heard: what the reader stopped at was sent after the scroll stopped.
   expect.soft(r.sent[1], note).toBeGreaterThan(r.sent[0]);
   expect.soft(r.farFirst, note).toBe(0);
+  // Nothing that flashed by went out while the page was flung past it (one may have been on
+  // its way as the fling began).
+  expect.soft(end.sentWhileFlung, `${note} sent while flung: ${end.sentWhileFlung}`).toBeLessThanOrEqual(1);
+});
+
+// A long fling at a steady pace, three and a half screens a second for four seconds, while the
+// engine answers in 300 ms: slots free up as the page goes by, and what flashes past is not
+// sent; what is on screen when it stops is (lib/capture/fling.ts).
+test("a page flung past for seconds sends nothing of what flashes by, and what it stops at at once", async ({ context, page, pages, nativeHost }) => {
+  pages.serve({ "/fling.html": PAGE("fling fixture", Array.from({ length: 120 }, (_, i) => `<p id="fp${i}">${para("FLUNGPAST", i)}</p>`).join("\n")) });
+  nativeHost.setState({ latency: [300, 300] });
+  await page.addInitScript(chipClock);
+  await sendOrder(context, page);
+  await page.goto(pages.url("/fling.html"), { waitUntil: "load" });
+  await expect.poll(() => page.evaluate(() => Object.keys(window.__chipAt).length)).toBeGreaterThan(0);
+  // The first screen read, so that what is sent next is the fling's.
+  await page.waitForTimeout(2500);
+  const flung = await page.evaluate(async () => {
+    const before = window.__sent.length;
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const began = performance.now();
+    let y = scrollY, frames = 0, scrolls = 0;
+    addEventListener("scroll", () => scrolls++, { capture: true });
+    while (performance.now() - began < 4000) {
+      y += innerHeight * 0.06;
+      scrollTo(0, y);
+      await frame();
+      frames++;
+    }
+    return { frames, scrolls, sent: window.__sent.length - before, which: window.__sent.slice(before, before + 12).map((t) => /FLUNGPAST-(\d+)/.exec(t)?.[1]).join(","), stopped: [...document.querySelectorAll("p[id]")].filter((el) => { const b = el.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; }).map((el) => el.id) };
+  });
+  const note = `a page flung past: ${JSON.stringify(flung)}`;
+  expect.soft(flung.sent, note).toBeLessThanOrEqual(1);
+  await expect.poll(() => page.evaluate((ids) => ids.filter((id) => !(id in window.__chipAt)), flung.stopped), { message: `${note} (what it stopped at is read)`, timeout: 20_000 }).toEqual([]);
 });
 
 // Headless Chromium never hides a page, so the content script's own world is told it is

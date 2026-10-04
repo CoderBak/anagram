@@ -209,9 +209,6 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
 
 ## Open work
 
-- Follow the reader: score what is on screen after a short dwell, skip fast scrolling,
-  bound queued work per document. Hooks are in `lib/capture/observers.ts` and
-  `lib/capture/scheduler.ts`.
 - PDF: whole-document reading (`lib/pdf/readAhead.ts`) works only with Zotero's structure;
   past its cap (`maxStructurePages` in `entrypoints/reader/main.ts`: 1,000 pages at 8 GB of
   device memory, 600 at 4, 300 below or unknown), or without it, the reflow reads the drawn
