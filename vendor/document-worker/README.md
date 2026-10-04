@@ -12,8 +12,9 @@ of their own in the repository; they are distributed as part of it. The ONNX run
 package carries no licence file, so its MIT licence is kept here and pinned with the rest
 (the notices of the libraries its WebAssembly links ship with the binary).
 
-`worker.js` is built from `src/worker.js` — Anagram's entry, one `getStructure` call —
-by the worker's own webpack build, then minified. `scripts/documentWorker.mjs` regenerates
+`worker.js` is built from `src/worker.js` — Anagram's entry, one `getStructure` call, or
+for a long document Zotero's `getFullStructure` over a page range, numbered back into the
+whole document — by the worker's own webpack build, then minified. `scripts/documentWorker.mjs` regenerates
 everything from the pinned sources and rewrites the hashes; `scripts/vendor.mjs` verifies
 them on every build and copies what the reader loads into `public/vendor/document-worker/`.
 The reader loads it lazily, in the reader page only, and the worker fetches its data from

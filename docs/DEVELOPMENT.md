@@ -210,12 +210,19 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
 ## Open work
 
 - PDF: whole-document reading (`lib/pdf/readAhead.ts`) works only with Zotero's structure;
-  past its cap (`maxStructurePages` in `entrypoints/reader/main.ts`: 1,000 pages at 8 GB of
-  device memory, 600 at 4, 300 below or unknown), or without it, the reflow reads the drawn
-  pages alone, because its text depends on the run of pages reflowed together. An 813-page
-  book took 12.8 s to its structure, 250 MB of page memory falling to 173 MB as it was read,
-  and no main-thread pause over 78 ms (2026-10-04, M4). Past the cap, Zotero's worker would
-  have to read the document in page ranges, which its `getFullStructure` does not offer.
+  past its cap (`MOST_STRUCTURE_PAGES` in `entrypoints/reader/main.ts`: 2,500 pages; read
+  without asking up to all of them at 8 GB of device memory, 600 at 4, 300 below or unknown,
+  and past that when the menu's **Read the whole document** asks), or without it, the reflow
+  reads the drawn pages alone, because its text depends on the run of pages reflowed together.
+  Zotero reads a document past 1,000 pages in even ranges, a worker each, through a page-range
+  view of the document in our entry (`vendor/document-worker/src/worker.js`): its own
+  `getFullStructure` reads every page at once and holds them all, 2.7 GB of the reader's
+  process at 2,445 pages. In ranges that book took 27.5 s to its structure, the process
+  peaking at 2.0 GB, 680 MB of page memory falling to 310 MB as it was read, and one 0.3 s
+  pause as the structure came, with no script in it (a collection of the large heap); an
+  813-page book, 9.6 s and 270 MB, no pause over 150 ms (2026-10-04, M4). What Zotero works out
+  over the document — running heads, reference lists, the outline's pages — it works out over
+  a range; a link or outline entry to a page outside the range resolves to nothing.
 - PDF: the rest of a paragraph Zotero set outside the body — under a figure it cut off
   (`auxiliary`), or at the foot of a page taken for its footer (`excluded`) — is read with its
   paragraph where it opens in lower case after a paragraph left open, is set at the body's

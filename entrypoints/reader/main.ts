@@ -21,16 +21,23 @@ import { placeChip } from "./chips";
 import "./style.css";
 
 const MAX_BYTES = 100 * 1024 * 1024;
-/** Zotero's structure is asked for up to this many pages; past it the reflow reads every page
- *  as it renders. The worker's peak hardly grows with the document past a few hundred pages
- *  (0.5–0.7 GB over the page's own at 336, 565 and 813 pages, 20–25 ms a page, and it is gone
- *  when the structure comes); what grows is what the page keeps while the document is read —
- *  the structure's reading and every page's text. So: a thousand pages where the browser says
- *  the device has 8 GB of memory or more, 600 where it says 4, and 300 where it says less or
- *  nothing (Firefox and Safari do not say). */
-function maxStructurePages(): number {
+/** Zotero's structure is read for documents up to this many pages, a thousand pages at a time
+ *  (lib/pdf/structureWorker.ts); past it the reflow reads every page as it renders. What grows
+ *  with the document is what the page keeps while it is read — the structure's reading and
+ *  every page's text: at 2,445 pages, 683 MB when the structure came, falling to 311 MB as the
+ *  document was read (813 pages: 269 MB), 11 ms a page to the structure, and one pause of the
+ *  page, 0.3 s, as it came (2026-10-04, M4). */
+const MOST_STRUCTURE_PAGES = 2500;
+/** Read without asking: all of them where the browser says the device has 8 GB of memory or
+ *  more, 600 pages where it says 4, 300 where it says less or nothing (Firefox and Safari do
+ *  not say). A longer document, up to the most, is read whole when the menu's button asks. */
+function autoStructurePages(): number {
   const memory = (navigator as { deviceMemory?: number }).deviceMemory;
-  return memory === undefined || memory < 4 ? 300 : memory < 8 ? 600 : 1000;
+  return testCaps()?.autoPages ?? (memory === undefined || memory < 4 ? 300 : memory < 8 ? 600 : MOST_STRUCTURE_PAGES);
+}
+/** Test builds only: smaller caps, set by the browser tests (test/pw/scenarios-pdf.spec.mjs). */
+function testCaps(): { autoPages?: number; rangePages?: number } | undefined {
+  return import.meta.env.ANAGRAM_TEST_BUILD === "1" ? (globalThis as { __anagramReaderCaps?: { autoPages?: number; rangePages?: number } }).__anagramReaderCaps : undefined;
 }
 /** sessionStorage: the source this tab's reader opened, so that a refresh or Back can show it
  *  again. An address that only names a source — pasted, or opened by anything else — reads
@@ -164,16 +171,21 @@ function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
  * are already up, and the switch re-collects the units — the verdicts of paragraphs
  * whose text did not change come straight back from the cache.
  */
-async function readWholeDocument(bytes: Uint8Array, count: number, owned: number, signal: AbortSignal): Promise<boolean> {
+async function readWholeDocument(bytes: Uint8Array, count: number, owned: number, signal: AbortSignal, asked = false): Promise<boolean> {
   // No structure: the reflow reads the pages drawn, and nothing else is kept.
   const without = (): false => {
     if (owned === generation) { keepTexts = false; texts.clear(); unread.clear(); }
     return false;
   };
-  if (count > maxStructurePages() || !(await settings.pdfStructure.getValue())) return without();
+  if (count > MOST_STRUCTURE_PAGES || !(await settings.pdfStructure.getValue())) return without();
+  if (count > autoStructurePages() && !asked) {
+    // The menu offers to read it whole (scopeNote).
+    if (owned === generation) askable = true;
+    return without();
+  }
   if (owned !== generation) return false;
   try {
-    const result = await readStructure(bytes, count, signal);
+    const result = await readStructure(bytes, count, signal, testCaps()?.rangePages);
     if (owned !== generation) return false;
     // Made, and every paragraph of the document read and planned a first time, a few
     // milliseconds at a time (lib/slices.ts): at 300 pages that was half a second of the main
@@ -217,7 +229,14 @@ function share(): { done: number; of: number; left: number } {
  *  the pages around are read on their own, the button that reads the rest. */
 function scopeNote(read: number): string {
   const total = app.pdfDocument?.numPages ?? 0;
-  if (!plan) return read < total ? t("readerReportScope", read, total) : "";
+  if (!plan) {
+    const ask = askable && read < total;
+    if (ask !== asking) {
+      asking = ask;
+      orchestrator?.setPageAction(ask ? t("readerReadWhole") : null, readWholeAsked);
+    }
+    return read < total ? t("readerReportScope", read, total) : "";
+  }
   const { done, of, left } = share();
   const limited = pacer.limited() && !whole;
   const offer = limited && aheadOn && done < of;
@@ -236,6 +255,25 @@ function scopeNote(read: number): string {
   if (pacer.samples() < 3) return t("readerReading", percent);
   const minutes = Math.ceil(pacer.timeFor(left, onBattery, whole) / 60_000);
   return minutes <= 1 ? t("readerReadingSoon", percent) : t("readerReadingLeft", percent, String(minutes));
+}
+
+/** A document past what is read without asking, which the menu's button may read whole. */
+let askable = false;
+/** The menu shows that button. */
+let asking = false;
+/** The menu's button asked for the whole of a document past what is read without asking: the
+ *  structure is read as it would have been at the start, from pdf.js's copy of the bytes. */
+function readWholeAsked(): void {
+  if (!askable || !controller) return;
+  askable = false; asking = false;
+  orchestrator?.setPageAction(null);
+  const owned = generation, signal = controller.signal, count = app.pdfDocument?.numPages ?? 0;
+  keepTexts = true;
+  void (async () => {
+    const bytes = await app.pdfDocument?.getData().catch(() => null);
+    if (!bytes || owned !== generation) return;
+    await readAhead(owned, readWholeDocument(bytes, count, owned, signal, true));
+  })();
 }
 
 let aheadOn = true;
@@ -508,7 +546,7 @@ function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void
   cancelDocumentSession();
   setRangeLocator(null);
   pages.clear(); source = null; structure = null; textless = false;
-  texts.clear(); unread.clear(); pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; shownPercent = 0; tried.clear(); wake?.();
+  texts.clear(); unread.clear(); pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; askable = false; asking = false; shownPercent = 0; tried.clear(); wake?.();
   pacer.newDocument();
   originalUrl = null; original.hidden = true;
   site = null;

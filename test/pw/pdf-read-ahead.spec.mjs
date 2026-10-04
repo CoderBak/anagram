@@ -8,7 +8,7 @@
 //
 //   npx playwright test pdf-read-ahead
 import { test as base, expect, BADGE_SEL, popupOver, menuReport } from "./kit.mjs";
-import { TALL_PDF, openPdfInReader, readerRead } from "../pdf-fixture.mjs";
+import { TALL_PDF, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
 
 const test = base.extend({
   /** The thirty-page document, served as application/pdf. */
@@ -241,6 +241,67 @@ test("a hidden reader asks the engine for nothing in the background, and picks u
   expect.soft(nativeHost.stats.requests, hidden).toBe(requests);
   await setHidden(page, false);
   await expect.poll(() => nativeHost.textsSince(mark).length, { message: "PDF read-ahead: shown again, the reader reads on", timeout: 30_000 }).toBeGreaterThan(0);
+});
+
+// A document longer than the reader reads without asking (300 pages where the browser does not
+// say how much memory there is, as in Firefox and Safari): the menu offers to read it whole,
+// and the structure is then read in page ranges, a worker each (lib/pdf/structureWorker.ts).
+// Here the caps are ten pages and ranges of twelve, so the thirty pages are read in three
+// ranges of ten; what comes of them must be what one worker reads of the whole, on the same
+// pages. (Test builds read the caps from __anagramReaderCaps, here from localStorage.)
+test("past what it reads without asking, the menu offers the whole document, and reading it in page ranges reads what one worker does, on the same pages", async ({ context, tall, nativeHost, extension }) => {
+  test.setTimeout(240_000);
+  await context.addInitScript(() => {
+    try { globalThis.__anagramReaderCaps = JSON.parse(localStorage.getItem("anagram-test-caps") ?? "null") ?? undefined; } catch {}
+  });
+  const opt = await context.newPage();
+  await opt.goto(extension.url("options.html"), { waitUntil: "load" });
+  const caps = (value) => opt.evaluate((value) => localStorage.setItem("anagram-test-caps", JSON.stringify(value)), value);
+  /** The menu's report once the whole document is read: how many paragraphs read as each word. */
+  const wholeReport = async (page, message) => {
+    const menu = await popupOver(page);
+    let state;
+    await expect.poll(async () => { state = await menuState(menu); return state.scope === null && state.read >= PAGES * 3; }, { message, timeout: 90_000, intervals: [500] }).toBe(true);
+    const shown = await menuReport(menu);
+    await menu.close();
+    return { bands: shown.bands, action: state.action };
+  };
+
+  await caps({ autoPages: 10, rangePages: 12 });
+  const page = await openPdfInReader(context, tall);
+  // Not readerRead: it waits for the structure, which is not read until asked.
+  await readerReady(page, { timeout: 30_000 });
+  const menu = await popupOver(page);
+  const offer = "PDF reader: past the pages it reads without asking, the menu offers to read the whole document";
+  let state;
+  await expect.poll(async () => { state = await menuState(menu); return state.action; }, { message: offer, timeout: 20_000 }).toBe("Read the whole document");
+  expect.soft(state.scope ?? "", `${offer}, and meanwhile counts the pages drawn`).toMatch(SCOPED);
+  expect.soft(await page.evaluate(() => performance.getEntriesByName("anagram-structure").length), `${offer}: no structure until asked`).toBe(0);
+  await menu.locator("#pageAction").click();
+  const ranges = "PDF reader: the whole document read in three page ranges";
+  await page.waitForFunction(() => performance.getEntriesByName("anagram-structure").length > 0, null, { timeout: 60_000 });
+  const ranged = await wholeReport(page, `${ranges}: the report comes to cover every page`);
+  expect.soft(ranged.action, `${ranges}: nothing left to offer`).toBeNull();
+  // A page of the last range shows its own paragraphs' chips, from the cache: its paragraphs
+  // were placed on it, not ten or twenty pages before it.
+  const requests = nativeHost.stats.requests;
+  const mark = nativeHost.textMark();
+  await visitPdfPage(page, 25);
+  const placed = `${ranges}: page 25's paragraphs are on page 25`;
+  await expect.poll(() => pageRead(page, 25), { message: placed, timeout: 20_000 }).toBe(true);
+  expect.soft(nativeHost.textsSince(mark).map((t) => t.slice(0, 40)), placed).toEqual([]);
+  expect.soft(nativeHost.stats.requests, placed).toBe(requests);
+  await page.close();
+
+  // The same document read by one worker, from nothing cached: the same paragraphs.
+  await caps({ rangePages: 100 });
+  await opt.click("#clearCache");
+  await expect(opt.locator("#cacheStatus")).toContainText("Cleared");
+  const again = await openPdfInReader(context, tall);
+  await readerRead(again, { timeout: 30_000 });
+  const whole = await wholeReport(again, "PDF reader: the same document read by one worker");
+  expect.soft(ranged.bands, `${ranges}: as many paragraphs read as each word as one worker reads`).toEqual(whole.bands);
+  expect.soft(whole.bands.reduce((a, b) => a + b, 0), "PDF reader: one worker reads every paragraph").toBeGreaterThanOrEqual(PAGES * 3);
 });
 
 test("Settings offers the read-ahead among the PDF rows, on unless turned off, and the setup page does not", async ({ page, extension, storage }) => {

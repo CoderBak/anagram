@@ -33,6 +33,6 @@
     "block-seg/clusterer/model.onnx": "5cb6f8645a0f4c8f4396d5e8b1da70d9c8d8fff8c98f324889b8c6e271575350",
     "block-seg/clusterer/repair.onnx": "7fd29831c26f09cefa5a4f92c797e559bda5f513f6691d339d6c323bd563a789",
     "block-seg/clusterer/runtime.bin": "a0d71f9be6c63404393457ec31875ae799b5f4ba48dc17736112446a4f82ca26",
-    "worker.js": "0e30f19c165e255afe1dfe1517d203a619e7d5eaf53ea50a430f047f23732dfa"
+    "worker.js": "a5dc8c761d61ef8da516a0abc246a5e47b93e1ff8c396c2e6969498c70577b87"
   }
 }
