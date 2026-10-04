@@ -274,6 +274,8 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
   font-size: 10px;
   line-height: 1.4;
 }
+/* The card's only line while it waits for a verdict. */
+.card .foot.alone { margin: 0; padding: 0; border: 0; }
 
 /* ---- dark surfaces ------------------------------------------------------------ */
 

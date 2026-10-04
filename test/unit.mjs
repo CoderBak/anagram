@@ -2111,7 +2111,13 @@ const results = await page.evaluate(() => {
   // at rest or active, and every line is solid: how sure the model is shows on the dot.
   {
     PW.registerHighlightStyles();
-    const css = () => document.querySelector('style[data-anagram="style"]').textContent;
+    // The rules are a sheet the document adopts (lib/render/highlight.ts), read back here a
+    // longhand at a time, as they were written.
+    const css = () => [...document.adoptedStyleSheets].flatMap((sheet) => [...sheet.cssRules])
+      .flatMap((r) => (r.cssRules ? [...r.cssRules] : [r]))
+      .filter((r) => r.selectorText?.startsWith("::highlight(anagram-"))
+      .map((r) => `${r.selectorText} { ${Array.from(r.style, (p) => `${p}: ${r.style.getPropertyValue(p)}`).join("; ")}; }`)
+      .join("\n");
     const ruleFor = (name) => (css().match(new RegExp(`::highlight\\(${name}\\)\\s*\\{([^}]*)\\}`)) ?? [, ""])[1];
     const step = (n) => String(n).padStart(2, "0");
     const all = Array.from({ length: PW.SCALE_STEPS + 1 }, (_, n) => step(n));

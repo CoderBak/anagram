@@ -48,8 +48,8 @@ export const GECKO_ID = "anagram@coderbak.dev";
 export const EXT_UUID = "5e0b7a12-3c4d-4f8a-9b16-2d7e8c0f4a31";
 /** Lowest Firefox the PRODUCT allows (manifest strict_min_version), and so the lowest this suite drives. */
 export const MIN_FIREFOX = 153;
-/** Badge hosts share data-anagram="host" with the FAB host — exclude the FAB by id. */
-export const BADGE_SEL = '[data-anagram="host"]:not(#anagram-fab)';
+/** A chip's host (the selection card's too), as test/harness.mjs has it. */
+export const BADGE_SEL = '[data-anagram="host"]';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

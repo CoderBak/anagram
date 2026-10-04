@@ -18,7 +18,7 @@ import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
-import { DIST_CSS, distributionHtml, swatchHtml, unsureNote } from "./dist";
+import { DIST_CSS, distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
 import { countWords } from "../dom/text";
 import { readMinWords } from "../settings/settings";
 import { isDarkPage } from "./theme";
@@ -293,6 +293,7 @@ export async function analyzeSelection(): Promise<void> {
         (readout && readout.cutShort > 0 ? row(t("cardWindowsCut"), t("cardOfCount", readout.cutShort, readout.count)) : "") +
         (readout && readout.skipped > 0 ? row(t("cardWindowsSkipped"), t("cardOfCount", readout.skipped, readout.count)) : "") +
         (foot ? `<div class="foot">${foot}</div>` : "");
+      placeMarkers(card);
     }
     place();
   }

@@ -117,6 +117,14 @@ try {
     text !== null && Object.values(SECRETS).every((s) => !text.includes(s)),
     "",
   );
+  // The chunk was imported twice by its moz-extension address, which in Firefox names this
+  // installation; asked only now, as page.evaluate gives the page user activation.
+  const timeline = await page.evaluate(() => performance.getEntries().map((e) => `${e.entryType} ${e.name}`));
+  record(
+    "Firefox: importing the chunk leaves the page no Resource Timing entry naming the installation",
+    timeline.length > 0 && !timeline.some((name) => name.includes("moz-extension")),
+    JSON.stringify(timeline.filter((name) => name.includes("moz-extension"))),
+  );
 } finally {
   await browser.close();
   await ffServer.close();

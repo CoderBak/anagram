@@ -54,10 +54,23 @@ const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 /** Where a text was read, for the caches pages share (RequestOrigin.partition in
  *  lib/backend/router.ts): the tab's top-level site, the frame's own origin, and a private
  *  window apart from the rest — the way the browser partitions a page's own storage. */
-function partitionOf(sender: { tab?: { url?: string; incognito?: boolean } }, document: { origin: string }): string {
+async function partitionOf(sender: Pick<AccessSender, "tab">, document: { origin: string }): Promise<string> {
   let top = "?";
-  try { if (sender.tab?.url) top = new URL(sender.tab.url).host; } catch { /* no address: its own partition */ }
+  try { const url = await topUrlOf(sender); if (url) top = new URL(url).host; } catch { /* no address: its own partition */ }
   return `${sender.tab?.incognito ? "private" : "normal"} ${top} ${document.origin}`;
+}
+
+/**
+ * The address of the page the sender's tab shows. Chrome puts it on every message. Firefox
+ * leaves it off where Anagram has no access to that page's own site — a frame of a granted
+ * site inside a page of one not granted — and every such frame of a site, whatever page it
+ * was in, then shared one partition: the cross-site sharing the partition is there to stop.
+ * webNavigation, which Anagram holds, tells the address there.
+ */
+async function topUrlOf(sender: Pick<AccessSender, "tab">): Promise<string | undefined> {
+  if (sender.tab?.url || sender.tab?.id === undefined) return sender.tab?.url;
+  const top = await browser.webNavigation.getFrame({ tabId: sender.tab.id, frameId: 0 }).catch(() => null);
+  return top?.url;
 }
 
 export default defineBackground(() => {
@@ -428,7 +441,7 @@ export default defineBackground(() => {
       }
       case ACTIONS.GET_TOP_HOST: {
         let host="";
-        try {host=new URL(sender.tab?.url ?? "").hostname;}catch {/* no readable top URL */}
+        try {host=new URL((await topUrlOf(sender)) ?? "").hostname;}catch {/* no readable top URL */}
         return {host} satisfies TopHostReply;
       }
       case ACTIONS.GET_BACKEND_STATUS: {
@@ -478,13 +491,13 @@ export default defineBackground(() => {
         return {missing} satisfies CommentAccessReply;
       }
       case ACTIONS.COUNT_TOKENS: {
-        const counts=await tokenCounter.count(msg.texts,document!.signal,partitionOf(sender,document!)).catch(()=>null);
+        const counts=await tokenCounter.count(msg.texts,document!.signal,await partitionOf(sender,document!)).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);
-          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:partitionOf(sender,document!),documentKey:document!.documentKey,signal:document!.signal});
+          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:await partitionOf(sender,document!),documentKey:document!.documentKey,signal:document!.signal});
           if(document!.signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.

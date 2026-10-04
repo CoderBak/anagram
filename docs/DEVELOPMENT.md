@@ -87,7 +87,10 @@ node test/ui-screens.mjs <dir>       # screenshots of the setup page, Settings, 
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
 npx playwright test                # the suites in test/pw/ (Playwright Test), no network; ANAGRAM_LIVE=1 adds the real sites; --repeat-each 10 hunts a flake, a failure keeps its trace
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
-ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 153+, e.g. the ESR in ~/anagram-bench/tools/firefox-esr/153.3.0esr/Firefox.app/Contents/MacOS/firefox, never installed
+npx @puppeteer/browsers install firefox@esr_153.3.0esr --path <dir>   # a Firefox ESR to drive, never installed (<dir>/firefox/mac_arm-esr_153.3.0esr/Firefox.app/Contents/MacOS/firefox on Apple Silicon; ~/anagram-bench/tools/firefox-esr/153.3.0esr/ has one); headless, temporary profile and HOME
+ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 153+: the full viewer, PDF routing, the shipping build on a granted site (test/shipping-firefox.mjs: closed chips, nothing announced, no icon reachable, frame partitions) and the self-test page with what Firefox does its own way
+ANAGRAM_FIREFOX=<path to firefox> node test/csp-firefox.mjs        # the extension's policy as Firefox applied it, and a page whose own policy refuses inline styles
+ANAGRAM_FIREFOX=<path to firefox> node test/diagnostics-firefox.mjs   # the diagnostics copy and its optional clipboard permission
 ANAGRAM_FIREFOX=<path to firefox> node test/webengine/firefox-extension.mjs   # the engine choice in Firefox, Native Messaging granted at run time; the in-browser engine's worker in the background page (--hf: 20 MB from Hugging Face)
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
 npm run test:pdf-route             # PDF routing, handoff caps and privacy
@@ -261,7 +264,8 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   - The router's global limits are shared by all tabs: four large, ever-changing frames can leave
     other tabs with Unavailable verdicts for as long as their tab is open (per-tab reserves).
   - `CSS.highlights` shows a page the marks on its own text, and so the flag level and whether
-    underlines are on; a page can tell chips are there. Whether a content script's `import()` of
-    a web-accessible chunk shows in the page's Resource Timing (Firefox, whose address names the
-    installation) is unverified.
+    underlines are on; a page can tell chips are there.
+  - A getter of the page's own in the options it passes to `attachShadow` runs with the
+    page-world script's frame under it (entrypoints/shadow.content.ts): in Chrome that frame
+    names the extension's id; in Firefox it is "<anonymous code>". Any wrapper has a frame there.
 - Windows and Linux have not been exercised on real machines.

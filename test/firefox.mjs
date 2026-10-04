@@ -121,6 +121,9 @@ check(
 );
 
 // ── 4) the page under test ─────────────────────────────────────────────────────────
+// Every paragraph read is underlined, not only the flagged ones (the default), so the marks
+// are checked on all of them, as test/pw/e2e.spec.mjs does.
+await optionsPage.evaluate(() => browser.storage.local.set({ underlineScope: "all" }));
 const consoleErrors = [];
 const page = await browser.newPage();
 await setViewportSafe(page);
@@ -162,7 +165,6 @@ const snapshot = await page.evaluate((sel) => {
   const hlHas = (marker) => highlightTexts.some((t) => t.includes(marker));
   return {
     badgeTotal: document.querySelectorAll(sel).length,
-    fabPresent: !!document.getElementById("anagram-fab"),
     highlightCount: highlightTexts.length,
     strayMarks: [...document.querySelectorAll("[data-anagram]")].filter(
       (el) => !["host", "style"].includes(el.getAttribute("data-anagram")),
@@ -208,33 +210,26 @@ check(
   `${snapshot.highlightCount} ranges, longtail=${snapshot.hl.longtail}`,
 );
 
-// ── 6) the floating ball, its counter, the panel, the toggle ───────────────────────
-const fab = await page.evaluate(() => {
-  const sr = document.getElementById("anagram-fab")?.shadowRoot;
-  return {
-    present: !!sr,
-    counter: sr?.querySelector(".count")?.textContent ?? null,
-    ball: !!sr?.querySelector("button.fab"),
-  };
-});
-check("floating ball is present with a counter", fab.present && fab.ball, JSON.stringify(fab));
-
-const panel = await page.evaluate(() => {
-  const sr = document.getElementById("anagram-fab")?.shadowRoot;
-  sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  const p = sr?.querySelector(".panel");
-  const out = {
-    open: !!p?.classList.contains("open"),
-    items: p?.querySelectorAll(".pitem").length ?? 0,
-    counter: sr?.querySelector(".count")?.textContent ?? null,
-  };
-  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-  return out;
-});
+// ── 6) the toolbar menu's report, and the marks hidden and shown ───────────────────
+// The toolbar menu asks the tab's content script for its report (GET_TAB_STATE through
+// lib/messaging/tabControl.ts) and the toggle shortcut sends TOGGLE_OVERLAY the same way.
+// BiDi cannot open the real menu over a tab, so the options page sends what the menu and
+// the worker send, by the MV2 tabs.sendMessage path Firefox has.
+/** What the tab at `url` tells the toolbar menu; `message` replaces the question. */
+const tabState = (url, message = { action: "getTabState", reportOffset: 0 }) =>
+  optionsPage
+    .evaluate(async ([url, message]) => {
+      const tab = (await browser.tabs.query({})).find((t) => t.url === url);
+      return browser.tabs.sendMessage(tab.id, message, { frameId: 0 });
+    }, [url, message])
+    .catch((e) => ({ error: String(e).slice(0, 200) }));
+const menu = await tabState(pageUrl);
+// Flagged, as shipped, is Heavily edited and AI-generated: the last two of the four words.
 check(
-  "counter button opens the panel and it lists the flagged items",
-  panel.open && panel.items > 0 && panel.items === Number(panel.counter),
-  JSON.stringify(panel),
+  "the toolbar menu's report: every flagged paragraph listed, as many as it counts, and the four words' counts add up to those read",
+  menu?.flagged > 0 && menu.report?.total === menu.flagged && menu.report.entries.length === menu.flagged &&
+    menu.report.counts.bands.reduce((a, b) => a + b, 0) === menu.report.counts.read && menu.report.counts.bands[2] + menu.report.counts.bands[3] === menu.flagged,
+  JSON.stringify({ flagged: menu?.flagged, scored: menu?.scored, report: menu?.report && { total: menu.report.total, entries: menu.report.entries.length, counts: menu.report.counts }, error: menu?.error }),
 );
 
 const visibleBadges = () =>
@@ -242,17 +237,15 @@ const visibleBadges = () =>
     (sel) => [...document.querySelectorAll(sel)].filter((h) => getComputedStyle(h).display !== "none").length,
     BADGE_SEL,
   );
-const clickFab = () =>
-  page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector("button.fab")?.click());
 const shownN = await visibleBadges();
-await clickFab();
+await tabState(pageUrl, { action: "toggleOverlay" });
 await sleep(400);
 const hiddenN = await visibleBadges();
-await clickFab();
+await tabState(pageUrl, { action: "toggleOverlay" });
 await sleep(400);
 const reshownN = await visibleBadges();
 check(
-  "toggle hides and re-shows the chips",
+  "the toggle shortcut hides and re-shows the chips",
   shownN > 0 && hiddenN === 0 && reshownN === shownN,
   `${shownN} → ${hiddenN} → ${reshownN}`,
 );
@@ -349,23 +342,24 @@ check(
 
 // ── 8) a setting written in the options page reaches the open tab live ─────────────
 const underlineLive = await (async () => {
-  const styleEl = () =>
+  // The rules that paint the marks are a sheet the document adopts (lib/render/highlight.ts).
+  const markSheet = () =>
     page.evaluate(() => {
-      const el = document.querySelector('style[data-anagram="style"]');
-      return el ? { disabled: el.disabled, css: el.textContent ?? "" } : null;
+      const sheet = [...document.adoptedStyleSheets].find((s) => [...s.cssRules].some((r) => r.cssText.includes("::highlight(anagram-")));
+      return sheet ? { disabled: sheet.disabled, css: [...sheet.cssRules].map((r) => r.cssText).join("\n") } : null;
     });
-  const before = await styleEl();
+  const before = await markSheet();
   // Underlines are all or nothing: switching them off disables the one stylesheet that
   // paints every mark, and switching them back on restores it, ranges and all.
   await optionsPage.evaluate(() => browser.storage.local.set({ showHighlights: false }));
-  const off = await waitFor(page, () => document.querySelector('style[data-anagram="style"]')?.disabled === true, { timeout: 8000 });
+  const off = await waitFor(page, () => [...document.adoptedStyleSheets].some((s) => s.disabled && [...s.cssRules].some((r) => r.cssText.includes("::highlight(anagram-"))), { timeout: 8000 });
   await optionsPage.evaluate(() => browser.storage.local.set({ showHighlights: true }));
-  const on = await waitFor(page, () => document.querySelector('style[data-anagram="style"]')?.disabled === false, { timeout: 8000 });
-  return { hadStyleEl: !!before, paintsTheScale: /::highlight\(anagram-s00\)/.test(before?.css ?? ""), off, on };
+  const on = await waitFor(page, () => [...document.adoptedStyleSheets].some((s) => !s.disabled && [...s.cssRules].some((r) => r.cssText.includes("::highlight(anagram-"))), { timeout: 8000 });
+  return { hadSheet: !!before, paintsTheScale: /::highlight\(anagram-s00\)/.test(before?.css ?? ""), off, on };
 })();
 check(
   "a setting written in the options page reaches an open tab live (underlines off and on)",
-  underlineLive.hadStyleEl && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
+  underlineLive.hadSheet && underlineLive.paintsTheScale && underlineLive.off && underlineLive.on,
   JSON.stringify(underlineLive),
 );
 
@@ -652,6 +646,27 @@ const chipsIn = (p, css) => p.evaluate(({ css, sel }) => document.querySelectorA
     JSON.stringify({ registered, lc: r.lc }),
   );
   check("a closed shadow root is read (openOrClosedShadowRoot): a custom element's at load, a <div>'s attached later", r.cc === 1 && r.cd === 1, JSON.stringify(r));
+  // The highlight registry is the page's to read, and a Range in it is not retargeted: a mark
+  // over text in a closed tree would hand the page that tree (inClosedTree in
+  // lib/render/highlight.ts). Underlines are on for every paragraph here (section 4), so the
+  // open root's paragraph is marked and the closed ones keep their chips alone.
+  const marked = await p.evaluate(() => {
+    const roots = { lc: document.getElementById("lc")?.shadowRoot, cc: window.__closed.cc, cd: window.__closed.cd };
+    const out = { lc: 0, cc: 0, cd: 0 };
+    for (const h of CSS.highlights.values()) {
+      for (const range of h) {
+        for (const [name, root] of Object.entries(roots)) {
+          if (root && (range.startContainer.getRootNode() === root || range.endContainer.getRootNode() === root)) out[name]++;
+        }
+      }
+    }
+    return out;
+  });
+  check(
+    "no mark is registered over text in a closed shadow tree, where the page would get the tree from it; an open root's text is marked",
+    marked.lc > 0 && marked.cc === 0 && marked.cd === 0,
+    JSON.stringify(marked),
+  );
   await p.close();
 }
 
@@ -692,7 +707,7 @@ const chipsIn = (p, css) => p.evaluate(({ css, sel }) => document.querySelectorA
   await p.evaluateOnNewDocument(() => {
     window.__chipAt = {};
     new MutationObserver(() => {
-      for (const host of document.querySelectorAll('[data-anagram="host"]:not(#anagram-fab)')) {
+      for (const host of document.querySelectorAll('[data-anagram="host"]')) {
         const el = host.closest("p[id]");
         if (el && !(el.id in window.__chipAt)) window.__chipAt[el.id] = performance.now();
       }
@@ -765,7 +780,7 @@ for (const how of ["lang", "ids"]) {
   const before = fixture.textMark();
   await p.evaluate(() => window.__translate());
   await sleep(3000);
-  const during = await p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length, ball: !!document.getElementById("anagram-fab") }), BADGE_SEL);
+  const during = await p.evaluate((sel) => ({ chips: document.querySelectorAll(sel).length }), BADGE_SEL);
   const href = await p.evaluate(() => location.href);
   const state = await optionsPage
     .evaluate(async (url) => {
@@ -776,7 +791,7 @@ for (const how of ["lang", "ids"]) {
   const machineSent = sentSince(before, "MACHINE-");
   check(
     `a page Firefox translates (${how === "lang" ? "<html lang> relabelled" : "data-moz-translations-id"}): nothing is read or left on it`,
-    settled && during.chips === 0 && !during.ball && machineSent === 0 && state?.translated === true,
+    settled && during.chips === 0 && machineSent === 0 && state?.translated === true,
     JSON.stringify({ settled, during, machineSent, translated: state?.translated }),
   );
   await p.close();
@@ -836,11 +851,17 @@ for (const how of ["lang", "ids"]) {
 }
 
 // A PDF shown by pdf.js inside a web page is read by the surfaces chunk (lib/surfaces/),
-// which the content script imports by its extension URL.
+// which the content script imports by its extension URL. Firefox's moz-extension address
+// names this very installation, a lasting identifier: the import must leave the page no
+// Resource Timing entry, nor anything else that names it.
 {
   PAGES["/pdfjs-viewer.html"] = readFileSync(join(__dirname, "fixtures", "surfaces", "pdfjs-viewer.html"), "utf8");
   const before = fixture.textMark();
   const p = await browser.newPage();
+  await p.evaluateOnNewDocument(() => {
+    window.__resources = [];
+    new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__resources.push(e.name); }).observe({ type: "resource", buffered: true });
+  });
   await p.goto(server.url("/pdfjs-viewer.html"), { waitUntil: "load" });
   const chipped = await waitFor(p, (sel) => document.querySelectorAll(`.page > [data-anagram] > [data-chip] > ${sel}`).length >= 4, { timeout: 25000, arg: BADGE_SEL });
   const r = {
@@ -850,11 +871,24 @@ for (const how of ["lang", "ids"]) {
     acrossPages: sentSince(before, "by the afternoon boat. The new keeper") > 0,
   };
   check("a pdf.js viewer in a web page: paragraphs rebuilt across columns and pages, chips over the page", r.chipped && r.inLayer === 0 && r.mended && r.acrossPages, JSON.stringify(r));
+  await sleep(500);
+  const seen = await p.evaluate(() => ({
+    observed: window.__resources,
+    timeline: performance.getEntries().map((e) => `${e.entryType} ${e.name}`),
+    dom: document.documentElement.outerHTML.length,
+    named: document.documentElement.outerHTML.includes("moz-extension"),
+  }));
+  const naming = [...seen.observed, ...seen.timeline].filter((name) => /moz-extension|5e0b7a12/.test(name));
+  check(
+    "the surfaces chunk the content script imports leaves the page no Resource Timing entry, nor anything else naming the installation",
+    chipped && naming.length === 0 && !seen.named,
+    JSON.stringify({ naming, observed: seen.observed, named: seen.named }),
+  );
   await p.close();
 }
 
-// The triage panel in Firefox: its title counts flagged out of read, it has a Close button and
-// no Copy report or Turn off button, and a click on the page leaves it open.
+// The toolbar menu's list in Firefox: the flagged paragraph is a row of the report, and the
+// row takes the reader to it (JUMP_TO_RESULT, as a click on it sends).
 {
   const LINK_PARA = (tag) => `${tag} opens this paragraph, written so that a copied report can point back to it: the link names its first words and its last, the browser finds them, scrolls the page until the paragraph is in view and marks it, and whoever opens the report later lands on the words it is about instead of the top of a long page, which is the whole point of giving a paragraph a link of its own, closing on ${tag}.`;
   let tag = null;
@@ -863,26 +897,21 @@ for (const how of ["lang", "ids"]) {
   const p = await browser.newPage();
   await p.goto(server.url("/panel.html"), { waitUntil: "load" });
   const chipped = await waitFor(p, (sel) => /^(\.\d\d|1\.0)$/.test(document.querySelector(`#far ${sel}`)?.shadowRoot?.querySelector(".num")?.textContent ?? ""), { timeout: 15000, arg: BADGE_SEL });
-  const panel = () => p.evaluate(() => {
-    const sr = document.getElementById("anagram-fab")?.shadowRoot;
-    const el = sr?.querySelector(".panel");
-    return { open: !!el?.classList.contains("open"), title: sr?.querySelector(".phead h2")?.textContent ?? "", buttons: [...(el?.querySelectorAll("button") ?? [])].map((b) => b.className), text: el?.textContent ?? "" };
-  });
-  await (await p.$("#anagram-fab >>> .count")).click();
-  await sleep(400);
-  const opened = await panel();
-  await p.mouse.click(20, 400);
-  await sleep(500);
-  const afterClick = await panel();
-  await (await p.$("#anagram-fab >>> .pclose")).click();
-  await sleep(400);
-  const closed = await panel();
+  const state = await tabState(server.url("/panel.html"));
+  const row = state?.report?.entries?.[0];
+  await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await sleep(300);
+  const away = await p.evaluate(() => document.getElementById("far").getBoundingClientRect().bottom < 0);
+  const jumped = row ? await tabState(server.url("/panel.html"), { action: "jumpToResult", documentId: state.report.documentId, id: row.id }) : null;
+  const back = await waitFor(p, () => {
+    const r = document.getElementById("far").getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= innerHeight;
+  }, { timeout: 5000 });
   await p.close();
   check(
-    "the panel in Firefox: flagged out of read in the title, a Close button and no Copy report or Turn off, open through a page click, closed by Close",
-    chipped && opened.open && opened.title === "Flagged paragraphs (1/1)" && opened.buttons.includes("pclose") && !opened.buttons.includes("pcopy") && !opened.buttons.includes("psiteoff") &&
-      !/Copy report|Turn off/.test(opened.text) && afterClick.open && !closed.open,
-    JSON.stringify({ chipped, opened, afterClick: afterClick.open, closed: closed.open }),
+    "the toolbar menu's list in Firefox: the flagged paragraph is its one row, and the row takes the reader back to it",
+    chipped && state?.report?.total === 1 && row?.snippet.startsWith(tag) && away && jumped?.ok === true && back,
+    JSON.stringify({ chipped, total: state?.report?.total, snippet: row?.snippet.slice(0, 30), away, jumped, back }),
   );
 }
 
@@ -928,13 +957,15 @@ await page
   check("a page that is never scrolled is scored whole by the idle lane", n === snapshot.badgeTotal, `${n} of ${snapshot.badgeTotal}`);
 }
 
-// ── 12) fixture down → "Unavailable" + "!" counter; fixture back → re-queued ─────────
+// ── 12) fixture down → "Unavailable", counted in the menu; fixture back → re-queued ──
 if (QUICK) {
-  skip("fixture down → Unavailable chip + '!' counter; fixture back → re-queued", "--quick");
+  skip("fixture down → Unavailable chip, counted in the toolbar menu; fixture back → re-queued", "--quick");
 } else {
   const p = await browser.newPage();
   await setViewportSafe(p);
-  await p.goto(pageUrl, { waitUntil: "load" });
+  // An address of its own, for the toolbar menu's question to find this tab by.
+  const downUrl = `${pageUrl}?down`;
+  await p.goto(downUrl, { waitUntil: "load" });
   await waitFor(p, (sel) => document.querySelectorAll(sel).length > 0, { timeout: 15000, arg: BADGE_SEL });
   const addPara = (id) =>
     p.evaluate((pid) => {
@@ -962,8 +993,8 @@ if (QUICK) {
         ) ?? null,
       { sel: BADGE_SEL, pid: id },
     );
-  const counter = () =>
-    p.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent ?? null);
+  /** How many paragraphs the toolbar menu says were left without a verdict. */
+  const counter = async () => (await tabState(downUrl))?.unavailable ?? null;
 
   await fixture.close(); // connection refused from here on
   await addPara("down1");
@@ -974,8 +1005,8 @@ if (QUICK) {
   const down2Chips = await p.evaluate((sel) => document.querySelectorAll(`#down2 ${sel}`).length, BADGE_SEL);
   const counterDown = await counter();
   check(
-    "fixture down: in-flight batch renders 'Unavailable', later paragraphs get no chip, counter shows '!'",
-    gotDown1 && band1 === "band-unknown" && down2Chips === 0 && counterDown === "!",
+    "fixture down: in-flight batch renders 'Unavailable', later paragraphs get no chip, the toolbar menu counts it",
+    gotDown1 && band1 === "band-unknown" && down2Chips === 0 && counterDown >= 1,
     JSON.stringify({ band1, down2Chips, counterDown }),
   );
 
@@ -991,7 +1022,7 @@ if (QUICK) {
   const counterUp = await counter();
   check(
     "fixture back: waiting and 'Unavailable' units are re-queued automatically",
-    back1 && back2 && counterUp !== "!",
+    back1 && back2 && counterUp === 0,
     JSON.stringify({ back1, back2, counterUp }),
   );
   await p.close();

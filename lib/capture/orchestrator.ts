@@ -1439,8 +1439,8 @@ export function createOrchestrator(
     syncDispatch();
 
     gate.watch();
-    // The underline rules are a <style> in the page's own head, so they wait with the
-    // chips they paint so neither interferes with framework hydration.
+    // The underline rules wait with the chips they paint, so that neither touches the
+    // document before framework hydration is done with it.
     whenSafeToInsert(registerHighlightStyles);
     // Nothing is COLLECTED until the user's own settings have been read: see boot().
     void boot(++bootSeq);
@@ -1657,7 +1657,7 @@ export function createOrchestrator(
     cache.clear(); // a rescan must re-derive every verdict from the current backend
     gate.dropHeld(); // they paint units this rescan has just dropped
     gate.watch(); // no-op unless the gate was reset with the document
-    whenSafeToInsert(registerHighlightStyles); // no-op unless the document was replaced under us
+    whenSafeToInsert(registerHighlightStyles); // no-op unless the page let go of the rules
     badges.resetTheme(); // the site theme may have toggled since the last scan
     refreshHighlightTheme();
     const generation = captureGeneration;
