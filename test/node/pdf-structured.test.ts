@@ -1415,6 +1415,24 @@ describe("structuredBlocks — the rest of a paragraph that a float cut off", ()
   });
 });
 
+describe("structuredBlocks — pdf.js's own string over Zotero's glyph boxes", () => {
+  it("keeps the characters side by side in one of pdf.js's runs in one word, where Zotero's boxes stand a character off", () => {
+    // arXiv 2609.29859: after glyphs set over one another, Zotero's boxes stood one character
+    // off for the rest of the paragraph, and its gaps fell inside the words: "d oes n ot".
+    // pdf.js drew "solving the case" in one run; Zotero's boxes put the word gap after the "s".
+    const said = "solving the case";
+    const item: PdfTextItem = { str: said, x: 72, y: 100, width: said.length * CW, height: SIZE, fontName: "f_text" };
+    const glyphs = [...said].filter((ch) => ch !== " ");
+    // One width each, and the gap of a space in front of the second glyph, the "o", and of the
+    // fourth word's… none: the boxes say "s olving" and "t he".
+    const widths = glyphs.map((_, k) => (k === 1 || k === 8 ? [CW, CW] : CW));
+    const run = [0, 0, 72, HEIGHT - 100 - 0.2 * SIZE, 72 + said.length * CW, HEIGHT - 100 + 0.7 * SIZE, ...widths];
+    const n = { text: said, anchor: { textMap: JSON.stringify([run]) } };
+    const blocks = structuredBlocks(structure([paragraph(1, [n])]), [pageText(1, [item])]);
+    expect(blocks[0]!.text).toBe(said);
+  });
+});
+
 describe("structuredBlocks — a sentence carried on past what Zotero set apart", () => {
   const fonts = { f_text: "NimbusRomNo9L-Regu", f_math: "BXJUHM+CMMI10" };
   const head = node(1, [{ text: "This can be viewed as an extended criterion, computed for the model where the entries of", x: 72, y: 700 }]);

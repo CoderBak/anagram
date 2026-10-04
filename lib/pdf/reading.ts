@@ -425,8 +425,13 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
       // A change between text and mathematics is a word boundary too, however tight TeX set
       // it or Zotero ran it together: "with" and the "C" of "withC :=", "Thus" and the θ of
       // "Thusθ is" are two words.
+      // Two characters side by side in one of pdf.js's runs are one word there, whatever
+      // Zotero's glyphs say: pdf.js puts a space in its string where the gap is one, and
+      // after glyphs set over one another ("¨ ¨ ¨" over a "9") Zotero's boxes can stand a
+      // character off, which read "d oes n ot g uarantee" for a whole paragraph.
+      const adjacent = prevSource !== null && src !== null && prevSource.page === src.page && prevSource.item === src.item && src.offset === prevSource.offset + 1;
       const apart = spaced
-        || (prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
+        || (!adjacent && prevGlyph !== null && p.glyph !== null && wordApart(prevGlyph, p.glyph))
         || (prevSource !== null && src !== null && runsApart(prevSource, src))
         || (prevFormula !== null && formula !== null && prevFormula !== formula);
       if (apart || !open) { open = { at: [], math: false, letters: false, ...(marked ? { marked: true as const } : {}) }; tokens.push(open); }
