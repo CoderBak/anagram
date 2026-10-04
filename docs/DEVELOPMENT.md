@@ -27,6 +27,7 @@ Work on `dev`; `main` holds the published README only.
 | Install, update, uninstall | `install.sh`, `install.ps1`, `installer/native_registration.py`, `installer/anagram` |
 | Reading statistics | `lib/stats/meter.ts` (what of a page is read), `lib/stats/worker.ts` (what the worker keeps, by level), `lib/stats/store.ts`, `entrypoints/stats/`; the export is [statistics.md](statistics.md) |
 | Localization | `public/_locales/en/`, `public/_locales/zh_CN/`, `scripts/i18nSubset.ts` |
+| Every chosen value: thresholds, limits, timings, defaults | [hyperparameters.md](hyperparameters.md): each with where it is set, what it rests on and what moving it changes (a snapshot; the code wins) |
 
 ## Decisions that hold
 
