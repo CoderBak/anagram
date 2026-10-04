@@ -4,6 +4,7 @@ import * as v from "valibot";
 import { claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult, type PdfReopenResult } from "./sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../surface";
 import { matchesAny } from "../access/patterns";
+import { dispositionName } from "./source";
 
 /** The PDF tab → the worker: the document this tab is showing, in chunks. */
 export const PDF_BYTES_PORT = "anagram-pdf-bytes";
@@ -63,7 +64,8 @@ export function base64Bytes(text: string): number {
 
 // ---- the tab: re-read the document it is showing --------------------------------------------
 
-export type StreamResult = { ok: true; bytes: number } | { ok: false; failure: HandoffFailure };
+/** `name`: the file name the response gave the document (Content-Disposition), if any. */
+export type StreamResult = { ok: true; bytes: number; name?: string } | { ok: false; failure: HandoffFailure };
 
 /**
  * Read `url` from this page's own origin and hand it over a chunk at a time. Everything
@@ -142,7 +144,8 @@ export async function streamPdfBytes(
     }
     const bad = await flush();
     if (bad) return await stop(bad);
-    return { ok: true, bytes: total };
+    const name = dispositionName(response.headers.get("content-disposition"));
+    return name ? { ok: true, bytes: total, name } : { ok: true, bytes: total };
   } catch {
     return await stop("read");
   }
@@ -172,7 +175,7 @@ export function serveTabPdfBytes(): void {
       void streamPdfBytes(location.href,async(chunk)=>{
         const accepted=new Promise<boolean>((resolve)=>{ack=resolve;});
         if(!post({chunk,seq:seq++}) || !await accepted)throw new Error("PDF receiver closed");
-      },{cap:ask.output.cap,signal:stopped.signal}).then((result)=>post(result.ok ? {done:true,bytes:result.bytes} : {failure:result.failure}),()=>post({failure:"read"}));
+      },{cap:ask.output.cap,signal:stopped.signal}).then((result)=>post(result.ok ? {done:true,bytes:result.bytes,...(result.name ? {name:result.name.slice(0,255)} : {})} : {failure:result.failure}),()=>post({failure:"read"}));
     });
   });
 }
@@ -180,7 +183,9 @@ export function serveTabPdfBytes(): void {
 export const MAX_HANDOFF_TOTAL_BYTES = 64 * 1024 * 1024;
 export const MAX_HANDOFF_TRANSFERS = 2;
 const ChunkSchema=v.strictObject({chunk:v.pipe(v.string(),v.maxLength(Math.ceil(CHUNK_BYTES/3)*4)),seq:v.pipe(v.number(),v.integer(),v.minValue(0))});
-const DoneSchema=v.strictObject({done:v.literal(true),bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES))});
+/** The file name a response gave the document: a name only, which the reader saves it under. */
+const NameSchema=v.optional(v.pipe(v.string(),v.minLength(1),v.maxLength(255)));
+const DoneSchema=v.strictObject({done:v.literal(true),bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES)),name:NameSchema});
 const FailureSchema=v.strictObject({failure:v.picklist(["large","type","read"])});
 const TicketSchema=v.pipe(v.string(),v.regex(/^[a-f0-9]{32}$/));
 function isAck(value:unknown,next:number):boolean {
@@ -204,13 +209,13 @@ export function createHandoffBudget(limit=MAX_HANDOFF_TOTAL_BYTES,concurrency=MA
   };
 }
 // Held as decoded bytes, which is what the budget counts; base64 would be a third more.
-interface Held {tabId:number;chunks:Uint8Array[];bytes:number;timer:ReturnType<typeof setTimeout>;release():void}
+interface Held {tabId:number;chunks:Uint8Array[];bytes:number;name?:string;timer:ReturnType<typeof setTimeout>;release():void}
 export function newTicket(): string {
   const raw = new Uint8Array(16);crypto.getRandomValues(raw);
   return [...raw].map((b)=>b.toString(16).padStart(2,"0")).join("");
 }
 export interface TicketStore {
-  hold(tabId:number,chunks:Uint8Array[],bytes:number,lease?:ByteLease):string|null;
+  hold(tabId:number,chunks:Uint8Array[],bytes:number,lease?:ByteLease,name?:string):string|null;
   take(ticket:string,tabId:number|undefined):Held|null;
   forget(tabId:number):void;
   size():number;
@@ -219,19 +224,19 @@ export function createTicketStore(ttlMs=TICKET_TTL_MS,budget=createHandoffBudget
   const held=new Map<string,Held>();
   const drop=(ticket:string,release=true)=>{const entry=held.get(ticket);if(!entry)return;clearTimeout(entry.timer);held.delete(ticket);if(release)entry.release();};
   return {
-    hold(tabId,chunks,bytes,lease){
+    hold(tabId,chunks,bytes,lease,name){
       if(!Number.isInteger(tabId) || tabId<0 || !Number.isSafeInteger(bytes) || bytes<1 || bytes>MAX_HANDOFF_BYTES)return null;
       if(chunks.some((c)=>!(c instanceof Uint8Array) || c.length<1 || c.length>CHUNK_BYTES) || chunks.reduce((a,c)=>a+c.length,0)!==bytes)return null;
       const owned=lease ?? budget.lease();if(!lease && !owned.grow(bytes)){owned.release();return null;}
       const ticket=newTicket(),timer=setTimeout(()=>drop(ticket),ttlMs);
-      held.set(ticket,{tabId,chunks,bytes,timer,release:()=>owned.release()});return ticket;
+      held.set(ticket,{tabId,chunks,bytes,...(name ? {name} : {}),timer,release:()=>owned.release()});return ticket;
     },
     take(ticket,tabId){const entry=held.get(ticket);if(!entry || tabId===undefined || tabId!==entry.tabId)return null;drop(ticket,false);return entry;},
     forget(tabId){for(const [ticket,entry]of held)if(entry.tabId===tabId)drop(ticket);},
     size:()=>held.size,
   };
 }
-export type ReadResult={ok:true;chunks:Uint8Array[];bytes:number}|{ok:false;failure:HandoffFailure};
+export type ReadResult={ok:true;chunks:Uint8Array[];bytes:number;name?:string}|{ok:false;failure:HandoffFailure};
 export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;timeoutMs?:number;signal?:AbortSignal;lease?:ByteLease}={}):Promise<ReadResult> {
   const cap=Math.min(opts.cap ?? MAX_HANDOFF_BYTES,MAX_HANDOFF_BYTES);
   if(opts.signal?.aborted)return {ok:false,failure:"read"};
@@ -258,7 +263,7 @@ export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;t
         try{port.postMessage({ack:chunks.length});}catch{abort();}return;
       }
       const done=v.safeParse(DoneSchema,value);
-      if(done.success){finish(done.output.bytes===bytes && bytes>0 ? {ok:true,chunks,bytes} : {ok:false,failure:"read"});return;}
+      if(done.success){finish(done.output.bytes===bytes && bytes>0 ? {ok:true,chunks,bytes,...(done.output.name ? {name:done.output.name} : {})} : {ok:false,failure:"read"});return;}
       const failure=v.safeParse(FailureSchema,value);finish({ok:false,failure:failure.success ? failure.output.failure : "read"});
     });
     port.onDisconnect.addListener(abort);
@@ -333,7 +338,7 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
                    (frame && frame.url!==meta.reader) || (documentId && sender?.documentId && documentId!==sender.documentId)){finish();return;}
                 entry=store.take(key,tabId);checking=false;
                 if(!entry){port.postMessage({gone:true});finish();return;}
-                port.postMessage({bytes:entry.bytes});
+                port.postMessage({bytes:entry.bytes,...(entry.name ? {name:entry.name} : {})});
               })().catch(finish);
               return;
             }
@@ -362,7 +367,7 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
         const got=await readPdfFromTab(tabId,src,{signal:abort.signal,lease});
         if(!await stillHere())return {ok:false,error:"forbidden"};
         if(!got.ok){if(!auto)await browser.tabs.update(tabId,{url:`${deps.readerUrl(src)}&err=${got.failure}`}).catch(()=>undefined);return {ok:false,error:"read"};}
-        const ticket=store.hold(tabId,got.chunks,got.bytes,lease);
+        const ticket=store.hold(tabId,got.chunks,got.bytes,lease,got.name);
         if(!ticket)return {ok:false,error:"busy"};
         transferred=true;
         const reader=`${deps.readerUrl(src)}&ticket=${ticket}`;
@@ -380,14 +385,15 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
   };
 }
 /** The reader's claim: the document, or why there is none. */
-export type ClaimedPdf={bytes:Uint8Array}|{failure:HandoffFailure};
+/** `name`: the file name the document's response gave it, where it gave one. */
+export type ClaimedPdf={bytes:Uint8Array;name?:string}|{failure:HandoffFailure};
 export async function claimPdfBytes(ticket:string,signal?:AbortSignal):Promise<ClaimedPdf> {
   if(ticket.startsWith("s-"))return claimSourceBytes(ticket,signal);
   if(signal?.aborted || !v.safeParse(TicketSchema,ticket).success)return {failure:"read"};
   let port:ReturnType<typeof browser.runtime.connect>;
   try{port=browser.runtime.connect({name:PDF_CLAIM_PORT});}catch{return {failure:"read"};}
   return new Promise((resolve)=>{
-    let out:Uint8Array|null=null,at=0,seq=0,settled=false;
+    let out:Uint8Array|null=null,at=0,seq=0,settled=false,name:string|undefined;
     const abort=()=>finish({failure:"read"});
     const finish=(result:ClaimedPdf)=>{if(settled)return;settled=true;clearTimeout(timer);signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
     const timer=setTimeout(abort,CLAIM_TIMEOUT_MS);signal?.addEventListener("abort",abort,{once:true});
@@ -395,15 +401,15 @@ export async function claimPdfBytes(ticket:string,signal?:AbortSignal):Promise<C
     port.onDisconnect.addListener(abort);
     port.onMessage.addListener((value)=>{
       if(settled)return;
-      if(!out){const header=v.safeParse(v.strictObject({bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES))}),value);
-        if(!header.success){abort();return;}out=new Uint8Array(header.output.bytes);post({ack:0});return;}
+      if(!out){const header=v.safeParse(v.strictObject({bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES)),name:NameSchema}),value);
+        if(!header.success){abort();return;}out=new Uint8Array(header.output.bytes);name=header.output.name;post({ack:0});return;}
       const chunk=v.safeParse(ChunkSchema,value);
       if(chunk.success){
         const m=chunk.output,n=validatedChunkBytes(m.chunk);
         if(n===null || m.seq!==seq || at+n>out.length){abort();return;}
         try{at+=fromBase64(m.chunk,out,at);}catch{abort();return;}seq++;post({ack:seq});return;
       }
-      if(v.safeParse(v.strictObject({done:v.literal(true)}),value).success && at===out.length && hasPdfMagic(out))finish({bytes:out});else abort();
+      if(v.safeParse(v.strictObject({done:v.literal(true)}),value).success && at===out.length && hasPdfMagic(out))finish({bytes:out,...(name ? {name} : {})});else abort();
     });
     post({ticket});
   });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
-import { safePdfSource } from "../../lib/pdf/source";
+import { dispositionName, pdfFileName, pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
 import { loaderConnectPolicy, readAuthorizedPdf } from "../../lib/pdf/loader";
 import { claimSourceBytes, createSourceBroker, SOURCE_CAP, SOURCE_CLAIM_PORT, SOURCE_LOADER_PORT } from "../../lib/pdf/sourceTransfer";
 import { hasPdfSourceAccess } from "../../lib/pdf/sourceAccess";
@@ -128,10 +128,17 @@ describe("authorized source reads", () => {
   });
   it("uses one credentialed exact GET and refuses redirects", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(bytes)); vi.stubGlobal("fetch", fetch);
-    expect(await readAuthorizedPdf("https://example.test/paper#page=2", new AbortController().signal)).toEqual(bytes);
+    expect(await readAuthorizedPdf("https://example.test/paper#page=2", new AbortController().signal)).toEqual({bytes, name: null});
     expect(fetch).toHaveBeenCalledWith("https://example.test/paper", expect.objectContaining({credentials: "include", redirect: "error", referrerPolicy: "no-referrer"}));
     const redirected = new Response(bytes); Object.defineProperty(redirected, "redirected", {value: true}); fetch.mockResolvedValue(redirected);
     await expect(readAuthorizedPdf("https://example.test/paper", new AbortController().signal)).rejects.toThrow("read");
+  });
+  it("keeps the file name the response gives the document, for the reader to save it under", async () => {
+    const named = (disposition: string) => new Response(bytes, {headers: {"content-disposition": disposition}});
+    const fetch = vi.fn().mockResolvedValue(named('inline; filename="Smith et al. 2024.pdf"')); vi.stubGlobal("fetch", fetch);
+    expect(await readAuthorizedPdf("https://example.test/download?id=42", new AbortController().signal)).toEqual({bytes, name: "Smith et al. 2024.pdf"});
+    fetch.mockResolvedValue(named("inline; filename=report.pdf; filename*=UTF-8''%E8%AE%BA%E6%96%87.pdf"));
+    expect((await readAuthorizedPdf("https://example.test/download?id=43", new AbortController().signal)).name).toBe("论文.pdf");
   });
   it("rejects oversized, non-PDF and aborted responses", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(bytes)); vi.stubGlobal("fetch", fetch);
@@ -206,7 +213,7 @@ describe("bounded local-file XHR", () => {
   }
   it("reads only the authorized local URL and validates its PDF bytes",async()=>{
     const {xhr,result}=xhrFixture();expect(xhr.open).toHaveBeenCalledWith("GET","file:///tmp/book.pdf",true);
-    xhr.onload!();expect(await result).toEqual(bytes);
+    xhr.onload!();expect(await result).toEqual({bytes, name: null});
   });
   it("aborts as soon as progress exceeds the cap",async()=>{
     const {xhr,result}=xhrFixture();xhr.onprogress!({loaded:129,total:0,lengthComputable:false});
@@ -216,5 +223,38 @@ describe("bounded local-file XHR", () => {
     const first=xhrFixture();first.controller.abort();await expect(first.result).rejects.toThrow("read");
     const second=xhrFixture();second.xhr.responseURL="file:///tmp/other.pdf";second.xhr.onload!();
     await expect(second.result).rejects.toThrow("read");
+  });
+});
+
+describe("the name the reader saves a document under", () => {
+  it("is the address's last segment, always as a PDF's file name", () => {
+    expect(pdfNameFromUrl("https://example.test/papers/2401.17377v1.pdf")).toBe("2401.17377v1.pdf");
+    // arXiv names no extension: pdf.js saved these as "document.pdf".
+    expect(pdfNameFromUrl("https://arxiv.org/pdf/2401.17377v2")).toBe("2401.17377v2.pdf");
+    expect(pdfNameFromUrl("https://arxiv.org/pdf/2401.17377")).toBe("2401.17377.pdf");
+    expect(pdfNameFromUrl("https://example.test/download.php?id=42")).toBe("42.pdf");
+    expect(pdfNameFromUrl("https://example.test/download.php")).toBe("example.test.pdf");
+    expect(pdfNameFromUrl("https://example.test/Attention%20Is%20All%20You%20Need.PDF")).toBe("Attention Is All You Need.PDF");
+    expect(pdfNameFromUrl("https://example.test/")).toBe("example.test.pdf");
+    expect(pdfNameFromUrl("file:///Users/me/My%20Paper.pdf")).toBe("My Paper.pdf");
+    expect(pdfNameFromUrl("not a url")).toBe("document.pdf");
+    // A segment that only says what is served: the query names the document, or a segment up.
+    expect(pdfNameFromUrl("https://openreview.net/pdf?id=Hk2aImxAb")).toBe("Hk2aImxAb.pdf");
+    expect(pdfNameFromUrl("https://dl.acm.org/doi/pdf/10.1145/3544548.3581225")).toBe("3544548.3581225.pdf");
+    expect(pdfNameFromUrl("https://example.test/papers/smith2024/download")).toBe("smith2024.pdf");
+    expect(pdfNameFromUrl("https://example.test/view.php?doi=10.1000/xyz123")).toBe("10.1000_xyz123.pdf");
+    expect(pdfNameFromUrl("https://example.test/pdf")).toBe("example.test.pdf");
+  });
+  it("holds no character a file name may not", () => {
+    expect(pdfFileName("a/b\\\\c:d*e?.pdf")).toBe("a_b__c_d_e_.pdf");
+    expect(pdfFileName("  ..  ")).toBeNull();
+    expect(pdfFileName("x".repeat(300))!.length).toBe(204);
+  });
+  it("reads the file name a response gives, the encoded one first", () => {
+    expect(dispositionName('inline; filename="Smith et al. 2024.pdf"')).toBe("Smith et al. 2024.pdf");
+    expect(dispositionName("inline; filename=report.pdf")).toBe("report.pdf");
+    expect(dispositionName(`attachment; filename="x.pdf"; filename*=UTF-8''%E8%AE%BA%E6%96%87.pdf`)).toBe("论文.pdf");
+    expect(dispositionName("inline")).toBeNull();
+    expect(dispositionName(null)).toBeNull();
   });
 });

@@ -28,7 +28,7 @@ import { hasPdfMagic } from "../../lib/pdf/sourceTransfer";
 const latin1 = (text: string): Uint8Array => Uint8Array.from(text, (c) => c.charCodeAt(0));
 
 /** A response whose body arrives in the pieces given, as the network really delivers one. */
-function streamed(pieces: Uint8Array[], init: { status?: number; length?: number | null } = {}): Response {
+function streamed(pieces: Uint8Array[], init: { status?: number; length?: number | null; disposition?: string } = {}): Response {
   let cancelled = false;
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -42,6 +42,7 @@ function streamed(pieces: Uint8Array[], init: { status?: number; length?: number
   const headers = new Headers();
   const stated = init.length === undefined ? pieces.reduce((n, p) => n + p.byteLength, 0) : init.length;
   if (stated !== null) headers.set("content-length", String(stated));
+  if (init.disposition) headers.set("content-disposition", init.disposition);
   const response = new Response(body, { status: init.status ?? 200, headers });
   Object.defineProperty(response, "wasCancelled", { get: () => cancelled });
   return response;
@@ -171,6 +172,12 @@ describe("reading the document out of the tab", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
     const out = await streamPdfBytes("https://example.test/a.pdf", () => undefined, { cap: 1024 });
     expect(out).toEqual({ ok: false, failure: "read" });
+  });
+
+  it("says what name the response gave the document, so the reader can save it under that", async () => {
+    const { result } = await collect(streamed([pdfOf(64)], { disposition: `inline; filename="Smith et al. 2024.pdf"` }), 1024);
+    expect(result).toEqual({ ok: true, bytes: 64, name: "Smith et al. 2024.pdf" });
+    expect((await collect(streamed([pdfOf(64)], { disposition: "inline" }), 1024)).result).toEqual({ ok: true, bytes: 64 });
   });
 
   it("asks for the document the way the tab already has it", async () => {
@@ -423,5 +430,30 @@ describe("PDF sender and navigation binding",()=>{
     expect(right.port.postMessage.mock.calls).toHaveLength(1); // no chunk until the header is acknowledged
     right.receive({ack:0});expect(right.port.postMessage).toHaveBeenLastCalledWith({chunk:toBase64(pdfOf(64)),seq:0});
     right.receive({ack:1});expect(right.port.postMessage).toHaveBeenLastCalledWith({done:true});
+  });
+});
+
+describe("the name a document was served under",()=>{
+  it("goes from the tab to the worker to the reader with the bytes",async()=>{
+    const tab=mockPort();vi.spyOn(fakeBrowser.tabs,"connect").mockReturnValue(tab.port as never);
+    const read=readPdfFromTab(7,"https://example.test/view");
+    tab.receive({chunk:toBase64(pdfOf(64)),seq:0});tab.receive({done:true,bytes:64,name:"Smith et al. 2024.pdf"});
+    expect(await read).toMatchObject({ok:true,bytes:64,name:"Smith et al. 2024.pdf"});
+    const reader=mockPort();vi.spyOn(fakeBrowser.runtime,"connect").mockReturnValue(reader.port as never);
+    const claimed=claimPdfBytes("a".repeat(32));
+    reader.receive({bytes:64,name:"Smith et al. 2024.pdf"});reader.receive({chunk:toBase64(pdfOf(64)),seq:0});reader.receive({done:true});
+    expect(await claimed).toEqual({bytes:pdfOf(64),name:"Smith et al. 2024.pdf"});
+  });
+  it("is held with the ticket and sent in the claim's header",async()=>{
+    const store=createTicketStore();const ticket=store.hold(7,[pdfOf(64)],64,undefined,"Smith.pdf")!;
+    expect(store.take(ticket,7)).toMatchObject({bytes:64,name:"Smith.pdf"});
+  });
+  it("is a short string or nothing at all",async()=>{
+    for(const name of ["", "x".repeat(256), 42]) {
+      const tab=mockPort();vi.spyOn(fakeBrowser.tabs,"connect").mockReturnValue(tab.port as never);
+      const read=readPdfFromTab(7,"https://example.test/view");
+      tab.receive({chunk:toBase64(pdfOf(64)),seq:0});tab.receive({done:true,bytes:64,name});
+      expect(await read).toEqual({ok:false,failure:"read"});
+    }
   });
 });

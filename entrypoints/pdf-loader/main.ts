@@ -1,7 +1,7 @@
 import { browser } from "#imports";
 import { SOURCE_LOADER_PORT, SOURCE_CAP, SOURCE_TIMEOUT } from "../../lib/pdf/sourceTransfer";
 import { hasPdfSourceAccess } from "../../lib/pdf/sourceAccess";
-import { loaderConnectPolicy, readAuthorizedPdf, readFailure } from "../../lib/pdf/loader";
+import { loaderConnectPolicy, readAuthorizedPdf, readFailure, type AuthorizedPdf } from "../../lib/pdf/loader";
 import type { HandoffFailure } from "../../lib/pdf/handoff";
 
 // Only the exact iframe created by the live reader receives this separate DOM proof.
@@ -17,9 +17,9 @@ if (window.parent !== window && /^[a-f0-9]{32}$/.test(ticket)) {
     const stop = () => stopped.abort(), timer = setTimeout(stop, SOURCE_TIMEOUT);
     port.onDisconnect.addListener(stop);
     window.addEventListener("pagehide", () => { clearTimeout(timer); stop(); port.disconnect(); }, {once: true});
-    const reply = (result: Uint8Array | HandoffFailure) => {
+    const reply = (result: AuthorizedPdf | HandoffFailure) => {
       if (stopped.signal.aborted) return;
-      if (typeof result !== "string") window.parent.postMessage({kind: "anagram-pdf-loaded", ticket, bytes: result.buffer}, target, [result.buffer]);
+      if (typeof result !== "string") window.parent.postMessage({kind: "anagram-pdf-loaded", ticket, bytes: result.bytes.buffer, ...(result.name ? {name: result.name} : {})}, target, [result.bytes.buffer]);
       else window.parent.postMessage({kind: "anagram-pdf-loaded", ticket, error: result}, target);
     };
     port.onMessage.addListener((value) => {

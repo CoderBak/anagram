@@ -206,10 +206,12 @@ export async function claimSourceBytes(key: string, signal?: AbortSignal): Promi
       }
       if (event.data?.kind !== "anagram-pdf-loaded") return;
       // A loader with nothing says why, so the reader can say "too large" or "not a PDF".
-      const {bytes: buffer, error} = event.data;
+      const {bytes: buffer, error, name} = event.data;
       if (buffer === undefined) { finish({failure: FAILURES.includes(error) ? error : "read"}); return; }
       if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 1 || buffer.byteLength > SOURCE_CAP) { abort(); return; }
-      const bytes = new Uint8Array(buffer); finish(hasPdfMagic(bytes) ? {bytes} : {failure: "type"});
+      // The file name the response gave it, which the reader saves it under (a name only).
+      const named = typeof name === "string" && name.length > 0 && name.length <= 255 ? {name} : {};
+      const bytes = new Uint8Array(buffer); finish(hasPdfMagic(bytes) ? {bytes, ...named} : {failure: "type"});
     };
     signal?.addEventListener("abort", abort, {once: true}); window.addEventListener("message", receive);
     port.onDisconnect.addListener(abort);

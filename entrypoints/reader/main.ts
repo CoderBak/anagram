@@ -13,7 +13,7 @@ import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, documentParagraphs, planInSlices, type DocumentParagraph, type PdfUnitSource } from "../../lib/pdf/units";
 import { createPacer, inScope, readingDistance, seedFor, takeBatch, type Pacer } from "../../lib/pdf/readAhead";
 import { DEFAULT_MIN_WORDS } from "../../lib/dom/text";
-import { pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
+import { pdfFileName, pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
 import { claimPdfBytes } from "../../lib/pdf/handoff";
 import type { PdfReopenResult } from "../../lib/pdf/sourceTransfer";
 import { startViewer, pageView, type PageView, type PdfApplication, type UpstreamPage } from "./viewer";
@@ -550,7 +550,8 @@ async function openTicket(ticket: string, src: string): Promise<void> {
   history.replaceState(null, "", url);
   originalUrl = src; original.hidden = false;
   if ("failure" in held) { failure(held.failure); return; }
-  await openBytes(held.bytes, pdfNameFromUrl(src), src, load);
+  // The name the server gave the file, else the address's: what Download saves it as.
+  await openBytes(held.bytes, (held.name && pdfFileName(held.name)) || pdfNameFromUrl(src), src, load);
   if (load.owned === generation && app.pdfDocument) holdSource(src);
 }
 function documentAddress(raw: string | null): string | null {

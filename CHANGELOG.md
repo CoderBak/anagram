@@ -30,6 +30,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- The PDF reader's Download button saved a document as "document.pdf" whenever its address did not end in a .pdf file name (arXiv's /pdf/2401.17377, a download script, a viewer page). It now saves it under the name the server gave it, or else one taken from the address (2401.17377.pdf, 42.pdf for download.php?id=42), always ending in .pdf.
 - The confirmation to cancel the model's download opened in the corner of the setup page instead of its middle.
 - The empty PDF reader showed an empty box above its drop zone.
 - The setup page ticked its first step while the local engine kept crashing.

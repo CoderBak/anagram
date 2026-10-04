@@ -1,4 +1,4 @@
-import { safePdfSource, samePdfSource } from "./source";
+import { dispositionName, safePdfSource, samePdfSource } from "./source";
 import { SOURCE_CAP, hasPdfMagic } from "./sourceTransfer";
 import type { HandoffFailure } from "./handoff";
 
@@ -7,11 +7,14 @@ export function loaderConnectPolicy(source: string): string | null {
   const url = safePdfSource(source);
   return url ? `connect-src ${url.protocol === "file:" ? "file:" : url.origin}` : null;
 }
-export async function readAuthorizedPdf(source: string, signal: AbortSignal, cap = SOURCE_CAP): Promise<Uint8Array> {
+/** The document's bytes, and the file name its response gave it (Content-Disposition), if any:
+ *  a download address names nothing (/download?id=42), its response may. */
+export interface AuthorizedPdf { bytes: Uint8Array; name: string | null }
+export async function readAuthorizedPdf(source: string, signal: AbortSignal, cap = SOURCE_CAP): Promise<AuthorizedPdf> {
   const url = safePdfSource(source);
   if (!url || signal.aborted || !Number.isSafeInteger(cap) || cap < 1 || cap > SOURCE_CAP) throw new Error("read");
   url.hash = "";
-  if (url.protocol === "file:") return readFile(url.href, signal, cap);
+  if (url.protocol === "file:") return { bytes: await readFile(url.href, signal, cap), name: null };
   const response = await fetch(url.href, {signal, credentials: "include", cache: "force-cache", redirect: "error", referrerPolicy: "no-referrer"});
   if (!response.ok || response.redirected || (response.url && !samePdfSource(response.url, url.href)) || !response.body) {
     await response.body?.cancel(); throw new Error("read");
@@ -30,7 +33,7 @@ export async function readAuthorizedPdf(source: string, signal: AbortSignal, cap
   const bytes = new Uint8Array(size); let at = 0;
   for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
   if (!hasPdfMagic(bytes)) throw new Error("type");
-  return bytes;
+  return { bytes, name: dispositionName(response.headers.get("content-disposition")) };
 }
 /** Why readAuthorizedPdf produced nothing, from what it threw. */
 export function readFailure(error: unknown): HandoffFailure {
