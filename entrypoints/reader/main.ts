@@ -22,9 +22,16 @@ import "./style.css";
 
 const MAX_BYTES = 100 * 1024 * 1024;
 /** Zotero's structure is asked for up to this many pages; past it the reflow reads every page
- *  as it renders. The worker's peak grows with the document (0.5 GB at 300 pages, 0.7 GB at
- *  800) and the structure's reading stays in the page while it is open (0.3 MB a page). */
-const MAX_STRUCTURE_PAGES = 300;
+ *  as it renders. The worker's peak hardly grows with the document past a few hundred pages
+ *  (0.5–0.7 GB over the page's own at 336, 565 and 813 pages, 20–25 ms a page, and it is gone
+ *  when the structure comes); what grows is what the page keeps while the document is read —
+ *  the structure's reading and every page's text. So: a thousand pages where the browser says
+ *  the device has 8 GB of memory or more, 600 where it says 4, and 300 where it says less or
+ *  nothing (Firefox and Safari do not say). */
+function maxStructurePages(): number {
+  const memory = (navigator as { deviceMemory?: number }).deviceMemory;
+  return memory === undefined || memory < 4 ? 300 : memory < 8 ? 600 : 1000;
+}
 /** sessionStorage: the source this tab's reader opened, so that a refresh or Back can show it
  *  again. An address that only names a source — pasted, or opened by anything else — reads
  *  nothing (lib/pdf/sourceTransfer.ts). */
@@ -163,7 +170,7 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
     if (owned === generation) { keepTexts = false; texts.clear(); unread.clear(); }
     return false;
   };
-  if (count > MAX_STRUCTURE_PAGES || !(await settings.pdfStructure.getValue())) return without();
+  if (count > maxStructurePages() || !(await settings.pdfStructure.getValue())) return without();
   if (owned !== generation) return false;
   try {
     const result = await readStructure(bytes, count, signal);

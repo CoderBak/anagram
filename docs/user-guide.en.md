@@ -145,7 +145,8 @@ older version shows as off until you switch it on again.
   the whole document** in the toolbar menu (Settings, PDFs, turns it off).
   The first chips come from a quick reading of each page; a moment later Zotero's document
   engine has worked out the paragraphs, leaving out captions, footnotes and reference
-  lists, and the chips are redrawn on those. Past 300 pages every page is read by the
+  lists, and the chips are redrawn on those. Past 1,000 pages (600 on a computer with 4 GB of
+  memory, 300 where the browser does not say how much it has) every page is read by the
   quick reading alone. A chip stands right after its paragraph's last line, and in the
   page margin only when that line is full. The **Anagram** button in the reader's toolbar
   opens the toolbar menu, whose report is the document read so far, pages scrolled past
