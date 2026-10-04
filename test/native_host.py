@@ -720,6 +720,66 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(component.status()["state"], "ready")
         self.assertEqual(component.handle("health", {})[0], 200)
 
+    def test_the_model_loads_while_its_files_are_checked_and_is_kept_only_if_they_pass_unchanged(self):
+        first = self.make()
+        self.first_run(first)
+        first.close()
+        seen = {}
+        def verify_while_loading():
+            # The runtime is already reading the model in, and nothing may be scored yet.
+            seen["controller"] = component.controller
+            seen["state"] = component.status()["state"]
+            return (self.home / "models/fixture").is_file()
+        component = self.make(verifier=verify_while_loading)
+        component.start()
+        self.finish(component)
+        self.assertIsNotNone(seen["controller"], "the load starts before the check ends")
+        self.assertEqual(seen["state"], "starting")
+        self.assertIs(component.controller, seen["controller"])
+        self.assertEqual(component.status()["state"], "ready")
+        component.close()
+
+        # A check that fails throws the loaded runtime away: nothing it read is ever scored.
+        failing = self.make(verifier=lambda: False)
+        failing.start()
+        self.finish(failing)
+        self.assertIsNone(failing.controller)
+        self.assertEqual(failing.status()["state"], "needs_models")
+        with self.assertRaises(ComponentError) as error:
+            failing.handle("score", {"v": "3.0", "blocks": [{"id": "a", "text": "a paragraph"}]})
+        self.assertEqual(error.exception.code, "not_ready")
+        failing.close()
+
+        # A file written to while it was checked: what was loaded may not be what was checked,
+        # so the runtime is read in again from the checked files.
+        def verify_after_a_write():
+            seen["during"] = component.controller
+            (self.home / "models/lid.176.ftz").write_bytes(b"written while checked")
+            return True
+        component = self.make(verifier=verify_after_a_write)
+        component.start()
+        self.finish(component)
+        self.assertIsNotNone(seen["during"])
+        self.assertIsNot(component.controller, seen["during"])
+        self.assertEqual(component.status()["state"], "ready")
+        component.close()
+
+    def test_a_stopped_engine_starts_no_load_while_its_files_are_checked(self):
+        first = self.make()
+        self.first_run(first)
+        self.assertEqual(first.handle("engine.stop", {})[0], 202)
+        self.finish(first)
+        first.close()
+        seen = {}
+        def verify():
+            seen["controller"] = component.controller
+            return True
+        component = self.make(verifier=verify)
+        component.start()
+        self.finish(component)
+        self.assertIsNone(seen["controller"])
+        self.assertEqual(component.status()["state"], "stopped")
+
     def test_tokens_count_what_the_model_sees_and_wake_an_idle_engine_like_score(self):
         component = self.make()
         self.first_run(component)

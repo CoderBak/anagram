@@ -310,13 +310,28 @@ class NativeComponent:
             self._download_work()
         else:
             self._ensure_plan()
-            if self.verifier():
-                with self.lock:
-                    self.download.update(status="completed", phase="complete", bytes_received=self.download["total_bytes"])
-                self._start_runtime()
-            else:
+            # The model is read in while its files are checked (half a second for the real
+            # weights, and the load a quarter more): a score waits for both, the state staying
+            # "starting". The runtime is kept only where no file was written to from before it
+            # began loading until the check was done — then what it read is what was checked.
+            stamps = self._model_stamps()
+            early = self._start_runtime(hold=True)
+            verified = self.verifier()
+            if early and (not verified or self._model_stamps() != stamps):
+                self._stop_runtime()
+                early = False
+            if not verified:
                 with self.lock:
                     self.state = "needs_models"
+                return
+            with self.lock:
+                self.download.update(status="completed", phase="complete", bytes_received=self.download["total_bytes"])
+            if early:
+                with self.lock:
+                    if self.state == "starting" and self.controller is not None and not self.closed:
+                        self.state = "loading"
+            else:
+                self._start_runtime()
 
     def _build_model_plan(self, profile):
         from model_plan import build_plan, discover_hardware
@@ -407,21 +422,39 @@ class NativeComponent:
         from runtime_adapters import create_controller
         return create_controller(self.model_dir, self.home / "runtime.json", self.lid_path, plan=self.plan)
 
-    def _start_runtime(self):
+    def _start_runtime(self, hold=False):
+        """Start the runtime loading. `hold`: while the model files are still being checked —
+        the state stays as it is, so nothing is scored, and nothing starts where the engine is
+        stopped (the check decides first). Returns whether it started."""
         with self.lock:
             if self.closed or self.settings["engine_stopped"]:
-                self.state = "stopped"
-                return
+                if not hold:
+                    self.state = "stopped"
+                return False
         controller = self.controller_factory()
         with self.lock:
             if self.closed:
                 controller.close()
-                return
+                return False
             self.controller = controller
             controller.set_idle_unload(self.settings["idle_unload_s"])
             self.runtime_draining = False
-            self.state = "loading"
+            if not hold:
+                self.state = "loading"
         controller.start()
+        return True
+
+    def _model_stamps(self):
+        """What the start's check reads, as the file system has it: any write to a file
+        changes its entry (its change time, which nothing sets back)."""
+        out = []
+        for path in [*(self.model_dir / name for name in self.plan["selected_paths"]), self.lid_path]:
+            try:
+                info = path.stat()
+                out.append((str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+            except OSError:
+                out.append((str(path), None))
+        return out
 
     def _stop_runtime(self):
         """Close the runtime and drain its work; a closed controller refuses new leases.

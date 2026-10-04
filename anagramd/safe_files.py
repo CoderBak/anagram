@@ -7,8 +7,13 @@ import os
 from pathlib import Path
 import stat
 import tempfile
+import threading
 
 _DIGESTS = {}
+#: Files being read for their digest now, by identity: a caller that may reuse a digest waits
+#: for that read instead of reading the same bytes again beside it.
+_READING = {}
+_GUARD = threading.Lock()
 
 
 def sha256_file(path: Path, *, reuse: bool = True) -> str:
@@ -17,19 +22,37 @@ def sha256_file(path: Path, *, reuse: bool = True) -> str:
     The key is the inode, size and timestamps, which any write changes, so a
     remembered digest only answers for the bytes that were read. Verification
     passes ``reuse=False`` and always reads; loading the verified weights
-    afterwards does not read them a second time.
+    afterwards does not read them a second time — not even while the verification is still
+    reading them (the component checks its files as the runtime loads them): it waits for that.
     """
     path = Path(path)
     info = path.stat()
     key = (str(path.resolve()), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
-    if not reuse or key not in _DIGESTS:
+    while reuse:
+        with _GUARD:
+            if key in _DIGESTS:
+                return _DIGESTS[key]
+            reading = _READING.get(key)
+        if reading is None:
+            break
+        reading.wait()
+    done = threading.Event()
+    with _GUARD:
+        _READING.setdefault(key, done)
+    try:
         with path.open("rb") as stream:
             value = hashlib.file_digest(stream, "sha256").hexdigest()
         after = path.stat()
         if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns) != key[1:]:
             raise ValueError(f"Model artifact changed while reading {path.name}; retry after the download finishes")
-        _DIGESTS[key] = value
-    return _DIGESTS[key]
+        with _GUARD:
+            _DIGESTS[key] = value
+        return value
+    finally:
+        with _GUARD:
+            if _READING.get(key) is done:
+                del _READING[key]
+        done.set()
 
 
 def is_link(path: Path) -> bool:

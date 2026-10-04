@@ -1166,10 +1166,11 @@ time.sleep(60)
         self.assertEqual(len(children), 2)
         self.assertNotIn(os.getpid(), [child.pid for child in children])
 
-    def test_hashing_time_is_excluded_from_model_load(self):
+    def test_weights_hash_beside_the_load_and_hashing_counts_only_what_it_adds(self):
         clock = Clock()
         weights = self.home / "model.safetensors"
         weights.write_bytes(b"fixture")
+        loaded = threading.Event()
         class Engine:
             def __init__(self, *args, **kwargs):
                 clock.advance(11)
@@ -1178,13 +1179,87 @@ time.sleep(60)
             def close(self): pass
         api = SimpleNamespace(EditLens=Engine, PIPELINE_FILES=[])
         phases = []
-        with patch("runtime_adapters.digest", side_effect=lambda _: clock.advance(5)), \
+        def phase(value):
+            phases.append(value)
+            if value == "hashing":
+                loaded.set()  # the load is measured: the hash may finish now
+        def digest(_):
+            # The hash runs beside the load, and here outlasts it by 5 s.
+            self.assertTrue(loaded.wait(2))
+            clock.advance(5)
+        with patch("runtime_adapters.digest", side_effect=digest), \
                 patch("runtime_adapters.runtime_version", side_effect=lambda *_: (clock.advance(3), "version")[1]):
             engine, timings = load_candidate(self.home, FP32, 512, 32, None, api, {},
-                                             phase=phases.append, clock=clock)
+                                             phase=phase, clock=clock)
         self.assertEqual(engine.version, "version")
+        # The load as long as ever; hashing only what it kept the engine waiting, and the version.
         self.assertEqual(timings, {"hash_ms": 8000, "load_ms": 13000})
-        self.assertEqual(phases, ["hashing", "loading", "hashing"])
+        self.assertEqual(phases, ["loading", "hashing"])
+
+    def test_a_failed_hash_never_lets_the_loaded_engine_out(self):
+        weights = self.home / "model.safetensors"
+        weights.write_bytes(b"fixture")
+        closed = []
+        class Engine:
+            def __init__(self, *args, **kwargs): pass
+            def synchronize(self): pass
+            def close(self): closed.append(True)
+        api = SimpleNamespace(EditLens=Engine, PIPELINE_FILES=[])
+        def digest(_):
+            raise ValueError("Model artifact changed while reading model.safetensors")
+        with patch("runtime_adapters.digest", side_effect=digest):
+            with self.assertRaisesRegex(ValueError, "changed while reading"):
+                load_candidate(self.home, FP32, 512, 32, None, api, {})
+        self.assertEqual(closed, [True])
+
+
+class DigestTests(unittest.TestCase):
+    """safe_files.sha256_file: verification always reads; loading reuses what it read, and
+    waits for a read still under way rather than read the same bytes beside it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "model.safetensors"
+        self.path.write_bytes(b"weights" * 1000)
+
+    def test_a_reusing_reader_waits_for_the_read_under_way_and_reads_nothing_itself(self):
+        import safe_files
+        real_open = Path.open
+        opened, entered, release = [], threading.Event(), threading.Event()
+        def slow_open(path, *args, **kwargs):
+            opened.append(threading.current_thread().name)
+            if threading.current_thread().name == "verify":
+                entered.set()
+                self.assertTrue(release.wait(2))
+            return real_open(path, *args, **kwargs)
+        results = {}
+        with patch.object(Path, "open", slow_open):
+            verify = threading.Thread(target=lambda: results.update(verify=safe_files.sha256_file(self.path, reuse=False)), name="verify")
+            verify.start()
+            self.assertTrue(entered.wait(2))
+            load = threading.Thread(target=lambda: results.update(load=safe_files.sha256_file(self.path)), name="load")
+            load.start()
+            time.sleep(0.05)
+            self.assertTrue(load.is_alive(), "the loader waits for the verification's read")
+            release.set()
+            verify.join(2)
+            load.join(2)
+        self.assertEqual(results["verify"], hashlib.sha256(b"weights" * 1000).hexdigest())
+        self.assertEqual(results["load"], results["verify"])
+        self.assertEqual(opened, ["verify"])
+        # Verification still reads every time it is asked, whatever is remembered.
+        with patch.object(Path, "open", slow_open):
+            release.set()
+            self.assertEqual(safe_files.sha256_file(self.path, reuse=False), results["verify"])
+        self.assertEqual(opened, ["verify", "MainThread"])
+
+    def test_bytes_written_since_are_read_again(self):
+        import safe_files
+        first = safe_files.sha256_file(self.path)
+        time.sleep(0.01)
+        self.path.write_bytes(b"other")
+        self.assertNotEqual(safe_files.sha256_file(self.path), first)
 
 
 class ScoringParityTests(unittest.TestCase):

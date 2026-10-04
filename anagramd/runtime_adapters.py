@@ -92,15 +92,29 @@ def artifact_stamp(files):
 
 def load_candidate(model_dir, candidate, max_length, batch_size, gate, api, environment,
                    *, phase=lambda value: None, clock=time.perf_counter):
-    """Hash and load separately; no partially identified engine escapes this call."""
+    """Hash and load at once; no partially identified engine escapes this call.
+
+    Startup reads the weights twice: hashed, for the version every verdict carries, and loaded
+    by the runtime. The hash runs on a thread beside the load (hashlib lets go of the GIL over
+    each chunk, and whichever reads second finds the pages the first brought in), and the
+    engine comes back only once both are done, its version is computed and the files are what
+    they were before either began. `hash_ms` is what hashing added: the wait for it after the
+    load, and the version.
+    """
     files = [*artifact_files(model_dir, candidate),
              *[model_dir / name for name in api.PIPELINE_FILES if (model_dir / name).is_file()]]
     before = artifact_stamp(files)
-    phase("hashing")
-    started = clock()
-    for path in files:
-        digest(path)
-    hash_ms = (clock() - started) * 1000
+    failed = []
+
+    def hash_files():
+        try:
+            for path in files:
+                digest(path)
+        except BaseException as exc:  # handed to the caller below
+            failed.append(exc)
+
+    hashing = threading.Thread(target=hash_files, name="anagram-weights-hash", daemon=True)
+    hashing.start()
     engine = None
     try:
         phase("loading")
@@ -119,10 +133,13 @@ def load_candidate(model_dir, candidate, max_length, batch_size, gate, api, envi
         load_ms = (clock() - started) * 1000
         phase("hashing")
         started = clock()
+        hashing.join()
+        if failed:
+            raise failed[0]
         engine.version = runtime_version(engine, candidate, model_dir, api, options)
         if artifact_stamp(files) != before:
             raise ValueError("Model artifacts changed during loading; rerun after downloading finishes")
-        hash_ms += (clock() - started) * 1000
+        hash_ms = (clock() - started) * 1000
         return engine, {"hash_ms": round(hash_ms, 2), "load_ms": round(load_ms, 2)}
     except BaseException:
         if engine is not None:
