@@ -8,7 +8,8 @@
 // from — which lib/pdf/units.ts turns into ranges over the page's own glyphs.
 import { describe, expect, it } from "vitest";
 import type { PdfPageText, PdfTextItem, ReflowBlock } from "../../lib/pdf/reflow";
-import { glyphsOf, isMathFont, structuredBlocks, type SdtBlock, type SdtStructure, type SdtTextNode } from "../../lib/pdf/structured";
+import type { Glyph, Piece } from "../../lib/pdf/reading";
+import { createStructuredReader, glyphsOf, isMathFont, packPieces, structuredBlocks, unpackPieces, type SdtBlock, type SdtStructure, type SdtTextNode } from "../../lib/pdf/structured";
 import { groupsOf } from "../../lib/pdf/units";
 
 const WIDTH = 612;
@@ -135,6 +136,71 @@ describe("glyphsOf", () => {
     expect(glyphsOf(JSON.stringify([run])).map((g) => [g.x1, g.x2])).toEqual([[100, 105]]);
     expect(glyphsOf("not json")).toEqual([]);
     expect(glyphsOf(undefined)).toEqual([]);
+  });
+
+  it("reads a vertical run down the page, and a soft hyphen alone as nothing", () => {
+    // Bit 1 of the header: the run is vertical (decode.js).
+    expect(glyphsOf(JSON.stringify([[2, 0, 50, 100, 60, 130, 10, [5, 10]]]))).toEqual([
+      { page: 0, x1: 50, y1: 100, x2: 60, y2: 110, start: true },
+      { page: 0, x1: 50, y1: 115, x2: 60, y2: 125 },
+    ]);
+    expect(glyphsOf(JSON.stringify([[1, 0, 50, 100, 60, 130]]))).toEqual([]);
+  });
+});
+
+describe("a paragraph's pieces, packed until its pages come", () => {
+  /** Pieces as piecesOf makes them, from a glyph map: spaces between words, the flags it sets. */
+  const piecesFrom = (text: string, glyphs: Glyph[], flags: { raised?: boolean } = {}): Piece[] => {
+    let k = 0;
+    return [...text].map((ch, i) => {
+      const p: Piece = ch === " " ? { ch, glyph: null } : { ch, glyph: glyphs[k++]! };
+      if (flags.raised) p.raised = true;
+      if (i === 0 && ch !== " ") p.opens = true;
+      return p;
+    });
+  };
+
+  it("gives back the very same pieces, numbers, flags and the order of their fields", () => {
+    const line = drawn(1, { text: "ab cd", x: 100.1, y: 100 });
+    const next = drawn(2, { text: "efg", x: 72.3, y: 114 });
+    const pieces = [
+      ...piecesFrom("ab cd", glyphsOf(JSON.stringify([line.run]))),
+      { ch: " ", glyph: null },
+      ...piecesFrom("efg", glyphsOf(JSON.stringify([next.run])), { raised: true }),
+      ...piecesFrom("hi", glyphsOf(JSON.stringify([[2, 1, 50, 100.7, 60, 130, 10.3, [0.1, 10]]]))),
+      { ch: "x", glyph: { page: 1, x1: -0, y1: 0, x2: 0.1 + 0.2, y2: 1e-300 } },
+      { ch: "y", glyph: null },
+    ];
+    const packed = packPieces(pieces)!;
+    expect(packed).not.toBeNull();
+    const back = unpackPieces(packed);
+    expect(back).toEqual(pieces);
+    expect(back.map((p) => Object.keys(p).join() + (p.glyph ? `|${Object.keys(p.glyph).join()}` : ""))).toEqual(
+      pieces.map((p) => Object.keys(p).join() + (p.glyph ? `|${Object.keys(p.glyph).join()}` : "")));
+    // -0 stays -0, and no sum is rounded on the way.
+    expect(Object.is(back.at(-2)!.glyph!.x1, -0)).toBe(true);
+    expect(back.at(-2)!.glyph!.x2).toBe(0.1 + 0.2);
+    // On a line, a glyph that starts where the one before it ended is its right edge alone.
+    const word = drawn(1, { text: "abcdef", x: 100, y: 100 });
+    expect(packPieces(piecesFrom("abcdef", glyphsOf(JSON.stringify([word.run]))))!.values).toHaveLength(5 + 5);
+  });
+
+  it("leaves alone pieces it could not give back exactly", () => {
+    expect(packPieces([{ ch: "𝑥", glyph: null }])).toBeNull();
+    expect(packPieces([{ ch: "a", glyph: null, raised: false }])).toBeNull();
+  });
+
+  it("reads a paragraph again as its next page comes as a reader that had both from the start", () => {
+    const first = node(1, [{ text: "a paragraph that begins at the foot of one page and", x: 72, y: 700 }]);
+    const second = node(2, [{ text: "goes on at the head of the next page to its end.", x: 72, y: 100 }]);
+    const content = [paragraph(1, [first, second])];
+    const pages = [pageText(1, first.items), pageText(2, second.items)];
+    for (const options of [{}, { pagesStay: true }]) {
+      const reader = createStructuredReader(structure(content, 2), options);
+      reader.blocks([]);
+      reader.blocks(pages.slice(0, 1));
+      expect(reader.blocks(pages)).toEqual(structuredBlocks(structure(content, 2), pages, options));
+    }
   });
 });
 

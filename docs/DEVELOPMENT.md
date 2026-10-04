@@ -219,7 +219,9 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   view of the document in our entry (`vendor/document-worker/src/worker.js`): its own
   `getFullStructure` reads every page at once and holds them all, 2.7 GB of the reader's
   process at 2,445 pages. In ranges that book took 27.5 s to its structure, the process
-  peaking at 2.0 GB, 680 MB of page memory falling to 310 MB as it was read, and one 0.3 s
+  peaking at 2.0 GB, 195 MB of page memory as the structure came rising to 310 MB as it was
+  read (the glyphs of the paragraphs not read yet are kept packed, `packPieces` in
+  `lib/pdf/structured.ts`: 525 MB of them as objects), and one 0.3 s
   pause as the structure came, with no script in it (a collection of the large heap); an
   813-page book, 9.6 s and 270 MB, no pause over 150 ms (2026-10-04, M4). What Zotero works out
   over the document — running heads, reference lists, the outline's pages — it works out over

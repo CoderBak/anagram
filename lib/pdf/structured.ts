@@ -108,21 +108,25 @@ export function glyphsOf(textMap: string | undefined): Glyph[] {
     if (!Array.isArray(run) || run.length < 6) continue;
     const [header, page, minX, minY, maxX, maxY] = run as [number, number, number, number, number, number];
     const vertical = (((header >> AXIS_SHIFT) & 0b11) & 1) === 1;
-    const widths = run.slice(6) as (number | [number, number])[];
-    const positions: [number, number][] = [];
+    // Each glyph as it is reached, with nothing made on the way: a long document's maps are
+    // millions of glyphs, all read as the structure comes, and a pair of numbers and a copy of
+    // the widths for each were garbage to be collected beside them.
+    const widths = run.length - 6;
+    const count = (widths === 0 ? 1 : widths) - (header & SOFT_HYPHEN ? 1 : 0);
     let pos = vertical ? minY : minX;
-    if (widths.length === 0) positions.push([pos, vertical ? maxY : maxX]);
-    for (const w of widths) {
-      if (Array.isArray(w)) pos += w[0];
-      const width = Array.isArray(w) ? w[1] : w;
-      positions.push([pos, pos + width]);
-      pos += width;
+    for (let k = 0; k < count; k++) {
+      let a = pos, b = vertical ? maxY : maxX;
+      if (widths > 0) {
+        const w = run[6 + k] as number | [number, number];
+        if (Array.isArray(w)) pos += w[0];
+        const width = Array.isArray(w) ? w[1] : w;
+        a = pos;
+        b = pos + width;
+        pos += width;
+      }
+      if (vertical) out.push(k === 0 ? { page, x1: minX, y1: a, x2: maxX, y2: b, start: true } : { page, x1: minX, y1: a, x2: maxX, y2: b });
+      else out.push(k === 0 ? { page, x1: a, y1: minY, x2: b, y2: maxY, start: true } : { page, x1: a, y1: minY, x2: b, y2: maxY });
     }
-    if (header & SOFT_HYPHEN) positions.pop();
-    positions.forEach(([a, b], k) => {
-      const at = vertical ? { page, x1: minX, y1: a, x2: maxX, y2: b } : { page, x1: a, y1: minY, x2: b, y2: maxY };
-      out.push(k === 0 ? { ...at, start: true } : at);
-    });
   }
   return out;
 }
@@ -195,7 +199,7 @@ function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: 
       continue;
     }
     const glyphs = glyphsOf(node.anchor?.textMap);
-    const cite = raised(node) ? { raised: true } : {};
+    const cite = raised(node);
     let k = 0;
     let nonSpace = 0;
     for (const ch of node.text) nonSpace += isSpace(ch) ? 0 : ch.length;
@@ -203,8 +207,10 @@ function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: 
     const trusted = glyphs.length === nonSpace;
     for (let i = 0; i < node.text.length; i++) {
       const ch = node.text[i]!;
-      if (isSpace(ch)) out.push({ ch: " ", glyph: null, ...cite });
-      else out.push({ ch, glyph: trusted ? glyphs[k++]! : null, ...cite, ...(i === 0 ? { opens: true } : {}) });
+      const piece: Piece = isSpace(ch) ? { ch: " ", glyph: null } : { ch, glyph: trusted ? glyphs[k++]! : null };
+      if (cite) piece.raised = true;
+      if (i === 0 && !isSpace(ch)) piece.opens = true;
+      out.push(piece);
     }
   }
   return out;
@@ -1433,9 +1439,93 @@ export interface StructuredBlock extends ReflowBlock {
 /** Draft.seen of a block read for good (StructuredOptions.pagesStay). */
 const FINAL = "final";
 
+// ---- a paragraph's pieces, packed until its pages come ----------------------------------
+
+/**
+ * The pieces of a block that is not read for good yet, from its first answer on: a character
+ * and a byte of flags each, and of each glyph only the numbers the glyph before it does not
+ * give already — its page, its line's top and bottom, its left edge where it starts at the
+ * right edge of the one before — as doubles, so that what is unpacked is the very same
+ * numbers. A piece and its glyph are some 110 bytes as objects. A 2,445-page book's paragraphs
+ * whose pages the reader had not read yet held 525 MB of them, and the page 680–700 MB in all
+ * when the structure came; packed, 195 MB in all (an 813-page one's: 280 MB of pieces, 22 MB
+ * packed; 2026-10-04, M4). Unpacked again, for one answer, only when one of the block's pages
+ * comes or goes.
+ */
+export interface PackedPieces {
+  chars: Uint16Array;
+  flags: Uint8Array;
+  values: Float64Array;
+}
+
+const HAS_GLYPH = 1, STARTS = 2, RAISED_MARK = 4, OPENS = 8, SAME_PAGE = 16, SAME_Y = 32, SAME_X = 64, FROM_X2 = 128;
+
+/** `pieces` packed, or null where one of them is not what Zotero's text makes (a character of
+ *  two units, a flag other than set): those stay as they are. */
+export function packPieces(pieces: readonly Piece[]): PackedPieces | null {
+  const flags = new Uint8Array(pieces.length);
+  const chars = new Uint16Array(pieces.length);
+  const values: number[] = [];
+  let prev: Glyph | null = null;
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i]!;
+    if (p.ch.length !== 1 || (p.raised !== undefined && p.raised !== true) || (p.opens !== undefined && p.opens !== true)) return null;
+    chars[i] = p.ch.charCodeAt(0);
+    let f = (p.raised ? RAISED_MARK : 0) | (p.opens ? OPENS : 0);
+    const g = p.glyph;
+    if (g) {
+      if (g.start !== undefined && g.start !== true) return null;
+      f |= HAS_GLYPH | (g.start ? STARTS : 0);
+      if (prev && Object.is(prev.page, g.page)) f |= SAME_PAGE;
+      else values.push(g.page);
+      if (prev && Object.is(prev.x1, g.x1) && Object.is(prev.x2, g.x2)) f |= SAME_X;
+      else {
+        if (prev && Object.is(prev.x2, g.x1)) f |= FROM_X2;
+        else values.push(g.x1);
+        values.push(g.x2);
+      }
+      if (prev && Object.is(prev.y1, g.y1) && Object.is(prev.y2, g.y2)) f |= SAME_Y;
+      else values.push(g.y1, g.y2);
+      prev = g;
+    }
+    flags[i] = f;
+  }
+  return { chars, flags, values: Float64Array.from(values) };
+}
+
+export function unpackPieces({ chars, flags, values }: PackedPieces): Piece[] {
+  const out: Piece[] = new Array(flags.length);
+  let v = 0;
+  let prev: Glyph | null = null;
+  for (let i = 0; i < flags.length; i++) {
+    const f = flags[i]!;
+    let glyph: Glyph | null = null;
+    if (f & HAS_GLYPH) {
+      const page: number = f & SAME_PAGE ? prev!.page : values[v++]!;
+      let x1: number, x2: number;
+      if (f & SAME_X) { x1 = prev!.x1; x2 = prev!.x2; }
+      else { x1 = f & FROM_X2 ? prev!.x2 : values[v++]!; x2 = values[v++]!; }
+      let y1: number, y2: number;
+      if (f & SAME_Y) { y1 = prev!.y1; y2 = prev!.y2; }
+      else { y1 = values[v++]!; y2 = values[v++]!; }
+      // The shapes glyphsOf makes.
+      glyph = f & STARTS ? { page, x1, y1, x2, y2, start: true } : { page, x1, y1, x2, y2 };
+      prev = glyph;
+    }
+    const p: Piece = { ch: String.fromCharCode(chars[i]!), glyph };
+    if (f & RAISED_MARK) p.raised = true;
+    if (f & OPENS) p.opens = true;
+    out[i] = p;
+  }
+  return out;
+}
+
 interface Draft {
   block: StructuredBlock;
+  /** Its pieces, until it has been answered for once; empty while they are `packed`. */
   pieces: Piece[];
+  /** Its pieces from its first answer until it is read for good (packPieces). */
+  packed: PackedPieces | null;
   /** 1-based pages the block's glyphs lie on. */
   pages: number[];
   /** The last answer, and which of the block's pages (which text of each) it was given from. */
@@ -1533,7 +1623,7 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
       ...(everything ? { origin: r.origin } : {}),
     };
     barrier = false;
-    const draft: Draft = { block, pieces, pages: [], seen: null, result: null, display: false };
+    const draft: Draft = { block, pieces, packed: null, pages: [], seen: null, result: null, display: false };
     drafts.push(draft);
     for (const path of r.paths) byPath.set(path, draft);
     open = r.kind === "paragraph" ? draft : null;
@@ -1557,9 +1647,9 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
 
 /** The same reader, made a few milliseconds at a time (lib/slices.ts): a 300-page document's
  *  structure took a third of a second of the main thread in one piece, as the reader started
- *  reading. */
-export async function createStructuredReaderInSlices(structure: SdtStructure, options: StructuredOptions = {}): Promise<StructuredReader> {
-  return readerOf(await finishInSlices(prepare(structure, options.everything === true)), options);
+ *  reading. Nothing here holds on to the structure once its drafts are made. */
+export function createStructuredReaderInSlices(structure: SdtStructure, options: StructuredOptions = {}): Promise<StructuredReader> {
+  return finishInSlices(prepare(structure, options.everything === true)).then((drafted) => readerOf(drafted, options));
 }
 
 function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): StructuredReader {
@@ -1595,14 +1685,17 @@ function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): Struc
         if (d.pieces.length === 0 && d.seen === FINAL) { if (d.result) out.push(d.result); continue; }
         const seen = d.pages.map((n) => { const p = given.get(n); return p ? serialOf(p) : "-"; }).join(",");
         if (d.seen !== seen) {
-          const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, kinds);
+          const pieces = d.packed ? unpackPieces(d.packed) : d.pieces;
+          const { text, runs } = assemble(pieces, locate(pieces, pagesByNumber), vocab, kinds);
           const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
           d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
           if (d.result) pagesOfResult.set(d.result, d.pages);
           d.seen = seen;
           // Every page it lies on is there, each with text (an empty one may be a page that
           // could not be read, and be read again): it reads as it ever will.
-          if (pagesStay && d.pages.every((n) => (given.get(n)?.items.length ?? 0) > 0)) { d.pieces = []; d.seen = FINAL; }
+          if (pagesStay && d.pages.every((n) => (given.get(n)?.items.length ?? 0) > 0)) { d.pieces = []; d.packed = null; d.seen = FINAL; }
+          // Else it waits for its pages packed, as small as its glyphs can be kept.
+          else if (!d.packed && (d.packed = packPieces(pieces))) d.pieces = [];
         }
         if (d.result) out.push(d.result);
       }
