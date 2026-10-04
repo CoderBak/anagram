@@ -484,7 +484,7 @@ export default defineBackground(() => {
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);
-          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:partitionOf(sender,document!),documentKey:document!.documentKey,signal:document!.signal});
+          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:partitionOf(sender,document!),documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
           if(document!.signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.
