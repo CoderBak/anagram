@@ -147,8 +147,9 @@
 // Everything here reads attributes and tree structure only — never styles, never layout —
 // and is a pure function of the DOM, so a partial re-scan that starts inside a post finds
 // the scope the full scan found: no answer depends on which element was asked first. The
-// page is surveyed for bylines once per scan (two querySelectorAll) and for the markers of
-// quoted mail once (one more), lazily; every other answer is cached per element for the scan.
+// page is surveyed for bylines (two querySelectorAll) and for the markers of quoted mail (one
+// more) lazily, and every other answer is cached per element — for as long as the page's light
+// DOM stays as it was (ScopeSurvey), which a walker keeps from one scan to the next.
 import { INLINE_FALLBACK_TAGS, tagOf } from "./tags";
 
 /** A customer review in schema.org's vocabulary: microdata (`itemtype` Review, UserReview,
