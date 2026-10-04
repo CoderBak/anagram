@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 from pathlib import Path
 import queue
@@ -242,6 +243,82 @@ class FramingTests(unittest.TestCase):
         reader.queue.put(None)
         thread.join(3)
         self.assertFalse(thread.is_alive())
+
+    def test_hostile_input_is_answered_with_errors_or_ends_the_host_never_escapes_or_hangs(self):
+        """Whatever arrives on stdin — the browser's frames, or bytes nobody meant: truncated
+        frames, lengths past the bound, bodies that are not UTF-8 or not JSON, JSON nested past
+        the parser's depth, numbers past every bound, values that are not requests — the host
+        answers each request with a frame and ends at the first frame it cannot read, and no
+        exception leaves it. Seeded: a failure names its seed."""
+        import random
+        secret = "a paragraph only its page knows"
+        valid = lambda r: frame(request(r.choice(["status", "runtime", "health"]), f"id-{r.randrange(10**6)}"))
+        def body(r):
+            return r.choice([
+                lambda: bytes(r.randrange(256) for _ in range(r.randrange(1, 64))),
+                lambda: b"\xff\xfe" + secret.encode(),
+                lambda: json.dumps(request("score", payload={"v": "3.0", "blocks": [{"id": "a", "text": secret}]}))[:r.randrange(1, 40)].encode(),
+                lambda: b"[" * 200_000 + b"]" * 200_000,
+                lambda: b'{"v":1,"id":"deep","op":"status","payload":' + b'{"a":' * 50_000 + b"1" + b"}" * 50_000 + b"}",
+                lambda: b'{"v":1,"id":"n","op":"status","payload":{"n":' + b"9" * 50_000 + b"}}",
+                lambda: b'{"v":1,"id":"n","op":"status","payload":{"n":NaN}}',
+                lambda: r.choice([b"null", b"[]", b"3", b'"status"', b"true", b"{}"]),
+                lambda: json.dumps({**request(), "v": r.choice([1.0, True, "1", None, [1]])}).encode(),
+                lambda: json.dumps({**request(), "id": r.choice(["", "x" * 97, "a b", 7, None, "\ud800"])}).encode(),
+                lambda: json.dumps({**request(), "op": r.choice(["shell", "", 1, ["status"], "STATUS"])}).encode(),
+                lambda: json.dumps({**request(), "payload": r.choice([[], "x", 1, None, {"x" * 50: [[[]]]}])}).encode(),
+            ])()
+        def hostile(r):
+            choice = r.randrange(5)
+            if choice == 0:
+                data = body(r)
+                return struct.pack("=I", len(data)) + data
+            if choice == 1:
+                return struct.pack("=I", r.choice([0, host.MAX_REQUEST_BYTES + 1, 0xFFFFFFFF]))
+            if choice == 2:
+                return struct.pack("=I", r.randrange(1, 4096)) + bytes(r.randrange(256) for _ in range(r.randrange(0, 8)))
+            if choice == 3:
+                return bytes(r.randrange(256) for _ in range(r.randrange(1, 4)))
+            return valid(r)
+
+        class Component:
+            def start(self):
+                pass
+            def close(self):
+                pass
+            def handle(self, op, payload):
+                if payload:
+                    raise ComponentError("invalid_request", "Unexpected operation payload", 422)
+                return 200, {"op": op}
+
+        for seed in range(60):
+            r = random.Random(seed)
+            stream = b"".join(r.choice([valid, hostile])(r) for _ in range(r.randrange(1, 8)))
+            output = io.BytesIO()
+            result = {}
+            def run():
+                try:
+                    with self.assertLogs(level="DEBUG") as logs:
+                        logging.getLogger().debug("watching")  # assertLogs needs one record
+                        host.run_host(io.BytesIO(stream), output, Component())
+                    result["logs"] = "\n".join(logs.output)
+                except BaseException as exc:  # what the test is for
+                    result["escaped"] = exc
+            thread = threading.Thread(target=run)
+            thread.start()
+            thread.join(20)
+            with self.subTest(seed=seed):
+                self.assertFalse(thread.is_alive(), "the host hung")
+                self.assertNotIn("escaped", result)
+                answered = replies(output.getvalue())
+                for reply in answered:
+                    self.assertEqual(reply["v"], 1)
+                    self.assertTrue(isinstance(reply["id"], str) and host.IDENTIFIER.fullmatch(reply["id"]), reply["id"])
+                    self.assertIn(reply["status"], (200, 400, 409, 422, 500, 503))
+                # A frame it cannot read ends the host: nothing is answered after its error.
+                framing = [i for i, reply in enumerate(answered) if reply.get("status") == 400]
+                self.assertTrue(not framing or framing == [len(answered) - 1])
+                self.assertNotIn(secret, result.get("logs", ""))
 
     def test_host_import_does_not_import_model_libraries(self):
         code = "import sys;sys.path.insert(0,sys.argv[1]);import native_host;print([n for n in ('torch','transformers','onnxruntime') if n in sys.modules])"
@@ -907,6 +984,48 @@ class LifecycleTests(unittest.TestCase):
             response = host.dispatch(component, request(op, payload=payload))
             self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"), op)
         self.assertEqual(component.status()["state"], "ready")
+
+    def test_a_lone_surrogate_costs_its_batch_nothing(self):
+        # A page's text can hold half a surrogate pair, and JSON carries it ("\ud800"). The
+        # validator refused such a string, and with it the whole request: every paragraph of
+        # the batch went without a verdict. It is read as U+FFFD, one code unit for one.
+        component = self.make()
+        self.first_run(component)
+        broken = json.loads('"a paragraph \\ud800 with half a pair \\ude00 in it"')
+        response = host.dispatch(component, request("score", payload={"v": "3.0", "blocks": [
+            {"id": "broken", "text": broken}, {"id": "neighbour", "text": "the paragraph beside it"}]}))
+        self.assertEqual(response["status"], 200, response)
+        self.assertEqual([r["id"] for r in response["data"]["results"]], ["broken", "neighbour"])
+        response = host.dispatch(component, request("tokens", payload={"v": "3.0", "texts": [broken, "beside"]}))
+        self.assertEqual(response["status"], 200, response)
+        self.assertEqual(response["data"]["alone"], [len(clean_text(broken.replace("\ud800", "�").replace("\ude00", "�"), emoji)), 6])
+
+    def test_failures_of_requests_that_carry_text_log_no_text(self):
+        # stderr can end up on disk (the journal, ~/.xsession-errors): of a request carrying a
+        # page's text, only what failed is logged, whatever the failure repeats of its input.
+        component = self.make()
+        self.first_run(component)
+        secret = "a sentence only its page knows"
+        engine = component.controller.engine
+        for failure in (ValueError, RuntimeFailure, UnicodeEncodeError):
+            def fail(texts, failure=failure):
+                if failure is UnicodeEncodeError:
+                    raise UnicodeEncodeError("utf-8", texts[0], 0, 1, "surrogates not allowed")
+                raise failure(f"could not score {texts!r}")
+            engine.score = fail
+            with self.subTest(failure=failure.__name__), self.assertLogs(level="DEBUG") as logs:
+                logging.getLogger().debug("watching")
+                response = host.dispatch(component, request("score", payload={"v": "3.0", "blocks": [{"id": "a", "text": secret}]}))
+                self.assertFalse(response["ok"])
+                self.assertNotIn(secret, "\n".join(logs.output))
+                # A runtime's own failure goes back to the browser that sent the text, which
+                # shows the GPU's reason; anything else is a host error that says nothing.
+                if failure is not RuntimeFailure:
+                    self.assertNotIn(secret, json.dumps(response))
+        # A request the validator refuses says why without its text, too.
+        response = host.dispatch(component, request("score", payload={"v": "3.0", "blocks": [{"id": "a", "text": secret}, {"id": "a", "text": secret}]}))
+        self.assertEqual((response["status"], response["error"]["code"]), (422, "invalid_request"))
+        self.assertNotIn(secret, json.dumps(response))
 
     def test_a_runtime_failure_is_answered_as_one_the_browser_may_retry(self):
         component = self.make()

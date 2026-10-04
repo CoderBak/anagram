@@ -15,9 +15,13 @@ const MAX_IN_FLIGHT = 4;
 const MAX_DOCUMENT_IN_FLIGHT = 2;
 const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, background: 0 };
 /** Admission includes requests waiting on cache/discovery and deduplicated subscribers,
- * so a slow store or many identical requests cannot bypass the memory bounds. */
+ * so a slow store or many identical requests cannot bypass the memory bounds. A tab holds
+ * half of them at most, all its frames together: four frames of a page that kept their
+ * documents' shares full (each a quarter of the whole) left every other tab Unavailable for
+ * as long as the page was open. */
 export const ROUTER_LIMITS = Object.freeze({
   requests: 256, blocks: 1024, chars: 1_000_000,
+  tabRequests: 128, tabBlocks: 512, tabChars: 500_000,
   documentRequests: 16, documentBlocks: 256, documentChars: 250_000,
 });
 
@@ -34,6 +38,9 @@ export interface RequestOrigin {
   partition?: string;
   /** Trusted document identity; independent of a page-supplied scan/session id. */
   documentKey?: string;
+  /** The tab the document is in (the sender's, as the browser names it): its documents share
+   *  a tab's part of the limits (ROUTER_LIMITS). Absent, the document is a tab of its own. */
+  tab?: number;
   signal?: AbortSignal;
 }
 export interface BackendRouter {
@@ -71,6 +78,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
   const readers = new Set<Reader>();
   const waiting: Batch[] = [];
   const documentUsage = new Map<string, Usage>();
+  const tabUsage = new Map<string, Usage>();
   const runningByDocument = new Map<string, number>();
   const lastServed = new Map<string, number>();
   const total: Usage = { requests: 0, blocks: 0, chars: 0 };
@@ -177,14 +185,19 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
     const response = (results = req.blocks.map(neutral)): ScoreBatchResponse =>
       ({ v: req.v, model, results });
     const document = origin.documentKey ?? `anonymous:${++serial}`;
+    const tab = origin.tab !== undefined ? `tab:${origin.tab}` : document;
     const partition = origin.partition ?? "";
     const usage = documentUsage.get(document) ?? { requests: 0, blocks: 0, chars: 0 };
+    const held = tabUsage.get(tab) ?? { requests: 0, blocks: 0, chars: 0 };
     const chars = req.blocks.reduce((sum, block) => sum + block.text.length, 0), blocks = req.blocks.length;
     if (origin.signal?.aborted || !blocks || total.requests >= ROUTER_LIMITS.requests ||
       total.blocks + blocks > ROUTER_LIMITS.blocks || total.chars + chars > ROUTER_LIMITS.chars ||
+      held.requests >= ROUTER_LIMITS.tabRequests || held.blocks + blocks > ROUTER_LIMITS.tabBlocks ||
+      held.chars + chars > ROUTER_LIMITS.tabChars ||
       usage.requests >= ROUTER_LIMITS.documentRequests || usage.blocks + blocks > ROUTER_LIMITS.documentBlocks ||
       usage.chars + chars > ROUTER_LIMITS.documentChars) return response();
     total.requests++; total.blocks += blocks; total.chars += chars;
+    held.requests++; held.blocks += blocks; held.chars += chars; tabUsage.set(tab, held);
     usage.requests++; usage.blocks += blocks; usage.chars += chars; documentUsage.set(document, usage);
     let cancel!: () => void;
     const reader: Reader = { document, persist: origin.private !== true, active: true, entries: new Set(),
@@ -255,6 +268,8 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       origin.signal?.removeEventListener("abort", reader.cancel);
       reader.active = false; detach(reader); readers.delete(reader);
       total.requests--; total.blocks -= blocks; total.chars -= chars;
+      held.requests--; held.blocks -= blocks; held.chars -= chars;
+      if (!held.requests) tabUsage.delete(tab);
       usage.requests--; usage.blocks -= blocks; usage.chars -= chars;
       if (!usage.requests) { documentUsage.delete(document); if (!runningByDocument.has(document)) lastServed.delete(document); }
     }

@@ -545,6 +545,25 @@ it("ages waiting background work ahead of a later stream of viewport requests", 
   } finally { client.release(); clock.mockRestore(); }
 });
 
+it("one tab's frames hold half the router at most: another tab is still answered while they keep it busy", async () => {
+  const { ROUTER_LIMITS } = await import("../../lib/backend/router");
+  const client = fakeClient(A), router = createRouter(client);
+  client.hold();
+  // Four frames of one page, each filling its document's share with blocks that keep changing.
+  const frames = Array.from({length:4}, (_, doc) => router.handle(req(Array.from({length:ROUTER_LIMITS.documentBlocks}, (_, index)=>`f${doc} b${index}`)),{documentKey:`frame ${doc}`, tab:7}));
+  const settled = await Promise.race([Promise.all(frames).then(() => "all"), settle().then(() => "some held")]);
+  expect(settled).toBe("some held");
+  // Past the tab's half, its frames are refused at once…
+  const refused = await Promise.race([frames[2]!, frames[3]!]);
+  expect(refused.results.every((r) => r.degraded)).toBe(true);
+  // …and another tab's page is admitted and scored.
+  const other = router.handle(req(["another tab's paragraph"]),{documentKey:"other", tab:8});
+  await settle();
+  expect(client.calls.some((call) => call.some((block) => block.text === "another tab's paragraph"))).toBe(true);
+  client.release(); await Promise.all([...frames, other]);
+  expect((await router.handle(req(["the tab again"]),{documentKey:"frame 0", tab:7})).results[0]!.degraded).toBeUndefined();
+});
+
 it("bounds all queued block references even when requests contain short text", async () => {
   const client = fakeClient(A), router = createRouter(client);
   client.hold();

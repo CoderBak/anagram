@@ -7,7 +7,8 @@
 // where the document spells the word with it, and what is no one's prose left out — the
 // glyphs of a formula, a citation mark, an accent set apart from its letter.
 import { skipGap } from "../dom/text";
-import { SENTENCE_END, bracketCitations, dehyphenates, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
+import { SENTENCE_END, bracketCitations, dehyphenates, lastToken, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
+import { append, most } from "./arrays";
 
 /** One glyph: its rect on a 0-based page, in the space its reader measures in (Zotero's
  *  text: PDF user space). */
@@ -73,7 +74,20 @@ export interface PageIndex {
   boxes: Box[];
   /** [a, b, c, d, e, f]: PDF user space → top-left page space. */
   transform: number[];
+  /** How many more runs the search for glyphs may look at on this page (SEARCHES_PER_CHAR). */
+  searches: number;
 }
+
+/**
+ * How many runs the search for glyphs (lib/pdf/structured.ts, boxesFor) may look at on a page,
+ * for each run and each character the page has. A glyph is looked for among the runs of the
+ * lines around it, a few dozen on a page of prose, a few hundred in a dense table; but a page
+ * that sets thousands of runs along one line had every glyph look at all of them, and a PDF
+ * can set as many as it likes — 16,000 took the reader 1.5 s, 32,000 four, the time growing
+ * as the square. Past this, what is left of the page's glyphs is not looked for: their text
+ * is read, without runs to mark it on.
+ */
+const SEARCHES_PER_CHAR = 512;
 
 /** Typewriter faces: Courier and its clones, Computer and Latin Modern's, txfonts',
  *  Inconsolata. */
@@ -86,7 +100,7 @@ const PROSE_WORDS = 3;
 /** A face's family: the name without its subset tag, weight, shape and size. Computer
  *  Modern's faces are one family (CMR10, CMBX12), and so are the EC fonts' (SFRM1095). */
 function familyOf(name: string): string {
-  const base = name.replace(/^[A-Z]{6}\+/, "").split(/[-,]/)[0]!.replace(/\d.*$/, "");
+  const base = name.replace(/^[A-Z]{6}\+/, "").split(/[-,]/)[0]!.replace(/\d[^]*$/, "");
   return /^CM[A-Z]/.test(base) ? "CM" : /^SF[A-Z]{2}/.test(base) ? "SF" : base;
 }
 
@@ -137,7 +151,9 @@ export function indexPage(page: PdfPageText): PageIndex {
     });
   });
   boxes.sort((a, b) => a.y - b.y);
-  return { page, boxes, transform: page.transform ?? [1, 0, 0, -1, 0, page.height] };
+  let chars = 0;
+  for (const it of page.items) chars += it.str.length;
+  return { page, boxes, transform: page.transform ?? [1, 0, 0, -1, 0, page.height], searches: SEARCHES_PER_CHAR * (boxes.length + chars) };
 }
 
 /** One UTF-16 unit of Zotero's text for a block, with the glyph it draws, if any. */
@@ -527,7 +543,7 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
    *  carries a script. */
   const lone = (k: number): { face: Box; script: boolean } | null => {
     const t = tokens[k]!;
-    const size = Math.max(...t.at.map((i) => faces[i]?.h ?? 0));
+    const size = most(t.at, (i) => faces[i]?.h ?? 0);
     const small = (i: number): boolean => faces[i] !== null && faces[i]!.h < size * CORNER && !afterSpace(i);
     const main = t.at.filter((i) => LETTER.test(pieces[i]!.ch) && !small(i));
     const face = main.length === 1 ? faces[main[0]!] : null;
@@ -642,7 +658,7 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
       if (vocab && previous !== null) {
         const a = pieces[previous]!, s = sources[previous];
         if (a.glyph && p.glyph && !sameLine(a.glyph, p.glyph) && s && HYPHEN.test(s.box.it.str[s.offset + 1] ?? "")) {
-          const stem = /(\S+)$/u.exec(text)?.[1] ?? "";
+          const stem = lastToken(text);
           const from = previous;
           const head = t.at.filter((j) => j > from).map((j) => pieces[j]!.ch).join("");
           if (!dehyphenates(stem, head, vocab)) { text += s.box.it.str[s.offset + 1]; prov.push({ ...s, offset: s.offset + 1 }); }
@@ -730,11 +746,11 @@ function withoutCitations(text: string, prov: (Source | null)[], keepOpening: bo
   let at = 0;
   for (const [from, to] of cuts) {
     out += text.slice(at, from);
-    kept.push(...prov.slice(at, from));
+    append(kept, prov.slice(at, from));
     at = to;
   }
   out += text.slice(at);
-  kept.push(...prov.slice(at));
+  append(kept, prov.slice(at));
   // A mark that opened the paragraph leaves the space after it.
   if (out.startsWith(" ")) { out = out.slice(1); kept.shift(); }
   return { text: out, prov: kept };

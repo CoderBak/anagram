@@ -80,7 +80,7 @@ const SCRIPT_EXTENSION = /\.(php|aspx?|jsp|cgi|do|action|ashx|py|pl)$/i;
  * "document.pdf". Null for a name with nothing left.
  */
 export function pdfFileName(name: string): string | null {
-  const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_").replace(/^[.\s]+|[.\s]+$/g, "").slice(0, 200);
+  const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_").replace(/^[.\s]+|(?<![.\s])[.\s]+$/g, "").slice(0, 200);
   if (!clean || !/[\p{L}\p{N}]/u.test(clean)) return null;
   if (/\.pdf$/i.test(clean)) return clean;
   return SCRIPT_EXTENSION.test(clean) ? clean.replace(SCRIPT_EXTENSION, ".pdf") : `${clean}.pdf`;

@@ -12,7 +12,7 @@
 import http from "node:http";
 import { BADGE_SEL } from "./harness.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
-import { ARTICLE, WATCH, isCspLine } from "./csp-page.mjs";
+import { ARTICLE, STRICT_ARTICLE, STRICT_POLICY, STRICT_PROBE, WATCH, isCspLine } from "./csp-page.mjs";
 import * as ff from "./firefox-harness.mjs";
 
 const results = [];
@@ -20,12 +20,24 @@ const record = (name, ok, note = "") =>
   results.push({ name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note: String(note) });
 
 let prohibitedLoopbackRequests = 0;
+/** What the strict page's report-uri received. */
+const strictReports = [];
 const files = await new Promise((resolve) => {
   const server = http.createServer((req, res) => {
     // If CSP were loosened, CORS would allow the probe. A refusal must come from
     // the extension policy, not an unreadable response from this fixture.
     res.setHeader("Access-Control-Allow-Origin", "*");
     if (req.url.startsWith("/csp-loopback")) prohibitedLoopbackRequests++;
+    if (req.url.startsWith("/csp-report")) {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => { strictReports.push(body); res.end(); });
+      return;
+    }
+    if (req.url.split("?")[0] === "/strict") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-security-policy": STRICT_POLICY });
+      return void res.end(STRICT_ARTICLE);
+    }
     if (req.url.split("?")[0] === "/doc.pdf") {
       res.writeHead(200, { "content-type": "application/pdf", "content-length": TEST_PDF.length });
       return void res.end(TEST_PDF);
@@ -148,6 +160,26 @@ if (launched) {
     JSON.stringify({ chipped, violations: violations.slice(0, 3) }),
   );
   await page.close().catch(() => {});
+
+  // A page whose own policy refuses inline styles. Firefox holds what a content script
+  // writes into a page to the page's policy: a <style> for the underlines and a style
+  // attribute in a card's markup were refused there, the marks went unpainted, and the
+  // page — and the site, through its report-uri — heard of it at every chip.
+  {
+    const strict = await browser.newPage();
+    await strict.evaluateOnNewDocument(WATCH);
+    await strict.goto(files.url("/strict"), { waitUntil: "load" }).catch(() => {});
+    await ff.waitFor(strict, (sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill.scored")).length >= 2, { timeout: 25000, arg: BADGE_SEL });
+    const seen = await strict.evaluate(STRICT_PROBE, BADGE_SEL).catch((e) => ({ error: String(e) }));
+    await ff.sleep(500);
+    const heard = await strict.evaluate(() => window.__csp ?? []).catch(() => ["(unreadable)"]);
+    record(
+      "Firefox: a page whose policy refuses inline styles gets its chips, painted underlines and a card's scale, and hears nothing of Anagram's",
+      seen.chips === 2 && seen.marks > 0 && seen.painted && /%$/.test(seen.marker ?? "") && heard.length === 0 && strictReports.length === 0,
+      JSON.stringify({ seen, heard: heard.slice(0, 3), reports: strictReports.length }),
+    );
+    await strict.close().catch(() => {});
+  }
 
   // And what Firefox really APPLIED, asked of an extension page by breaking the policy.
   const options = await ff.openExtensionPage(browser, fxUrl("options.html"));

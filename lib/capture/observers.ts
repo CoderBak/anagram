@@ -30,7 +30,7 @@ import { MARK_ATTR, type Unit } from "../types";
 import { NO_SCORE_TAGS } from "../dom/tags";
 import { countWords } from "../dom/text";
 import { repairSplits } from "../dom/splits";
-import { eachShadowRoot, eachShadowRootInSlices, noteShadowHost, shadowAttachedEvent } from "../dom/shadow";
+import { eachShadowRoot, eachShadowRootInSlices, noteShadowHost, shadowAttachedEvent, shadowRootOf } from "../dom/shadow";
 import { finishInSlices } from "../slices";
 
 export interface Observers {
@@ -78,6 +78,14 @@ const DRAIN_MAX_SPACING_MS = 5000;
 const ROOT_MARGIN = "1200px 0px";
 /** Min interval between attribute-driven re-scans of the SAME element. */
 const ATTR_RESCAN_MIN_MS = 1500;
+/**
+ * The most changed nodes held for the next drain. They are held themselves, the ones the page
+ * has thrown away since included, until the drain: a page that rebuilds ten thousand elements
+ * every frame had millions of its discarded nodes kept alive here for seconds. Past this
+ * many, nothing more is held and the drain reads the whole page again, which costs what its
+ * first reading did and is spaced like any other drain.
+ */
+const MOST_HELD = 10_000;
 // "aria-expanded" belongs here because of the clipped-box rule (lib/dom/style.ts): the
 // only thing some "see more" controls change in the DOM is that flag on the BUTTON, and
 // the box it expands is the button's sibling — a scan root one level above the dirty
@@ -128,6 +136,8 @@ export function createObservers(opts: {
   let draining = false;
   let lastDrainAt = 0;
   let documentReplaced = false;
+  /** More changed than is held (MOST_HELD): the next drain reads the whole page. */
+  let wholePage = false;
   let started = false;
   /** Shadow roots the single MutationObserver also watches (it accepts many targets). */
   let observedRoots = new WeakSet<ShadowRoot>();
@@ -176,6 +186,9 @@ export function createObservers(opts: {
         }
         continue;
       }
+      // Past MOST_HELD nothing is held: only the shadow roots a subtree brings are looked for.
+      const holding = !wholePage && !overflowed();
+      if (!holding && rec.type !== "childList") continue;
       if (rec.type === "characterData") {
         if (inSelfHost(rec.target)) continue;
         const parent = rec.target.parentElement;
@@ -204,22 +217,35 @@ export function createObservers(opts: {
       // childList. A text node swapped for another of the same shape (`el.textContent = n`
       // on a counter) is quiet: what left is what a unit could have owned.
       if (textSwap(rec)) {
-        if (!inSelfHost(rec.target)) rec.removedNodes.forEach((n) => quiet.set(n as Text, rec.target as Element));
+        if (holding && !inSelfHost(rec.target)) rec.removedNodes.forEach((n) => quiet.set(n as Text, rec.target as Element));
         continue;
       }
       rec.addedNodes.forEach((n) => {
         if (inSelfHost(n)) return;
         if (n.nodeType === Node.ELEMENT_NODE && NO_SCORE_TAGS.has(n.nodeName.toUpperCase())) return;
-        dirty.add(n);
+        if (holding) dirty.add(n);
         // A root attached before its host was added, which the walk of this subtree will
         // not go into while it is empty — a closed panel, a widget that renders later.
         if (n.nodeType === Node.ELEMENT_NODE) eachShadowRoot(n, observeRoot);
       });
-      rec.removedNodes.forEach((n) => {
-        if (inSelfHost(n)) return;
-        removed.add(n);
-      });
+      if (holding) {
+        rec.removedNodes.forEach((n) => {
+          if (inSelfHost(n)) return;
+          removed.add(n);
+        });
+      }
     }
+    overflowed();
+  }
+
+  /** More is held than MOST_HELD: let it all go, and have the next drain read the whole page. */
+  function overflowed(): boolean {
+    if (dirty.size + removed.size + quiet.size < MOST_HELD) return false;
+    wholePage = true;
+    dirty.clear();
+    removed.clear();
+    quiet.clear();
+    return true;
   }
 
   function scheduleDrain(): void {
@@ -240,11 +266,17 @@ export function createObservers(opts: {
     if (mo) ingest(mo.takeRecords());
     if (documentReplaced) {
       documentReplaced = false;
+      wholePage = false;
       dirty.clear();
       removed.clear();
       quiet.clear();
       opts.onDocumentReplaced?.();
       return;
+    }
+    if (wholePage) {
+      wholePage = false;
+      dirty.clear();
+      dirty.add(document.body ?? document.documentElement);
     }
     if (dirty.size === 0 && removed.size === 0 && quiet.size === 0) return;
     const nodes = Array.from(dirty);
@@ -264,7 +296,7 @@ export function createObservers(opts: {
     draining = true;
     void pending.then((cost) => done(typeof cost === "number" ? cost : performance.now() - began), () => done(performance.now() - began)).finally(() => {
       draining = false;
-      if (dirty.size > 0 || removed.size > 0 || quiet.size > 0) scheduleDrain();
+      if (wholePage || dirty.size > 0 || removed.size > 0 || quiet.size > 0) scheduleDrain();
     });
   }
 
@@ -372,7 +404,14 @@ export function createObservers(opts: {
     const host = e.composedPath()[0] as Node | undefined;
     if (!host || host.nodeType !== Node.ELEMENT_NODE || inSelfHost(host)) return;
     noteShadowHost(host as Element); // closed or open, its root is read from now on
-    eachShadowRoot(host, observeRoot);
+    // The root just attached is all that is new: whatever is below the host was looked in
+    // when it came, and a page that gave a root to each of ten thousand nested elements had
+    // the whole tree below each one walked again.
+    const root = shadowRootOf(host as Element);
+    if (root) {
+      observeRoot(root);
+      eachShadowRoot(root, observeRoot);
+    }
     dirty.add(host);
     scheduleDrain();
   }
@@ -419,6 +458,7 @@ export function createObservers(opts: {
     dirty.clear();
     removed.clear();
     quiet.clear();
+    wholePage = false;
     reported.clear();
     seen = new WeakMap(); // disconnect() forgot every target: the next start asks afresh
     dirtySince = null;

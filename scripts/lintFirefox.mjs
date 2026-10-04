@@ -24,7 +24,7 @@ const ACCEPTED = [
       "built from our own messages, band labels and numbers. No page text goes into it.",
   },
   {
-    code: "UNSAFE_VAR_ASSIGNMENT", message: INNER_HTML, file: /^vendor\/purify\.min\.mjs$/, count: 4,
+    code: "UNSAFE_VAR_ASSIGNMENT", message: INNER_HTML, file: /^vendor\/purify\.min\.mjs$/, count: 1,
     why: "DOMPurify as published: it parses markup to sanitize it.",
   },
   {

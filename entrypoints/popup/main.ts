@@ -43,6 +43,9 @@ import { sendTabControl } from "../../lib/messaging/tabControl";
 import type { PageReport } from "../../lib/capture/pageReport";
 import { mountReport } from "./report";
 import { bandColorRules } from "../../lib/render/scale";
+import { aiShare, localDate, statsLevelOf, viewedWords } from "../../lib/stats/model";
+import { openStatsStore } from "../../lib/stats/store";
+import { formatShare, formatWords } from "../../lib/stats/format";
 
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
 const siteHostEl = document.getElementById("siteHost") as HTMLElement;
@@ -422,6 +425,22 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
   paint();
 }
 
+/**
+ * Today's line, while statistics are recorded: how much of what was read today is expected
+ * to be AI-generated, out of how many words scored, and the way to the statistics page. Read
+ * from the extension's own database (lib/stats/store.ts); off, the line is not there.
+ */
+async function paintStatsToday(): Promise<void> {
+  const line = document.getElementById("statsToday")!;
+  const level = statsLevelOf(await settings.statsLevel.getValue().catch(() => "off"));
+  line.hidden = level === "off";
+  if (level === "off") return;
+  const total = (await openStatsStore().day(localDate()).catch(() => undefined))?.total;
+  document.getElementById("statsTodayText")!.textContent = !total || viewedWords(total) === 0 ? t("popupStatsNothing")
+    : total.scored === 0 ? t("popupStatsNoneScored", formatWords(viewedWords(total)))
+    : t("popupStatsToday", formatShare(aiShare(total)), formatWords(total.scored));
+}
+
 /** The reading mode with no document in it: its empty state is a drop zone and a picker. */
 function openEmptyReader(): void {
   void browser.tabs.create({ url: browser.runtime.getURL(READER_PAGE as PublicPath) });
@@ -570,6 +589,11 @@ async function init(): Promise<void> {
     openEmptyReader();
     window.close();
   });
+  document.getElementById("openStats")!.addEventListener("click", () => {
+    void browser.tabs.create({ url: browser.runtime.getURL("/stats.html" as PublicPath) });
+    window.close();
+  });
+  void paintStatsToday();
   analyzeTextEl.addEventListener("click", () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/paste.html" as PublicPath) });
     window.close();
@@ -596,7 +620,7 @@ async function init(): Promise<void> {
   let ticks = 0;
   const poll = async (): Promise<void> => {
     await refreshStatus(tab?.id);
-    if (++ticks % 5 === 0) await refreshBackend();
+    if (++ticks % 5 === 0) await Promise.all([refreshBackend(), paintStatsToday()]);
     window.setTimeout(() => void poll(), 1000);
   };
   window.setTimeout(() => void poll(), 1000);

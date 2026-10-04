@@ -121,6 +121,8 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `entrypoints/onboarding/index.html` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md` | the user-guide link on the setup page; opened only when clicked |
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |
+| `entrypoints/stats/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the statistics page; opened only when clicked |
+| `entrypoints/stats/main.ts` | `http://www.w3.org/2000/svg` | the SVG namespace the trend chart is drawn in; a name, not an address |
 | `entrypoints/options/main.ts` | `https://www.Example.com/path` | an example in a comment about parsing a hostname |
 | `entrypoints/options/main.ts` | `https://` | the scheme prepended to a bare hostname before `new URL()` parses it |
 | `entrypoints/reader/index.html` | `http://www.apache.org/licenses/LICENSE-2.0` | the retained upstream PDF.js license notice in an HTML comment |
@@ -152,6 +154,8 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `underlineScope` | underlines on the flagged paragraphs (default) or on every paragraph read |
 | `mergeShorts` | group short paragraphs to reach the minimum length |
 | `minWords` | the minimum length in words: 25, 50, 75, 100 or 150 |
+| `statsLevel` | how much of the reading statistics is recorded: `off` (default), `daily`, `sites` or `pages` |
+| `statsRetentionDays` | how many days of reading statistics are kept: 30, 90 (default) or 365 |
 
 ### IndexedDB `anagram-scores`
 
@@ -164,6 +168,21 @@ once would tell a page the user had read the same text elsewhere. A private wind
 are kept in memory, apart from the rest. An unsalted digest is not anonymous: someone with
 local cache access can test guesses about known text and sites. The store keeps at most 20 000 rows, pruned back to 15 000 oldest first, and
 rows expire 30 days after they were written.
+
+### IndexedDB `anagram-stats`
+
+The reading statistics, only once the user has chosen a level in Settings, Statistics (off by
+default); [statistics.md](statistics.md) describes them and the file they export to. Four
+stores: `days` (per day: words read, expected words and paragraphs per verdict, the words not
+scored and why, the same per kind of page, the models and minimum lengths in force), `sites`
+(level `sites` and up: the same per site and day, the site being a hostname without `www.`),
+`pages` (level `pages`: the same per page and day, with the page's address without query or
+fragment, its title, the minute it was first read and the seconds it was shown) and `meta`
+(the day retention last ran). **No page text is stored at any level.** Nothing is recorded from
+a private window, from a site the user switched Anagram off for, or from Analyze text. Days
+older than the retention setting are deleted at most once a day; "Clear statistics" deletes
+everything. Only the extension's own pages read the database, and nothing in it is sent
+anywhere: an export is a file the user saves.
 
 ### Other browser storage
 

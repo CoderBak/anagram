@@ -25,7 +25,7 @@ import time
 import tomllib
 from pathlib import Path
 from typing import Annotated
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scoring import Tokenizer, score_texts
@@ -342,10 +342,27 @@ class EditLens:
         }
 
 
+#: A UTF-16 surrogate standing alone. A page's text can hold one, and JSON carries it
+#: ("\ud800"); in a Python string it can only be alone, a pair being one code point.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def well_formed(value):
+    """Page text with each lone surrogate replaced by U+FFFD, as a browser's TextEncoder does
+    for the in-browser engine: one UTF-16 unit for one, so the extension's offsets hold. The
+    validator refuses such a string, and refused the whole request with it: one paragraph a
+    page wrote one into left every paragraph of its batch without a verdict."""
+    return _LONE_SURROGATE.sub("�", value) if isinstance(value, str) else value
+
+
+#: Text from a page, as a request carries it.
+PageText = Annotated[str, BeforeValidator(well_formed), Field(max_length=MAX_TEXT_CHARS)]
+
+
 class Block(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(min_length=1, max_length=MAX_ID_CHARS)
-    text: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    text: PageText = ""
 
 
 class ContractRequest(BaseModel):
@@ -374,7 +391,7 @@ class ScoreRequest(ContractRequest):
 
 
 class TokensRequest(ContractRequest):
-    texts: list[Annotated[str, Field(max_length=MAX_TEXT_CHARS)]] = Field(
+    texts: list[PageText] = Field(
         default_factory=list, max_length=MAX_TOKEN_TEXTS
     )
 

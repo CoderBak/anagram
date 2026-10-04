@@ -245,7 +245,7 @@ function modelTextOf(s: string): string {
 export function modelForm(s: string): string {
   s = s.replace(/[\uFB00-\uFB06]/g, (ligature) => ligature.normalize("NFKC"));
   for (;;) {
-    const next = s.replace(INVISIBLES_RE, "").replace(/\\+([%&_#$])/g, "$1").replace(RAW_LATEX_RE, "");
+    const next = s.replace(INVISIBLES_RE, "").replace(/(?<!\\)\\+([%&_#$])/g, "$1").replace(RAW_LATEX_RE, "");
     if (next === s) break;
     s = next;
   }
@@ -645,8 +645,11 @@ export function isServerDiagnostic(text: string): boolean {
 
 /** A WordPress shortcode as a page builder writes it: a closing `[/vc_column_text]`, a name
  *  of two parts (`[vc_row …]`, `[et_pb_section]`), or settings (`[gallery ids="…"]`). A
- *  template's "[audience]" or "[doing this thing]" and a "[sic]" are none of these. */
-const SHORTCODE_RE = /\[\/[a-z][\w-]*\]|\[[a-z][a-z\d]*[_-][\w-]*(?:\s[^[\]]*)?\]|\[[a-z][\w-]*\s[^[\]]*=[^[\]]*\]/g;
+ *  template's "[audience]" or "[doing this thing]" and a "[sic]" are none of these. The
+ *  settings are read up to their first "=" and on from there: tried at every "=" of a text
+ *  that never closes its bracket, the search took time as the square of the text's length,
+ *  and a page could hold its own main thread with one paragraph. */
+const SHORTCODE_RE = /\[\/[a-z][\w-]*\]|\[[a-z][a-z\d]*[_-][\w-]*(?:\s[^[\]]*)?\]|\[[a-z][\w-]*\s[^[\]=]*=[^[\]]*\]/g;
 
 /**
  * The share of a text's characters that stand in shortcodes. A WordPress page whose page

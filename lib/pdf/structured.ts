@@ -31,6 +31,7 @@ import { ACCENT, MARK_NUMBERS, assemble, indexPage, isSpace, mathPagesOf, sameLi
 import { BARE_NUMBER, lineNumberMarks, mayHoldColumn, type NumberMark, type PageContent } from "./lineNumbers";
 import { SENTENCE_END, vocabularyInSlices, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
 import { finish, finishInSlices } from "../slices";
+import { append, least, most } from "./arrays";
 
 export { isMathFont } from "./reading";
 
@@ -108,21 +109,25 @@ export function glyphsOf(textMap: string | undefined): Glyph[] {
     if (!Array.isArray(run) || run.length < 6) continue;
     const [header, page, minX, minY, maxX, maxY] = run as [number, number, number, number, number, number];
     const vertical = (((header >> AXIS_SHIFT) & 0b11) & 1) === 1;
-    const widths = run.slice(6) as (number | [number, number])[];
-    const positions: [number, number][] = [];
+    // Each glyph as it is reached, with nothing made on the way: a long document's maps are
+    // millions of glyphs, all read as the structure comes, and a pair of numbers and a copy of
+    // the widths for each were garbage to be collected beside them.
+    const widths = run.length - 6;
+    const count = (widths === 0 ? 1 : widths) - (header & SOFT_HYPHEN ? 1 : 0);
     let pos = vertical ? minY : minX;
-    if (widths.length === 0) positions.push([pos, vertical ? maxY : maxX]);
-    for (const w of widths) {
-      if (Array.isArray(w)) pos += w[0];
-      const width = Array.isArray(w) ? w[1] : w;
-      positions.push([pos, pos + width]);
-      pos += width;
+    for (let k = 0; k < count; k++) {
+      let a = pos, b = vertical ? maxY : maxX;
+      if (widths > 0) {
+        const w = run[6 + k] as number | [number, number];
+        if (Array.isArray(w)) pos += w[0];
+        const width = Array.isArray(w) ? w[1] : w;
+        a = pos;
+        b = pos + width;
+        pos += width;
+      }
+      if (vertical) out.push(k === 0 ? { page, x1: minX, y1: a, x2: maxX, y2: b, start: true } : { page, x1: minX, y1: a, x2: maxX, y2: b });
+      else out.push(k === 0 ? { page, x1: a, y1: minY, x2: b, y2: maxY, start: true } : { page, x1: a, y1: minY, x2: b, y2: maxY });
     }
-    if (header & SOFT_HYPHEN) positions.pop();
-    positions.forEach(([a, b], k) => {
-      const at = vertical ? { page, x1: minX, y1: a, x2: maxX, y2: b } : { page, x1: a, y1: minY, x2: b, y2: maxY };
-      out.push(k === 0 ? { ...at, start: true } : at);
-    });
   }
   return out;
 }
@@ -154,6 +159,9 @@ function centreOf(g: Glyph, m: number[]): { cx: number; cy: number; h: number } 
  */
 function boxesFor(index: PageIndex, g: Glyph): Box[] {
   const { cx, cy, h } = centreOf(g, index.transform);
+  // A glyph that is nowhere (a box a PDF's matrices took to infinity) is on no run, and a
+  // band around it would hold every one.
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) return [];
   const boxes = index.boxes;
   // Baselines lie below a glyph's centre by up to its ascent; scan the band around it.
   let lo = 0, hi = boxes.length;
@@ -165,6 +173,7 @@ function boxesFor(index: PageIndex, g: Glyph): Box[] {
   for (let i = lo; i < boxes.length; i++) {
     const b = boxes[i]!;
     if (b.y > cy + 4 * h) break;
+    if (--index.searches < 0) return []; // the page has had all the search it is worth
     const slack = b.h * BOX_SLACK;
     if (cy < b.y - b.h * ASCENT - slack || cy > b.y + b.h * DESCENT + slack) continue;
     const dx = cx < b.x1 ? b.x1 - cx : cx > b.x2 ? cx - b.x2 : 0;
@@ -185,17 +194,26 @@ function isTextNode(node: SdtBlock | SdtTextNode): node is SdtTextNode {
   return typeof (node as SdtTextNode).text === "string";
 }
 
+/**
+ * How deep inside a block its text is read. Zotero nests a list's items and the paragraphs an
+ * item holds, a few levels; but the structure is what a parser made of an untrusted PDF, and
+ * each reading of a block calls itself once a level down: a block nested ten thousand deep
+ * threw out of the reader. Blocks deeper than this are not read.
+ */
+const MAX_NESTING = 32;
+
 /** The pieces of a block: its text nodes' units, each with its glyph, nested blocks' too.
  *  `raised` says which nodes are raised citations. */
-function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: Piece[] = []): Piece[] {
+function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: Piece[] = [], depth = 0): Piece[] {
   for (const node of block.content ?? []) {
     if (!isTextNode(node)) {
+      if (depth >= MAX_NESTING) continue;
       if (out.length && out[out.length - 1]!.ch !== " ") out.push({ ch: " ", glyph: null });
-      piecesOf(node, raised, out);
+      piecesOf(node, raised, out, depth + 1);
       continue;
     }
     const glyphs = glyphsOf(node.anchor?.textMap);
-    const cite = raised(node) ? { raised: true } : {};
+    const cite = raised(node);
     let k = 0;
     let nonSpace = 0;
     for (const ch of node.text) nonSpace += isSpace(ch) ? 0 : ch.length;
@@ -203,8 +221,10 @@ function piecesOf(block: SdtBlock, raised: (node: SdtTextNode) => boolean, out: 
     const trusted = glyphs.length === nonSpace;
     for (let i = 0; i < node.text.length; i++) {
       const ch = node.text[i]!;
-      if (isSpace(ch)) out.push({ ch: " ", glyph: null, ...cite });
-      else out.push({ ch, glyph: trusted ? glyphs[k++]! : null, ...cite, ...(i === 0 ? { opens: true } : {}) });
+      const piece: Piece = isSpace(ch) ? { ch: " ", glyph: null } : { ch, glyph: trusted ? glyphs[k++]! : null };
+      if (cite) piece.raised = true;
+      if (i === 0 && !isSpace(ch)) piece.opens = true;
+      out.push(piece);
     }
   }
   return out;
@@ -238,7 +258,7 @@ function placeMarks(pieces: Piece[]): Piece[] {
   pieces.forEach((p, i) => {
     if (home.has(i)) return;
     out.push(p);
-    out.push(...(after.get(i) ?? []));
+    append(out, after.get(i) ?? []);
   });
   return out;
 }
@@ -340,10 +360,10 @@ function originOf(node: SdtBlock): string {
 }
 
 /** The first text node of a block, however deep. */
-function firstText(block: SdtBlock): SdtTextNode | null {
+function firstText(block: SdtBlock, depth = 0): SdtTextNode | null {
   for (const node of block.content ?? []) {
     if (isTextNode(node)) { if (node.text.trim() !== "") return node; continue; }
-    const inner = firstText(node);
+    const inner = depth < MAX_NESTING ? firstText(node, depth + 1) : null;
     if (inner) return inner;
   }
   return null;
@@ -399,9 +419,9 @@ const CODE_CHARS = 20;
 const TYPED_BODY = 0.5;
 
 /** The letters of a block, and those of them Zotero styles monospace. */
-function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }): { mono: number; all: number } {
+function typewriter(block: SdtBlock, out = { mono: 0, all: 0 }, depth = 0): { mono: number; all: number } {
   for (const node of block.content ?? []) {
-    if (!isTextNode(node)) { typewriter(node, out); continue; }
+    if (!isTextNode(node)) { if (depth < MAX_NESTING) typewriter(node, out, depth + 1); continue; }
     const n = node.text.replace(/\s+/gu, "").length;
     out.all += n;
     if (node.style?.monospace) out.mono += n;
@@ -561,9 +581,9 @@ function* readingsOf(content: SdtBlock[], everything: boolean): Generator<void, 
 }
 
 /** A block's text as Zotero has it, a nested block's a space apart. */
-function plainText(block: SdtBlock): string {
+function plainText(block: SdtBlock, depth = 0): string {
   let out = "";
-  for (const node of block.content ?? []) out += isTextNode(node) ? node.text : ` ${plainText(node)} `;
+  for (const node of block.content ?? []) out += isTextNode(node) ? node.text : depth < MAX_NESTING ? ` ${plainText(node, depth + 1)} ` : " ";
   return out.replace(/\s+/gu, " ").trim();
 }
 
@@ -591,7 +611,7 @@ function isBibliography(list: SdtBlock): boolean {
  *  the page it points to. An entry whose caption fills its last line keeps a leader of two
  *  or three dots ("…prediction [276].. .187"), taken only where the entry opens with its
  *  number. */
-const CONTENTS_ENTRY = /(?:[.·…]\s*){4,}(?:\d{1,4}|[ivxlc]{1,7})$/iu;
+const CONTENTS_ENTRY = /(?<![.·…]\s*)(?:[.·…]\s*){4,}(?:\d{1,4}|[ivxlc]{1,7})$/iu;
 const SHORT_LEADER = /[^.\s](?:\s*\.){2,3}\s*(?:\d{1,4}|[ivxlc]{1,7})$/iu;
 /** What an entry opens with: its figure's, table's or section's number. */
 const ENTRY_NUMBER = /^(?:[A-Z]\.?)?\d/u;
@@ -729,7 +749,7 @@ function extentOn(block: SdtBlock, which: "first" | "last"): number[] | null {
   if (!rects?.length) return null;
   const page = rects[which === "first" ? 0 : rects.length - 1]![0]!;
   const on = rects.filter((r) => r[0] === page);
-  return [page, Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))];
+  return [page, least(on, (r) => r[1]!), least(on, (r) => r[2]!), most(on, (r) => r[3]!), most(on, (r) => r[4]!)];
 }
 
 /**
@@ -776,9 +796,9 @@ function setUnder(above: SdtBlock, para: SdtBlock, limit: number, least = -1): b
 }
 
 /** The heights of the runs of a block's text, as its glyph maps give them. */
-function runHeights(block: SdtBlock, out: number[] = []): number[] {
+function runHeights(block: SdtBlock, out: number[] = [], depth = 0): number[] {
   for (const node of block.content ?? []) {
-    if (!isTextNode(node)) { runHeights(node, out); continue; }
+    if (!isTextNode(node)) { if (depth < MAX_NESTING) runHeights(node, out, depth + 1); continue; }
     let runs: unknown;
     try {
       runs = JSON.parse(node.anchor?.textMap ?? "[]");
@@ -792,9 +812,9 @@ function runHeights(block: SdtBlock, out: number[] = []): number[] {
 }
 
 /** Each run of a block's text: its height, and how many glyphs it holds. */
-function runSizes(block: SdtBlock, out: [number, number][] = []): [number, number][] {
+function runSizes(block: SdtBlock, out: [number, number][] = [], depth = 0): [number, number][] {
   for (const node of block.content ?? []) {
-    if (!isTextNode(node)) { runSizes(node, out); continue; }
+    if (!isTextNode(node)) { if (depth < MAX_NESTING) runSizes(node, out, depth + 1); continue; }
     let runs: unknown;
     try {
       runs = JSON.parse(node.anchor?.textMap ?? "[]");
@@ -876,7 +896,7 @@ function boxOf(block: SdtBlock): { page: number; box: number[]; spans: boolean }
   const on = rects.filter((r) => r[0] === page);
   return {
     page,
-    box: [Math.min(...on.map((r) => r[1]!)), Math.min(...on.map((r) => r[2]!)), Math.max(...on.map((r) => r[3]!)), Math.max(...on.map((r) => r[4]!))],
+    box: [least(on, (r) => r[1]!), least(on, (r) => r[2]!), most(on, (r) => r[3]!), most(on, (r) => r[4]!)],
     spans: on.length < rects.length,
   };
 }
@@ -901,7 +921,7 @@ function readInColumns(out: (Reading | Marker)[]): (Reading | Marker)[] {
   let stretch: Item[] = [];
   let page = -1;
   const flush = (): void => {
-    for (const item of orderRuns(stretch)) result.push(...item.parts);
+    for (const item of orderRuns(stretch)) append(result, item.parts);
     stretch = [];
   };
   for (const r of out) {
@@ -1045,7 +1065,7 @@ function* lineNumberPieces(texts: Piece[][]): Generator<void, Set<Piece>> {
         while (k < pieces.length && DIGIT.test(pieces[k]!.ch) && glued(pieces[k - 1], pieces[k])) k++;
         const folded = !(BARE_NUMBER.test(pieces.slice(i, k).map((p) => p.ch).join("")) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[k - 1], pieces[k]));
         marks.push({
-          page: g.page, x1: Math.min(...glyphs.map((q) => q.x1)), x2: Math.max(...glyphs.map((q) => q.x2)),
+          page: g.page, x1: least(glyphs, (q) => q.x1), x2: most(glyphs, (q) => q.x2),
           y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run, folded,
         });
       }
@@ -1252,7 +1272,7 @@ function joinRows(rows: Row[]): Piece[] {
       if (out.length && HYPHEN_PIECE.test(out[out.length - 1]!.ch) && first && /\p{Ll}/u.test(first.ch)) out.pop();
       else out.push({ ch: " ", glyph: null });
     }
-    out.push(...pieces);
+    append(out, pieces);
   }
   while (out.length && out[0]!.ch === " ") out.shift();
   return out;
@@ -1317,7 +1337,7 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
     }
     for (const row of rows) row.from = pool.readings.length;
     pool.readings.push(r);
-    pool.rows.push(...rows);
+    append(pool.rows, rows);
   });
   // Each page's margins and line pitch, from all its numbered prose.
   const byPage = new Map<number, { rows: Row[]; steps: number[] }>();
@@ -1433,9 +1453,93 @@ export interface StructuredBlock extends ReflowBlock {
 /** Draft.seen of a block read for good (StructuredOptions.pagesStay). */
 const FINAL = "final";
 
+// ---- a paragraph's pieces, packed until its pages come ----------------------------------
+
+/**
+ * The pieces of a block that is not read for good yet, from its first answer on: a character
+ * and a byte of flags each, and of each glyph only the numbers the glyph before it does not
+ * give already — its page, its line's top and bottom, its left edge where it starts at the
+ * right edge of the one before — as doubles, so that what is unpacked is the very same
+ * numbers. A piece and its glyph are some 110 bytes as objects. A 2,445-page book's paragraphs
+ * whose pages the reader had not read yet held 525 MB of them, and the page 680–700 MB in all
+ * when the structure came; packed, 195 MB in all (an 813-page one's: 280 MB of pieces, 22 MB
+ * packed; 2026-10-04, M4). Unpacked again, for one answer, only when one of the block's pages
+ * comes or goes.
+ */
+export interface PackedPieces {
+  chars: Uint16Array;
+  flags: Uint8Array;
+  values: Float64Array;
+}
+
+const HAS_GLYPH = 1, STARTS = 2, RAISED_MARK = 4, OPENS = 8, SAME_PAGE = 16, SAME_Y = 32, SAME_X = 64, FROM_X2 = 128;
+
+/** `pieces` packed, or null where one of them is not what Zotero's text makes (a character of
+ *  two units, a flag other than set): those stay as they are. */
+export function packPieces(pieces: readonly Piece[]): PackedPieces | null {
+  const flags = new Uint8Array(pieces.length);
+  const chars = new Uint16Array(pieces.length);
+  const values: number[] = [];
+  let prev: Glyph | null = null;
+  for (let i = 0; i < pieces.length; i++) {
+    const p = pieces[i]!;
+    if (p.ch.length !== 1 || (p.raised !== undefined && p.raised !== true) || (p.opens !== undefined && p.opens !== true)) return null;
+    chars[i] = p.ch.charCodeAt(0);
+    let f = (p.raised ? RAISED_MARK : 0) | (p.opens ? OPENS : 0);
+    const g = p.glyph;
+    if (g) {
+      if (g.start !== undefined && g.start !== true) return null;
+      f |= HAS_GLYPH | (g.start ? STARTS : 0);
+      if (prev && Object.is(prev.page, g.page)) f |= SAME_PAGE;
+      else values.push(g.page);
+      if (prev && Object.is(prev.x1, g.x1) && Object.is(prev.x2, g.x2)) f |= SAME_X;
+      else {
+        if (prev && Object.is(prev.x2, g.x1)) f |= FROM_X2;
+        else values.push(g.x1);
+        values.push(g.x2);
+      }
+      if (prev && Object.is(prev.y1, g.y1) && Object.is(prev.y2, g.y2)) f |= SAME_Y;
+      else values.push(g.y1, g.y2);
+      prev = g;
+    }
+    flags[i] = f;
+  }
+  return { chars, flags, values: Float64Array.from(values) };
+}
+
+export function unpackPieces({ chars, flags, values }: PackedPieces): Piece[] {
+  const out: Piece[] = new Array(flags.length);
+  let v = 0;
+  let prev: Glyph | null = null;
+  for (let i = 0; i < flags.length; i++) {
+    const f = flags[i]!;
+    let glyph: Glyph | null = null;
+    if (f & HAS_GLYPH) {
+      const page: number = f & SAME_PAGE ? prev!.page : values[v++]!;
+      let x1: number, x2: number;
+      if (f & SAME_X) { x1 = prev!.x1; x2 = prev!.x2; }
+      else { x1 = f & FROM_X2 ? prev!.x2 : values[v++]!; x2 = values[v++]!; }
+      let y1: number, y2: number;
+      if (f & SAME_Y) { y1 = prev!.y1; y2 = prev!.y2; }
+      else { y1 = values[v++]!; y2 = values[v++]!; }
+      // The shapes glyphsOf makes.
+      glyph = f & STARTS ? { page, x1, y1, x2, y2, start: true } : { page, x1, y1, x2, y2 };
+      prev = glyph;
+    }
+    const p: Piece = { ch: String.fromCharCode(chars[i]!), glyph };
+    if (f & RAISED_MARK) p.raised = true;
+    if (f & OPENS) p.opens = true;
+    out[i] = p;
+  }
+  return out;
+}
+
 interface Draft {
   block: StructuredBlock;
+  /** Its pieces, until it has been answered for once; empty while they are `packed`. */
   pieces: Piece[];
+  /** Its pieces from its first answer until it is read for good (packPieces). */
+  packed: PackedPieces | null;
   /** 1-based pages the block's glyphs lie on. */
   pages: number[];
   /** The last answer, and which of the block's pages (which text of each) it was given from. */
@@ -1512,7 +1616,7 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
       const first = pieces.find((p) => p.ch !== " ");
       if (last && last.ch === "-" && first && /\p{Ll}/u.test(first.ch)) prev.pieces.pop();
       else prev.pieces.push({ ch: " ", glyph: null });
-      prev.pieces.push(...pieces);
+      append(prev.pieces, pieces);
       prev.display = false;
       for (const path of r.paths) byPath.set(path, prev);
       continue;
@@ -1533,7 +1637,7 @@ function* prepare(structure: SdtStructure, everything: boolean): Generator<void,
       ...(everything ? { origin: r.origin } : {}),
     };
     barrier = false;
-    const draft: Draft = { block, pieces, pages: [], seen: null, result: null, display: false };
+    const draft: Draft = { block, pieces, packed: null, pages: [], seen: null, result: null, display: false };
     drafts.push(draft);
     for (const path of r.paths) byPath.set(path, draft);
     open = r.kind === "paragraph" ? draft : null;
@@ -1557,9 +1661,9 @@ export function createStructuredReader(structure: SdtStructure, options: Structu
 
 /** The same reader, made a few milliseconds at a time (lib/slices.ts): a 300-page document's
  *  structure took a third of a second of the main thread in one piece, as the reader started
- *  reading. */
-export async function createStructuredReaderInSlices(structure: SdtStructure, options: StructuredOptions = {}): Promise<StructuredReader> {
-  return readerOf(await finishInSlices(prepare(structure, options.everything === true)), options);
+ *  reading. Nothing here holds on to the structure once its drafts are made. */
+export function createStructuredReaderInSlices(structure: SdtStructure, options: StructuredOptions = {}): Promise<StructuredReader> {
+  return finishInSlices(prepare(structure, options.everything === true)).then((drafted) => readerOf(drafted, options));
 }
 
 function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): StructuredReader {
@@ -1595,14 +1699,17 @@ function readerOf({ drafts, vocab }: Drafted, options: StructuredOptions): Struc
         if (d.pieces.length === 0 && d.seen === FINAL) { if (d.result) out.push(d.result); continue; }
         const seen = d.pages.map((n) => { const p = given.get(n); return p ? serialOf(p) : "-"; }).join(",");
         if (d.seen !== seen) {
-          const { text, runs } = assemble(d.pieces, locate(d.pieces, pagesByNumber), vocab, kinds);
+          const pieces = d.packed ? unpackPieces(d.packed) : d.pieces;
+          const { text, runs } = assemble(pieces, locate(pieces, pagesByNumber), vocab, kinds);
           const on = d.display && d.block.kind === "paragraph" && !SENTENCE_END.test(text);
           d.result = text === "" ? null : { ...d.block, text, runs, ...(on ? { runsOn: true } : {}) };
           if (d.result) pagesOfResult.set(d.result, d.pages);
           d.seen = seen;
           // Every page it lies on is there, each with text (an empty one may be a page that
           // could not be read, and be read again): it reads as it ever will.
-          if (pagesStay && d.pages.every((n) => (given.get(n)?.items.length ?? 0) > 0)) { d.pieces = []; d.seen = FINAL; }
+          if (pagesStay && d.pages.every((n) => (given.get(n)?.items.length ?? 0) > 0)) { d.pieces = []; d.packed = null; d.seen = FINAL; }
+          // Else it waits for its pages packed, as small as its glyphs can be kept.
+          else if (!d.packed && (d.packed = packPieces(pieces))) d.pieces = [];
         }
         if (d.result) out.push(d.result);
       }

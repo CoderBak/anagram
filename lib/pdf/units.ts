@@ -45,6 +45,7 @@ import {
 import { groupBlocks, type BlockRole, type PlanBlock } from "../plan/group";
 import type { ReflowBlock, SourceRun } from "./reflow";
 import { finishInSlices } from "../slices";
+import { append } from "./arrays";
 
 /** A stretch of a unit's text: offsets into `unit.text`, end exclusive. */
 export interface TextSpan {
@@ -128,7 +129,7 @@ const KEYWORD_LINE = /^\s*(?:index terms|key\s?words?|关键词|关键字)\s*[�
 /** The boilerplate a journal sets at the foot of a paper's first page: who funded it, when the
  *  manuscript arrived, whom to write to. Nobody's writing either — on page 1 only: later, "This
  *  work was supported by…" opens an acknowledgements paragraph, which is somebody's writing. */
-const FIRST_PAGE_NOTE = /^\s*(?:this (?:work|research|study|project|paper) (?:was|is|has been) (?:\w+ )?(?:supported|funded)|manuscript received|\*?\s*corresponding author)/iu;
+const FIRST_PAGE_NOTE = /^\s*(?:this (?:work|research|study|project|paper) (?:was|is|has been) (?:\w+ )?(?:supported|funded)|manuscript received|(?:\*\s*)?corresponding author)/iu;
 
 function roleOf(block: ReflowBlock, words: number, floor: number): BlockRole {
   if (block.kind === "heading") return "barrier";
@@ -360,7 +361,7 @@ export function createPdfUnitSource(): PdfUnitSource {
         for (const node of itemNodes) if (!open.part.nodes.includes(node)) open.part.nodes.push(node);
         open.item = run.item;
         runs.push({ ...run, at });
-        nodes.push(...itemNodes);
+        append(nodes, itemNodes);
       }
     });
     if (missing || parts.length === 0) return null;
@@ -487,7 +488,7 @@ export function createPdfUnitSource(): PdfUnitSource {
         if (!element?.isConnected) return null;
         const resolved = itemRanges(element, run.from + from - run.at, run.from + to - run.at);
         if (!resolved) return null;
-        out[k]!.push(...resolved);
+        append(out[k]!, resolved);
       }
     }
     return out;

@@ -25,6 +25,7 @@ Work on `dev`; `main` holds the published README only.
 | Inference and runtime selection | `anagramd/engine.py`, `anagramd/runtime_controller.py`, `anagramd/runtime_adapters.py`, `anagramd/model_plan.py` |
 | Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/modelkit.json` |
 | Install, update, uninstall | `install.sh`, `install.ps1`, `installer/native_registration.py`, `installer/anagram` |
+| Reading statistics | `lib/stats/meter.ts` (what of a page is read), `lib/stats/worker.ts` (what the worker keeps, by level), `lib/stats/store.ts`, `entrypoints/stats/`; the export is [statistics.md](statistics.md) |
 | Localization | `public/_locales/en/`, `public/_locales/zh_CN/`, `scripts/i18nSubset.ts` |
 
 ## Decisions that hold
@@ -87,7 +88,10 @@ node test/ui-screens.mjs <dir>       # screenshots of the setup page, Settings, 
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
 npx playwright test                # the suites in test/pw/ (Playwright Test), no network; ANAGRAM_LIVE=1 adds the real sites; --repeat-each 10 hunts a flake, a failure keeps its trace
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
-ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 153+, e.g. the ESR in ~/anagram-bench/tools/firefox-esr/153.3.0esr/Firefox.app/Contents/MacOS/firefox, never installed
+npx @puppeteer/browsers install firefox@esr_153.3.0esr --path <dir>   # a Firefox ESR to drive, never installed (<dir>/firefox/mac_arm-esr_153.3.0esr/Firefox.app/Contents/MacOS/firefox on Apple Silicon; ~/anagram-bench/tools/firefox-esr/153.3.0esr/ has one); headless, temporary profile and HOME
+ANAGRAM_FIREFOX=<path to firefox> npm run test:firefox   # the Firefox build in Firefox 153+: the full viewer, PDF routing, the shipping build on a granted site (test/shipping-firefox.mjs: closed chips, nothing announced, no icon reachable, frame partitions) and the self-test page with what Firefox does its own way
+ANAGRAM_FIREFOX=<path to firefox> node test/csp-firefox.mjs        # the extension's policy as Firefox applied it, and a page whose own policy refuses inline styles
+ANAGRAM_FIREFOX=<path to firefox> node test/diagnostics-firefox.mjs   # the diagnostics copy and its optional clipboard permission
 ANAGRAM_FIREFOX=<path to firefox> node test/webengine/firefox-extension.mjs   # the engine choice in Firefox, Native Messaging granted at run time; the in-browser engine's worker in the background page (--hf: 20 MB from Hugging Face)
 npm run lint:firefox               # Mozilla's add-on linter on the Firefox build; accepted warnings in scripts/lintFirefox.mjs
 npm run test:pdf-route             # PDF routing, handoff caps and privacy
@@ -219,9 +223,11 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   view of the document in our entry (`vendor/document-worker/src/worker.js`): its own
   `getFullStructure` reads every page at once and holds them all, 2.7 GB of the reader's
   process at 2,445 pages. In ranges that book took 27.5 s to its structure, the process
-  peaking at 2.0 GB, 680 MB of page memory falling to 310 MB as it was read, and one 0.3 s
-  pause as the structure came, with no script in it (a collection of the large heap); an
-  813-page book, 9.6 s and 270 MB, no pause over 150 ms (2026-10-04, M4). What Zotero works out
+  peaking at 2.0 GB, 195 MB of page memory as the structure came rising to 310 MB as it was
+  read (the glyphs of the paragraphs not read yet are kept packed, `packPieces` in
+  `lib/pdf/structured.ts`: 525 MB of them as objects), and no frame over 150 ms as the
+  structure came (the reader's preparation goes 32 blocks at a time; it was a 0.3 s pause in
+  one piece); an 813-page book, 9.6 s and 270 MB, no pause over 150 ms (2026-10-04, M4). What Zotero works out
   over the document — running heads, reference lists, the outline's pages — it works out over
   a range; a link or outline entry to a page outside the range resolves to nothing.
 - PDF: the rest of a paragraph Zotero set outside the body — under a figure it cut off
@@ -258,10 +264,51 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   - The local engine parses page text (fastText, tokenizers, ONNX Runtime, MLX) in a process with
     the user's privileges; a sandboxed inference child (Seatbelt, seccomp and Landlock) would
     contain a parser bug.
-  - The router's global limits are shared by all tabs: four large, ever-changing frames can leave
-    other tabs with Unavailable verdicts for as long as their tab is open (per-tab reserves).
+  - A tab holds half the router's admission at most (`ROUTER_LIMITS`), so one page's frames
+    cannot leave the other tabs Unavailable; two tabs of one hostile site still can, for as
+    long as both are open.
   - `CSS.highlights` shows a page the marks on its own text, and so the flag level and whether
-    underlines are on; a page can tell chips are there. Whether a content script's `import()` of
-    a web-accessible chunk shows in the page's Resource Timing (Firefox, whose address names the
-    installation) is unverified.
+    underlines are on; a page can tell chips are there.
+  - A getter of the page's own in the options it passes to `attachShadow` runs with the
+    page-world script's frame under it (entrypoints/shadow.content.ts): in Chrome that frame
+    names the extension's id; in Firefox it is "<anonymous code>". Any wrapper has a frame there.
+  - The extension pages keep `style-src 'unsafe-inline'`. Dropping it needs the `<style>` blocks
+    of the setup page, Settings, the popup and Analyze text moved into files, and the
+    `style="…"` the setup page's legend and the reader's print dialog write turned into classes
+    (the marks' rules are a constructed sheet already, and the card's marker and pending line no
+    longer write a style attribute). It buys little: no script runs inline, and with `img-src`
+    and `font-src` held to the extension, injected CSS has no address to send what it matches to.
+- Hostile pages and documents (fuzzing of 2026-10-04: `test/unit.mjs` "pages built to break the
+  reader", `test/pw/hostile-pages.spec.mjs`, `test/node/pdfStructuredProps.test.ts`, and the
+  hostile-input cases in `test/native_host.py`). The limits are where they apply:
+  `MAX_WALK_DEPTH` and `MOST_NODES_UNPAUSED` (`lib/dom/walker.ts`), `MOST_HELD`
+  (`lib/capture/observers.ts`), `SEARCHES_PER_CHAR` (`lib/pdf/reading.ts`), `MAX_NESTING`
+  (`lib/pdf/structured.ts`), `LONGEST_WORD` (`lib/pdf/reflow.ts`), `lib/pdf/arrays.ts` for
+  spreads; a sweep of every regex in `lib/` over pumped strings found the ones made linear.
+  Left as they are, each linear in what the page or the PDF holds: a paragraph is read in one
+  step once the walk has reached its end, about 1 s of an M4's main thread for one of 10 MB or
+  of a million inline elements (the page's own layout of it costs as much), and a stretch of a
+  hundred thousand short paragraphs of one voice is divided in one step (1.6 s).
+  A run of pdf.js's whose characters Zotero's glyphs do not match is searched from its start
+  for each of them (`locate`), square in the run's length; no PDF has shown it. Chromium itself
+  stops laying out a page at about 2,000 nested blocks, 20,000 nested inline elements, 1,000
+  nested shadow roots of blocks or 500 nested positioned boxes, before any of it reaches Anagram.
+- Dependency audit (2026-10-04). Every package in `package-lock.json` (586) and
+  `anagramd/uv.lock` (68) was checked against OSV (`api.osv.dev/v1/querybatch`) and
+  `npm audit --package-lock-only`, with what Zotero's worker bundles (its pdf.js fork, pako,
+  fastest-levenshtein). The Python lock had no advisories. Of what ships, two have one each, and
+  neither can be reached in Anagram: pdf.js 5.7.284 (GHSA-hq66-cqwq-w95j, fixed in 6.2.108)
+  runs script through the PDF-scripting sandbox's bridge, and the reader sets
+  `enableScripting: false`, never ships the sandbox (quickjs, left out by `scripts/vendor.mjs`)
+  and allows no inline script or eval; DOMPurify 3.4.15 (GHSA-p98j-92pf-mc4p) needs an
+  `afterSanitize` hook that removes nodes, and the Docs reading view registers no hook and
+  sanitizes an inert `DOMParser` document. Zotero's pdf.js fork (f4d05ca, a 5.7 pre-release of
+  2026-08-14) is past the font-eval fix of CVE-2024-4367: it builds glyph paths as number
+  arrays, has no `isEvalSupported` and no scripting; its one `new Function` is ONNX Runtime
+  Web's embind glue, which never sees the PDF and which the extension's CSP refuses like any
+  eval (the worker is an extension resource, under that CSP). The rest are in tools that never
+  ship (postcss and nanoid under Vite, node-forge under web-ext, vitest, esbuild's dev server on
+  Windows). Nothing was upgraded: pdf.js 6 means moving the hash-pinned viewer and engine
+  together, and DOMPurify 3.4.16 can wait for the next dependency refresh. Run the same checks
+  before a release that moves a lock.
 - Windows and Linux have not been exercised on real machines.

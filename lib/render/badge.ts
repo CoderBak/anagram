@@ -39,7 +39,7 @@ import { formatScore } from "./score";
 import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
-import { distributionHtml, swatchHtml, unsureNote } from "./dist";
+import { distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
 import { levelOf } from "./scale";
 import { BADGE_CSS } from "./badge.css";
 import { isDarkContext } from "./theme";
@@ -402,7 +402,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     pill.className = "pill band-unknown pending";
     (root.querySelector(".num") as HTMLElement).textContent = "…";
     (root.querySelector(".card") as HTMLElement).innerHTML =
-      `<div class="foot" style="margin:0;padding:0;border:0">${t("cardPending")}</div>`;
+      `<div class="foot alone">${t("cardPending")}</div>`;
   }
 
   function buildHost(id: string): HTMLElement {
@@ -529,6 +529,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       `<div class="actions"><button type="button" tabindex="-1" class="act copy">${t("cardCopyText")}</button></div>` +
       (foot ? `<div class="foot">${foot}</div>` : "") +
       `<span class="caret"></span>`;
+    placeMarkers(card);
 
     const copy = card.querySelector(".act.copy") as HTMLButtonElement;
     // tabindex="-1" keeps the keyboard out; a press would still focus the button in Chrome,

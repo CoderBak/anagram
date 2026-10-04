@@ -94,7 +94,7 @@ class FrameWriter:
     def write(self, response):
         try:
             payload = json.dumps(response, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode("utf-8")
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, RecursionError):
             payload = json.dumps(error_reply(response.get("id", "protocol-error"), "invalid_response",
                                              "The local component returned an invalid response", 500)).encode()
         if len(payload) > MAX_RESPONSE_BYTES:

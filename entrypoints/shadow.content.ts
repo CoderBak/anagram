@@ -25,7 +25,9 @@
 // Proxy in the chain given to setPrototypeOf is looked through; Reflect.setPrototypeOf with a
 // cycle throws where the native returns false; in Firefox an error thrown through it keeps
 // its stack as a property of its own; a page that sets Error.stackTraceLimit very low sees
-// one frame fewer; and time.
+// one frame fewer; a getter or a toString of the page's own in the init it passes runs with
+// this script's frame under it, which names the extension in Chrome (in Firefox it is
+// "<anonymous code>"); and time.
 import { defineContentScript } from "#imports";
 import { SHADOW_PORT_EVENT } from "../lib/dom/shadow";
 

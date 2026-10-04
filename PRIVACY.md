@@ -1,6 +1,6 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-10-01. Applies to the Anagram browser extension and to the local engine
+Last updated: 2026-10-04. Applies to the Anagram browser extension and to the local engine
 it can install on your computer. The extension scores with one of two engines, both on
 your computer:
 
@@ -56,7 +56,8 @@ The full inventory of network calls, address literals and storage keys is in
   your normal browser credentials so the reader can show it.
 - **Text you paste** into the Analyze text page. It is scored locally and not saved.
 - **Open tabs' addresses**, in memory, to apply per-site rules and recognize PDFs. No
-  browsing history is stored or uploaded.
+  browsing history is stored or uploaded, unless you turn on the reading statistics at their
+  finest level (below), which keeps one on your computer.
 
 ## Where it goes
 
@@ -120,6 +121,25 @@ requests carry normal download metadata and never page text.
   your browser profile. Nothing from your browsing is written with them. They stay when you
   switch to the local engine until you delete them there, in Settings.
 - **Which engine you chose**, in `chrome.storage.local`.
+- **Reading statistics, only if you turn them on** (Settings, Statistics; off by default), in
+  IndexedDB in your browser profile. What each level keeps:
+  - *Daily totals*: per day, numbers only: words read, how many words are expected to be
+    human, lightly edited, heavily edited or AI-generated, how many paragraphs showed each
+    word, how many words could not be scored and why (too short, not English, engine
+    unavailable), the same per kind of page (feed, article, forum, document, other), and which
+    model and minimum length were in force.
+  - *Daily totals and sites*: the same numbers per site (its hostname) and day.
+  - *Every page*: the same numbers per page and day, with the page's address (without the
+    query or the fragment), its title, the minute you first read it that day and how long it
+    was shown. This is a reading history; anyone who can use this browser profile could see it.
+
+  No level keeps any text of a page. Nothing is recorded from a private window, from a site
+  you switched Anagram off for (not even a page of it you analyzed from the menu), or from the
+  Analyze text page. The site and the address are taken from the browser, not from the page.
+  Days older than the retention you choose (30, 90 or 365 days) are deleted, and **Clear
+  statistics** deletes everything. The statistics are never sent anywhere: **Export…** saves
+  a file on your computer, at the recorded level or a coarser one, and whether you share it
+  is up to you. Anagram has no code that uploads it.
 - **Your clipboard**, only when you click Copy: a paragraph and its readout from a card, the
   report of the Analyze text page, or a diagnostics report, which replaces every word of
   page text with same-shaped filler and drops URLs and titles.

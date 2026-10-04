@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { test as base, expect } from "./fixtures.mjs";
 import { EXT, BADGE_SEL, popupOver, menuReport } from "../harness.mjs";
 import { TEST_PDF, pdfTabChip } from "../pdf-fixture.mjs";
-import { ARTICLE, WATCH, isCspLine } from "../csp-page.mjs";
+import { ARTICLE, STRICT_ARTICLE, STRICT_POLICY, STRICT_PROBE, WATCH, isCspLine } from "../csp-page.mjs";
 
 const manifest = () => JSON.parse(readFileSync(`${EXT}/manifest.json`, "utf8"));
 
@@ -29,10 +29,21 @@ const test = base.extend({
    *  from the extension policy, not from an unreadable response. */
   files: async ({ pages }, use) => {
     const loopback = { requests: 0 };
+    const reports = [];
     pages.serve({
       "*": (req, res) => {
         res.setHeader("Access-Control-Allow-Origin", "*");
         if (req.url.startsWith("/csp-loopback")) loopback.requests++;
+        if (req.url.startsWith("/csp-report")) {
+          let body = "";
+          req.on("data", (chunk) => (body += chunk));
+          req.on("end", () => { reports.push(body); res.end(); });
+          return;
+        }
+        if (req.url.split("?")[0] === "/strict") {
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-security-policy": STRICT_POLICY });
+          return void res.end(STRICT_ARTICLE);
+        }
         if (req.url.split("?")[0] === "/doc.pdf") {
           res.writeHead(200, { "content-type": "application/pdf", "content-length": TEST_PDF.length });
           return void res.end(TEST_PDF);
@@ -41,7 +52,7 @@ const test = base.extend({
         res.end(ARTICLE);
       },
     });
-    await use({ url: pages.url, loopback });
+    await use({ url: pages.url, loopback, reports });
   },
 
   /**
@@ -129,6 +140,21 @@ test("an ordinary web page with the chips loads with nothing refused, really got
   expect.soft(refused).toEqual([]);
   expect(state.chips, JSON.stringify(state)).toBeGreaterThan(0);
   expect(state.report, JSON.stringify(state)).toBe(true);
+});
+
+// The PAGE's own policy, refusing every inline style (test/csp-page.mjs STRICT_POLICY): what
+// Anagram draws into a page must draw anyway, and leave the page and its report-uri nothing to
+// hear. Chromium never held a content script to it; Firefox did (test/csp-firefox.mjs).
+test("a page whose own policy refuses inline styles gets its chips, painted underlines and a card's scale, and hears nothing of Anagram's", async ({ surface, files }) => {
+  const { refused, extra: seen } = await surface(files.url("/strict"), {
+    settle: 1000,
+    prepare: (page) => page.waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill.scored")).length >= 2, BADGE_SEL, { timeout: 20000 }).catch(() => {}),
+    after: (page) => page.evaluate(STRICT_PROBE, BADGE_SEL),
+  });
+  expect.soft(refused).toEqual([]);
+  expect.soft(files.reports, "nothing reaches the page's report-uri").toEqual([]);
+  expect(seen, JSON.stringify(seen)).toMatchObject({ chips: 2, painted: true, marker: expect.stringMatching(/%$/) });
+  expect(seen.marks, JSON.stringify(seen)).toBeGreaterThan(0);
 });
 
 // ---- what connect-src actually permits ------------------------------------------------------

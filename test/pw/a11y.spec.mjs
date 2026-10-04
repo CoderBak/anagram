@@ -48,6 +48,7 @@ import { test as base, expect } from "./fixtures.mjs";
 import { BADGE_SEL, waitForRegistration, popupOver, menuReport } from "../harness.mjs";
 import { SMALL_PDF } from "../a11y-pdf.mjs";
 import { LOCKED_PDF } from "../pdf-fixture.mjs";
+import { seedStats, statsWeek } from "../stats-fixture.mjs";
 import { installProbe, settle, settleAll, still, chipsSettled } from "../a11y-probe.mjs";
 import { scriptEngine } from "../webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "../webengine/model-server.mjs";
@@ -417,6 +418,31 @@ const PAGE_SPECS = [
     },
   },
   {
+    name: "statistics (off)",
+    path: "stats.html",
+    viewport: { width: 1100, height: 900 },
+    async prepare(page) {
+      await page.waitForSelector("#offCard:not([hidden])", { timeout: 8000 });
+    },
+  },
+  {
+    // A week recorded by page: the headline, the trend with its table open, the tables of kinds,
+    // feeds and sites, the coverage, and the pages.
+    name: "statistics (a week recorded)",
+    path: "stats.html",
+    viewport: { width: 1100, height: 900 },
+    async before(storage, extension) {
+      await storage.set({ statsLevel: "pages" });
+      await seedStats(extension.worker(), statsWeek());
+    },
+    async prepare(page) {
+      await page.click('#ranges [data-range="7"]');
+      await page.waitForSelector("#trendChart svg g.col", { timeout: 8000 });
+      await page.click("#trendCard summary");
+      await page.waitForTimeout(200);
+    },
+  },
+  {
     // Scan the upstream modal and its labeled password field while it is open.
     name: "reader (password asked)",
     path: "reader.html",
@@ -433,7 +459,7 @@ const PAGE_SPECS = [
 for (const scheme of ["light", "dark"]) {
   for (const spec of PAGE_SPECS) {
     test(`${spec.name} [${scheme}]`, async ({ extension, storage, open, axe }) => {
-      await spec.before?.(storage);
+      await spec.before?.(storage, extension);
       const page = await open(extension.url(spec.path), { scheme, viewport: spec.viewport });
       await spec.prepare(page);
       await settle(page, scheme);

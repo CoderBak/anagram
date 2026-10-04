@@ -175,9 +175,38 @@ The toolbar icon's gear opens Settings, one list of rows.
   underlines on flagged paragraphs or none.
 - **Length**: the minimum words, and grouping short paragraphs.
 - **Cache**: how long verdicts are kept, and clearing them.
+- **Statistics**: what Anagram records of your reading (off by default), how long it is kept,
+  and the statistics page, export and clearing (below).
 
 The engine unloads the model after five minutes without work by default and reloads on demand.
 **Source code** in the footer opens the code of the exact version you are running.
+
+## Statistics
+
+Anagram can keep a record of how much of what you read reads as AI-generated. Choose a level
+in Settings, Statistics, **Record**, or on the statistics page, which explains them:
+
+- **Daily totals**: each day's words read, how they read from human to AI-generated, and on
+  what kind of page (feeds, articles, forums, documents, other).
+- **Daily totals and sites**: the same, and each site's share of the day.
+- **Every page**: the same, and each page you read, with its address, title, when you opened
+  it and for how long. This is a reading history; anyone who uses this browser profile could
+  see it.
+
+A paragraph counts once it has been on screen for a second, and once however often you come
+back to it. The share shown is expected words: a paragraph the model is unsure of counts partly
+on each side. Text from a page is never kept, at any level, nor anything read in a private
+window, on a site you switched Anagram off for, or in Analyze text.
+
+When recording is on, the toolbar menu says how today's reading reads ("Today: 14%
+AI-generated, of 8,400 words read.") and links to the statistics page: the share and the four
+verdicts for Today, the last 7 or 30 days or a month, against your 30-day average; the trend
+day by day; by kind of page, feeds against the rest, by site and by page; and how much of what
+you read could be scored. **Export…** saves a JSON or CSV file of the period, at the level it
+was recorded at or a coarser one, which you can keep or give to somebody (for instance a study
+you take part in); Anagram never uploads it. [statistics.md](statistics.md) describes the file.
+**Clear statistics** deletes everything; days older than **Keep** (30, 90 or 365 days) are
+deleted by themselves.
 
 ## Update and remove
 
@@ -202,5 +231,6 @@ removes everything inside it.
 
 Scoring is local, in either engine; nothing is scored on a server. The engines use the
 network only to download the model and, for the local engine, updates.
-Opening an online PDF or a Google Doc re-reads that document from its source. See
+Opening an online PDF or a Google Doc re-reads that document from its source. The reading
+statistics, when you turn them on, stay in this browser profile. See
 [PRIVACY.md](../PRIVACY.md) for the full data boundary.

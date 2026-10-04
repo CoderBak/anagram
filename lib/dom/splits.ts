@@ -32,22 +32,43 @@ const byHead = new Map<Text, Split>();
 /** Piece → the page node it was cut from, so cutting a piece records it under its head. */
 const headOf = new WeakMap<Text, Text>();
 
-/** Text.splitText, recorded. Returns the new node after the cut, as splitText does. */
-export function cutText(node: Text, offset: number): Text {
+/**
+ * Text.splitText at every one of `offsets` (ascending, each inside the node), recorded.
+ * Returns the node and the pieces cut off it, in document order.
+ *
+ * splitText copies the text on both sides of its cut into nodes of their own, so a node cut
+ * at each of its paragraphs in turn copied all of what was left at every cut: a 10 MB text
+ * of short paragraphs held its page for minutes. Cut in halves instead — the middle cut
+ * first, then each half the same way — every character is copied once a round, and there
+ * are log2(cuts) rounds.
+ */
+export function cutTextAt(node: Text, offsets: readonly number[]): Text[] {
+  const cut = (piece: Text, start: number, lo: number, hi: number, out: Text[]): void => {
+    if (lo >= hi) {
+      out.push(piece);
+      return;
+    }
+    const mid = (lo + hi) >> 1;
+    const rest = piece.splitText(offsets[mid]! - start);
+    cut(piece, start, lo, mid, out);
+    cut(rest, offsets[mid]!, mid + 1, hi, out);
+  };
+  const all: Text[] = [];
+  cut(node, 0, 0, offsets.length, all);
   const head = headOf.get(node) ?? node;
-  const rest = node.splitText(offset);
   let split = byHead.get(head);
   if (!split) {
     split = { pieces: [], left: "" };
     byHead.set(head, split);
   }
-  // splitText puts the new node right after the one it cut, and the walker only ever
-  // cuts the head or the last piece, so appending keeps document order.
-  const at = node === head ? 0 : split.pieces.indexOf(node) + 1;
-  split.pieces.splice(at, 0, rest);
-  headOf.set(rest, head);
+  // splitText puts the new nodes right after the one it cut: after the head, or after the
+  // piece that was cut again.
+  const pieces = all.slice(1);
+  const at = node === head ? 0 : split.pieces.lastIndexOf(node) + 1;
+  split.pieces = [...split.pieces.slice(0, at), ...pieces, ...split.pieces.slice(at)];
+  for (const piece of pieces) headOf.set(piece, head);
   split.left = head.data;
-  return rest;
+  return all;
 }
 
 function forget(head: Text, split: Split): void {

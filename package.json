@@ -20,7 +20,7 @@
     "test:e2e": "playwright test e2e",
     "test:pw": "playwright test --project chromium",
     "check": "node scripts/check.mjs",
-    "test:firefox": "npm run build:firefox && node test/pdf-viewer-firefox.mjs && node test/pdf-source-firefox.mjs && node test/firefox.mjs",
+    "test:firefox": "npm run build:firefox && node test/pdf-viewer-firefox.mjs && node test/pdf-source-firefox.mjs && node test/shipping-firefox.mjs && node test/firefox.mjs",
     "lint:firefox": "npm run build:firefox && node scripts/lintFirefox.mjs",
     "postinstall": "wxt prepare && node scripts/vendor.mjs",
     "test:unit": "node test/unit.mjs",

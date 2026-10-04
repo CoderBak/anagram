@@ -19,6 +19,7 @@
 // never reaches the output at all — that is what makes the privacy check in test/unit.mjs
 // provable rather than hopeful.
 import { tagOf } from "../dom/tags";
+import { MAX_WALK_DEPTH } from "../dom/walker";
 import { isKnownAtom } from "./vocabulary";
 
 /** Filler alphabets. Latin words become lorem-ipsum letters, Han text becomes Han, so a
@@ -236,8 +237,10 @@ export function captureRegion(region: Element, limit = 24_000): CaptureResult {
     size += s.length;
   };
 
-  function ser(node: Node): void {
-    if (truncated) return;
+  function ser(node: Node, depth = 0): void {
+    // No deeper than the walk goes (MAX_WALK_DEPTH): a call a level, and a page can nest
+    // deeper than the stack.
+    if (truncated || depth >= MAX_WALK_DEPTH) return;
     if (node.nodeType === Node.TEXT_NODE) {
       emit(esc(filler(node.textContent ?? "")));
       return;
@@ -274,10 +277,10 @@ export function captureRegion(region: Element, limit = 24_000): CaptureResult {
     emit(open);
     if (el.shadowRoot) {
       emit('<template shadowrootmode="open">');
-      for (const child of el.shadowRoot.childNodes) ser(child);
+      for (const child of el.shadowRoot.childNodes) ser(child, depth + 1);
       emit("</template>");
     }
-    for (const child of el.childNodes) ser(child);
+    for (const child of el.childNodes) ser(child, depth + 1);
     // An empty wrapper (an icon row, a spacer) says nothing about segmentation, so it is
     // dropped again — unless it declares a role, where its emptiness is the finding.
     if (parts.length === mark + 1 && !el.hasAttribute("role")) {

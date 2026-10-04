@@ -49,15 +49,32 @@ import { closeWebEngine, webEngineRunning } from "../lib/webengine/client";
 import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
 import { createWarmup } from "../lib/backend/warmup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
+import { createStatsRecorder } from "../lib/stats/worker";
+import { openStatsStore } from "../lib/stats/store";
+import { retentionOf, statsLevelOf } from "../lib/stats/model";
+import { minWordsOf } from "../lib/dom/text";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 /** Where a text was read, for the caches pages share (RequestOrigin.partition in
  *  lib/backend/router.ts): the tab's top-level site, the frame's own origin, and a private
  *  window apart from the rest — the way the browser partitions a page's own storage. */
-function partitionOf(sender: { tab?: { url?: string; incognito?: boolean } }, document: { origin: string }): string {
+async function partitionOf(sender: Pick<AccessSender, "tab">, document: { origin: string }): Promise<string> {
   let top = "?";
-  try { if (sender.tab?.url) top = new URL(sender.tab.url).host; } catch { /* no address: its own partition */ }
+  try { const url = await topUrlOf(sender); if (url) top = new URL(url).host; } catch { /* no address: its own partition */ }
   return `${sender.tab?.incognito ? "private" : "normal"} ${top} ${document.origin}`;
+}
+
+/**
+ * The address of the page the sender's tab shows. Chrome puts it on every message. Firefox
+ * leaves it off where Anagram has no access to that page's own site — a frame of a granted
+ * site inside a page of one not granted — and every such frame of a site, whatever page it
+ * was in, then shared one partition: the cross-site sharing the partition is there to stop.
+ * webNavigation, which Anagram holds, tells the address there.
+ */
+async function topUrlOf(sender: Pick<AccessSender, "tab">): Promise<string | undefined> {
+  if (sender.tab?.url || sender.tab?.id === undefined) return sender.tab?.url;
+  const top = await browser.webNavigation.getFrame({ tabId: sender.tab.id, frameId: 0 }).catch(() => null);
+  return top?.url;
 }
 
 export default defineBackground(() => {
@@ -166,6 +183,20 @@ export default defineBackground(() => {
     warm: () => transportOf("inbrowser").request("warm"),
   });
   browser.webNavigation.onBeforeNavigate.addListener((details) => void warmup(details));
+
+  // The reading statistics, which pages send their numbers to and which only this worker
+  // writes (lib/stats/worker.ts). Off unless the reader chose a level.
+  const stats = createStatsRecorder({
+    store: openStatsStore(),
+    level: async () => statsLevelOf(await settings.statsLevel.getValue()),
+    retention: async () => retentionOf(await settings.statsRetentionDays.getValue()),
+    enabledFor: (hostname) => hostname ? enabledForSite(hostname) : settings.enabled.getValue(),
+    model: () => {
+      const { id, ver, calibration } = getScoreClient().model();
+      return id === "none" ? null : { id, ver, calibration };
+    },
+    minWords: async () => minWordsOf(await settings.minWords.getValue()),
+  });
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -428,7 +459,7 @@ export default defineBackground(() => {
       }
       case ACTIONS.GET_TOP_HOST: {
         let host="";
-        try {host=new URL(sender.tab?.url ?? "").hostname;}catch {/* no readable top URL */}
+        try {host=new URL((await topUrlOf(sender)) ?? "").hostname;}catch {/* no readable top URL */}
         return {host} satisfies TopHostReply;
       }
       case ACTIONS.GET_BACKEND_STATUS: {
@@ -477,14 +508,18 @@ export default defineBackground(() => {
         for (const origin of msg.origins) if (!(await browser.permissions.contains({origins:[origin]}).catch(()=>false))) missing.push(origin);
         return {missing} satisfies CommentAccessReply;
       }
+      case ACTIONS.STATS_RECORD:
+        // Answered the same whether anything was kept: a page learns nothing of the level.
+        await stats.record(msg,sender,role === "reader" ? "reader" : "content").catch(()=>false);
+        return {ok:true};
       case ACTIONS.COUNT_TOKENS: {
-        const counts=await tokenCounter.count(msg.texts,document!.signal,partitionOf(sender,document!)).catch(()=>null);
+        const counts=await tokenCounter.count(msg.texts,document!.signal,await partitionOf(sender,document!)).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);
-          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:partitionOf(sender,document!),documentKey:document!.documentKey,signal:document!.signal});
+          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:await partitionOf(sender,document!),documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
           if(document!.signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.

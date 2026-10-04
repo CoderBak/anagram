@@ -27,11 +27,12 @@ export function swatchHtml(r: ScoreResult): string {
   return `<span class="sw b${levelOf(r.score)}"></span>`;
 }
 
+/** The readout's markup; placeMarkers puts the score's marker on its scale once it is in. */
 export function distributionHtml(r: ScoreResult): string {
   // The scale repeats what the number and the rows below it say, so it is not read out.
   const scale =
     `<div class="scale" aria-hidden="true"><span class="track"></span>` +
-    `<span class="marker" style="left:${at(r.score)}"></span></div>` +
+    `<span class="marker" data-at="${at(r.score)}"></span></div>` +
     `<div class="ends" aria-hidden="true"><span>${bandLabel("human")}</span><span>${bandLabel("ai")}</span></div>`;
   const rows = r.probs
     .map((p, i) => {
@@ -42,6 +43,16 @@ export function distributionHtml(r: ScoreResult): string {
     })
     .join("");
   return `<div class="dist">${scale}<div class="drows">${rows}</div></div>`;
+}
+
+/**
+ * Each scale's marker at its score, set through the element's style rather than written as a
+ * style attribute in the markup: Firefox holds an attribute that a content script writes into
+ * a page to the page's Content-Security-Policy, and a policy without 'unsafe-inline' refused
+ * it and told the page so at every card.
+ */
+export function placeMarkers(root: ParentNode): void {
+  for (const marker of root.querySelectorAll<HTMLElement>(".dist .marker[data-at]")) marker.style.left = marker.dataset.at!;
 }
 
 /** Shared styles (light + dark) for the readout. Hosts using it set .pg-dark on themselves. */
@@ -96,7 +107,7 @@ ${bandColorRules(".dist .ddot", ":host(.pg-dark)")}
 .dist .ddot { width: 7px; height: 7px; border-radius: 50%; align-self: center; background: var(--c); }
 .dist .dv { font-variant-numeric: tabular-nums; text-align: right; }
 :host(.pg-dark) .dist .track { background: ${scaleGradient(true)}; }
-:host(.pg-dark) :host(.pg-dark) :host(.pg-dark) .dist .marker { background: #fafafa; box-shadow: 0 0 0 1.5px #171717; }
+:host(.pg-dark) .dist .marker { background: #fafafa; box-shadow: 0 0 0 1.5px #171717; }
 :host(.pg-dark) .dist .ends { color: #8a8a8a; }
 :host(.pg-dark) .dist .drows { color: #9aa3ad; }
 @media (forced-colors: active) {

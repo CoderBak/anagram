@@ -53,7 +53,6 @@
 // twenty times a second, as many as on screen. A unit's ranges are kept while its text is
 // more than a screen away, and go back into the registry as it comes within one (park).
 import type { Unit } from "../types";
-import { MARK_ATTR } from "../types";
 import type { UnitVerdict, WindowVerdict } from "../capture/windows";
 import { locateSpans } from "../dom/locate";
 import { band, isNoVerdict } from "./band";
@@ -220,8 +219,15 @@ function unwatch(id: string): void {
   _containersOf.delete(id);
 }
 
-let _stylesInjected = false;
-let _styleEl: HTMLStyleElement | null = null;
+/**
+ * The `::highlight()` rules of the page's own document: a constructed sheet it adopts, not a
+ * <style> written into its head. Firefox holds a <style> that a content script adds to the
+ * page's Content-Security-Policy, so on a page whose policy refuses inline styles the marks
+ * were registered and never painted, and the refusal went to the page as an event and to the
+ * site's report-uri, naming moz-extension. A constructed sheet is outside the policy, in
+ * every browser.
+ */
+let _docSheet: CSSStyleSheet | null = null;
 /** Shared constructable sheet adopted by shadow-root surfaces (Docs overlay). */
 let _shadowSheet: CSSStyleSheet | null = null;
 let _visible = true;
@@ -237,25 +243,35 @@ function surfaceIsDark(): boolean {
 /** The palette follows `dark` pages from now on, whatever the document's background. */
 export function setHighlightSurface(dark: boolean | null): void {
   _surfaceDark = dark;
-  if (_styleEl || _shadowSheet) applyCss();
+  if (_docSheet || _shadowSheet) applyCss();
 }
 
 function applyCss(): void {
   const css = buildCss(surfaceIsDark());
-  if (_styleEl) _styleEl.textContent = css;
+  if (_docSheet) _docSheet.replaceSync(css);
   if (_shadowSheet) _shadowSheet.replaceSync(css);
 }
 
-/** Inject the `::highlight()` pseudo rules once (again if the document was replaced). */
+/** Adopt the `::highlight()` rules into the document once (again if the page let go of them:
+ *  a page may set its own adoptedStyleSheets, or replace its document). */
 export function registerHighlightStyles(): void {
-  if (_stylesInjected && _styleEl?.isConnected) return;
   if (!highlightsSupported()) return;
-  _stylesInjected = true;
-  const style = document.createElement("style");
-  style.setAttribute(MARK_ATTR, "style");
-  (document.head ?? document.documentElement).appendChild(style);
-  _styleEl = style;
-  applyCss();
+  if (_docSheet && [...document.adoptedStyleSheets].includes(_docSheet)) return;
+  // A constructed sheet belongs to the document it was made in, and a replaced document
+  // refuses it: that one is given a sheet of its own.
+  for (const fresh of [false, true]) {
+    if (fresh || !_docSheet) {
+      _docSheet = new CSSStyleSheet();
+      _docSheet.disabled = !_visible;
+      applyCss();
+    }
+    try {
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, _docSheet];
+      return;
+    } catch {
+      /* made for a document that is gone */
+    }
+  }
 }
 
 /**
@@ -276,7 +292,7 @@ export function highlightSheets(): CSSStyleSheet[] {
 /** Instantly show/hide ALL highlights by toggling the stylesheets (keeps ranges). */
 export function setHighlightsVisible(visible: boolean): void {
   _visible = visible;
-  if (_styleEl) _styleEl.disabled = !visible;
+  if (_docSheet) _docSheet.disabled = !visible;
   if (_shadowSheet) _shadowSheet.disabled = !visible;
   _painter?.show(visible);
 }

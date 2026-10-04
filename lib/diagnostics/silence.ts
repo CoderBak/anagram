@@ -15,7 +15,7 @@
 // answer for the barriers, and the floors are the constants the assembler uses. A copy of
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
-import { MAX_SHORTCODE_SHARE, collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
+import { MAX_SHORTCODE_SHARE, MAX_WALK_DEPTH, collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
 import { asideApart, chromeNames, findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList, siteNotices } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
@@ -162,8 +162,10 @@ export function surveyPage(opts: { running: boolean; max: number; minWords?: num
 
   /** Visible words per subtree, chrome split off, smallest blocks over the floor kept.
    *  `all` is every word on the screen; `prose` is the same with chrome zeroed. */
-  function walkWords(el: Element, inChrome: boolean): { all: number; prose: number } {
-    if (NO_TEXT_TAGS.has(tagOf(el)) || el.hasAttribute(MARK_ATTR)) return { all: 0, prose: 0 };
+  function walkWords(el: Element, inChrome: boolean, depth = 0): { all: number; prose: number } {
+    // No deeper than the walk goes (MAX_WALK_DEPTH): a call a level, and a page can nest
+    // deeper than the stack.
+    if (NO_TEXT_TAGS.has(tagOf(el)) || el.hasAttribute(MARK_ATTR) || depth >= MAX_WALK_DEPTH) return { all: 0, prose: 0 };
     const style = cs(el);
     // display:none takes no space, so it is never why a reader sees nothing; everything
     // else that hides a box is kept and REPORTED (an aria-hidden article behind a modal is
@@ -196,7 +198,7 @@ export function surveyPage(opts: { running: boolean; max: number; minWords?: num
         all += w;
         prose += w;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const r = walkWords(node as Element, chrome);
+        const r = walkWords(node as Element, chrome, depth + 1);
         all += r.all;
         prose += r.prose;
         if (r.all > childMax) childMax = r.all;
@@ -392,8 +394,8 @@ interface RunLike {
 
 function runsIn(root: Element, cs: Styler): RunLike[] {
   const map = new Map<Element, Text[]>();
-  (function rec(el: Element, block: Element): void {
-    if (NO_TEXT_TAGS.has(tagOf(el)) || el.hasAttribute(MARK_ATTR)) return;
+  (function rec(el: Element, block: Element, depth: number): void {
+    if (NO_TEXT_TAGS.has(tagOf(el)) || el.hasAttribute(MARK_ATTR) || depth >= MAX_WALK_DEPTH) return;
     const style = cs(el);
     const flow = style ? flowClassOf(el, style) : "block";
     if (flow === "hidden") return;
@@ -406,10 +408,10 @@ function runsIn(root: Element, cs: Styler): RunLike[] {
         if (list) list.push(node as Text);
         else map.set(owner, [node as Text]);
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        rec(node as Element, owner);
+        rec(node as Element, owner, depth + 1);
       }
     }
-  })(root, root);
+  })(root, root, 0);
   return [...map.entries()].map(([owner, nodes]) => {
     const raw = nodes.map((n) => n.textContent ?? "").join("");
     const text = raw.replace(/\s+/g, " ").trim();

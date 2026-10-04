@@ -9,7 +9,7 @@ import "../../lib/ui/rows.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
-import { t } from "../../lib/i18n";
+import { t, type MessageKey } from "../../lib/i18n";
 import {
   settings,
   cacheModeStorage,
@@ -29,6 +29,8 @@ import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
 import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
+import { RETENTION_CHOICES, retentionOf, statsLevelOf, type StatsLevel } from "../../lib/stats/model";
+import { openStatsStore } from "../../lib/stats/store";
 
 const log = createLogger("options");
 mountToolbarGuide(document.getElementById("toolbarGuide")!);
@@ -287,6 +289,60 @@ async function refreshCacheCount(): Promise<void> {
     cacheCountEl.textContent = t(n === 1 ? "optCacheEntries_one" : "optCacheEntries_other", n.toLocaleString());
   } catch {
     cacheCountEl.textContent = ""; // no worker to ask — the row still works
+  }
+}
+
+// --- statistics ------------------------------------------------------------------------------
+// The level and how long days are kept (lib/stats/). Off by default; what each level keeps is
+// said under the choice, and the one that keeps a reading history says so plainly. The
+// records themselves are this extension's own IndexedDB, opened here to clear them.
+{
+  const levelEl = document.getElementById("statsLevel") as HTMLSelectElement;
+  const noteEl = document.getElementById("statsLevelNote") as HTMLElement;
+  const warnEl = document.getElementById("statsPagesWarn") as HTMLElement;
+  const retentionEl = document.getElementById("statsRetention") as HTMLSelectElement;
+  const statusEl = document.getElementById("statsStatus") as HTMLElement;
+  const HINT: Record<StatsLevel, MessageKey> = {
+    off: "statsLevelOffHint", daily: "statsLevelDailyHint", sites: "statsLevelSitesHint", pages: "statsLevelPagesHint",
+  };
+  const describe = (): void => {
+    const level = statsLevelOf(levelEl.value);
+    noteEl.textContent = t(HINT[level]);
+    warnEl.hidden = level !== "pages";
+  };
+  bindSelect<string>(levelEl, {
+    getValue: async () => statsLevelOf(await settings.statsLevel.getValue()),
+    setValue: (v) => settings.statsLevel.setValue(statsLevelOf(v)),
+  });
+  settings.statsLevel.watch((v) => { levelEl.value = statsLevelOf(v); describe(); });
+  void settings.statsLevel.getValue().then(describe, () => undefined);
+  levelEl.addEventListener("change", describe);
+  for (const days of RETENTION_CHOICES) retentionEl.add(new Option(t("optStatsDays", days), String(days)));
+  bindSelect<string>(retentionEl, {
+    getValue: async () => String(retentionOf(await settings.statsRetentionDays.getValue())),
+    setValue: (v) => settings.statsRetentionDays.setValue(retentionOf(Number(v))),
+  });
+  const statsPage = (hash = ""): void => void browser.tabs.create({ url: browser.runtime.getURL("/stats.html") + hash });
+  document.getElementById("openStats")!.addEventListener("click", () => statsPage());
+  document.getElementById("exportStats")!.addEventListener("click", () => statsPage("#export"));
+  const dialog = document.getElementById("clearStatsDialog") as HTMLDialogElement;
+  document.getElementById("clearStats")!.addEventListener("click", () => {
+    statusEl.textContent = "";
+    dialog.showModal();
+    document.getElementById("clearStatsCancel")!.focus();
+  });
+  document.getElementById("clearStatsCancel")!.addEventListener("click", () => dialog.close());
+  document.getElementById("clearStatsConfirm")!.addEventListener("click", () => {
+    void openStatsStore().clear().then(
+      () => { statusEl.textContent = t("statsCleared"); },
+      () => { statusEl.textContent = t("optSaveFailed"); },
+    ).finally(() => dialog.close());
+  });
+  // Opened from the statistics page's link: the group in view.
+  if (location.hash === "#statistics") {
+    const group = document.getElementById("statistics")!;
+    group.scrollIntoView({ block: "center" });
+    group.focus({ preventScroll: true });
   }
 }
 
