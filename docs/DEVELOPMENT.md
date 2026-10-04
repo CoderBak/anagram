@@ -25,6 +25,7 @@ Work on `dev`; `main` holds the published README only.
 | Inference and runtime selection | `anagramd/engine.py`, `anagramd/runtime_controller.py`, `anagramd/runtime_adapters.py`, `anagramd/model_plan.py` |
 | Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/modelkit.json` |
 | Install, update, uninstall | `install.sh`, `install.ps1`, `installer/native_registration.py`, `installer/anagram` |
+| Reading statistics | `lib/stats/meter.ts` (what of a page is read), `lib/stats/worker.ts` (what the worker keeps, by level), `lib/stats/store.ts`, `entrypoints/stats/`; the export is [statistics.md](statistics.md) |
 | Localization | `public/_locales/en/`, `public/_locales/zh_CN/`, `scripts/i18nSubset.ts` |
 
 ## Decisions that hold

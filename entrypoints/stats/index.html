@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
+    <title data-i18n="statsTitle">Reading statistics</title>
+    <style>
+      /* Layout only; colours, type and controls come from Basecoat (Vega). The four words'
+         colours are the chips' own (lib/render/scale.ts), set as --c on .b0 … .b3 by main.ts. */
+      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+      .page { max-width: 760px; margin: 0 auto; padding: 24px 16px 32px; }
+      header.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+      header.hdr img { width: 44px; height: 44px; margin: -2px; }
+      header.hdr .logo-dark { display: none; }
+      html.dark header.hdr .logo-light { display: none; }
+      html.dark header.hdr .logo-dark { display: block; }
+      header.hdr > div { flex: 1; min-width: 0; }
+      header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+      header.hdr p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+      .card { margin: 0 0 14px; }
+      .card h2 { margin: 0; font-size: 14.5px; font-weight: 600; }
+      .card .sub { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+      .muted { color: var(--muted-foreground); }
+      .note { margin: 8px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+      .warn { margin: 8px 0 0; font-size: 12.5px; color: var(--foreground); padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--b2-c, #f0600f) 12%, var(--background)); }
+      /* What each level records. */
+      .levels { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+      .levels li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+      .levels strong { display: block; font-size: 13.5px; font-weight: 600; }
+      .levels span { font-size: 12.5px; color: var(--muted-foreground); }
+      .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+      /* The period, and what to do with it. */
+      .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 14px; }
+      .bar .tabs > [role="tablist"] { height: 32px; }
+      .bar .tabs > [role="tablist"] > [role="tab"] { font-size: 12.5px; padding: 2px 10px; }
+      .bar .select { width: auto; min-width: 150px; }
+      .bar .grow { flex: 1 1 auto; }
+      .bar .period { flex: 1 0 100%; margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
+      /* The headline: one number, its words, the bar of the four. */
+      .hero { margin: 4px 0 0; font-size: 52px; font-weight: 600; line-height: 1.05; letter-spacing: -0.03em; }
+      .hero-line { margin: 4px 0 0; }
+      .mix { display: flex; height: 10px; margin: 14px 0 0; border-radius: 999px; overflow: hidden; background: var(--muted); }
+      .mix > span { min-width: 2px; background: var(--c); }
+      .mix > span + span { border-inline-start: 2px solid var(--card, var(--background)); }
+      .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 16px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+      .legend li { display: flex; align-items: center; gap: 7px; min-width: 0; }
+      .legend .lbl { flex: 1; min-width: 0; }
+      .legend .n { font-variant-numeric: tabular-nums; font-weight: 600; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--c); }
+      .compare { margin: 10px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+      /* The trend: a column a day, the four words stacked by their expected words. */
+      .trend { display: block; width: 100%; height: auto; margin-top: 10px; }
+      .trend .rule { stroke: var(--border); stroke-width: 1; }
+      .trend text { fill: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+      .trend .seg { fill: var(--c); }
+      .trend .hit { fill: transparent; }
+      .trend g.col:hover .seg { opacity: .85; }
+      details.table-view { margin-top: 8px; font-size: 12.5px; }
+      details.table-view summary { cursor: pointer; color: var(--muted-foreground); min-height: 24px; line-height: 24px; }
+      /* Tables that carry their own bar: a row per kind, site or page. */
+      .table-container { margin-top: 8px; overflow-x: auto; }
+      table.table { font-size: 12.5px; }
+      table.table th, table.table td { white-space: nowrap; }
+      table.table td.num, table.table th.num { text-align: end; font-variant-numeric: tabular-nums; }
+      table.table td.name { width: 100%; white-space: normal; overflow-wrap: anywhere; min-width: 120px; }
+      table.table td.name > span { display: block; }
+      table.table td.name .mix { display: flex; width: 100%; max-width: 420px; height: 8px; margin: 6px 0 2px; }
+      table.table a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+      .coverage-list { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; display: grid; gap: 3px; }
+      .coverage-list li { display: flex; align-items: center; gap: 7px; }
+      .cov0 { --c: color-mix(in oklab, var(--foreground) 70%, var(--background)); }
+      .cov1 { --c: color-mix(in oklab, var(--foreground) 40%, var(--background)); }
+      .cov2 { --c: color-mix(in oklab, var(--foreground) 25%, var(--background)); }
+      .cov3 { --c: color-mix(in oklab, var(--foreground) 12%, var(--background)); }
+      .empty { margin: 0; color: var(--muted-foreground); }
+      /* Dialogs: export and clear. */
+      dialog.stats-dialog { margin: auto; width: min(460px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); background: var(--card, var(--background)); }
+      dialog.stats-dialog::backdrop { background: rgb(0 0 0 / .4); }
+      dialog.stats-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
+      dialog.stats-dialog p { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+      dialog.stats-dialog .field { margin-top: 14px; display: grid; gap: 4px; }
+      dialog.stats-dialog .field > label, dialog.stats-dialog legend { font-size: 13px; font-weight: 500; }
+      dialog.stats-dialog fieldset { margin: 14px 0 0; padding: 0; border: 0; }
+      dialog.stats-dialog fieldset label { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; }
+      dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+      .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
+      .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+      .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      [hidden] { display: none !important; }
+      /* Hit areas, not paint (WCAG 2.5.8). */
+      .tabs > [role="tablist"] > [role="tab"] { position: relative; }
+      .tabs > [role="tablist"] > [role="tab"]::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; height: 24px; }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hdr">
+        <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
+        <img class="logo-dark" src="/icons/icon-96.png" alt="" />
+        <div>
+          <h1 data-i18n="statsTitle">Reading statistics</h1>
+          <p id="levelLine"></p>
+        </div>
+      </header>
+
+      <!-- Recording is off: what each level would keep, and the way to turn it on. -->
+      <section class="card" id="offCard" aria-labelledby="offTitle" hidden>
+        <header>
+          <h2 id="offTitle" data-i18n="statsOffTitle">Statistics are off</h2>
+          <p data-i18n="statsOffLead">Anagram can keep a record of how much of what you read reads as AI-generated. It stays on this computer, and nothing is ever sent anywhere.</p>
+        </header>
+        <section>
+          <ul class="levels">
+            <li><strong data-i18n="statsLevelDaily">Daily totals</strong><span data-i18n="statsLevelDailyHint">Each day: how many words you read, how they read from human to AI-generated, and on what kind of page. No sites, no pages.</span></li>
+            <li><strong data-i18n="statsLevelSites">Daily totals and sites</strong><span data-i18n="statsLevelSitesHint">The same, and each site's share of the day. No page addresses.</span></li>
+            <li><strong data-i18n="statsLevelPages">Every page</strong><span data-i18n="statsLevelPagesHint">The same, and each page you read: its address, its title, when you opened it and for how long.</span></li>
+          </ul>
+          <p class="note" data-i18n="statsNeverNote">Never any text from a page. Never private windows, sites you switched Anagram off for, or Analyze text.</p>
+          <div class="form-row">
+            <select id="turnOnLevel" class="select" aria-label="Record" data-i18n-aria-label="optStatsLevel">
+              <option value="daily" data-i18n="statsLevelDaily">Daily totals</option>
+              <option value="sites" data-i18n="statsLevelSites">Daily totals and sites</option>
+              <option value="pages" data-i18n="statsLevelPages">Every page</option>
+            </select>
+            <button type="button" class="btn" data-size="sm" id="turnOn" data-i18n="statsTurnOn">Turn on</button>
+          </div>
+          <p class="warn" id="turnOnWarn" data-i18n="statsPagesWarning" hidden>This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it.</p>
+        </section>
+      </section>
+
+      <div id="content" hidden>
+        <div class="bar">
+          <div class="tabs">
+            <nav role="tablist" aria-orientation="horizontal" aria-label="Period" data-i18n-aria-label="statsPeriod" id="ranges">
+              <button type="button" role="tab" data-range="today" aria-selected="true" data-i18n="statsToday">Today</button>
+              <button type="button" role="tab" data-range="7" aria-selected="false" data-i18n="statsLast7">7 days</button>
+              <button type="button" role="tab" data-range="30" aria-selected="false" data-i18n="statsLast30">30 days</button>
+            </nav>
+          </div>
+          <select id="month" class="select" aria-label="Month" data-i18n-aria-label="statsMonth">
+            <option value="" data-i18n="statsMonthPick">A month…</option>
+          </select>
+          <span class="grow"></span>
+          <button type="button" class="btn" data-variant="outline" data-size="sm" id="export" data-i18n="statsExport">Export…</button>
+          <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clear" data-i18n="statsClear">Clear statistics</button>
+          <p class="period" id="period" role="status" aria-live="polite"></p>
+        </div>
+
+        <section class="card" id="emptyCard" hidden>
+          <section><p class="empty" id="emptyText" data-i18n="statsNothing">Nothing was recorded in this period.</p></section>
+        </section>
+
+        <div id="sections">
+          <section class="card" aria-labelledby="heroTitle">
+            <header><h2 id="heroTitle" data-i18n="statsHeadline">What you read</h2></header>
+            <section>
+              <p class="hero" id="heroShare"></p>
+              <p class="hero-line" id="heroLine"></p>
+              <div class="mix" id="heroMix" aria-hidden="true"></div>
+              <ul class="legend" id="heroLegend"></ul>
+              <p class="compare" id="heroCompare"></p>
+              <p class="note" data-i18n="statsExpectedNote">Shares are expected words: each paragraph's words are split by how likely the model finds each verdict, so a doubtful paragraph counts partly on both sides.</p>
+            </section>
+          </section>
+
+          <section class="card" id="trendCard" aria-labelledby="trendTitle">
+            <header>
+              <h2 id="trendTitle" data-i18n="statsTrend">Day by day</h2>
+              <p class="sub" data-i18n="statsTrendHint">Words read and scored each day, split into the four verdicts.</p>
+            </header>
+            <section>
+              <div id="trendChart"></div>
+              <details class="table-view"><summary data-i18n="statsShowTable">Show as a table</summary><div class="table-container" id="trendTable"></div></details>
+            </section>
+          </section>
+
+          <section class="card" aria-labelledby="kindTitle">
+            <header><h2 id="kindTitle" data-i18n="statsByKind">By kind of page</h2></header>
+            <section><div class="table-container" id="kindTable"></div></section>
+          </section>
+
+          <section class="card" aria-labelledby="feedTitle">
+            <header>
+              <h2 id="feedTitle" data-i18n="statsFeeds">Feeds and everything else</h2>
+              <p class="sub" data-i18n="statsFeedsHint">Social feeds and timelines against articles, forums, documents and the rest.</p>
+            </header>
+            <section><div class="table-container" id="feedTable"></div></section>
+          </section>
+
+          <section class="card" id="siteCard" aria-labelledby="siteTitle">
+            <header><h2 id="siteTitle" data-i18n="statsBySite">By site</h2></header>
+            <section>
+              <div class="table-container" id="siteTable"></div>
+              <p class="note" id="siteMore"></p>
+            </section>
+          </section>
+
+          <section class="card" aria-labelledby="coverageTitle">
+            <header><h2 id="coverageTitle" data-i18n="statsCoverage">What could be scored</h2></header>
+            <section>
+              <p id="coverageLine"></p>
+              <div class="mix" id="coverageMix" aria-hidden="true"></div>
+              <ul class="coverage-list" id="coverageList"></ul>
+            </section>
+          </section>
+
+          <section class="card" id="pagesCard" aria-labelledby="pagesTitle">
+            <header><h2 id="pagesTitle" data-i18n="statsPages">Pages</h2></header>
+            <section>
+              <div class="table-container" id="pagesTable"></div>
+              <p class="note" id="pagesMore"></p>
+            </section>
+          </section>
+        </div>
+      </div>
+
+      <dialog class="stats-dialog" id="exportDialog" aria-labelledby="exportTitle">
+        <form method="dialog" id="exportForm">
+          <h2 id="exportTitle" data-i18n="statsExportTitle">Export statistics</h2>
+          <p id="exportRange"></p>
+          <div class="field">
+            <label for="exportLevel" data-i18n="statsExportLevel">Detail</label>
+            <select id="exportLevel" class="select"></select>
+          </div>
+          <fieldset>
+            <legend data-i18n="statsExportFormat">Format</legend>
+            <label><input type="radio" class="input" name="format" value="json" checked /> <span data-i18n="statsExportJson">JSON (everything at this detail)</span></label>
+            <label><input type="radio" class="input" name="format" value="csv" /> <span data-i18n="statsExportCsv">CSV (one row a day)</span></label>
+          </fieldset>
+          <p class="muted" data-i18n="statsExportNote">The file is saved on this computer. Anagram never uploads it: whether to share it is up to you. You can open it and see everything it holds.</p>
+          <div class="actions">
+            <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportCancel" data-i18n="buttonCancel">Cancel</button>
+            <button type="submit" class="btn" data-size="sm" id="exportSave" data-i18n="statsExportSave">Save file</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog class="stats-dialog" id="clearDialog" aria-labelledby="clearTitle" aria-describedby="clearText">
+        <h2 id="clearTitle" data-i18n="statsClearTitle">Clear statistics?</h2>
+        <p id="clearText" data-i18n="statsClearConfirm">Every day recorded is deleted from this computer. This can't be undone.</p>
+        <div class="actions">
+          <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCancel" data-i18n="buttonCancel">Cancel</button>
+          <button type="button" class="btn" data-variant="destructive" data-size="sm" id="clearConfirm" data-i18n="statsClear">Clear statistics</button>
+        </div>
+      </dialog>
+
+      <footer class="links">
+        <a class="link" id="settingsLink" href="/options.html#statistics" data-i18n="statsSettingsLink">Statistics settings</a>
+        <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
+      </footer>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

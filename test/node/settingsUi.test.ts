@@ -47,9 +47,9 @@ describe("Settings is one list", () => {
     for (const messages of LOCALES) expect(Object.keys(messages).filter((k) => /^(optReportText|optReportUrl|optDebug|optShortcuts)$/.test(k))).toEqual([]);
   });
 
-  it("names its rows: Engine, Sites, PDFs, Marks, Length and Cache", () => {
+  it("names its rows: Engine, Sites, PDFs, Marks, Length, Cache and Statistics", () => {
     const labels = [...html.matchAll(/class="group-label"[^>]*data-i18n="(\w+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["optEngine", "optSites", "optPdfs", "optMarks", "optLength", "optCache"]);
+    expect(labels).toEqual(["optEngine", "optSites", "optPdfs", "optMarks", "optLength", "optCache", "optStats"]);
   });
 
   it("no longer holds the PDF reader or the paste page: the popup does", () => {

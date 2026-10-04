@@ -4,6 +4,7 @@ import { safePdfSource } from "../pdf/source";
 import { isCommentOrigin } from "./commentFrames";
 import { CONTRACT_VERSION } from "../contract";
 import { ACTIONS } from "../messaging/protocol";
+import { PAGE_KINDS, SKIP_REASONS, STATS_MAX_DWELL_S, STATS_MAX_ENTRIES, STATS_MAX_WORDS } from "../stats/model";
 
 export interface AccessSender {
   id?: string; url?: string; origin?: string; documentId?: string; frameId?: number; documentLifecycle?: string;
@@ -32,6 +33,12 @@ export const ScoreRequestSchema = v.pipe(v.strictObject({
   v.check((r) => new TextEncoder().encode(JSON.stringify(r)).byteLength <= 900_000,"encoded request too large"));
 const TokenTexts = v.pipe(v.array(v.pipe(v.string(),v.maxLength(16000))),v.minLength(1),v.maxLength(512),
   v.check((texts) => texts.reduce((n,t)=>n+t.length,0) <= 256_000,"request too large"));
+/** A stretch of words read, for the statistics: numbers only, never text. */
+const StatsWords = v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(STATS_MAX_WORDS));
+const Probability = v.pipe(v.number(), v.minValue(0), v.maxValue(1));
+const StatsUnit = v.pipe(v.strictObject({w:StatsWords,p:v.pipe(v.array(Probability),v.length(4))}),
+  v.check((u) => Math.abs(u.p.reduce((n,p)=>n+p,0)-1) <= 0.02, "probabilities do not sum to one"));
+const StatsSkip = v.strictObject({w:StatsWords,why:v.picklist(SKIP_REASONS)});
 const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.SCORE_BATCH),session,req:ScoreRequestSchema}),
   v.strictObject({action:v.literal(ACTIONS.COUNT_TOKENS),session,texts:TokenTexts}),
@@ -51,6 +58,9 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.GET_ENGINE)}),
   v.strictObject({action:v.literal(ACTIONS.SET_ENGINE),engine:v.picklist(["native","inbrowser"]),setup:v.optional(v.picklist(["now","auto"])),tier:v.optional(v.picklist(["fp32","fp16"])),fallback:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.DELETE_INBROWSER_MODEL)}),
+  v.strictObject({action:v.literal(ACTIONS.STATS_RECORD),session,kind:v.picklist(PAGE_KINDS),
+    dwell:v.pipe(v.number(),v.integer(),v.minValue(0),v.maxValue(STATS_MAX_DWELL_S)),
+    units:v.pipe(v.array(StatsUnit),v.maxLength(STATS_MAX_ENTRIES)),skipped:v.pipe(v.array(StatsSkip),v.maxLength(STATS_MAX_ENTRIES))}),
 ]);
 export type WorkerMessage = v.InferOutput<typeof schema>;
 export function parseWorkerMessage(value: unknown): WorkerMessage | null {
@@ -58,6 +68,7 @@ export function parseWorkerMessage(value: unknown): WorkerMessage | null {
   const raw=value as {action?:unknown;req?:{blocks?:unknown}}|null;
   if(raw?.action === ACTIONS.SCORE_BATCH && Array.isArray(raw.req?.blocks) && raw.req.blocks.length>256)return null;
   if(raw?.action === ACTIONS.COUNT_TOKENS && Array.isArray((raw as {texts?:unknown}).texts) && (raw as {texts:unknown[]}).texts.length>512)return null;
+  if(raw?.action === ACTIONS.STATS_RECORD && ["units","skipped"].some((k)=>{const list=(raw as Record<string,unknown>)[k];return Array.isArray(list) && list.length>STATS_MAX_ENTRIES;}))return null;
   const result = v.safeParse(schema,value,{abortEarly:true,abortPipeEarly:true}); return result.success ? result.output : null;
 }
 /** Schemes of the documents that take their origin from the page that made them. */
@@ -117,5 +128,8 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
     // in-browser one when the local one keeps crashing.
     case ACTIONS.GET_ENGINE: case ACTIONS.SET_ENGINE: return role === "onboarding" || role === "options" || role === "popup";
     case ACTIONS.DELETE_INBROWSER_MODEL: return role === "options";
+    // What was read, from a page or the PDF reader; never from Analyze text, whose text is the
+    // reader's own (lib/stats/worker.ts).
+    case ACTIONS.STATS_RECORD: return role === "content" || role === "reader";
   }
 }

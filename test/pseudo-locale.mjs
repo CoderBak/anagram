@@ -8,7 +8,8 @@
 // cannot run the model, Settings' switch and its offer to delete the in-browser engine's files,
 // the offer of the in-browser engine when the local one keeps crashing, and the in-browser
 // engine's setup page in each state on the way to Ready, its cancel confirmation and its toolbar
-// menu — at 1280 and 400 px (the menu at its own 340), three times: in a
+// menu, and the reading statistics (off, a week of them, the export, Settings' group, the
+// toolbar menu's line) — at 1280 and 400 px (the menu at its own 340), three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -34,6 +35,7 @@ import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
 import { scriptDevice, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "./webengine/model-server.mjs";
+import { seedStats, statsWeek } from "./stats-fixture.mjs";
 
 requireBuild();
 
@@ -308,6 +310,44 @@ async function pages(context, extId, fixture, lang) {
   await page.close();
 }
 
+// ---- the reading statistics -------------------------------------------------------------------------
+
+/** The statistics page while off (the warning for every page shown), with a week recorded by
+ *  page (the trend's table open, then the export dialog), Settings' group recording every page,
+ *  and the toolbar menu's line of today (test/stats-fixture.mjs). */
+async function statsPages(context, sw, extId, lang) {
+  const url = (p) => `chrome-extension://${extId}/${p}`;
+  const page = await context.newPage();
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(url("stats.html"), { waitUntil: "load" });
+    await page.locator("#offCard:not([hidden])").waitFor({ timeout: 10000 }).catch(() => {});
+    await page.selectOption("#turnOnLevel", "pages").catch(() => {});
+    await check(page, lang, "statistics, off");
+  }
+  await sw.evaluate(() => chrome.storage.local.set({ statsLevel: "pages" }));
+  await seedStats(sw, statsWeek());
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await page.goto(url("stats.html"), { waitUntil: "load" });
+    await page.click('#ranges [data-range="7"]').catch(() => {});
+    await page.locator("#trendChart svg").waitFor({ timeout: 10000 }).catch(() => {});
+    await page.click("#trendCard summary").catch(() => {});
+    await check(page, lang, "statistics, a week");
+    await page.click("#export").catch(() => {});
+    await page.locator("#exportDialog[open]").waitFor({ timeout: 5000 }).catch(() => {});
+    await check(page, lang, "statistics, export");
+    await page.goto(url("options.html#statistics"), { waitUntil: "load" });
+    await page.locator("#statsPagesWarn:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
+    await check(page, lang, "settings, statistics of every page");
+  }
+  await page.setViewportSize(POPUP);
+  await page.goto(url("popup.html"), { waitUntil: "load" });
+  await page.locator("#statsToday:not([hidden])").waitFor({ timeout: 10000 }).catch(() => {});
+  await check(page, lang, "popup, today's statistics");
+  await page.close();
+}
+
 // ---- which engine ----------------------------------------------------------------------------------
 
 /** The engine card before an engine is chosen, on the devices that see each of its faces (the
@@ -453,6 +493,7 @@ async function run(lang, launch) {
       return;
     }
     await pages(context, extId, fixture, lang);
+    await statsPages(context, sw, extId, lang);
   } finally {
     await context.close();
   }

@@ -40,6 +40,13 @@
       .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
       .links span { line-height: 24px; }
+      .row .row-note.stats-warn { color: var(--foreground); }
+      .group:focus { outline: none; }
+      dialog.stats-dialog { margin: auto; width: min(440px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); background: var(--card, var(--background)); }
+      dialog.stats-dialog::backdrop { background: rgb(0 0 0 / .4); }
+      dialog.stats-dialog .dialog-title { margin: 0; font-size: 16px; font-weight: 600; }
+      dialog.stats-dialog p { margin: 10px 0 0; overflow-wrap: anywhere; }
+      dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
       /* Out of the page, still in the accessibility tree. */
       .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
       @media (max-width: 520px) {
@@ -164,6 +171,37 @@
               </div>
             </div>
           </div>
+
+          <div class="group" id="statistics" tabindex="-1">
+            <span class="group-label" id="statsLabel" data-i18n="optStats">Statistics</span>
+            <div class="group-body rows" role="group" aria-labelledby="statsLabel">
+              <div class="row">
+                <label for="statsLevel" data-i18n="optStatsLevel">Record</label>
+                <span class="row-body">
+                  <select id="statsLevel" class="select" aria-describedby="statsLevelNote statsPagesWarn">
+                    <option value="off" data-i18n="statsLevelOff">Off</option>
+                    <option value="daily" data-i18n="statsLevelDaily">Daily totals</option>
+                    <option value="sites" data-i18n="statsLevelSites">Daily totals and sites</option>
+                    <option value="pages" data-i18n="statsLevelPages">Every page</option>
+                  </select>
+                </span>
+                <p id="statsLevelNote" class="row-note"></p>
+                <p id="statsPagesWarn" class="row-note stats-warn" data-i18n="statsPagesWarning" hidden>This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it.</p>
+              </div>
+              <div class="row">
+                <label for="statsRetention" data-i18n="optStatsKeep">Keep</label>
+                <span class="row-body"><select id="statsRetention" class="select"></select></span>
+              </div>
+              <div class="row lead">
+                <span class="row-body">
+                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="openStats" data-i18n="optStatsOpen">Open statistics</button>
+                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportStats" data-i18n="statsExport">Export…</button>
+                  <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clearStats" data-i18n="statsClear">Clear statistics</button>
+                </span>
+                <p id="statsStatus" class="row-note" role="status"></p>
+              </div>
+            </div>
+          </div>
         </section>
       </section>
 
@@ -171,6 +209,15 @@
         <p class="toolbar-guide-title" id="toolbarGuideTitle" data-i18n="toolbarPinTitle">Keep Anagram in your toolbar</p>
         <div id="toolbarGuide"></div>
       </section>
+
+      <dialog class="stats-dialog" id="clearStatsDialog" aria-labelledby="clearStatsTitle" aria-describedby="clearStatsText">
+        <p class="dialog-title" id="clearStatsTitle" data-i18n="statsClearTitle">Clear statistics?</p>
+        <p id="clearStatsText" data-i18n="statsClearConfirm">Every day recorded is deleted from this computer. This can't be undone.</p>
+        <div class="actions">
+          <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearStatsCancel" data-i18n="buttonCancel">Cancel</button>
+          <button type="button" class="btn" data-variant="destructive" data-size="sm" id="clearStatsConfirm" data-i18n="statsClear">Clear statistics</button>
+        </div>
+      </dialog>
 
       <footer class="links">
         <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>

@@ -473,6 +473,7 @@ async function startAnalysis(owned: number): Promise<void> {
   let answered: unknown = null;
   orchestrator = createOrchestrator(null, {
     toolbarOwner: true,
+    pageKind: () => "document",
     // The report counts every page read so far (the orchestrator keeps what the viewer lets
     // go, and what the read-ahead reads): say how many that is while it is not all of them.
     reportScopeNote: scopeNote,

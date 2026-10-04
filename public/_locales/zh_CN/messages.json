@@ -1101,5 +1101,269 @@
   },
   "pasteByParagraph": {
     "message": "逐段结果"
+  },
+  "statsTitle": {
+    "message": "阅读统计"
+  },
+  "statsOffTitle": {
+    "message": "统计已关闭"
+  },
+  "statsOffLead": {
+    "message": "Anagram 可以记录你读到的内容中有多少像是 AI 生成的。记录只保存在这台电脑上，不会发送到任何地方。"
+  },
+  "statsLevelOff": {
+    "message": "关闭"
+  },
+  "statsLevelDaily": {
+    "message": "每日汇总"
+  },
+  "statsLevelSites": {
+    "message": "每日汇总和网站"
+  },
+  "statsLevelPages": {
+    "message": "每个页面"
+  },
+  "statsLevelOffHint": {
+    "message": "不记录任何内容。"
+  },
+  "statsLevelDailyHint": {
+    "message": "每天读了多少词、这些内容从人工撰写到 AI 生成如何分布，以及读的是哪类页面。不记录网站，也不记录页面。"
+  },
+  "statsLevelSitesHint": {
+    "message": "同上，另记录每个网站在当天所占的部分。不记录页面地址。"
+  },
+  "statsLevelPagesHint": {
+    "message": "同上，另记录你读过的每个页面：地址、标题、打开时间和停留时长。"
+  },
+  "statsNeverNote": {
+    "message": "绝不记录页面上的文字，也绝不记录无痕窗口、你关闭了 Anagram 的网站或“分析文本”。"
+  },
+  "optStatsLevel": {
+    "message": "记录"
+  },
+  "statsTurnOn": {
+    "message": "开启"
+  },
+  "statsPagesWarning": {
+    "message": "这会保留一份你读过的每个页面的清单，包括地址和标题。它只保存在这台电脑上，但任何使用这个浏览器配置文件的人都可能看到。"
+  },
+  "statsPeriod": {
+    "message": "时间段"
+  },
+  "statsToday": {
+    "message": "今天"
+  },
+  "statsLast7": {
+    "message": "7 天"
+  },
+  "statsLast30": {
+    "message": "30 天"
+  },
+  "statsMonth": {
+    "message": "月份"
+  },
+  "statsMonthPick": {
+    "message": "选择月份…"
+  },
+  "statsExport": {
+    "message": "导出…"
+  },
+  "statsClear": {
+    "message": "清除统计"
+  },
+  "statsNothing": {
+    "message": "这段时间没有记录。"
+  },
+  "statsHeadline": {
+    "message": "你读到的内容"
+  },
+  "statsExpectedNote": {
+    "message": "占比按期望词数计算：每段的词数按模型给出的各类判断的概率分摊，因此拿不准的段落会部分计入两边。"
+  },
+  "statsTrend": {
+    "message": "逐日"
+  },
+  "statsTrendHint": {
+    "message": "每天读到并完成评分的词数，按四类判断分开。"
+  },
+  "statsShowTable": {
+    "message": "以表格显示"
+  },
+  "statsByKind": {
+    "message": "按页面类型"
+  },
+  "statsFeeds": {
+    "message": "信息流与其他"
+  },
+  "statsFeedsHint": {
+    "message": "社交信息流和时间线，与文章、论坛、文档等其他内容对比。"
+  },
+  "statsBySite": {
+    "message": "按网站"
+  },
+  "statsCoverage": {
+    "message": "可评分的部分"
+  },
+  "statsPages": {
+    "message": "页面"
+  },
+  "statsExportTitle": {
+    "message": "导出统计"
+  },
+  "statsExportLevel": {
+    "message": "详细程度"
+  },
+  "statsExportFormat": {
+    "message": "格式"
+  },
+  "statsExportJson": {
+    "message": "JSON（此详细程度下的全部内容）"
+  },
+  "statsExportCsv": {
+    "message": "CSV（每天一行）"
+  },
+  "statsExportNote": {
+    "message": "文件保存在这台电脑上。Anagram 从不上传它，是否分享由你决定。你可以打开它，查看其中的全部内容。"
+  },
+  "statsExportSave": {
+    "message": "保存文件"
+  },
+  "statsExportRange": {
+    "message": "时间段：$1"
+  },
+  "statsClearTitle": {
+    "message": "清除统计？"
+  },
+  "statsClearConfirm": {
+    "message": "所有已记录的数据都会从这台电脑上删除，且无法撤销。"
+  },
+  "statsCleared": {
+    "message": "统计已清除。"
+  },
+  "statsSettingsLink": {
+    "message": "统计设置"
+  },
+  "statsKindFeed": {
+    "message": "信息流"
+  },
+  "statsKindArticle": {
+    "message": "文章"
+  },
+  "statsKindForum": {
+    "message": "论坛和问答"
+  },
+  "statsKindDocument": {
+    "message": "文档和 PDF"
+  },
+  "statsKindOther": {
+    "message": "其他页面"
+  },
+  "statsEverythingElse": {
+    "message": "其他内容"
+  },
+  "statsHeroLine": {
+    "message": "预计为 AI 生成（共读到并评分 $1 个词）"
+  },
+  "statsHeroNone": {
+    "message": "这段时间读到的内容都无法评分。"
+  },
+  "statsCompare30": {
+    "message": "你最近 30 天的平均值：$1。"
+  },
+  "statsColWords": {
+    "message": "读到的词"
+  },
+  "statsColAi": {
+    "message": "AI 生成"
+  },
+  "statsColKind": {
+    "message": "页面类型"
+  },
+  "statsColSite": {
+    "message": "网站"
+  },
+  "statsColDate": {
+    "message": "日期"
+  },
+  "statsColScored": {
+    "message": "已评分"
+  },
+  "statsColOpened": {
+    "message": "打开时间"
+  },
+  "statsColPage": {
+    "message": "页面"
+  },
+  "statsColShown": {
+    "message": "停留时长"
+  },
+  "statsTrendAria": {
+    "message": "$1每天读到并评分的词数，按四类判断分开。下方表格列出了具体数字。"
+  },
+  "statsTrendTip": {
+    "message": "评分 $1 个词，其中 $2 为 AI 生成"
+  },
+  "statsCoverageLine": {
+    "message": "你读到的 $2 个词中，有 $1 个可以评分（$3）。"
+  },
+  "statsCovScored": {
+    "message": "已评分：$1 个词"
+  },
+  "statsCovShort": {
+    "message": "太短无法评分：$1 个词"
+  },
+  "statsCovLanguage": {
+    "message": "非英语：$1 个词"
+  },
+  "statsCovUnavailable": {
+    "message": "引擎不可用：$1 个词"
+  },
+  "statsNoPages": {
+    "message": "这段时间没有记录页面。"
+  },
+  "statsMorePages": {
+    "message": "显示最近的 $1 个页面，共 $2 个。导出文件包含全部页面。"
+  },
+  "statsNoSites": {
+    "message": "这段时间没有记录网站。"
+  },
+  "statsMoreSites": {
+    "message": "另有 $1 个网站，导出文件包含全部网站。"
+  },
+  "statsLocalFile": {
+    "message": "这台电脑上的 PDF"
+  },
+  "statsLocalFiles": {
+    "message": "这台电脑上的 PDF"
+  },
+  "statsRecordingOff": {
+    "message": "记录已关闭。"
+  },
+  "statsRecordingLine": {
+    "message": "正在记录：$1，保留 $2 天。"
+  },
+  "optStats": {
+    "message": "统计"
+  },
+  "optStatsKeep": {
+    "message": "保留"
+  },
+  "optStatsDays": {
+    "message": "$1 天"
+  },
+  "optStatsOpen": {
+    "message": "打开统计"
+  },
+  "popupStatsLink": {
+    "message": "统计"
+  },
+  "popupStatsNothing": {
+    "message": "今天：还没有读到内容。"
+  },
+  "popupStatsNoneScored": {
+    "message": "今天：读到 $1 个词，均无法评分。"
+  },
+  "popupStatsToday": {
+    "message": "今天：读到 $2 个词，其中 $1 为 AI 生成。"
   }
 }

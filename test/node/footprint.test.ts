@@ -241,7 +241,7 @@ describe.each(["chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
   });
 
   it.skipIf(!ready)("keeps ordinary UI connections local while isolating source reads in the PDF loader", () => {
-    for (const page of ["popup", "options", "onboarding", "reader", "paste"]) {
+    for (const page of ["popup", "options", "onboarding", "reader", "paste", "stats"]) {
       const html = readFileSync(join(OUT, `${page}.html`), "utf8");
       expect(html, page).toMatch(/<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]+content="connect-src 'self'"/i);
     }

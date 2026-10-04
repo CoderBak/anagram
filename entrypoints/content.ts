@@ -142,6 +142,8 @@ export default defineContentScript({
       toolbarOwner: isTop,
       collect: surface?.collect,
       placeBadge: surface?.placeBadge,
+      // A Google Doc and what a surface reads are documents, whatever page holds them.
+      ...(docs || surface ? { pageKind: () => "document" as const } : {}),
     });
 
     // Site rules are keyed on the TOP page's hostname — that is what the popup writes.
