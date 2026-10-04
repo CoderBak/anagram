@@ -24,9 +24,10 @@ const MAX_BYTES = 100 * 1024 * 1024;
 /** Zotero's structure is read for documents up to this many pages, a thousand pages at a time
  *  (lib/pdf/structureWorker.ts); past it the reflow reads every page as it renders. What grows
  *  with the document is what the page keeps while it is read — the structure's reading and
- *  every page's text: at 2,445 pages, 683 MB when the structure came, falling to 311 MB as the
- *  document was read (813 pages: 269 MB), 11 ms a page to the structure, and one pause of the
- *  page, 0.3 s, as it came (2026-10-04, M4). */
+ *  every page's text: at 2,445 pages, 195 MB when the structure came, rising to 311 MB as the
+ *  document was read (683 MB at first, falling, while the paragraphs not read yet kept their
+ *  glyphs as objects: lib/pdf/structured.ts, packPieces), 11 ms a page to the structure, and
+ *  one pause of the page, 0.3 s, as it came (2026-10-04, M4). */
 const MOST_STRUCTURE_PAGES = 2500;
 /** Read without asking: all of them where the browser says the device has 8 GB of memory or
  *  more, 600 pages where it says 4, 300 where it says less or nothing (Firefox and Safari do
@@ -185,14 +186,14 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
   }
   if (owned !== generation) return false;
   try {
-    const result = await readStructure(bytes, count, signal, testCaps()?.rangePages);
-    if (owned !== generation) return false;
     // Made, and every paragraph of the document read and planned a first time, a few
     // milliseconds at a time (lib/slices.ts): at 300 pages that was half a second of the main
     // thread in two pieces, as the reader started reading. The reader keeps the text of every
-    // page it has read for as long as the document is open.
-    const reader = await createStructuredReaderInSlices(result, {pagesStay: true});
-    if (owned !== generation) return false;
+    // page it has read for as long as the document is open; the structure itself is let go as
+    // soon as the reader is made, not kept here until the paragraphs are planned.
+    const reader = await readStructure(bytes, count, signal, testCaps()?.rangePages)
+      .then((result) => (owned === generation ? createStructuredReaderInSlices(result, {pagesStay: true}) : null));
+    if (!reader || owned !== generation) return false;
     await readAround(pages.keys(), owned);
     if (owned !== generation) return false;
     await planInSlices(await reader.blocksInSlices([...texts.values()].sort((a, b) => a.page - b.page)), reading.minWords);
