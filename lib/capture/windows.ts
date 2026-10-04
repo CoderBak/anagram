@@ -385,6 +385,20 @@ export function isScoredWindow(w: WindowVerdict): boolean {
 }
 
 /** A probability vector in wire shape: bucket = its argmax, score = Σ pᵢ·i / 3. */
+/**
+ * Several texts' verdicts as one: the four probabilities averaged by each text's length, as a
+ * long unit's passes are (unitVerdict), and the score from that average. Failures and other
+ * languages are left out; null where nothing is left.
+ */
+export function meanVerdict(id: string, parts: readonly { result: ScoreResult; chars: number }[]): ScoreResult | null {
+  const scored = parts.filter((p) => !p.result.degraded && !p.result.unsupported && p.chars > 0);
+  const weight = scored.reduce((n, p) => n + p.chars, 0);
+  if (weight === 0) return null;
+  const probs = new Array<number>(BUCKET_COUNT).fill(0);
+  for (const p of scored) for (let i = 0; i < BUCKET_COUNT; i++) probs[i]! += (p.result.probs[i] ?? 0) * p.chars / weight;
+  return resultOf(id, probs);
+}
+
 function resultOf(id: string, probs: number[]): ScoreResult {
   let bucket = 0;
   for (let i = 1; i < BUCKET_COUNT; i++) if (probs[i]! > probs[bucket]!) bucket = i;

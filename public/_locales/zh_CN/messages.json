@@ -365,9 +365,6 @@
   "pasteWords_other": {
     "message": "$1 个词"
   },
-  "pasteCoverage": {
-    "message": "已分析 $1/$2 次读取，不支持的语言 $3 次，不可用 $4 次，截断 $5 次"
-  },
   "pasteFileFailed": {
     "message": "无法以 UTF-8 文本读取该文件。",
     "description": "Text analysis page action, status, or limit."
@@ -1080,5 +1077,29 @@
   },
   "onbEnglishOnly": {
     "message": "Anagram 只分析英文。其他语言的段落不显示标签；工具栏菜单会显示跳过了多少段。"
+  },
+  "pasteCoverageRead": {
+    "message": "已读取 $1/$2 段"
+  },
+  "pasteCoverageShort": {
+    "message": "$1 段过短，未读取"
+  },
+  "pasteCoverageForeign": {
+    "message": "$1 段非英文"
+  },
+  "pasteCoverageFailed": {
+    "message": "$1 段暂不可用"
+  },
+  "pasteNothingRead": {
+    "message": "没有可读取的内容"
+  },
+  "pasteTooShortToRead": {
+    "message": "过短，未读取"
+  },
+  "pasteShareHint": {
+    "message": "色条表示文本中有多少字数属于各类判断。"
+  },
+  "pasteByParagraph": {
+    "message": "逐段结果"
   }
 }

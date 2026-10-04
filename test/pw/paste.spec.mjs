@@ -1,5 +1,6 @@
 // The paste page: the evidence floor, an idle engine woken only by a real score, cached
-// verdicts with their producing model, the opt-in export and cancelling a pass in flight.
+// verdicts with their producing model, the opt-in export, cancelling a pass in flight, and the
+// text read paragraph by paragraph, as a page is.
 //
 //   npm run test:paste                # builds output/ first; this loads the SHIPPING build
 import { test as base, expect } from "./fixtures.mjs";
@@ -43,8 +44,9 @@ test("the minimum length (75 words here) refuses 74 words without waking the idl
   await analyze(page, TEXT);
   expect(nativeHost.requests().some((r) => r.op === "score")).toBe(true);
   expect(nativeHost.state().component.state, "The first score wakes an idle model with no cached identity").toBe("ready");
-  expect(await page.locator("#coverage").innerText()).toMatch(/1 of 1 passes analyzed/);
-  await expect(page.locator("#windows li")).toHaveCount(1);
+  expect(await page.locator("#coverage").innerText()).toMatch(/1 of 1 paragraphs read/);
+  await expect(page.locator("#reading .read")).toHaveCount(1);
+  await expect(page.locator("#reading .chip")).toHaveCount(1);
   expect(await page.evaluate(() => chrome.permissions.getAll()).then((p) => p.origins ?? []), "no host grants").toEqual([]);
 });
 
@@ -94,9 +96,37 @@ test("a pass cleared in flight unlocks at once, and its text is never shown or s
   // The cleared request's own answer is due 2.5 s after it went in: past that, it has had
   // every chance to land in the results, and to be sent again.
   await page.waitForTimeout(2700);
-  expect(await page.locator("#windows").innerText()).not.toContain("Pending cancellation");
+  expect(await page.locator("#reading").innerText()).not.toContain("Pending cancellation");
   expect(nativeHost.textsSince().filter((value) => value.includes("Pending cancellation")), "Cancelled text is never resent").toHaveLength(1);
   await page.locator("#clear").click();
   expect(await page.locator("#text").inputValue()).toBe("");
   expect(await page.locator("#results").isHidden()).toBe(true);
+});
+
+// Paragraphs, as blank lines part them: each one long enough read alone, with its chip after it;
+// two short ones read together (×2); one too short to read with anything left in muted ink; the
+// whole text's verdict from the paragraphs, and how much of it, in words, reads as each word.
+test("the text is read paragraph by paragraph, as a page is: a chip after each, short ones together, the flagged ones underlined", async ({ page, extension, storage }) => {
+  await storage.set({ minWords: 75 });
+  await page.goto(extension.url("paste.html"));
+  const second = TEXT.replace("The local library", "The town museum");
+  const shortA = "A short note about the museum café, which serves good coffee to visitors on weekday mornings before the galleries open.";
+  const shortB = "Another short note: the gift shop sells postcards of the old harbour, and the staff are always happy to recommend a book.";
+  await analyze(page, [TEXT, second, `${shortA}\n${shortB}`, "Thanks."].join("\n\n"));
+  await expect(page.locator("#reading p")).toHaveCount(4);
+  // One chip each for the two long paragraphs, one for the pair of short ones, read as one
+  // (their single line break is a line wrapped inside a paragraph); "Thanks." is read with it.
+  const chips = await page.locator("#reading .chip").count();
+  expect(chips, "a chip after each paragraph read").toBeGreaterThanOrEqual(2);
+  expect(await page.locator("#coverage").innerText()).toMatch(/paragraphs read/);
+  // Every chip says its word and its four shares to a screen reader.
+  for (const label of await page.locator("#reading .chip").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")))) {
+    expect(label).toMatch(/^(Human|Lightly edited|Heavily edited|AI-generated), (0\.\d\d|1\.0|\.\d\d), Human \d+%/);
+  }
+  // The bar's shares add up to the whole text read.
+  const shares = await page.locator("#legend .n").allInnerTexts();
+  expect(shares.reduce((n, s) => n + Number(s.replace("%", "")), 0)).toBeGreaterThanOrEqual(99);
+  // Underlined: the flagged ones only (Heavily edited and up, the default).
+  const marks = await page.locator("#reading .read").evaluateAll((els) => els.map((el) => ({ marked: el.classList.contains("marked"), level: [...el.classList].find((c) => /^b\d$/.test(c)) ?? null })));
+  for (const m of marks) if (m.level) expect(m.marked, JSON.stringify(m)).toBe(m.level === "b2" || m.level === "b3");
 });

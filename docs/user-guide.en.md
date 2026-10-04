@@ -137,7 +137,9 @@ older version shows as off until you switch it on again.
   paragraphs.
 - PDFs open in Anagram's reader from the toolbar menu (**Read this PDF**) or a right-click
   on a link; **Read a PDF file…** at the foot of the toolbar menu opens the reader empty,
-  and **Analyze text** opens a page for pasted text. You can also drop a file into the
+  and **Analyze text** opens a page for pasted text, which it reads paragraph by paragraph
+  (blank lines part them): a chip after each, the flagged ones underlined, the whole text's
+  verdict above and how much of it reads as each word. You can also drop a file into the
   reader. Local PDFs need "Allow access to file URLs" on the extension's page in
   `chrome://extensions`; the setup page and Settings have a button that takes you there.
   The reader reads the whole document in the background, nearest pages first, so a page's

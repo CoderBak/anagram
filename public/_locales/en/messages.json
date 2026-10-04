@@ -463,10 +463,6 @@
     "message": "$1 words",
     "description": "Analyze text page: the length of the text typed or opened (plural)."
   },
-  "pasteCoverage": {
-    "message": "$1 of $2 passes analyzed, $3 unsupported, $4 unavailable, $5 truncated",
-    "description": "Coverage line on the text analysis page. Every count is of passes (stretches of text read in one pass), not paragraphs."
-  },
   "pasteFileFailed": {
     "message": "Could not read this file as UTF-8 text.",
     "description": "Text analysis page action, status, or limit."
@@ -1406,5 +1402,37 @@
   "onbEnglishOnly": {
     "message": "Anagram reads English only. A paragraph in another language gets no chip; the toolbar menu counts how many it passed over.",
     "description": "Setup page, Reading the marks: Anagram scores English only, and what happens to other languages."
+  },
+  "pasteCoverageRead": {
+    "message": "$1 of $2 paragraphs read",
+    "description": "Analyze text, coverage line: paragraphs with a verdict, of all the text's paragraphs."
+  },
+  "pasteCoverageShort": {
+    "message": "$1 too short to read",
+    "description": "Analyze text, coverage line: paragraphs too short to read, alone or with a neighbour."
+  },
+  "pasteCoverageForeign": {
+    "message": "$1 not English",
+    "description": "Analyze text, coverage line: paragraphs in another language, which are not read."
+  },
+  "pasteCoverageFailed": {
+    "message": "$1 unavailable",
+    "description": "Analyze text, coverage line: paragraphs the engine failed to read."
+  },
+  "pasteNothingRead": {
+    "message": "Nothing could be read",
+    "description": "Analyze text, the verdict's place when no paragraph of the text got one."
+  },
+  "pasteTooShortToRead": {
+    "message": "too short to read",
+    "description": "Analyze text, copied report: a paragraph that has no verdict because it is too short."
+  },
+  "pasteShareHint": {
+    "message": "The bar is how much of the text, in words, reads as each word.",
+    "description": "Analyze text, under the coloured bar: what the bar and its percentages measure."
+  },
+  "pasteByParagraph": {
+    "message": "By paragraph",
+    "description": "Analyze text: heading above the text shown with a chip after each paragraph."
   }
 }

@@ -50,12 +50,17 @@
       .legend .n { font-variant-numeric: tabular-nums; font-weight: 600; }
       .export { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
       .export label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
-      /* Each pass the model read, edged in its word's colour. */
-      #windows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-      #windows li { padding: 8px 12px; border: 1px solid var(--border); border-inline-start: 3px solid var(--c); border-radius: 8px; }
-      #windows .head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
-
-      #windows p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+      /* The text as given, a chip after each paragraph read and the flagged ones underlined in
+         their word's colour, as on a page; what was not read is set in muted ink. */
+      .reading-title { margin: 6px 0 0; font-size: 13px; font-weight: 600; }
+      #reading { display: flex; flex-direction: column; gap: 10px; }
+      #reading p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+      #reading .read + .read { padding-top: 0; }
+      #reading .read > p + p { margin-top: 6px; }
+      #reading .marked > p { text-decoration: underline 2px var(--c); text-underline-offset: 3px; text-decoration-skip-ink: auto; }
+      #reading .unread > p { color: var(--muted-foreground); }
+      #reading .chip { vertical-align: 1px; }
+      #reading .note { display: inline-block; font-size: 12px; color: var(--muted-foreground); margin-inline-start: 4px; }
       @media (max-width: 560px) { .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
       [hidden] { display: none !important; }
     </style>
@@ -98,10 +103,12 @@
           <section>
             <div class="verdict" id="verdict"><span class="chip" id="score"></span><h2 id="summary"></h2></div>
             <div class="mix" id="mix" aria-hidden="true"></div>
-            <ul class="legend" id="legend"></ul>
+            <ul class="legend" id="legend" aria-describedby="shareHint"></ul>
+            <p class="muted" id="shareHint" data-i18n="pasteShareHint">The bar is how much of the text, in words, reads as each word.</p>
             <p class="muted" id="coverage"></p>
+            <h3 class="reading-title" data-i18n="pasteByParagraph">By paragraph</h3>
+            <div id="reading"></div>
             <p class="muted" id="estimate" data-i18n="reportEstimate">The score is (p1 + 2p2 + 3p3) / 3 for the four EditLens classes. It summarizes the class distribution; it is not the fraction of AI-written words, a measured edit distance, or proof of authorship.</p>
-            <ol id="windows"></ol>
             <div class="export">
               <button class="btn" data-variant="outline" data-size="sm" id="copy" type="button" data-i18n="panelCopyReport">Copy report</button>
               <label><input class="input" id="includeText" type="checkbox" /> <span data-i18n="pasteExportText">Include original text in report</span></label>
