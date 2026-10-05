@@ -1,6 +1,7 @@
 # Working on Anagram
 
 Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) first. User instructions override this file.
+[docs/HANDOFF.md](docs/HANDOFF.md) says where `dev` stands, what waits on a decision and what comes next.
 
 - Work on `dev`. Routine commits use `[skip ci]`. Never enable, dispatch or rely on
   GitHub Actions and never push a version tag as part of ordinary development.
