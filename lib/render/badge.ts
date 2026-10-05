@@ -83,6 +83,9 @@ export interface BadgeLayerOptions {
    * chip goes in the flow like any other.
    */
   place?: (unit: Unit, host: HTMLElement) => boolean | null;
+  /** A chip's card was shown (hovered or pinned), let go, or the chip clicked: for the
+   *  reading statistics, which keep how the verdicts were looked at where the reader asked. */
+  onCard?: (unitId: string, what: "card" | "cardClosed" | "chipClick") => void;
 }
 
 export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
@@ -423,6 +426,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       if (e.composedPath().includes(card)) return; // card-internal click (action button)
       const opening = !card.classList.contains("open");
       closeOpenCard();
+      options.onCard?.(id, "chipClick");
       if (opening) {
         showCard(host);
         card.classList.add("open"); // pinned
@@ -435,11 +439,13 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     host.addEventListener("mouseenter", () => {
       showCard(host);
       setActiveUnit(id);
+      options.onCard?.(id, "card");
     });
     host.addEventListener("mouseleave", () => {
       if (_openCardHost === host) return;
       hideCard(host);
       clearActiveUnit(id);
+      options.onCard?.(id, "cardClosed");
     });
     _hostUnit.set(host, id);
     const shadow = host.attachShadow({ mode: chipShadowMode() });

@@ -134,7 +134,9 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 
 ### `chrome.storage.local`
 
-Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
+Nothing is written to `storage.sync` or `storage.managed`. `storage.session` holds one key,
+`statsIds`, only while statistics keep tabs and windows: the random ids the worker gives them
+for the browser session (lib/stats/tabs.ts). It dies with the browser session.
 
 | Key | What it holds |
 | --- | --- |
@@ -152,8 +154,8 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `flagFrom` | the word paragraphs are flagged from: lightly edited, heavily edited (default) or AI-generated |
 | `underlineScope` | underlines on the flagged paragraphs (default) or on every paragraph read |
-| `statsLevel` | how much of the reading statistics is recorded: `off` (default), `daily`, `sites` or `pages` |
-| `statsRetentionDays` | how many days of reading statistics are kept: 30, 90 (default) or 365 |
+| `statsConfig` | what the reading statistics keep: off (default), or a layer for each dimension and how long each part is kept ([statistics.md](statistics.md)) |
+| `statsSecret` | the random key the statistics' hashes and sketches are made with; never exported, made anew when the statistics are cleared |
 
 ### IndexedDB `anagram-scores`
 
@@ -169,18 +171,20 @@ rows expire 30 days after they were written.
 
 ### IndexedDB `anagram-stats`
 
-The reading statistics, only once the user has chosen a level in Settings, Statistics (off by
-default); [statistics.md](statistics.md) describes them and the file they export to. Four
-stores: `days` (per day: words read, expected words and paragraphs per verdict, the words not
-scored and why, the same per kind of page, the models and minimum lengths in force), `sites`
-(level `sites` and up: the same per site and day, the site being a hostname without `www.`),
-`pages` (level `pages`: the same per page and day, with the page's address without query or
-fragment, its title, the minute it was first read and the seconds it was shown) and `meta`
-(the day retention last ran). **No page text is stored at any level.** Nothing is recorded from
-a private window, from a site the user switched Anagram off for, or from Analyze text. Days
-older than the retention setting are deleted at most once a day; "Clear statistics" deletes
-everything. Only the extension's own pages read the database, and nothing in it is sent
-anywhere: an export is a file the user saves.
+The reading log, only once the user has chosen what to keep in Settings, Statistics (off by
+default); [statistics.md](statistics.md) describes it, each choice, and the file it exports
+to. Stores: `visits` (one per page, frame or document read), `units` (one per paragraph of a
+visit), `events` (a visit's scroll, input and on-screen steps), `texts` (a paragraph's text,
+only where the user chose to keep it), `totals` (per day, kind of page, site and page),
+`tabs` (window and tab events, and time in front of pages Anagram cannot read, with no address),
+`context` (the configuration, device, engine and settings it was recorded under) and `meta`.
+What each holds is what the user chose: a layer for each dimension, from exact to none;
+addresses, titles and texts can be kept as salted hashes instead. Nothing is recorded from a
+private window, from a site the user switched Anagram off for, or from Analyze text, and never
+what is typed or what is selected or copied. Each part is deleted after the days the user chose
+for it, at most once a day; "Clear statistics" deletes everything and makes a new hashing key.
+Only the extension's own pages read the database, and nothing in it is sent anywhere: an export
+is a file the user saves.
 
 ### Other browser storage
 

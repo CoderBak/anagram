@@ -1093,32 +1093,8 @@
   "statsOffLead": {
     "message": "Anagram 可以记录你读到的内容中有多少像是 AI 生成的。记录只保存在这台电脑上，不会发送到任何地方。"
   },
-  "statsLevelOff": {
-    "message": "关闭"
-  },
-  "statsLevelDaily": {
-    "message": "每日汇总"
-  },
-  "statsLevelSites": {
-    "message": "每日汇总和网站"
-  },
-  "statsLevelPages": {
-    "message": "每个页面"
-  },
-  "statsLevelOffHint": {
-    "message": "不记录任何内容。"
-  },
-  "statsLevelDailyHint": {
-    "message": "每天读了多少词、这些内容从人工撰写到 AI 生成如何分布，以及读的是哪类页面。不记录网站，也不记录页面。"
-  },
-  "statsLevelSitesHint": {
-    "message": "同上，另记录每个网站在当天所占的部分。不记录页面地址。"
-  },
-  "statsLevelPagesHint": {
-    "message": "同上，另记录你读过的每个页面：地址、标题、打开时间和停留时长。"
-  },
   "statsNeverNote": {
-    "message": "绝不记录页面上的文字，也绝不记录无痕窗口、你关闭了 Anagram 的网站或“分析文本”。"
+    "message": "从不记录无痕窗口、你为其关闭 Anagram 的网站、“分析文本”、你输入的内容，以及你选中或复制的内容。"
   },
   "optStatsLevel": {
     "message": "记录"
@@ -1199,10 +1175,10 @@
     "message": "格式"
   },
   "statsExportJson": {
-    "message": "JSON（此详细程度下的全部内容）"
+    "message": "JSON"
   },
   "statsExportCsv": {
-    "message": "CSV（每天一行）"
+    "message": "CSV，每个表一个文件，打包为 .zip"
   },
   "statsExportNote": {
     "message": "文件保存在这台电脑上。Anagram 从不上传它，是否分享由你决定。你可以打开它，查看其中的全部内容。"
@@ -1221,18 +1197,6 @@
   },
   "statsCleared": {
     "message": "统计已清除。"
-  },
-  "statsDropSitesPagesTitle": {
-    "message": "删除已记录的网站和页面？"
-  },
-  "statsDropSitesTitle": {
-    "message": "删除已记录的网站？"
-  },
-  "statsDropPagesTitle": {
-    "message": "删除已记录的页面？"
-  },
-  "statsDropText": {
-    "message": "从现在起 Anagram 会少记录一些，但已经记下的内容会一直保留，直到你删除。每日总计无论如何都会保留。"
   },
   "statsDropKeep": {
     "message": "保留"
@@ -1327,9 +1291,6 @@
   "statsMorePages": {
     "message": "显示最近的 $1 个页面，共 $2 个。导出文件包含全部页面。"
   },
-  "statsNoSites": {
-    "message": "这段时间没有记录网站。"
-  },
   "statsMoreSites": {
     "message": "另有 $1 个网站，导出文件包含全部网站。"
   },
@@ -1343,13 +1304,10 @@
     "message": "记录已关闭。"
   },
   "statsRecordingLine": {
-    "message": "正在记录：$1，保留 $2 天。"
+    "message": "正在记录：$1，段落和访问保留 $2 天。"
   },
   "optStats": {
     "message": "统计"
-  },
-  "optStatsKeep": {
-    "message": "保留"
   },
   "optStatsDays": {
     "message": "$1 天"
@@ -1367,6 +1325,696 @@
     "message": "今天：读到 $1 个词，均无法评分。"
   },
   "popupStatsToday": {
-    "message": "今天：读到 $2 个词，其中 $1 为 AI 生成。"
+    "message": "今天：$1 为 AI 生成，共评分 $2 个词。"
+  },
+  "statsDim_rows": {
+    "message": "每行记录"
+  },
+  "statsDimHint_rows": {
+    "message": "保存的每一行代表什么：一个事件、一个段落、一次访问，或一项合计。"
+  },
+  "statsDim_time": {
+    "message": "时刻"
+  },
+  "statsDimHint_time": {
+    "message": "事情发生的时间。"
+  },
+  "statsDim_dur": {
+    "message": "时长"
+  },
+  "statsDimHint_dur": {
+    "message": "持续多久，以及距访问开始多久。"
+  },
+  "statsDim_place": {
+    "message": "地址"
+  },
+  "statsDimHint_place": {
+    "message": "在哪里阅读：页面的地址、来源页面和框架的地址。"
+  },
+  "statsDim_title": {
+    "message": "标题"
+  },
+  "statsDimHint_title": {
+    "message": "标签页的标题。"
+  },
+  "statsDim_text": {
+    "message": "段落文本"
+  },
+  "statsDimHint_text": {
+    "message": "段落的内容。"
+  },
+  "statsDim_len": {
+    "message": "长度"
+  },
+  "statsDimHint_len": {
+    "message": "每段的长度。"
+  },
+  "statsDim_verdict": {
+    "message": "判断"
+  },
+  "statsDimHint_verdict": {
+    "message": "模型对每段的判断。"
+  },
+  "statsDim_lang": {
+    "message": "语言"
+  },
+  "statsDimHint_lang": {
+    "message": "每段所用的语言。"
+  },
+  "statsDim_struct": {
+    "message": "页面结构"
+  },
+  "statsDimHint_struct": {
+    "message": "页面和段落的类型，以及页面的构成。"
+  },
+  "statsDim_geom": {
+    "message": "位置"
+  },
+  "statsDimHint_geom": {
+    "message": "每段在页面上的位置。"
+  },
+  "statsDim_expo": {
+    "message": "屏幕停留"
+  },
+  "statsDimHint_expo": {
+    "message": "每段何时出现在屏幕上，以及显示了多少。"
+  },
+  "statsDim_scroll": {
+    "message": "滚动"
+  },
+  "statsDimHint_scroll": {
+    "message": "页面如何滚动。"
+  },
+  "statsDim_input": {
+    "message": "输入"
+  },
+  "statsDimHint_input": {
+    "message": "点击、按键和指针。从不记录你输入的内容。"
+  },
+  "statsDim_state": {
+    "message": "显示与焦点"
+  },
+  "statsDimHint_state": {
+    "message": "页面何时显示或隐藏，窗口何时获得焦点。"
+  },
+  "statsDim_tabs": {
+    "message": "标签页和窗口"
+  },
+  "statsDimHint_tabs": {
+    "message": "哪个标签页和窗口，以及各自何时切到前台。"
+  },
+  "statsDim_nav": {
+    "message": "导航"
+  },
+  "statsDimHint_nav": {
+    "message": "你如何到达每个页面，从哪里来。"
+  },
+  "statsDim_engine": {
+    "message": "引擎"
+  },
+  "statsDimHint_engine": {
+    "message": "由哪个引擎和模型评分，以及速度。"
+  },
+  "statsDim_ui": {
+    "message": "Anagram 的使用"
+  },
+  "statsDimHint_ui": {
+    "message": "打开的卡片、跳转到的存疑段落、工具栏菜单。"
+  },
+  "statsDim_device": {
+    "message": "设备"
+  },
+  "statsDimHint_device": {
+    "message": "浏览器、系统和电脑。"
+  },
+  "statsDim_cover": {
+    "message": "未覆盖的内容"
+  },
+  "statsDimHint_cover": {
+    "message": "无法读取的内容，以及在 Anagram 无法读取的页面上的时间。"
+  },
+  "statsL_rows_event": {
+    "message": "每个事件"
+  },
+  "statsL_rows_paragraph": {
+    "message": "每个段落"
+  },
+  "statsL_rows_visit": {
+    "message": "每次访问"
+  },
+  "statsL_rows_page": {
+    "message": "每天每个页面"
+  },
+  "statsL_rows_site": {
+    "message": "每天每个站点"
+  },
+  "statsL_rows_kind": {
+    "message": "每天每类页面"
+  },
+  "statsL_rows_day": {
+    "message": "每天"
+  },
+  "statsL_time_ms": {
+    "message": "精确到毫秒"
+  },
+  "statsL_time_s": {
+    "message": "精确到秒"
+  },
+  "statsL_time_min": {
+    "message": "精确到分钟"
+  },
+  "statsL_time_quarter": {
+    "message": "精确到一刻钟"
+  },
+  "statsL_time_hour": {
+    "message": "精确到小时"
+  },
+  "statsL_time_day": {
+    "message": "只记日期"
+  },
+  "statsL_dur_ms": {
+    "message": "精确到毫秒"
+  },
+  "statsL_dur_decis": {
+    "message": "精确到 0.1 秒"
+  },
+  "statsL_dur_s": {
+    "message": "精确到秒"
+  },
+  "statsL_dur_bins": {
+    "message": "按倍增区间"
+  },
+  "statsL_dur_none": {
+    "message": "不记录"
+  },
+  "statsL_place_url": {
+    "message": "完整地址"
+  },
+  "statsL_place_nofragment": {
+    "message": "不含 # 之后的部分"
+  },
+  "statsL_place_querynames": {
+    "message": "只留查询参数名"
+  },
+  "statsL_place_path": {
+    "message": "站点和路径"
+  },
+  "statsL_place_pattern": {
+    "message": "路径模式，隐藏编号"
+  },
+  "statsL_place_host": {
+    "message": "主机名"
+  },
+  "statsL_place_domain": {
+    "message": "域名"
+  },
+  "statsL_place_none": {
+    "message": "不记录"
+  },
+  "statsL_title_full": {
+    "message": "完整"
+  },
+  "statsL_title_short": {
+    "message": "前 60 个字符"
+  },
+  "statsL_title_none": {
+    "message": "不记录"
+  },
+  "statsL_text_full": {
+    "message": "全文"
+  },
+  "statsL_text_head": {
+    "message": "前 12 个词"
+  },
+  "statsL_text_sketch": {
+    "message": "近似重复指纹"
+  },
+  "statsL_text_hash": {
+    "message": "加盐哈希"
+  },
+  "statsL_text_none": {
+    "message": "不记录"
+  },
+  "statsL_len_all": {
+    "message": "全部计数"
+  },
+  "statsL_len_words": {
+    "message": "词数和 token 数"
+  },
+  "statsL_len_rounded": {
+    "message": "词数，取整到 5"
+  },
+  "statsL_len_bands": {
+    "message": "长度区间"
+  },
+  "statsL_len_none": {
+    "message": "不记录"
+  },
+  "statsL_verdict_probs": {
+    "message": "概率"
+  },
+  "statsL_verdict_probs2": {
+    "message": "概率，两位小数"
+  },
+  "statsL_verdict_words": {
+    "message": "标签词和最可能的判断"
+  },
+  "statsL_verdict_flagged": {
+    "message": "是否存疑"
+  },
+  "statsL_verdict_none": {
+    "message": "不记录"
+  },
+  "statsL_lang_full": {
+    "message": "语言、置信度和文字"
+  },
+  "statsL_lang_label": {
+    "message": "语言"
+  },
+  "statsL_lang_english": {
+    "message": "是否英语"
+  },
+  "statsL_lang_none": {
+    "message": "不记录"
+  },
+  "statsL_struct_full": {
+    "message": "全部"
+  },
+  "statsL_struct_unit": {
+    "message": "段落类型、帖子和顺序"
+  },
+  "statsL_struct_kind": {
+    "message": "只记页面类型"
+  },
+  "statsL_struct_none": {
+    "message": "不记录"
+  },
+  "statsL_geom_changes": {
+    "message": "位置和每次移动"
+  },
+  "statsL_geom_found": {
+    "message": "出现时的位置"
+  },
+  "statsL_geom_share": {
+    "message": "在页面中的相对位置"
+  },
+  "statsL_geom_order": {
+    "message": "只记顺序"
+  },
+  "statsL_geom_none": {
+    "message": "不记录"
+  },
+  "statsL_expo_steps": {
+    "message": "每次可见度变化"
+  },
+  "statsL_expo_intervals": {
+    "message": "每段屏幕停留"
+  },
+  "statsL_expo_totals": {
+    "message": "每段合计"
+  },
+  "statsL_expo_read": {
+    "message": "是否读过"
+  },
+  "statsL_expo_none": {
+    "message": "不记录"
+  },
+  "statsL_scroll_frames": {
+    "message": "每一帧"
+  },
+  "statsL_scroll_tenth": {
+    "message": "每秒 10 次"
+  },
+  "statsL_scroll_second": {
+    "message": "每秒一次"
+  },
+  "statsL_scroll_episodes": {
+    "message": "每次滚动"
+  },
+  "statsL_scroll_visit": {
+    "message": "每次访问"
+  },
+  "statsL_scroll_none": {
+    "message": "不记录"
+  },
+  "statsL_input_pointer": {
+    "message": "事件和指针轨迹"
+  },
+  "statsL_input_positions": {
+    "message": "事件和位置"
+  },
+  "statsL_input_events": {
+    "message": "事件"
+  },
+  "statsL_input_minutes": {
+    "message": "每分钟计数"
+  },
+  "statsL_input_idle": {
+    "message": "空闲时段"
+  },
+  "statsL_input_none": {
+    "message": "不记录"
+  },
+  "statsL_state_changes": {
+    "message": "每次变化"
+  },
+  "statsL_state_totals": {
+    "message": "每次访问合计"
+  },
+  "statsL_state_none": {
+    "message": "不记录"
+  },
+  "statsL_tabs_full": {
+    "message": "编号、打开者、尺寸和数量"
+  },
+  "statsL_tabs_ids": {
+    "message": "编号、前台和焦点"
+  },
+  "statsL_tabs_none": {
+    "message": "不记录"
+  },
+  "statsL_nav_full": {
+    "message": "到达方式、来源和前后链接"
+  },
+  "statsL_nav_arrival": {
+    "message": "只记到达方式"
+  },
+  "statsL_nav_none": {
+    "message": "不记录"
+  },
+  "statsL_engine_full": {
+    "message": "全部细节"
+  },
+  "statsL_engine_basic": {
+    "message": "引擎和缓存"
+  },
+  "statsL_engine_model": {
+    "message": "只记模型"
+  },
+  "statsL_ui_events": {
+    "message": "每次使用"
+  },
+  "statsL_ui_counts": {
+    "message": "每次访问计数"
+  },
+  "statsL_ui_none": {
+    "message": "不记录"
+  },
+  "statsL_device_exact": {
+    "message": "精确"
+  },
+  "statsL_device_families": {
+    "message": "只记类别"
+  },
+  "statsL_device_none": {
+    "message": "不记录"
+  },
+  "statsL_cover_visit": {
+    "message": "每次访问，以及未覆盖的时间"
+  },
+  "statsL_cover_day": {
+    "message": "每天"
+  },
+  "statsL_cover_none": {
+    "message": "不记录"
+  },
+  "statsPreset_off": {
+    "message": "关闭"
+  },
+  "statsPresetHint_off": {
+    "message": "不保存任何内容。"
+  },
+  "statsPreset_daily": {
+    "message": "每日合计"
+  },
+  "statsPresetHint_daily": {
+    "message": "每天：你读了多少词，从人工到 AI 生成各占多少，以及在哪类页面上读的。不含站点，不含页面。"
+  },
+  "statsPreset_sites": {
+    "message": "每日合计和站点"
+  },
+  "statsPresetHint_sites": {
+    "message": "同上，并记录每个站点当天所占的部分。不含页面地址。"
+  },
+  "statsPreset_pages": {
+    "message": "每个页面"
+  },
+  "statsPresetHint_pages": {
+    "message": "同上，并记录你读过的每个页面：地址、标题、当天首次阅读的时间和停留时长。"
+  },
+  "statsPreset_paragraphs": {
+    "message": "每个段落"
+  },
+  "statsPresetHint_paragraphs": {
+    "message": "每次访问和你读过的每个段落：长度、判断、在屏幕上停留多久，以及文本的加盐哈希，用来识别重复阅读。不含地址、标题和文本。"
+  },
+  "statsPreset_study": {
+    "message": "研究"
+  },
+  "statsPresetHint_study": {
+    "message": "阅读研究所需的内容：每次访问、每个段落和每次滚动，精确到 0.1 秒；记录域名而非地址；记录能识别改动过的副本的文本指纹，但不记录文本。"
+  },
+  "statsPreset_full": {
+    "message": "完整阅读轨迹"
+  },
+  "statsPresetHint_full": {
+    "message": "除文本外的一切：完整地址和标题、屏幕上内容的每次变化、滚动、输入和指针、标签页和窗口，精确到毫秒。"
+  },
+  "statsPreset_fullText": {
+    "message": "完整轨迹和文本"
+  },
+  "statsPresetHint_fullText": {
+    "message": "一切内容，包括你读过的每个段落的文本。"
+  },
+  "statsPreset_custom": {
+    "message": "自定义"
+  },
+  "statsPresetHint_custom": {
+    "message": "逐项选择。"
+  },
+  "statsWarnText": {
+    "message": "这会保存你读过的每个段落的文本。它只留在这台电脑上，但使用此浏览器配置的任何人都能看到。"
+  },
+  "statsWarnHead": {
+    "message": "这会保存你读过的每个段落的前 12 个词。它只留在这台电脑上，但使用此浏览器配置的任何人都能看到。"
+  },
+  "statsWarnUrl": {
+    "message": "完整地址可能包含网站放在其中的内容：搜索词、邮箱地址、登录链接。"
+  },
+  "statsWarnPointer": {
+    "message": "这会在 Anagram 读取的每个页面上，每秒 10 次记录指针的位置。"
+  },
+  "optStatsDetail": {
+    "message": "详细设置"
+  },
+  "optStatsCustomize": {
+    "message": "逐项选择…"
+  },
+  "optStatsCustomizeHide": {
+    "message": "收起"
+  },
+  "optStatsDimsLead": {
+    "message": "Anagram 能保存的每类内容，从最精确到不保存。较粗的选择总能从较细的得出，反之则不行。"
+  },
+  "optStatsMoved": {
+    "message": "已调粗以适应每行能保存的内容：$1。"
+  },
+  "optStatsFine": {
+    "message": "每一步保留"
+  },
+  "optStatsDetailKeep": {
+    "message": "段落和访问保留"
+  },
+  "optStatsTotalsKeep": {
+    "message": "每日合计保留"
+  },
+  "optStatsUntilCleared": {
+    "message": "直到清除"
+  },
+  "optStatsSize": {
+    "message": "占用空间"
+  },
+  "optStatsSizeValue": {
+    "message": "$2 条记录，$1"
+  },
+  "statsAsHash": {
+    "message": "以加盐哈希保存"
+  },
+  "statsColDimension": {
+    "message": "内容"
+  },
+  "statsColLayer": {
+    "message": "保存方式"
+  },
+  "statsStripTitle": {
+    "message": "删除新设置不再保存的内容？"
+  },
+  "statsStripText": {
+    "message": "从现在起 Anagram 保存得更少，但已保存的内容会保留，直到你删除。每日合计无论如何都会保留。"
+  },
+  "statsFrom": {
+    "message": "从"
+  },
+  "statsTo": {
+    "message": "到"
+  },
+  "statsLens": {
+    "message": "计算方式"
+  },
+  "statsLensRead": {
+    "message": "停留多久算读过"
+  },
+  "statsSeconds": {
+    "message": "$1 秒"
+  },
+  "statsLensVisible": {
+    "message": "“在屏幕上”指"
+  },
+  "statsLensBand": {
+    "message": "有部分在窗口中间 80% 的区域"
+  },
+  "statsLensHalf": {
+    "message": "至少显示一半"
+  },
+  "statsLensAny": {
+    "message": "显示任意部分"
+  },
+  "statsLensOnce": {
+    "message": "重复阅读的段落"
+  },
+  "statsLensOnceVisit": {
+    "message": "每次访问计一次"
+  },
+  "statsLensOnceDay": {
+    "message": "每天计一次"
+  },
+  "statsLensOnceEver": {
+    "message": "只计一次"
+  },
+  "statsLensEstimator": {
+    "message": "占比依据"
+  },
+  "statsLensExpected": {
+    "message": "期望词数"
+  },
+  "statsLensChip": {
+    "message": "段落，按标签词"
+  },
+  "statsLensArgmax": {
+    "message": "段落，按最可能的判断"
+  },
+  "statsLensWeight": {
+    "message": "每段的权重"
+  },
+  "statsLensWords": {
+    "message": "其词数"
+  },
+  "statsLensParagraphs": {
+    "message": "一"
+  },
+  "statsLensTime": {
+    "message": "在屏幕上的秒数"
+  },
+  "statsLensHeadline": {
+    "message": "主数字为"
+  },
+  "statsLensAi": {
+    "message": "AI 生成"
+  },
+  "statsLensHeavyAi": {
+    "message": "重度 AI 编辑和 AI 生成"
+  },
+  "statsLensMinWords": {
+    "message": "段落至少"
+  },
+  "statsWordsN": {
+    "message": "$1 个词"
+  },
+  "statsLensFocused": {
+    "message": "仅计焦点窗口"
+  },
+  "statsLensFling": {
+    "message": "不计快速划过的内容"
+  },
+  "statsLensReset": {
+    "message": "恢复 Anagram 的算法"
+  },
+  "statsLensDefault": {
+    "message": "按 Anagram 的算法：段落有部分在窗口中间停留一秒且页面没有被快速划过，即算读过，每次访问计一次。"
+  },
+  "statsLensApplied": {
+    "message": "根据 Anagram 保存的段落重新计算。"
+  },
+  "statsLensCannot": {
+    "message": "这些是 Anagram 保存的合计：要用其他方式计算，需要保存段落（设置 > 统计）。"
+  },
+  "statsHeroLineHeavy": {
+    "message": "预计为重度 AI 编辑或 AI 生成，共读过并评分 $1 个词"
+  },
+  "statsColParagraphs": {
+    "message": "段落"
+  },
+  "statsColSeconds": {
+    "message": "秒"
+  },
+  "statsColHeavyAi": {
+    "message": "重度编辑或 AI"
+  },
+  "statsCovRemoved": {
+    "message": "判断返回前被移除：$1 个词"
+  },
+  "statsVisits": {
+    "message": "访问"
+  },
+  "statsVisitsHint": {
+    "message": "每个页面或文档的阅读经过，最新的在前。保存了每一步时，“回放”会显示每段何时在屏幕上。"
+  },
+  "statsNoVisits": {
+    "message": "这段时间没有保存访问。"
+  },
+  "statsMoreVisits": {
+    "message": "共 $2 次访问中最新的 $1 次。导出文件包含全部。"
+  },
+  "statsColReplay": {
+    "message": "回放"
+  },
+  "statsReplay": {
+    "message": "回放"
+  },
+  "statsReplayNote": {
+    "message": "每个段落一行，按出现顺序排列；每次有部分出现在屏幕上画一段，颜色与标签相同；折线表示页面滚动的位置。"
+  },
+  "statsReplayAria": {
+    "message": "$1 个段落各自何时在屏幕上，共 $2"
+  },
+  "statsReplayTitle": {
+    "message": "$1，$2"
+  },
+  "statsExportFields": {
+    "message": "逐项选择"
+  },
+  "statsExportCap": {
+    "message": "不会比已保存的更细。"
+  },
+  "statsExportLink": {
+    "message": "编号和哈希"
+  },
+  "statsExportLinkFile": {
+    "message": "此文件专用：无法与其他文件对应"
+  },
+  "statsExportLinkStable": {
+    "message": "在此浏览器导出的所有文件中相同：研究可以把你的文件对应起来"
+  },
+  "statsExportJsonGz": {
+    "message": "JSON，压缩（.json.gz）"
+  },
+  "statsExportPreparing": {
+    "message": "正在准备预览…"
+  },
+  "statsExportSize": {
+    "message": "约 $1，共 $2 行。"
+  },
+  "statsExportTable": {
+    "message": "$1：$2 行"
   }
 }

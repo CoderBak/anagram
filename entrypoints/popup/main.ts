@@ -43,7 +43,8 @@ import { sendTabControl } from "../../lib/messaging/tabControl";
 import type { PageReport } from "../../lib/capture/pageReport";
 import { mountReport } from "./report";
 import { bandColorRules } from "../../lib/render/scale";
-import { aiShare, localDate, statsLevelOf, viewedWords } from "../../lib/stats/model";
+import { aiShare, localDate, viewedWords, type UiEvent } from "../../lib/stats/model";
+import { readStatsConfig } from "../../lib/stats/settings";
 import { openStatsStore } from "../../lib/stats/store";
 import { formatShare, formatWords } from "../../lib/stats/format";
 
@@ -64,8 +65,10 @@ let report: PageReport | null = null;
 let offset = 0;
 let statusRequest = 0;
 let pageControlFailed = false;
+/** One use of this menu, for the statistics where they keep such events (the worker decides). */
+const noteUi = (kind: UiEvent): void => void browser.runtime.sendMessage({ action: ACTIONS.STATS_UI, kind, ...(currentTab?.id !== undefined ? { tabId: currentTab.id } : {}) }).catch(() => undefined);
 const paintReport = mountReport(document.getElementById("pageReport")!, {
-  jump: (documentId, id) => void runPageControl({ action: ACTIONS.JUMP_TO_RESULT, documentId, id }),
+  jump: (documentId, id) => { noteUi("jump"); void runPageControl({ action: ACTIONS.JUMP_TO_RESULT, documentId, id }); },
   page: (next) => { offset = next; void refreshStatus(currentTab?.id); },
   allow: (origin) => {
     void browser.tabs.create({ url: `${browser.runtime.getURL("/options.html")}#comments=${encodeURIComponent(commentHost(origin))}` });
@@ -432,10 +435,10 @@ async function refreshStatus(tabId: number | undefined): Promise<void> {
  */
 async function paintStatsToday(): Promise<void> {
   const line = document.getElementById("statsToday")!;
-  const level = statsLevelOf(await settings.statsLevel.getValue().catch(() => "off"));
-  line.hidden = level === "off";
-  if (level === "off") return;
-  const total = (await openStatsStore().day(localDate()).catch(() => undefined))?.total;
+  const on = (await readStatsConfig()).on;
+  line.hidden = !on;
+  if (!on) return;
+  const total = (await openStatsStore().day(localDate()).catch(() => undefined))?.tally;
   document.getElementById("statsTodayText")!.textContent = !total || viewedWords(total) === 0 ? t("popupStatsNothing")
     : total.scored === 0 ? t("popupStatsNoneScored", formatWords(viewedWords(total)))
     : t("popupStatsToday", formatShare(aiShare(total)), formatWords(total.scored));
@@ -455,6 +458,7 @@ async function init(): Promise<void> {
   document.head.append(bandRules);
   const tab = await activeTab();
   currentTab = tab;
+  noteUi("menu");
   try { docsEditor = !!tab?.url && detectDocsPage(new URL(tab.url))?.kind === "editor"; } catch { /* restricted URL */ }
   const host = hostOf(tab?.url);
   facts.hasTab = tab != null;
@@ -480,6 +484,7 @@ async function init(): Promise<void> {
   siteEl.addEventListener("change", () => {
     if (!host) return;
     const want = siteEl.checked;
+    noteUi(want ? "siteOn" : "siteOff");
     // The rules first, and only where they disagree with the switch: a site that is off
     // merely for want of access must not collect a rule saying what the default already
     // says. Nothing is awaited here — see refreshSite.
@@ -518,6 +523,7 @@ async function init(): Promise<void> {
     pageControlFailed = false;
     switch (lead.action) {
       case "analyze":
+        noteUi("analyze");
         // The reader reads its document when asked; nothing is injected into it.
         if (facts.tab?.reader) { void runPageControl({ action: ACTIONS.ANALYZE_PAGE }); return; }
         // A page Anagram is off for — by a rule, or because nothing was ever granted for
@@ -586,6 +592,7 @@ async function init(): Promise<void> {
   });
 
   openReaderEl.addEventListener("click", () => {
+    noteUi("reader");
     openEmptyReader();
     window.close();
   });

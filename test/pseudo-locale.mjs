@@ -35,7 +35,7 @@ import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
 import { scriptDevice, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "./webengine/model-server.mjs";
-import { seedStats, statsWeek } from "./stats-fixture.mjs";
+import { presetConfig, seedStats, statsVisit, statsWeek } from "./stats-fixture.mjs";
 
 requireBuild();
 
@@ -92,6 +92,8 @@ function layoutFaults(scope) {
   const shown = (el) => {
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return false;
+    // Inside a closed <details>: laid out, never painted.
+    if (typeof el.checkVisibility === "function" && !el.checkVisibility()) return false;
     for (let a = el; a; a = up(a)) {
       const cs = getComputedStyle(a);
       if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
@@ -322,24 +324,32 @@ async function statsPages(context, sw, extId, lang) {
     await page.setViewportSize(size);
     await page.goto(url("stats.html"), { waitUntil: "load" });
     await page.locator("#offCard:not([hidden])").waitFor({ timeout: 10000 }).catch(() => {});
-    await page.selectOption("#turnOnLevel", "pages").catch(() => {});
+    await page.selectOption("#turnOnPreset", "fullText").catch(() => {});
     await check(page, lang, "statistics, off");
   }
-  await sw.evaluate(() => chrome.storage.local.set({ statsLevel: "pages" }));
+  const full = await presetConfig("full");
+  await sw.evaluate((config) => chrome.storage.local.set({ statsConfig: config }), full);
   await seedStats(sw, statsWeek());
+  await seedStats(sw, statsVisit());
   for (const size of [WIDE, NARROW]) {
     await page.setViewportSize(size);
     await page.goto(url("stats.html"), { waitUntil: "load" });
     await page.click('#ranges [data-range="7"]').catch(() => {});
     await page.locator("#trendChart svg").waitFor({ timeout: 10000 }).catch(() => {});
     await page.click("#trendCard summary").catch(() => {});
+    await page.click("#lens summary").catch(() => {});
+    await page.click("#visitsTable button.linkish").catch(() => {});
+    await page.locator("#replay:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
     await check(page, lang, "statistics, a week");
     await page.click("#export").catch(() => {});
     await page.locator("#exportDialog[open]").waitFor({ timeout: 5000 }).catch(() => {});
+    await page.click("#exportDimsBox summary").catch(() => {});
+    await page.locator("#exportPreview details").first().waitFor({ timeout: 5000 }).catch(() => {});
     await check(page, lang, "statistics, export");
     await page.goto(url("options.html#statistics"), { waitUntil: "load" });
-    await page.locator("#statsPagesWarn:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
-    await check(page, lang, "settings, statistics of every page");
+    await page.locator("#statsWarnings p").first().waitFor({ timeout: 5000 }).catch(() => {});
+    await page.click("#statsCustomize").catch(() => {});
+    await check(page, lang, "settings, statistics in full");
   }
   await page.setViewportSize(POPUP);
   await page.goto(url("popup.html"), { waitUntil: "load" });

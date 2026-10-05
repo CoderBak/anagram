@@ -28,8 +28,13 @@ import { mountPdfRows } from "../../lib/ui/pdfRows";
 import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
-import { RETENTION_CHOICES, atLeast, retentionOf, statsLevelOf, type StatsLevel } from "../../lib/stats/model";
+import { configOf, normalize, presetConfig, presetOf, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
 import { openStatsStore } from "../../lib/stats/store";
+import { forgetStatsSecret, readStatsConfig, saveStatsConfig, statsSecret } from "../../lib/stats/settings";
+import { dimensionLabel, layerTable, presetHint, presetLabel, PRESET_IDS, warningsOf } from "../../lib/stats/ui";
+import { keepsLess, stripTo } from "../../lib/stats/strip";
+import { formatWords } from "../../lib/stats/format";
+import { formatSize } from "../../lib/ui/size";
 
 const log = createLogger("options");
 mountToolbarGuide(document.getElementById("toolbarGuide")!);
@@ -278,64 +283,106 @@ async function refreshCacheCount(): Promise<void> {
 }
 
 // --- statistics ------------------------------------------------------------------------------
-// The level and how long days are kept (lib/stats/). Off by default; what each level keeps is
-// said under the choice, and the one that keeps a reading history says so plainly. The
-// records themselves are this extension's own IndexedDB, opened here to clear them.
-{
-  const levelEl = document.getElementById("statsLevel") as HTMLSelectElement;
-  const noteEl = document.getElementById("statsLevelNote") as HTMLElement;
-  const warnEl = document.getElementById("statsPagesWarn") as HTMLElement;
-  const retentionEl = document.getElementById("statsRetention") as HTMLSelectElement;
+// What the reading log keeps (lib/stats/config.ts): a preset, or a layer for each dimension, and
+// for how long. Off by default; what a choice keeps is said under it, and what someone else
+// using this browser profile could read is said plainly. The log itself is this extension's own
+// IndexedDB, opened here to size it, coarsen it and clear it.
+void (async () => {
+  const presetEl = document.getElementById("statsPreset") as HTMLSelectElement;
+  const noteEl = document.getElementById("statsPresetNote") as HTMLElement;
+  const warnEl = document.getElementById("statsWarnings") as HTMLElement;
+  const customizeEl = document.getElementById("statsCustomize") as HTMLButtonElement;
+  const dimsEl = document.getElementById("statsDims") as HTMLElement;
+  const movedEl = document.getElementById("statsMoved") as HTMLElement;
+  const fineEl = document.getElementById("statsFine") as HTMLSelectElement;
+  const detailEl = document.getElementById("statsDetailDays") as HTMLSelectElement;
+  const totalsEl = document.getElementById("statsTotals") as HTMLSelectElement;
+  const sizeEl = document.getElementById("statsSize") as HTMLElement;
   const statusEl = document.getElementById("statsStatus") as HTMLElement;
-  const HINT: Record<StatsLevel, MessageKey> = {
-    off: "statsLevelOffHint", daily: "statsLevelDailyHint", sites: "statsLevelSitesHint", pages: "statsLevelPagesHint",
-  };
-  const describe = (): void => {
-    const level = statsLevelOf(levelEl.value);
-    noteEl.textContent = t(HINT[level]);
-    warnEl.hidden = level !== "pages";
-  };
-  bindSelect<string>(levelEl, {
-    getValue: async () => statsLevelOf(await settings.statsLevel.getValue()),
-    setValue: (v) => settings.statsLevel.setValue(statsLevelOf(v)),
-  });
-  // Lowering the level records less from then on; the sites and pages kept at the finer level
-  // stay until deleted, so lowering it asks, once, whether to delete them now. Keeping them is
-  // the default: a level lowered for a while and raised again loses nothing it was not told to.
-  let was: StatsLevel | null = null;
+  const store = openStatsStore();
+  let config: RecordingConfig = await readStatsConfig();
+
+  for (const p of ["off", ...PRESET_IDS, "custom"] as const) presetEl.add(new Option(presetLabel(p), p));
+  for (const days of RETENTION.fine) fineEl.add(new Option(t("optStatsDays", days), String(days)));
+  for (const days of RETENTION.detail) detailEl.add(new Option(t("optStatsDays", days), String(days)));
+  for (const days of RETENTION.totals) totalsEl.add(new Option(days ? t("optStatsDays", days) : t("optStatsUntilCleared"), String(days)));
+
+  const table = layerTable("stats-dim", (layers, hashed) => void choose({ ...config, on: true, layers, hashed }));
+  dimsEl.insertBefore(table.element, movedEl);
+
+  function paint(): void {
+    const preset = config.on ? presetOf(config) ?? "custom" : "off";
+    const customOption = [...presetEl.options].find((o) => o.value === "custom")!;
+    customOption.hidden = preset !== "custom";
+    presetEl.value = preset;
+    noteEl.textContent = presetHint(preset);
+    warnEl.replaceChildren(...warningsOf(config).map((key) => Object.assign(document.createElement("p"), { textContent: t(key) })));
+    customizeEl.hidden = !config.on;
+    if (!config.on) { dimsEl.hidden = true; customizeEl.setAttribute("aria-expanded", "false"); }
+    table.show(config.layers, config.hashed);
+    fineEl.value = String(config.retention.fine);
+    detailEl.value = String(config.retention.detail);
+    totalsEl.value = String(config.retention.totals);
+  }
+
+  async function paintSize(): Promise<void> {
+    const { rows, bytes } = await store.size().catch(() => ({ rows: {} as Record<string, number>, bytes: null }));
+    const count = Object.values(rows).reduce((a, b) => a + b, 0);
+    sizeEl.textContent = t("optStatsSizeValue", formatSize(bytes ?? 0), formatWords(count));
+  }
+
+  /** Keep `next` from now on; where it keeps less than before, offer to delete what it would
+   *  not have kept. Keeping it is the default: a setting lowered for a while and raised again
+   *  loses nothing it was not told to. */
+  async function choose(next: RecordingConfig): Promise<void> {
+    const before = config;
+    const { config: normal, moved } = normalize(next);
+    config = await saveStatsConfig(next.on ? normal : { ...next, on: false });
+    movedEl.textContent = moved.length ? t("optStatsMoved", moved.map(dimensionLabel).join(", ")) : "";
+    paint();
+    if (keepsLess(before, config)) {
+      const kept = await store.size().catch(() => null);
+      if (kept && (kept.rows.visits ?? 0) + (kept.rows.units ?? 0) + (kept.rows.events ?? 0) > 0) offerToStrip(config);
+    }
+  }
+
   const dropDialog = document.getElementById("dropStatsDialog") as HTMLDialogElement;
-  let dropTo: StatsLevel = "off";
-  const offerToDrop = async (level: StatsLevel): Promise<void> => {
-    const { sites, pages } = await openStatsStore().finer(level).catch(() => ({ sites: 0, pages: 0 }));
-    if (sites + pages === 0 || statsLevelOf(levelEl.value) !== level) return;
-    document.getElementById("dropStatsTitle")!.textContent =
-      t(sites > 0 && pages > 0 ? "statsDropSitesPagesTitle" : pages > 0 ? "statsDropPagesTitle" : "statsDropSitesTitle");
-    dropTo = level;
+  let stripTo_: RecordingConfig | null = null;
+  function offerToStrip(next: RecordingConfig): void {
+    stripTo_ = next;
     if (!dropDialog.open) dropDialog.showModal();
     document.getElementById("dropStatsKeep")!.focus();
-  };
-  settings.statsLevel.watch((v) => { levelEl.value = statsLevelOf(v); was = statsLevelOf(v); describe(); });
-  void settings.statsLevel.getValue().then((v) => { was ??= statsLevelOf(v); describe(); }, () => undefined);
-  levelEl.addEventListener("change", () => {
-    describe();
-    const now = statsLevelOf(levelEl.value);
-    const before = was;
-    was = now;
-    if (before !== null && !atLeast(now, before)) void offerToDrop(now);
-  });
+  }
   document.getElementById("dropStatsKeep")!.addEventListener("click", () => dropDialog.close());
   document.getElementById("dropStatsConfirm")!.addEventListener("click", () => {
     statusEl.textContent = "";
-    void openStatsStore().dropFiner(dropTo).then(
-      () => { statusEl.textContent = t("statsDropped"); },
+    const next = stripTo_;
+    if (!next) { dropDialog.close(); return; }
+    void statsSecret().then((secret) => stripTo(store, next, secret)).then(
+      () => { statusEl.textContent = t("statsDropped"); void paintSize(); },
       () => { statusEl.textContent = t("optSaveFailed"); },
     ).finally(() => dropDialog.close());
   });
-  for (const days of RETENTION_CHOICES) retentionEl.add(new Option(t("optStatsDays", days), String(days)));
-  bindSelect<string>(retentionEl, {
-    getValue: async () => String(retentionOf(await settings.statsRetentionDays.getValue())),
-    setValue: (v) => settings.statsRetentionDays.setValue(retentionOf(Number(v))),
+
+  presetEl.addEventListener("change", () => {
+    const value = presetEl.value;
+    if (value === "custom") return;
+    void choose(value === "off" ? { ...config, on: false } : presetConfig(value as Preset, config.retention));
   });
+  customizeEl.addEventListener("click", () => {
+    const open = dimsEl.hidden;
+    dimsEl.hidden = !open;
+    customizeEl.setAttribute("aria-expanded", String(open));
+    customizeEl.textContent = t(open ? "optStatsCustomizeHide" : "optStatsCustomize");
+  });
+  const retention = (): Retention => ({
+    fine: Number(fineEl.value) as Retention["fine"], detail: Number(detailEl.value) as Retention["detail"], totals: Number(totalsEl.value) as Retention["totals"],
+  });
+  for (const el of [fineEl, detailEl, totalsEl]) el.addEventListener("change", () => void choose({ ...config, retention: retention() }));
+  settings.statsConfig.watch((value) => { config = configOf(value); paint(); });
+  paint();
+  void paintSize();
+
   const statsPage = (hash = ""): void => void browser.tabs.create({ url: browser.runtime.getURL("/stats.html") + hash });
   document.getElementById("openStats")!.addEventListener("click", () => statsPage());
   document.getElementById("exportStats")!.addEventListener("click", () => statsPage("#export"));
@@ -347,8 +394,9 @@ async function refreshCacheCount(): Promise<void> {
   });
   document.getElementById("clearStatsCancel")!.addEventListener("click", () => dialog.close());
   document.getElementById("clearStatsConfirm")!.addEventListener("click", () => {
-    void openStatsStore().clear().then(
-      () => { statusEl.textContent = t("statsCleared"); },
+    // What is recorded from now on cannot be matched with what was cleared.
+    void Promise.all([store.clear(), forgetStatsSecret()]).then(
+      () => { statusEl.textContent = t("statsCleared"); void paintSize(); },
       () => { statusEl.textContent = t("optSaveFailed"); },
     ).finally(() => dialog.close());
   });
@@ -358,7 +406,7 @@ async function refreshCacheCount(): Promise<void> {
     group.scrollIntoView({ block: "center" });
     group.focus({ preventScroll: true });
   }
-}
+})();
 
 clearCacheEl.addEventListener("click", () => {
   clearCacheEl.disabled = true;

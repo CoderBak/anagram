@@ -364,6 +364,7 @@ export default defineConfig({
             "vendor/purify.min.mjs",
             "vendor/diagnostics.min.mjs",
             "vendor/surfaces.min.mjs",
+            "vendor/stats.min.mjs",
             // No icon: the Google Docs bar's is inlined (lib/render/logo.ts), and an extension
             // address in a page's DOM would name the extension, in Firefox the installation.
           ],

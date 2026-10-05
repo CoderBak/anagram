@@ -56,8 +56,8 @@ The full inventory of network calls, address literals and storage keys is in
   your normal browser credentials so the reader can show it.
 - **Text you paste** into the Analyze text page. It is scored locally and not saved.
 - **Open tabs' addresses**, in memory, to apply per-site rules and recognize PDFs. No
-  browsing history is stored or uploaded, unless you turn on the reading statistics at their
-  finest level (below), which keeps one on your computer.
+  browsing history is stored or uploaded, unless you turn on reading statistics that keep
+  addresses (below), which keeps one on your computer.
 
 ## Where it goes
 
@@ -122,24 +122,33 @@ requests carry normal download metadata and never page text.
   switch to the local engine until you delete them there, in Settings.
 - **Which engine you chose**, in `chrome.storage.local`.
 - **Reading statistics, only if you turn them on** (Settings, Statistics; off by default), in
-  IndexedDB in your browser profile. What each level keeps:
-  - *Daily totals*: per day, numbers only: words read, how many words are expected to be
-    human, lightly edited, heavily edited or AI-generated, how many paragraphs showed each
-    word, how many words could not be scored and why (too short, not English, engine
-    unavailable), the same per kind of page (feed, article, forum, document, other), and which
-    model was in force.
-  - *Daily totals and sites*: the same numbers per site (its hostname) and day.
-  - *Every page*: the same numbers per page and day, with the page's address (without the
-    query or the fragment), its title, the minute you first read it that day and how long it
-    was shown. This is a reading history; anyone who can use this browser profile could see it.
+  IndexedDB in your browser profile. You choose what they keep: a preset (daily totals; daily
+  totals and sites; every page; every paragraph; a research study; the full reading trace,
+  with or without the text), or, field by field, how exactly each kind of thing is kept, from
+  the most exact to not at all: times; durations; addresses (the full address down to the
+  domain, or a salted hash of it); titles; the paragraphs' text (in full, the first twelve
+  words, a near-duplicate sketch, a salted hash, or nothing); their lengths, verdicts and
+  languages; how pages are built; where paragraphs stand; when each paragraph was on screen
+  and how much of it; scrolling; input (clicks and the class of a key; the pointer's position,
+  ten times a second, only at the finest choice); when the page was shown and the window
+  focused; tabs and windows (random ids for this browser session); how you arrived at a page;
+  which engine scored; your use of Anagram's chips, cards and menu; the device; and what could
+  not be read, including how long a tab Anagram cannot read was in front (never its address
+  or title). [statistics.md](docs/statistics.md) lists every field. Settings warns you where a
+  choice keeps a reading history, full addresses, text, or the pointer: anyone who can use this
+  browser profile could see them.
 
-  No level keeps any text of a page. Nothing is recorded from a private window, from a site
-  you switched Anagram off for (not even a page of it you analyzed from the menu), or from the
-  Analyze text page. The site and the address are taken from the browser, not from the page.
-  Days older than the retention you choose (30, 90 or 365 days) are deleted, and **Clear
-  statistics** deletes everything. The statistics are never sent anywhere: **Export…** saves
-  a file on your computer, at the recorded level or a coarser one, and whether you share it
-  is up to you. Anagram has no code that uploads it.
+  Never recorded, at any choice: anything in a private window; a site you switched Anagram off
+  for (not even a page of it you analyzed from the menu); the Analyze text page; what you type
+  or which key (only whether it was a reading key, typing or a shortcut); the contents of form
+  fields; what you select or copy (only how many characters). The site and the address are
+  taken from the browser, not from the page. The salted hashes and sketches are made with a
+  random key kept in the extension's storage, never exported, and made anew when you clear the
+  statistics. Each part is deleted after the days you choose for it, and **Clear statistics**
+  deletes everything. The statistics are never sent anywhere: **Export…** saves a file on your
+  computer, no finer than what was kept, at the layers you choose, with ids and hashes keyed
+  for that file unless you choose otherwise, and shows you what it holds before you save it;
+  whether you share it is up to you. Anagram has no code that uploads it.
 - **Your clipboard**, only when you click Copy: a paragraph and its readout from a card, the
   report of the Analyze text page, or a diagnostics report, which replaces every word of
   page text with same-shaped filler and drops URLs and titles.

@@ -7,7 +7,11 @@ import { matcher, matchesAny } from "./patterns";
 
 interface Identity {tabId:number;frameId:number;url:string;origin:string;documentId?:string;session:string}
 export interface DocumentAccess extends Identity { documentKey:string; signal:AbortSignal }
-interface Live extends DocumentAccess {key:string;controller:AbortController;port:ReturnType<typeof browser.runtime.connect>}
+interface Live extends DocumentAccess {key:string;controller:AbortController;port:ReturnType<typeof browser.runtime.connect>;revoked?:boolean}
+/** A message a document sent on its session port after the handshake (the reading log's last
+ *  message of a visit, posted as the page goes): ordered before the port's disconnect, as a
+ *  runtime message is not. */
+export type PortMessageHandler = (record:DocumentAccess, sender:AccessSender, value:unknown) => void;
 const frameKey = (tabId:number,frameId:number) => `${tabId}:${frameId}`;
 /** The most documents of one tab served at once: a page with more frames than this has the
  *  rest of them unread, and no tab can take the other tabs' places. */
@@ -24,8 +28,10 @@ function sameDocument(identity: Identity, sender: AccessSender, session: string)
 export function createDocumentAuthority() {
   const live = new Map<string,Live>();
   const once = new Map<string,Identity>();
+  let onPortMessage: PortMessageHandler | null = null;
   const retire = (record:Live, teardown=false) => {
     if(record.signal.aborted)return;
+    record.revoked = teardown;
     record.controller.abort();
     if (live.get(record.key) === record) live.delete(record.key);
     if (once.get(frameKey(record.tabId,record.frameId))?.session === record.session) once.delete(frameKey(record.tabId,record.frameId));
@@ -58,7 +64,7 @@ export function createDocumentAuthority() {
         const timer=setTimeout(()=>{if(!record)port.disconnect();},2000);
         port.onDisconnect.addListener(()=>{clearTimeout(timer);if(record)retire(record);});
         port.onMessage.addListener((value) => {
-          if (record) return;
+          if (record) { onPortMessage?.(record, sender, value); return; }
           const parsed=v.safeParse(v.strictObject({session:SessionSchema}),value);
           // No tab may take every document's place: a page of a thousand tiny frames would
           // otherwise leave every other tab with none (PER_TAB_SESSIONS).
@@ -84,6 +90,20 @@ export function createDocumentAuthority() {
       } catch { /* injection did not identify a document */ }
     },
     hasOnce(tabId:number):boolean {return [...once.values()].some((r)=>r.tabId===tabId);},
+    /** Where a session port's later messages go (the background's handler). */
+    setPortHandler(handler:PortMessageHandler|null) {onPortMessage=handler;},
+    /**
+     * Whether a message that came on `record`'s port may be acted on: the document was allowed
+     * when it sent it. It may have closed its port since — the page went, which is when such a
+     * message is sent — but not had its access withdrawn (a revoked record says no).
+     */
+    async allowsPort(record:DocumentAccess, sender:AccessSender):Promise<boolean> {
+      const live=record as Live;
+      if (live.revoked || !sameDocument(record,sender,record.session)) return false;
+      const role=callerRole(sender,browser.runtime.id,browser.runtime.getURL("/"));
+      const one=once.get(frameKey(record.tabId,record.frameId));
+      return role === "reader" || role === "paste" || (role === "content" && ((one !== undefined && sameDocument(one,sender,record.session)) || await granted(addressOf(sender)!)));
+    },
     async authorize(sender:AccessSender,session:string|undefined):Promise<DocumentAccess|null> {
       if (!session) return null;
       const key=sender.tab?.id === undefined ? `page:${session}` : frameKey(sender.tab.id,sender.frameId ?? 0),record=live.get(key);
@@ -101,9 +121,15 @@ export function createDocumentAuthority() {
       for(const [key,identity] of once) if(matchesAny(origins,identity.url))once.delete(key);
       for(const record of [...live.values()]) if(matchesAny(origins,record.url))retire(record,true);
     },
-    forget(tabId:number) {
+    /** The tab closed, or a new document committed in it (`graceMs`): its one-off grants end
+     *  at once; its documents' sessions after `graceMs`, so the document that is leaving can
+     *  still say its last on its port as it goes (the browser commits the next page before the
+     *  old one's pagehide). A session the next document opened meanwhile is its own. */
+    forget(tabId:number, graceMs=0) {
       for(const [key,identity] of once)if(identity.tabId===tabId)once.delete(key);
-      for(const record of [...live.values()])if(record.tabId===tabId)retire(record);
+      const leaving=[...live.values()].filter((record)=>record.tabId===tabId);
+      if (graceMs <= 0) { for(const record of leaving) retire(record); return; }
+      setTimeout(()=>{ for(const record of leaving) retire(record); },graceMs);
     },
   };
 }

@@ -182,31 +182,49 @@ The engine unloads the model after five minutes without work by default and relo
 
 ## Statistics
 
-Anagram can keep a record of how much of what you read reads as AI-generated. Choose a level
-in Settings, Statistics, **Record**, or on the statistics page, which explains them:
+Anagram can keep a record of how much of what you read reads as AI-generated. It is off until
+you choose what to keep, in Settings, Statistics, **Record**, or on the statistics page:
 
 - **Daily totals**: each day's words read, how they read from human to AI-generated, and on
   what kind of page (feeds, articles, forums, documents, other).
 - **Daily totals and sites**: the same, and each site's share of the day.
-- **Every page**: the same, and each page you read, with its address, title, when you opened
-  it and for how long. This is a reading history; anyone who uses this browser profile could
-  see it.
+- **Every page**: the same, and each page you read, with its address, title, when you first
+  read it and for how long. This is a reading history.
+- **Every paragraph**: each visit and each paragraph you read, its length, verdict and time on
+  screen, and a salted hash of its text to tell when you read it again. No addresses, no text.
+- **Research study**: every visit, paragraph and scroll, timed to a tenth of a second, with
+  domains but no addresses and no text: what a study of reading asks for.
+- **Full reading trace**, with or without the text: everything, to the millisecond, the
+  pointer's track included.
 
-A paragraph counts once it has been on screen for a second, and once however often you come
-back to it. The share shown is expected words: a paragraph the model is unsure of counts partly
-on each side. Text from a page is never kept, at any level, nor anything read in a private
-window, on a site you switched Anagram off for, or in Analyze text.
+**Choose field by field…** shows every kind of thing Anagram can keep, from the most exact to
+nothing, and lets you choose each one; addresses and titles can be kept as salted hashes. Under
+the choice, Settings warns you of what someone else using this browser profile could see. How
+long each part is kept is yours too: every step (7, 30 or 90 days), paragraphs and visits (30,
+90 or 365 days), the daily totals (a year, or until you clear them). Choosing to keep less asks
+whether to delete what the new choice would not have kept; it stays unless you say so.
 
-When recording is on, the toolbar menu says how today's reading reads ("Today: 14%
-AI-generated, of 8,400 words read.") and links to the statistics page: the share and the four
-verdicts for Today, the last 7 or 30 days or a month, against your 30-day average; the trend
-day by day; by kind of page, feeds against the rest, by site and by page; and how much of what
-you read could be scored. **Export…** saves a JSON or CSV file of the period, at the level it
-was recorded at or a coarser one, which you can keep or give to somebody (for instance a study
-you take part in); Anagram never uploads it. [statistics.md](statistics.md) describes the file.
-**Clear statistics** deletes everything; days older than **Keep** (30, 90 or 365 days) are
-deleted by themselves. Lowering **Record** asks whether to delete the sites and pages already
-recorded that the lower level would not keep; the daily totals stay either way.
+Never kept, whatever you choose: anything in a private window, on a site you switched Anagram
+off for, or in Analyze text; what you type; what you select or copy.
+
+A paragraph counts as read once it has been on screen for a second with some of it in the
+middle of the window, and once per visit however often you scroll back to it. The share shown
+is expected words: a paragraph the model is unsure of counts partly on each side. Where
+paragraphs are kept, **How it counts** on the statistics page counts them another way: after
+another time on screen, by how much of a paragraph was shown, in a focused window only, once a
+day or once ever, by the chip's word or the most likely verdict, by paragraphs or by time.
+
+When statistics are on, the toolbar menu says how today's reading reads ("Today: 14%
+AI-generated, of 8,400 words scored.") and links to the statistics page: the share and the four
+verdicts for Today, the last 7 or 30 days, a month or any range, against your 30-day average;
+the trend day by day; by kind of page, feeds against the rest, by site, by page and by visit,
+where every step was kept with a replay of when each paragraph was on screen; and how much of
+what you read could be scored. **Export…** saves a file of the period, never finer than what
+was kept, with each kind of thing at the layer you choose, as JSON or as CSV tables in a zip,
+and shows you what it holds first. Its ids and hashes are that file's own unless you choose
+to make them the same in every file (a study that collects several of your files asks for
+that). Anagram never uploads it. [statistics.md](statistics.md) describes the file.
+**Clear statistics** deletes everything.
 
 ## Update and remove
 

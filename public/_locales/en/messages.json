@@ -1423,40 +1423,8 @@
     "message": "Anagram can keep a record of how much of what you read reads as AI-generated. It stays on this computer, and nothing is ever sent anywhere.",
     "description": "Statistics page, while nothing is recorded: what the feature is, and that it never leaves the computer."
   },
-  "statsLevelOff": {
-    "message": "Off",
-    "description": "Settings, Statistics, Record: nothing is recorded (the default)."
-  },
-  "statsLevelDaily": {
-    "message": "Daily totals",
-    "description": "Settings and the statistics page: the level that records each day's totals only."
-  },
-  "statsLevelSites": {
-    "message": "Daily totals and sites",
-    "description": "Settings and the statistics page: the level that also records each site's share of a day."
-  },
-  "statsLevelPages": {
-    "message": "Every page",
-    "description": "Settings and the statistics page: the level that also records every page read (its address and title)."
-  },
-  "statsLevelOffHint": {
-    "message": "Nothing is recorded.",
-    "description": "Settings, Statistics: the note under Record while it is Off."
-  },
-  "statsLevelDailyHint": {
-    "message": "Each day: how many words you read, how they read from human to AI-generated, and on what kind of page. No sites, no pages.",
-    "description": "What the 'Daily totals' level records."
-  },
-  "statsLevelSitesHint": {
-    "message": "The same, and each site's share of the day. No page addresses.",
-    "description": "What the 'Daily totals and sites' level records."
-  },
-  "statsLevelPagesHint": {
-    "message": "The same, and each page you read: its address, its title, when you opened it and for how long.",
-    "description": "What the 'Every page' level records."
-  },
   "statsNeverNote": {
-    "message": "Never any text from a page. Never private windows, sites you switched Anagram off for, or Analyze text.",
+    "message": "Never private windows, sites you switched Anagram off for, Analyze text, what you type, or what you select or copy.",
     "description": "Statistics page, while off: what is never recorded at any level. 'Analyze text' is the extension's own page for pasted text."
   },
   "optStatsLevel": {
@@ -1564,11 +1532,11 @@
     "description": "Export dialog: label of the file format choice."
   },
   "statsExportJson": {
-    "message": "JSON (everything at this detail)",
+    "message": "JSON",
     "description": "Export dialog: the JSON format."
   },
   "statsExportCsv": {
-    "message": "CSV (one row a day)",
+    "message": "CSV, a file per table, in a .zip",
     "description": "Export dialog: the CSV format, daily rows only."
   },
   "statsExportNote": {
@@ -1594,22 +1562,6 @@
   "statsCleared": {
     "message": "Statistics cleared.",
     "description": "Settings, Statistics: status after the statistics were deleted."
-  },
-  "statsDropSitesPagesTitle": {
-    "message": "Delete the sites and pages already recorded?",
-    "description": "Settings, Statistics: dialog shown when the level is lowered below 'Daily totals and sites' while site and page records are kept: its title."
-  },
-  "statsDropSitesTitle": {
-    "message": "Delete the sites already recorded?",
-    "description": "The same dialog when only site records are kept (the level was 'Daily totals and sites')."
-  },
-  "statsDropPagesTitle": {
-    "message": "Delete the pages already recorded?",
-    "description": "The same dialog when the level is lowered from 'Every page' to 'Daily totals and sites': only page records would go."
-  },
-  "statsDropText": {
-    "message": "Anagram records less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.",
-    "description": "The same dialog: what lowering the level does and does not do."
   },
   "statsDropKeep": {
     "message": "Keep them",
@@ -1735,10 +1687,6 @@
     "message": "The latest $1 of $2 pages. The export has them all.",
     "description": "Statistics page, under the pages list when it is cut short."
   },
-  "statsNoSites": {
-    "message": "No site was recorded in this period.",
-    "description": "Statistics page, sites table: nothing in the period."
-  },
   "statsMoreSites": {
     "message": "And $1 more sites. The export has them all.",
     "description": "Statistics page, under the top sites."
@@ -1756,16 +1704,12 @@
     "description": "Statistics page, under the title: nothing is being recorded."
   },
   "statsRecordingLine": {
-    "message": "Recording: $1, kept for $2 days.",
+    "message": "Recording: $1, paragraphs and visits kept for $2 days.",
     "description": "Statistics page, under the title. $1 is the level's name, $2 the retention in days."
   },
   "optStats": {
     "message": "Statistics",
     "description": "Settings: label of the reading statistics group."
-  },
-  "optStatsKeep": {
-    "message": "Keep",
-    "description": "Settings, Statistics: label of how long days are kept."
   },
   "optStatsDays": {
     "message": "$1 days",
@@ -1788,7 +1732,927 @@
     "description": "Toolbar menu: words were read today but none could be scored. $1 is the number of words."
   },
   "popupStatsToday": {
-    "message": "Today: $1 AI-generated, of $2 words read.",
+    "message": "Today: $1 AI-generated, of $2 words scored.",
     "description": "Toolbar menu, while statistics are recorded: $1 is the expected AI-generated share (a percentage), $2 the words read and scored today."
+  },
+  "statsDim_rows": {
+    "message": "What a row is",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (rows)."
+  },
+  "statsDimHint_rows": {
+    "message": "What each kept row stands for: an event, a paragraph, a visit, or a total.",
+    "description": "The field-by-field table: what 'What a row is' covers."
+  },
+  "statsDim_time": {
+    "message": "Clock times",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (time)."
+  },
+  "statsDimHint_time": {
+    "message": "When things happened.",
+    "description": "The field-by-field table: what 'Clock times' covers."
+  },
+  "statsDim_dur": {
+    "message": "Durations",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (dur)."
+  },
+  "statsDimHint_dur": {
+    "message": "How long, and how long after a visit began.",
+    "description": "The field-by-field table: what 'Durations' covers."
+  },
+  "statsDim_place": {
+    "message": "Addresses",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (place)."
+  },
+  "statsDimHint_place": {
+    "message": "Where you read: the page's address, the page you came from, and frames'.",
+    "description": "The field-by-field table: what 'Addresses' covers."
+  },
+  "statsDim_title": {
+    "message": "Titles",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (title)."
+  },
+  "statsDimHint_title": {
+    "message": "The tab's title.",
+    "description": "The field-by-field table: what 'Titles' covers."
+  },
+  "statsDim_text": {
+    "message": "Paragraph text",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (text)."
+  },
+  "statsDimHint_text": {
+    "message": "What the paragraphs said.",
+    "description": "The field-by-field table: what 'Paragraph text' covers."
+  },
+  "statsDim_len": {
+    "message": "Lengths",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (len)."
+  },
+  "statsDimHint_len": {
+    "message": "How long each paragraph is.",
+    "description": "The field-by-field table: what 'Lengths' covers."
+  },
+  "statsDim_verdict": {
+    "message": "Verdicts",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (verdict)."
+  },
+  "statsDimHint_verdict": {
+    "message": "What the model made of each paragraph.",
+    "description": "The field-by-field table: what 'Verdicts' covers."
+  },
+  "statsDim_lang": {
+    "message": "Languages",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (lang)."
+  },
+  "statsDimHint_lang": {
+    "message": "Which language each paragraph is in.",
+    "description": "The field-by-field table: what 'Languages' covers."
+  },
+  "statsDim_struct": {
+    "message": "Page structure",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (struct)."
+  },
+  "statsDimHint_struct": {
+    "message": "What kind of page and of paragraph, and how the page is built.",
+    "description": "The field-by-field table: what 'Page structure' covers."
+  },
+  "statsDim_geom": {
+    "message": "Positions",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (geom)."
+  },
+  "statsDimHint_geom": {
+    "message": "Where on the page each paragraph is.",
+    "description": "The field-by-field table: what 'Positions' covers."
+  },
+  "statsDim_expo": {
+    "message": "Time on screen",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (expo)."
+  },
+  "statsDimHint_expo": {
+    "message": "When each paragraph was on screen, and how much of it.",
+    "description": "The field-by-field table: what 'Time on screen' covers."
+  },
+  "statsDim_scroll": {
+    "message": "Scrolling",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (scroll)."
+  },
+  "statsDimHint_scroll": {
+    "message": "How the page was scrolled.",
+    "description": "The field-by-field table: what 'Scrolling' covers."
+  },
+  "statsDim_input": {
+    "message": "Input",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (input)."
+  },
+  "statsDimHint_input": {
+    "message": "Clicks, keys and the pointer. Never what you type.",
+    "description": "The field-by-field table: what 'Input' covers."
+  },
+  "statsDim_state": {
+    "message": "Shown and focused",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (state)."
+  },
+  "statsDimHint_state": {
+    "message": "When the page was shown or hidden, and the window focused.",
+    "description": "The field-by-field table: what 'Shown and focused' covers."
+  },
+  "statsDim_tabs": {
+    "message": "Tabs and windows",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (tabs)."
+  },
+  "statsDimHint_tabs": {
+    "message": "Which tab and window, and when each came to the front.",
+    "description": "The field-by-field table: what 'Tabs and windows' covers."
+  },
+  "statsDim_nav": {
+    "message": "Navigation",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (nav)."
+  },
+  "statsDimHint_nav": {
+    "message": "How you arrived at each page, and from where.",
+    "description": "The field-by-field table: what 'Navigation' covers."
+  },
+  "statsDim_engine": {
+    "message": "Engine",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (engine)."
+  },
+  "statsDimHint_engine": {
+    "message": "Which engine and model scored, and how fast.",
+    "description": "The field-by-field table: what 'Engine' covers."
+  },
+  "statsDim_ui": {
+    "message": "Use of Anagram",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (ui)."
+  },
+  "statsDimHint_ui": {
+    "message": "Cards opened, flagged paragraphs jumped to, the toolbar menu.",
+    "description": "The field-by-field table: what 'Use of Anagram' covers."
+  },
+  "statsDim_device": {
+    "message": "Device",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (device)."
+  },
+  "statsDimHint_device": {
+    "message": "Browser, system and computer.",
+    "description": "The field-by-field table: what 'Device' covers."
+  },
+  "statsDim_cover": {
+    "message": "What was missed",
+    "description": "The field-by-field table of the statistics: the name of a kind of thing kept (cover)."
+  },
+  "statsDimHint_cover": {
+    "message": "What could not be read, and time on pages Anagram can't read.",
+    "description": "The field-by-field table: what 'What was missed' covers."
+  },
+  "statsL_rows_event": {
+    "message": "Every event",
+    "description": "The field-by-field table: one way to keep 'What a row is' (event)."
+  },
+  "statsL_rows_paragraph": {
+    "message": "Every paragraph",
+    "description": "The field-by-field table: one way to keep 'What a row is' (paragraph)."
+  },
+  "statsL_rows_visit": {
+    "message": "Every visit",
+    "description": "The field-by-field table: one way to keep 'What a row is' (visit)."
+  },
+  "statsL_rows_page": {
+    "message": "Each page, per day",
+    "description": "The field-by-field table: one way to keep 'What a row is' (page)."
+  },
+  "statsL_rows_site": {
+    "message": "Each site, per day",
+    "description": "The field-by-field table: one way to keep 'What a row is' (site)."
+  },
+  "statsL_rows_kind": {
+    "message": "Each kind of page, per day",
+    "description": "The field-by-field table: one way to keep 'What a row is' (kind)."
+  },
+  "statsL_rows_day": {
+    "message": "Each day",
+    "description": "The field-by-field table: one way to keep 'What a row is' (day)."
+  },
+  "statsL_time_ms": {
+    "message": "To the millisecond",
+    "description": "The field-by-field table: one way to keep 'Clock times' (ms)."
+  },
+  "statsL_time_s": {
+    "message": "To the second",
+    "description": "The field-by-field table: one way to keep 'Clock times' (s)."
+  },
+  "statsL_time_min": {
+    "message": "To the minute",
+    "description": "The field-by-field table: one way to keep 'Clock times' (min)."
+  },
+  "statsL_time_quarter": {
+    "message": "To the quarter hour",
+    "description": "The field-by-field table: one way to keep 'Clock times' (quarter)."
+  },
+  "statsL_time_hour": {
+    "message": "To the hour",
+    "description": "The field-by-field table: one way to keep 'Clock times' (hour)."
+  },
+  "statsL_time_day": {
+    "message": "The day only",
+    "description": "The field-by-field table: one way to keep 'Clock times' (day)."
+  },
+  "statsL_dur_ms": {
+    "message": "To the millisecond",
+    "description": "The field-by-field table: one way to keep 'Durations' (ms)."
+  },
+  "statsL_dur_decis": {
+    "message": "To a tenth of a second",
+    "description": "The field-by-field table: one way to keep 'Durations' (decis)."
+  },
+  "statsL_dur_s": {
+    "message": "To the second",
+    "description": "The field-by-field table: one way to keep 'Durations' (s)."
+  },
+  "statsL_dur_bins": {
+    "message": "In doubling steps",
+    "description": "The field-by-field table: one way to keep 'Durations' (bins)."
+  },
+  "statsL_dur_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Durations' (none)."
+  },
+  "statsL_place_url": {
+    "message": "Full address",
+    "description": "The field-by-field table: one way to keep 'Addresses' (url)."
+  },
+  "statsL_place_nofragment": {
+    "message": "Without the part after #",
+    "description": "The field-by-field table: one way to keep 'Addresses' (nofragment)."
+  },
+  "statsL_place_querynames": {
+    "message": "Query names, no values",
+    "description": "The field-by-field table: one way to keep 'Addresses' (querynames)."
+  },
+  "statsL_place_path": {
+    "message": "Site and path",
+    "description": "The field-by-field table: one way to keep 'Addresses' (path)."
+  },
+  "statsL_place_pattern": {
+    "message": "Path pattern, ids hidden",
+    "description": "The field-by-field table: one way to keep 'Addresses' (pattern)."
+  },
+  "statsL_place_host": {
+    "message": "Host",
+    "description": "The field-by-field table: one way to keep 'Addresses' (host)."
+  },
+  "statsL_place_domain": {
+    "message": "Domain",
+    "description": "The field-by-field table: one way to keep 'Addresses' (domain)."
+  },
+  "statsL_place_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Addresses' (none)."
+  },
+  "statsL_title_full": {
+    "message": "Full",
+    "description": "The field-by-field table: one way to keep 'Titles' (full)."
+  },
+  "statsL_title_short": {
+    "message": "First 60 characters",
+    "description": "The field-by-field table: one way to keep 'Titles' (short)."
+  },
+  "statsL_title_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Titles' (none)."
+  },
+  "statsL_text_full": {
+    "message": "Full text",
+    "description": "The field-by-field table: one way to keep 'Paragraph text' (full)."
+  },
+  "statsL_text_head": {
+    "message": "First 12 words",
+    "description": "The field-by-field table: one way to keep 'Paragraph text' (head)."
+  },
+  "statsL_text_sketch": {
+    "message": "Near-duplicate sketch",
+    "description": "The field-by-field table: one way to keep 'Paragraph text' (sketch)."
+  },
+  "statsL_text_hash": {
+    "message": "Salted hash",
+    "description": "The field-by-field table: one way to keep 'Paragraph text' (hash)."
+  },
+  "statsL_text_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Paragraph text' (none)."
+  },
+  "statsL_len_all": {
+    "message": "Every count",
+    "description": "The field-by-field table: one way to keep 'Lengths' (all)."
+  },
+  "statsL_len_words": {
+    "message": "Words and tokens",
+    "description": "The field-by-field table: one way to keep 'Lengths' (words)."
+  },
+  "statsL_len_rounded": {
+    "message": "Words, to the nearest 5",
+    "description": "The field-by-field table: one way to keep 'Lengths' (rounded)."
+  },
+  "statsL_len_bands": {
+    "message": "Length bands",
+    "description": "The field-by-field table: one way to keep 'Lengths' (bands)."
+  },
+  "statsL_len_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Lengths' (none)."
+  },
+  "statsL_verdict_probs": {
+    "message": "Probabilities",
+    "description": "The field-by-field table: one way to keep 'Verdicts' (probs)."
+  },
+  "statsL_verdict_probs2": {
+    "message": "Probabilities, 2 decimals",
+    "description": "The field-by-field table: one way to keep 'Verdicts' (probs2)."
+  },
+  "statsL_verdict_words": {
+    "message": "Chip word and most likely verdict",
+    "description": "The field-by-field table: one way to keep 'Verdicts' (words)."
+  },
+  "statsL_verdict_flagged": {
+    "message": "Flagged or not",
+    "description": "The field-by-field table: one way to keep 'Verdicts' (flagged)."
+  },
+  "statsL_verdict_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Verdicts' (none)."
+  },
+  "statsL_lang_full": {
+    "message": "Language, confidence and script",
+    "description": "The field-by-field table: one way to keep 'Languages' (full)."
+  },
+  "statsL_lang_label": {
+    "message": "Language",
+    "description": "The field-by-field table: one way to keep 'Languages' (label)."
+  },
+  "statsL_lang_english": {
+    "message": "English or not",
+    "description": "The field-by-field table: one way to keep 'Languages' (english)."
+  },
+  "statsL_lang_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Languages' (none)."
+  },
+  "statsL_struct_full": {
+    "message": "Everything",
+    "description": "The field-by-field table: one way to keep 'Page structure' (full)."
+  },
+  "statsL_struct_unit": {
+    "message": "Paragraph kind, post and order",
+    "description": "The field-by-field table: one way to keep 'Page structure' (unit)."
+  },
+  "statsL_struct_kind": {
+    "message": "Page kind only",
+    "description": "The field-by-field table: one way to keep 'Page structure' (kind)."
+  },
+  "statsL_struct_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Page structure' (none)."
+  },
+  "statsL_geom_changes": {
+    "message": "Positions and every move",
+    "description": "The field-by-field table: one way to keep 'Positions' (changes)."
+  },
+  "statsL_geom_found": {
+    "message": "Position when found",
+    "description": "The field-by-field table: one way to keep 'Positions' (found)."
+  },
+  "statsL_geom_share": {
+    "message": "Place as a share of the page",
+    "description": "The field-by-field table: one way to keep 'Positions' (share)."
+  },
+  "statsL_geom_order": {
+    "message": "Order only",
+    "description": "The field-by-field table: one way to keep 'Positions' (order)."
+  },
+  "statsL_geom_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Positions' (none)."
+  },
+  "statsL_expo_steps": {
+    "message": "Every visible step",
+    "description": "The field-by-field table: one way to keep 'Time on screen' (steps)."
+  },
+  "statsL_expo_intervals": {
+    "message": "Spells on screen",
+    "description": "The field-by-field table: one way to keep 'Time on screen' (intervals)."
+  },
+  "statsL_expo_totals": {
+    "message": "Totals per paragraph",
+    "description": "The field-by-field table: one way to keep 'Time on screen' (totals)."
+  },
+  "statsL_expo_read": {
+    "message": "Read or not",
+    "description": "The field-by-field table: one way to keep 'Time on screen' (read)."
+  },
+  "statsL_expo_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Time on screen' (none)."
+  },
+  "statsL_scroll_frames": {
+    "message": "Every frame",
+    "description": "The field-by-field table: one way to keep 'Scrolling' (frames)."
+  },
+  "statsL_scroll_tenth": {
+    "message": "10 times a second",
+    "description": "The field-by-field table: one way to keep 'Scrolling' (tenth)."
+  },
+  "statsL_scroll_second": {
+    "message": "Once a second",
+    "description": "The field-by-field table: one way to keep 'Scrolling' (second)."
+  },
+  "statsL_scroll_episodes": {
+    "message": "Each scroll",
+    "description": "The field-by-field table: one way to keep 'Scrolling' (episodes)."
+  },
+  "statsL_scroll_visit": {
+    "message": "Per visit",
+    "description": "The field-by-field table: one way to keep 'Scrolling' (visit)."
+  },
+  "statsL_scroll_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Scrolling' (none)."
+  },
+  "statsL_input_pointer": {
+    "message": "Events and pointer track",
+    "description": "The field-by-field table: one way to keep 'Input' (pointer)."
+  },
+  "statsL_input_positions": {
+    "message": "Events with positions",
+    "description": "The field-by-field table: one way to keep 'Input' (positions)."
+  },
+  "statsL_input_events": {
+    "message": "Events",
+    "description": "The field-by-field table: one way to keep 'Input' (events)."
+  },
+  "statsL_input_minutes": {
+    "message": "Counts per minute",
+    "description": "The field-by-field table: one way to keep 'Input' (minutes)."
+  },
+  "statsL_input_idle": {
+    "message": "Idle spells",
+    "description": "The field-by-field table: one way to keep 'Input' (idle)."
+  },
+  "statsL_input_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Input' (none)."
+  },
+  "statsL_state_changes": {
+    "message": "Every change",
+    "description": "The field-by-field table: one way to keep 'Shown and focused' (changes)."
+  },
+  "statsL_state_totals": {
+    "message": "Totals per visit",
+    "description": "The field-by-field table: one way to keep 'Shown and focused' (totals)."
+  },
+  "statsL_state_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Shown and focused' (none)."
+  },
+  "statsL_tabs_full": {
+    "message": "Ids, opener, sizes and counts",
+    "description": "The field-by-field table: one way to keep 'Tabs and windows' (full)."
+  },
+  "statsL_tabs_ids": {
+    "message": "Ids, front and focus",
+    "description": "The field-by-field table: one way to keep 'Tabs and windows' (ids)."
+  },
+  "statsL_tabs_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Tabs and windows' (none)."
+  },
+  "statsL_nav_full": {
+    "message": "Arrival, referrer and chains",
+    "description": "The field-by-field table: one way to keep 'Navigation' (full)."
+  },
+  "statsL_nav_arrival": {
+    "message": "Arrival only",
+    "description": "The field-by-field table: one way to keep 'Navigation' (arrival)."
+  },
+  "statsL_nav_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Navigation' (none)."
+  },
+  "statsL_engine_full": {
+    "message": "Every detail",
+    "description": "The field-by-field table: one way to keep 'Engine' (full)."
+  },
+  "statsL_engine_basic": {
+    "message": "Engine and cache",
+    "description": "The field-by-field table: one way to keep 'Engine' (basic)."
+  },
+  "statsL_engine_model": {
+    "message": "Model only",
+    "description": "The field-by-field table: one way to keep 'Engine' (model)."
+  },
+  "statsL_ui_events": {
+    "message": "Every use",
+    "description": "The field-by-field table: one way to keep 'Use of Anagram' (events)."
+  },
+  "statsL_ui_counts": {
+    "message": "Counts per visit",
+    "description": "The field-by-field table: one way to keep 'Use of Anagram' (counts)."
+  },
+  "statsL_ui_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Use of Anagram' (none)."
+  },
+  "statsL_device_exact": {
+    "message": "Exact",
+    "description": "The field-by-field table: one way to keep 'Device' (exact)."
+  },
+  "statsL_device_families": {
+    "message": "Families only",
+    "description": "The field-by-field table: one way to keep 'Device' (families)."
+  },
+  "statsL_device_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'Device' (none)."
+  },
+  "statsL_cover_visit": {
+    "message": "Per visit, and uncovered time",
+    "description": "The field-by-field table: one way to keep 'What was missed' (visit)."
+  },
+  "statsL_cover_day": {
+    "message": "Per day",
+    "description": "The field-by-field table: one way to keep 'What was missed' (day)."
+  },
+  "statsL_cover_none": {
+    "message": "None",
+    "description": "The field-by-field table: one way to keep 'What was missed' (none)."
+  },
+  "statsPreset_off": {
+    "message": "Off",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (off)."
+  },
+  "statsPresetHint_off": {
+    "message": "Nothing is kept.",
+    "description": "What the choice 'Off' keeps."
+  },
+  "statsPreset_daily": {
+    "message": "Daily totals",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (daily)."
+  },
+  "statsPresetHint_daily": {
+    "message": "Each day: how many words you read, how they read from human to AI-generated, and on what kind of page. No sites, no pages.",
+    "description": "What the choice 'Daily totals' keeps."
+  },
+  "statsPreset_sites": {
+    "message": "Daily totals and sites",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (sites)."
+  },
+  "statsPresetHint_sites": {
+    "message": "The same, and each site's share of the day. No page addresses.",
+    "description": "What the choice 'Daily totals and sites' keeps."
+  },
+  "statsPreset_pages": {
+    "message": "Every page",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (pages)."
+  },
+  "statsPresetHint_pages": {
+    "message": "The same, and each page you read: its address, its title, when you first read it and for how long.",
+    "description": "What the choice 'Every page' keeps."
+  },
+  "statsPreset_paragraphs": {
+    "message": "Every paragraph",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (paragraphs)."
+  },
+  "statsPresetHint_paragraphs": {
+    "message": "Each visit and each paragraph you read: its length, its verdict, how long it was on screen, and a salted hash of its text to tell when you read it again. No addresses, no titles, no text.",
+    "description": "What the choice 'Every paragraph' keeps."
+  },
+  "statsPreset_study": {
+    "message": "Research study",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (study)."
+  },
+  "statsPresetHint_study": {
+    "message": "What a study of reading needs: every visit, paragraph and scroll, timed to a tenth of a second; domains but not addresses; sketches of the text that recognise an edited copy, but no text.",
+    "description": "What the choice 'Research study' keeps."
+  },
+  "statsPreset_full": {
+    "message": "Full reading trace",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (full)."
+  },
+  "statsPresetHint_full": {
+    "message": "Everything but the text: full addresses and titles, every step of what was on screen, scrolling, input and the pointer, tabs and windows, to the millisecond.",
+    "description": "What the choice 'Full reading trace' keeps."
+  },
+  "statsPreset_fullText": {
+    "message": "Full trace with text",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (fullText)."
+  },
+  "statsPresetHint_fullText": {
+    "message": "Everything, the text of every paragraph you read included.",
+    "description": "What the choice 'Full trace with text' keeps."
+  },
+  "statsPreset_custom": {
+    "message": "Your own",
+    "description": "Settings and the statistics page: a choice of what the statistics keep (custom)."
+  },
+  "statsPresetHint_custom": {
+    "message": "Chosen field by field.",
+    "description": "What the choice 'Your own' keeps."
+  },
+  "statsWarnText": {
+    "message": "This keeps the text of every paragraph you read. It stays on this computer, but anyone who uses this browser profile could read it.",
+    "description": "Settings and the statistics page: a warning under a choice that keeps paragraph text."
+  },
+  "statsWarnHead": {
+    "message": "This keeps the first twelve words of every paragraph you read. It stays on this computer, but anyone who uses this browser profile could read them.",
+    "description": "Warning under a choice that keeps each paragraph's first words."
+  },
+  "statsWarnUrl": {
+    "message": "Full addresses can carry what a site puts in them: search terms, an email address, a sign-in link.",
+    "description": "Warning under a choice that keeps full addresses."
+  },
+  "statsWarnPointer": {
+    "message": "This records where your pointer is on every page Anagram reads, ten times a second.",
+    "description": "Warning under a choice that keeps the pointer's track."
+  },
+  "optStatsDetail": {
+    "message": "In detail",
+    "description": "Settings, Statistics: the row whose button shows the field-by-field table."
+  },
+  "optStatsCustomize": {
+    "message": "Choose field by field…",
+    "description": "Settings, Statistics: button that shows a table of every kind of thing that can be kept."
+  },
+  "optStatsCustomizeHide": {
+    "message": "Hide the fields",
+    "description": "Settings, Statistics: the same button while the table is shown."
+  },
+  "optStatsDimsLead": {
+    "message": "Each kind of thing Anagram can keep, from the most exact to nothing. A coarser choice can always be made from a finer one, never the other way.",
+    "description": "Settings, Statistics: the line above the field-by-field table."
+  },
+  "optStatsMoved": {
+    "message": "Made coarser to fit what each row can hold: $1.",
+    "description": "Settings, Statistics: a choice was coarsened to fit the rows kept. $1 names what was changed."
+  },
+  "optStatsFine": {
+    "message": "Keep every step for",
+    "description": "Settings, Statistics: how long the fine trace (every step on screen, scrolling, input) is kept."
+  },
+  "optStatsDetailKeep": {
+    "message": "Keep paragraphs and visits for",
+    "description": "Settings, Statistics: how long paragraphs and visits are kept."
+  },
+  "optStatsTotalsKeep": {
+    "message": "Keep daily totals for",
+    "description": "Settings, Statistics: how long the daily totals are kept."
+  },
+  "optStatsUntilCleared": {
+    "message": "Until cleared",
+    "description": "Settings, Statistics: keep the daily totals until the person clears them."
+  },
+  "optStatsSize": {
+    "message": "Space used",
+    "description": "Settings, Statistics: how much the statistics take on disk."
+  },
+  "optStatsSizeValue": {
+    "message": "$1 in $2 records",
+    "description": "Settings, Statistics: $1 is a size (12 MB), $2 a number of records."
+  },
+  "statsAsHash": {
+    "message": "as a salted hash",
+    "description": "The field-by-field table: keep this as a salted hash instead of in the clear."
+  },
+  "statsColDimension": {
+    "message": "What",
+    "description": "The field-by-field table: column of the kinds of things kept."
+  },
+  "statsColLayer": {
+    "message": "Kept as",
+    "description": "The field-by-field table: column of how each is kept."
+  },
+  "statsStripTitle": {
+    "message": "Delete what the new setting doesn't keep?",
+    "description": "Dialog title after choosing to keep less."
+  },
+  "statsStripText": {
+    "message": "Anagram keeps less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.",
+    "description": "Dialog text after choosing to keep less."
+  },
+  "statsFrom": {
+    "message": "From",
+    "description": "Statistics page: label of the first day of a chosen range."
+  },
+  "statsTo": {
+    "message": "To",
+    "description": "Statistics page: label of the last day of a chosen range."
+  },
+  "statsLens": {
+    "message": "How it counts",
+    "description": "Statistics page: the panel that sets what counts as read and how shares are worked out."
+  },
+  "statsLensRead": {
+    "message": "Read after",
+    "description": "How it counts: how long a paragraph is on screen before it counts as read."
+  },
+  "statsSeconds": {
+    "message": "$1 s",
+    "description": "A number of seconds: $1 is 0.25, 0.5, 1, 2 …"
+  },
+  "statsLensVisible": {
+    "message": "On screen means",
+    "description": "How it counts: what counts as on screen."
+  },
+  "statsLensBand": {
+    "message": "Some of it in the middle 80% of the window",
+    "description": "How it counts: the default rule."
+  },
+  "statsLensHalf": {
+    "message": "At least half of it shown",
+    "description": "How it counts: half of the paragraph visible."
+  },
+  "statsLensAny": {
+    "message": "Any of it shown",
+    "description": "How it counts: any part visible."
+  },
+  "statsLensOnce": {
+    "message": "A paragraph read again counts",
+    "description": "How it counts: how often a paragraph read again counts."
+  },
+  "statsLensOnceVisit": {
+    "message": "Once per visit",
+    "description": "How it counts: once per visit."
+  },
+  "statsLensOnceDay": {
+    "message": "Once per day",
+    "description": "How it counts: once per day."
+  },
+  "statsLensOnceEver": {
+    "message": "Only once",
+    "description": "How it counts: once in the whole period."
+  },
+  "statsLensEstimator": {
+    "message": "Shares from",
+    "description": "How it counts: how the shares are estimated."
+  },
+  "statsLensExpected": {
+    "message": "Expected words",
+    "description": "How it counts: shares as expected words (words times probabilities)."
+  },
+  "statsLensChip": {
+    "message": "Paragraphs, by their chip's word",
+    "description": "How it counts: shares as paragraphs counted under the word their chip showed."
+  },
+  "statsLensArgmax": {
+    "message": "Paragraphs, by most likely verdict",
+    "description": "How it counts: shares as paragraphs counted under their most likely verdict."
+  },
+  "statsLensWeight": {
+    "message": "Each paragraph weighs",
+    "description": "How it counts: what one paragraph weighs."
+  },
+  "statsLensWords": {
+    "message": "Its words",
+    "description": "How it counts: a paragraph weighs its words."
+  },
+  "statsLensParagraphs": {
+    "message": "One",
+    "description": "How it counts: every paragraph weighs one."
+  },
+  "statsLensTime": {
+    "message": "Its seconds on screen",
+    "description": "How it counts: a paragraph weighs its time on screen."
+  },
+  "statsLensHeadline": {
+    "message": "The headline is",
+    "description": "How it counts: what the big number is."
+  },
+  "statsLensAi": {
+    "message": "AI-generated",
+    "description": "How it counts: the headline is the AI-generated share."
+  },
+  "statsLensHeavyAi": {
+    "message": "Heavily edited and AI-generated",
+    "description": "How it counts: the headline is the heavily edited and AI-generated share."
+  },
+  "statsLensMinWords": {
+    "message": "Paragraphs of at least",
+    "description": "How it counts: shorter paragraphs count as too short."
+  },
+  "statsWordsN": {
+    "message": "$1 words",
+    "description": "A number of words: $1 is 50, 75, 100 or 150."
+  },
+  "statsLensFocused": {
+    "message": "Only a focused window",
+    "description": "How it counts: only time in a focused window counts."
+  },
+  "statsLensFling": {
+    "message": "Leave out what was flung past",
+    "description": "How it counts: time while the page was flung past does not count."
+  },
+  "statsLensReset": {
+    "message": "Count as Anagram does",
+    "description": "How it counts: back to the default."
+  },
+  "statsLensDefault": {
+    "message": "As Anagram counts: a paragraph is read after a second with some of it in the middle of the window, while the page is not flung past, once per visit.",
+    "description": "How it counts: the line while the default is in use."
+  },
+  "statsLensApplied": {
+    "message": "Counted again from the paragraphs Anagram kept.",
+    "description": "How it counts: the numbers are worked out from the paragraphs kept."
+  },
+  "statsLensCannot": {
+    "message": "These are the totals Anagram kept: counting another way needs paragraphs kept (Settings, Statistics).",
+    "description": "How it counts: no paragraphs are kept, so only the default applies."
+  },
+  "statsHeroLineHeavy": {
+    "message": "expected to be heavily edited or AI-generated, of $1 words read and scored",
+    "description": "Statistics page: the line under the big percentage when the headline includes heavily edited. $1 is the number of words scored."
+  },
+  "statsColParagraphs": {
+    "message": "Paragraphs",
+    "description": "Statistics page: column of paragraph counts."
+  },
+  "statsColSeconds": {
+    "message": "Seconds",
+    "description": "Statistics page: column of seconds on screen."
+  },
+  "statsColHeavyAi": {
+    "message": "Heavily edited or AI",
+    "description": "Statistics page: column of the heavily edited and AI-generated share."
+  },
+  "statsCovRemoved": {
+    "message": "Removed before its verdict: $1 words",
+    "description": "Statistics page, what could be scored: words the page took away before their verdict came."
+  },
+  "statsVisits": {
+    "message": "Visits",
+    "description": "Statistics page: the card of visits."
+  },
+  "statsVisitsHint": {
+    "message": "Each page or document as it was read, newest first. Where every step was kept, Replay shows when each paragraph was on screen.",
+    "description": "Statistics page: the line under Visits."
+  },
+  "statsNoVisits": {
+    "message": "No visit was kept in this period.",
+    "description": "Statistics page: no visits."
+  },
+  "statsMoreVisits": {
+    "message": "The latest $1 of $2 visits. The export has them all.",
+    "description": "Statistics page: how many visits are listed."
+  },
+  "statsColReplay": {
+    "message": "Replay",
+    "description": "Statistics page: column of Replay buttons."
+  },
+  "statsReplay": {
+    "message": "Replay",
+    "description": "Statistics page: button that shows when each paragraph of a visit was on screen."
+  },
+  "statsReplayNote": {
+    "message": "A row per paragraph, in the order they were found; a bar for each spell any of it was on screen, in its chip's colour; the line is how far down the page was scrolled.",
+    "description": "Statistics page: the note under a replay."
+  },
+  "statsReplayAria": {
+    "message": "When each of $1 paragraphs was on screen, over $2",
+    "description": "Statistics page: the replay chart's accessible name. $1 paragraphs, $2 a duration."
+  },
+  "statsReplayTitle": {
+    "message": "$1, $2",
+    "description": "Statistics page: a replay's title. $1 is when, $2 the page."
+  },
+  "statsExportFields": {
+    "message": "Field by field",
+    "description": "Export dialog: the table of every kind of thing in the file."
+  },
+  "statsExportCap": {
+    "message": "Never finer than what was kept.",
+    "description": "Export dialog: the note under the detail."
+  },
+  "statsExportLink": {
+    "message": "Ids and hashes",
+    "description": "Export dialog: how ids and hashes are made for the file."
+  },
+  "statsExportLinkFile": {
+    "message": "This file's own: another file cannot be matched with it",
+    "description": "Export dialog: ids and hashes are made new for this file."
+  },
+  "statsExportLinkStable": {
+    "message": "The same in every file from this browser: a study can join your files",
+    "description": "Export dialog: ids and hashes are the same in every file."
+  },
+  "statsExportJsonGz": {
+    "message": "JSON, compressed (.json.gz)",
+    "description": "Export dialog: a compressed JSON file."
+  },
+  "statsExportPreparing": {
+    "message": "Preparing the preview…",
+    "description": "Export dialog: while the preview is made."
+  },
+  "statsExportSize": {
+    "message": "About $1, $2 rows.",
+    "description": "Export dialog: the file's size ($1) and rows ($2)."
+  },
+  "statsExportTable": {
+    "message": "$1: $2 rows",
+    "description": "Export dialog: a table of the file ($1) and its rows ($2)."
   }
 }

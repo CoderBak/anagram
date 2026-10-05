@@ -9,6 +9,7 @@ node_modules/
 public/vendor/diagnostics.min.mjs
 # The same for lib/surfaces/.
 public/vendor/surfaces.min.mjs
+public/vendor/stats.min.mjs
 # And the workers' start files (lib/pdf/upsert.ts).
 public/vendor/start/
 # Generated from the hash-verified upstream viewer under vendor/pdfjs/.

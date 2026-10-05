@@ -1,4 +1,4 @@
-import { cancelDocumentSession, documentSessionId, sendDocumentMessage } from "../access/session";
+import { beforeDocumentLeaves, cancelDocumentSession, documentSessionId, postDocumentMessage, sendDocumentMessage } from "../access/session";
 // lib/capture/orchestrator.ts — ties walker + observers + scheduler + cache +
 // messaging + renderer + toolbar reporting into the live capture→annotate loop.
 //
@@ -49,9 +49,10 @@ import { createInsertionGate } from "./insertionGate";
 import { createFling } from "./fling";
 import { createBackendWatch } from "./backendWatch";
 import { createKeptLedger, type KeptVerdict } from "./keptLedger";
-import { createReadingMeter, inPrivateWindow } from "../stats/meter";
-import { pageKindOf } from "../stats/pageKind";
-import { statsLevelOf, type PageKind } from "../stats/model";
+import { createReadingMeter, inPrivateWindow, type RecorderModule } from "../stats/meter";
+import { kindFrom, kindSignals } from "../stats/pageKind";
+import { configOf } from "../stats/config";
+import type { PageKind, Surface, VisitRow } from "../stats/model";
 
 const log = createLogger("orchestrator");
 
@@ -239,6 +240,15 @@ export interface OrchestratorOptions {
   /** The kind of page, for the reading statistics, where the caller knows it: "document" on
    *  a surface and in the PDF reader. Elsewhere it is told from the page (lib/stats/pageKind.ts). */
   pageKind?: () => PageKind;
+  /** What the page's text comes from, for the reading statistics: a surface's document, the
+   *  PDF reader, a Google Doc; a web page when left out. */
+  statsSurface?: Surface;
+  /** The PDF reader's document, for the statistics: its pages, which reader read it, how many
+   *  pages were drawn. */
+  statsPdf?: () => VisitRow["pdf"];
+  /** Where the statistics' recorder comes from: the page chunk unless said (an extension page
+   *  bundles it, lib/stats/meter.ts). */
+  statsRecorder?: () => Promise<RecorderModule>;
 }
 
 export function createOrchestrator(
@@ -249,7 +259,10 @@ export function createOrchestrator(
 ): Orchestrator {
   const toolbarOwner = opts.toolbarOwner ?? true;
   const cache: ScoreCache = createScoreCache();
-  const badges: BadgeLayer = createBadgeLayer({ place: opts.placeBadge });
+  const badges: BadgeLayer = createBadgeLayer({
+    place: opts.placeBadge,
+    onCard: (id, what) => { const unit = unitsById.get(id); if (unit) reading.ui(what, unit); },
+  });
 
   let unitsById = new Map<string, Unit>();
   /**
@@ -318,13 +331,32 @@ export function createOrchestrator(
    */
   const reading = createReadingMeter({
     fling,
+    surface: opts.statsSurface ?? "web",
+    frame: toolbarOwner ? "top" : "frame",
     verdictOf: (unit) => verdictsById.get(unit.id)?.result,
     stillShort: (node) => shortTexts.has(node),
-    kind: () => opts.pageKind?.() ?? pageKindOf(document, location, firstUnits(64)),
+    kind: () => {
+      const said = opts.pageKind?.();
+      if (said) return { kind: said, signals: null };
+      const signals = kindSignals(document, location, firstUnits(64));
+      return { kind: kindFrom(signals), signals };
+    },
+    display: () => ({ chips: displayMode, underlines: highlightsEnabled ? underlineScope : "off", flagFrom }),
+    flagged: (result) => flagged(result),
+    found: () => {
+      let words = 0;
+      for (const unit of unitsById.values()) words += unit.wordCount;
+      return { units: unitsById.size, words };
+    },
+    ...(opts.statsPdf ? { pdf: opts.statsPdf } : {}),
     ownsDwell: toolbarOwner,
-    send: (message) => sendDocumentMessage(message),
-  });
+    send: (wire) => sendDocumentMessage({ action: ACTIONS.STATS_RECORD, wire }),
+    post: (wire) => postDocumentMessage({ action: ACTIONS.STATS_RECORD, wire }),
+  }, opts.statsRecorder);
   let unwatchStats: (() => void) | null = null;
+  /** The reading log's last message of the visit, said on the session's port as the page goes
+   *  (while started). */
+  let unwatchLeaving: (() => void) | null = null;
   /** The address of the page view `reading` counts: a route to another path is another. */
   let statsView = location.origin + location.pathname;
   /** The daemon stopped answering: dispatch is paused until a probe succeeds
@@ -511,6 +543,7 @@ export function createOrchestrator(
     const unit = unitsById.get(id);
     if (!unit || !unit.container.isConnected) return;
     flaggedCursor = id;
+    reading.ui("jump", unit);
     unit.container.scrollIntoView({ behavior: "smooth", block: "center" });
     setTimeout(() => badges.flash(id), 350); // pulse once the scroll settles
   }
@@ -1486,8 +1519,10 @@ export function createOrchestrator(
     statsView = location.origin + location.pathname;
     try {
       unwatchStats?.();
-      unwatchStats = settings.statsLevel.watch(applyStatsLevel);
-      void settings.statsLevel.getValue().then((level) => { if (seq === bootSeq && started) applyStatsLevel(level); }, () => undefined);
+      unwatchStats = settings.statsConfig.watch(applyStatsConfig);
+      unwatchLeaving?.();
+      unwatchLeaving = beforeDocumentLeaves(() => reading.leave());
+      void settings.statsConfig.getValue().then((config) => { if (seq === bootSeq && started) applyStatsConfig(config); }, () => undefined);
     } catch {
       /* dead extension context: no statistics either */
     }
@@ -1503,12 +1538,14 @@ export function createOrchestrator(
     log.log("started", { session, domain });
   }
 
-  /** The reader turned the statistics on or off (Settings, Statistics). Never in a private
-   *  window: the worker would not record it, and nothing need be measured for nothing. */
-  function applyStatsLevel(value: unknown): void {
-    const wanted = started && statsLevelOf(value) !== "off" && !inPrivateWindow();
-    if (wanted && !reading.running()) reading.start(unitsById.values());
-    else if (!wanted && reading.running()) reading.stop(false);
+  /** The reader turned the statistics on or off, or chose to keep something else (Settings,
+   *  Statistics). Never in a private window: the worker would not record it, and nothing need
+   *  be measured for nothing. */
+  function applyStatsConfig(value: unknown): void {
+    const config = configOf(value);
+    const wanted = started && config.on && !inPrivateWindow();
+    if (wanted) reading.start(config.layers, () => unitsById.values());
+    else if (reading.running()) reading.stop(false);
   }
 
   /** One awaited read of every setting the first collect depends on. */
@@ -1626,6 +1663,8 @@ export function createOrchestrator(
     reading.stop();
     unwatchStats?.();
     unwatchStats = null;
+    unwatchLeaving?.();
+    unwatchLeaving = null;
     captureGeneration++;
     started = false;
     booted = false;

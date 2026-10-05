@@ -2,7 +2,6 @@
 import { storage } from "#imports";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { DEFAULT_FLAG_FROM, type FlagFrom } from "../render/flagLevel";
-import { DEFAULT_RETENTION, DEFAULT_STATS_LEVEL, type StatsLevel } from "../stats/model";
 export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
@@ -36,11 +35,13 @@ export const settings = {
   // The word a paragraph is flagged from (lib/render/band.ts): counted, listed in the toolbar
   // menu and underlined; below it a paragraph has its chip only. Read through flagFromOf.
   flagFrom: storage.defineItem<FlagFrom>("local:flagFrom", { fallback: DEFAULT_FLAG_FROM }),
-  // Personal reading statistics (lib/stats/): off until the reader picks a level, and kept on
-  // this computer only. Read through statsLevelOf and retentionOf, which answer a value that
-  // is not one of the choices with the default.
-  statsLevel: storage.defineItem<StatsLevel>("local:statsLevel", { fallback: DEFAULT_STATS_LEVEL }),
-  statsRetentionDays: storage.defineItem<number>("local:statsRetentionDays", { fallback: DEFAULT_RETENTION }),
+  // Personal reading statistics (lib/stats/): off until the reader chooses what to keep, and
+  // kept on this computer only. Read through configOf (lib/stats/config.ts), which answers
+  // anything that is not a configuration with "off".
+  statsConfig: storage.defineItem<unknown>("local:statsConfig", { fallback: null }),
+  // The key the log's hashes and sketches are made with (lib/stats/hash.ts): made here, never
+  // exported, and made anew when the statistics are cleared.
+  statsSecret: storage.defineItem<string | null>("local:statsSecret", { fallback: null }),
 };
 
 // Per-site rules inherit from parent domains; the most specific wins. Ignore leading www.

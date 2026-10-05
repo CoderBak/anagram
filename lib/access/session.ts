@@ -7,8 +7,19 @@ interface Connection {
   promise: Promise<string>;
   signal: AbortSignal;
   close(cancelled?: boolean): void;
+  /** Post on the port now, if it is up (handshake done, not closed). */
+  post(message: object): boolean;
 }
 let connected: Connection | undefined;
+/** What the document says as it goes, said on its port before the port closes. */
+const lastWords = new Set<() => void>();
+
+/** Run `fn` as the document goes (pagehide), before its session's port closes: what it posts on
+ *  the port then (postDocumentMessage) reaches the worker. Returns the way to stop. */
+export function beforeDocumentLeaves(fn: () => void): () => void {
+  lastWords.add(fn);
+  return () => { lastWords.delete(fn); };
+}
 
 export function documentSessionId(): string {
   const world = globalThis as unknown as Record<string, unknown>;
@@ -27,11 +38,16 @@ function connection(): Connection {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let settled = false;
   const onPageHide = () => {
+    for (const fn of [...lastWords]) { try { fn(); } catch { /* the rest still go */ } }
     if (connected === record) cancelDocumentSession();
     else record.close(true);
   };
   const record: Connection = {
     session, promise, signal: controller.signal,
+    post(message) {
+      if (!settled || controller.signal.aborted || !port) return false;
+      try { port.postMessage({ ...message, session }); return true; } catch { return false; }
+    },
     close(cancelled = false) {
       if (record.signal.aborted) return;
       const error = new Error(cancelled ? "Document session cancelled" : "Document connection unavailable");
@@ -69,6 +85,16 @@ export function connectDocument(): Promise<string> {
 export function cancelDocumentSession(): void {
   (globalThis as unknown as Record<string, unknown>)[SESSION_KEY] = crypto.randomUUID();
   connected?.close(true);
+}
+
+/**
+ * Post `message` on this document's session port, now, and tell whether it went: for what a
+ * page says as it goes (the reading log's last message of a visit). A port's messages reach the
+ * worker before its disconnect does; a runtime message sent from `pagehide` can arrive after the
+ * session's port has closed, and be refused. No reply comes back.
+ */
+export function postDocumentMessage(message: object): boolean {
+  return connected?.post(message) ?? false;
 }
 
 export async function sendDocumentMessage(message: object): Promise<unknown> {

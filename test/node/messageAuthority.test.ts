@@ -15,7 +15,7 @@ function environment(origins:string[]=["https://top.test/*","https://frame.test/
   const open=(sender:AccessSender,session=crypto.randomUUID())=>{
     let receive:(v:unknown)=>void=()=>{},disconnect=()=>{};
     const port={name:SESSION_PORT,sender,onMessage:{addListener:(fn:typeof receive)=>receive=fn},onDisconnect:{addListener:(fn:typeof disconnect)=>disconnect=fn},postMessage:vi.fn(),disconnect:vi.fn(()=>disconnect())};
-    connect(port as never);receive({session});return {session,port,close:()=>disconnect()};
+    connect(port as never);receive({session});return {session,port,close:()=>disconnect(),say:(value:unknown)=>receive(value)};
   };
   return {authority,open,sent,withdraw:(origin:string)=>{origins=origins.filter((x)=>x!==origin);authority.revoke([origin]);}};
 }
@@ -109,6 +109,37 @@ describe("document-scoped authorization",()=>{
     expect(callerRole(reader,fakeBrowser.runtime.id,fakeBrowser.runtime.getURL("/"))).toBeNull();
   });
 });
+describe("a document that a new one replaced",()=>{
+  it("keeps its session a moment, to say its last, and the new document's session is its own",async()=>{
+    const env=environment(),old=sender(),fresh=sender(0,"https://top.test/next","doc-next");
+    const a=env.open(old),before=(await env.authority.authorize(old,a.session))!;
+    env.authority.forget(7,2000);
+    expect(before.signal.aborted).toBe(false);
+    const b=env.open(fresh),after=(await env.authority.authorize(fresh,b.session))!;
+    vi.advanceTimersByTime(2000);
+    expect(before.signal.aborted).toBe(true);
+    expect(after.signal.aborted).toBe(false);
+  });
+});
+
+describe("a document's messages on its session port",()=>{
+  it("reach the handler with the document they came from, and may be acted on after the page closed its port, not after its access was withdrawn",async()=>{
+    const env=environment(),top=sender(),heard:unknown[]=[];
+    env.authority.setPortHandler((record,from,value)=>heard.push([record.session,from.frameId,value]));
+    const doc=env.open(top);
+    doc.say({action:"statsRecord",session:doc.session});
+    expect(heard).toEqual([[doc.session,0,{action:"statsRecord",session:doc.session}]]);
+    const record=(await env.authority.authorize(top,doc.session))!;
+    doc.close();
+    expect(await env.authority.allowsPort(record,top)).toBe(true);
+    // Another document, or the same one with its access withdrawn, may not.
+    expect(await env.authority.allowsPort(record,sender(0,"https://top.test/article","doc-other"))).toBe(false);
+    const again=env.open(top),live=(await env.authority.authorize(top,again.session))!;
+    env.withdraw("https://top.test/*");
+    expect(await env.authority.allowsPort(live,top)).toBe(false);
+  });
+});
+
 describe("worker message schema and roles",()=>{
   const score=()=>({action:ACTIONS.SCORE_BATCH,req:{v:"3.0",session:"scan",priority:"viewport",blocks:[{id:"one",text:"Paragraph"}]}});
   it("bounds requests before hashing or scheduling",()=>{

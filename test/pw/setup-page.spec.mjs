@@ -145,7 +145,7 @@ test.describe("Settings", () => {
     expect(seen.headings, "no section headings").toBe(0);
     expect(seen.folds, "no settings hidden in folds").toBe(0);
     expect(seen.ids, "Scope, the two report switches, Debug logging and the PDF reader are gone").toEqual([]);
-    expect(seen.labels).toEqual(["Engine", "Sites", "PDFs", "Marks", "Length", "Cache", "Statistics"]);
+    expect(seen.labels).toEqual(["Engine", "Sites", "PDFs", "Marks", "Cache", "Statistics"]);
     expect(seen.text).not.toMatch(/Shortcuts|Alt\s*\+\s*Shift|Scope|Include passage|Include page title|Debug logging|Analyze text/);
     expect(seen.text, "the engine in words").toContain("In the browser, on the graphics card: Ready");
   });

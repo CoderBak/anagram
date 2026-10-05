@@ -41,6 +41,11 @@ export class NativeScoreClient implements ScoreClient {
   /** The engine's state as last read, without asking it: asking starts an engine that is not running. */
   known(): BackendStatus["active"] { return this.current.active; }
   model(): ModelInfo { return { ...(this.current.model ?? NONE) }; }
+  /** Where the engine last said it runs, and at what precision (health's device and dtype). */
+  runtime(): { device?: string; dtype?: string } {
+    const s = this.current.server as { device?: string; dtype?: string };
+    return { device: s.device, dtype: s.dtype };
+  }
   revision(): number { return this.generation; }
   private observeModel(model: ModelInfo): void {
     const old = this.current.model;

@@ -20,9 +20,11 @@
 //   other    — anything else: a shop, a search page, a mail client, a dashboard.
 //
 // The rule is asked again with each message, and costs a few selector queries and a look at
-// the first paragraphs read.
+// the first paragraphs read. What it looked at is kept with the visit (KindSignals), so the
+// rule can be checked on a labelled sample, or another tried, afterwards (kindFrom).
 import type { Unit } from "../types";
-import type { PageKind } from "./model";
+import type { KindSignals, PageKind } from "./model";
+import { DEFAULT_KIND_RULE, type KindRule } from "./lens";
 
 /** Hosts whose pages are feeds whatever their markup says (with their subdomains). */
 const FEED_HOSTS = [
@@ -37,7 +39,6 @@ const ARTICLE_TYPES = /"@type"\s*:\s*\[?\s*"(?:Article|NewsArticle|BlogPosting|R
 
 /** A post of a feed or a thread, where the markup marks one (lib/dom/scope.ts, DECLARED). */
 const POST = 'article, [role="article"], [aria-posinset], [role="listitem"]:not(li)';
-const MANY_VOICES = 5;
 /** How many of the paragraphs read are looked at: the first ones are the page's. */
 const SAMPLE = 64;
 /** How much of the page's JSON-LD is looked at, at most. */
@@ -62,14 +63,12 @@ function declares(doc: Document, types: RegExp, itemtypes: RegExp): boolean {
   return types.test(structuredData(doc));
 }
 
-export function pageKindOf(doc: Document, address: { hostname: string; pathname: string }, units: readonly Unit[]): PageKind {
-  if (declares(doc, FORUM_TYPES, /schema\.org\/(?:QAPage|DiscussionForumPosting)\b/) || FORUM_PATH.test(address.pathname)
-    || (address.hostname === "news.ycombinator.com" && address.pathname === "/item")) return "forum";
-  if (hostIn(address.hostname, FEED_HOSTS) || doc.querySelector('[role="feed"]')) return "feed";
+/** What a page says about itself and how its first paragraphs read stand, for the rule. */
+export function kindSignals(doc: Document, address: { hostname: string; pathname: string }, units: readonly Unit[]): KindSignals {
+  const forumDeclared = declares(doc, FORUM_TYPES, /schema\.org\/(?:QAPage|DiscussionForumPosting)\b/);
   const og = doc.querySelector('meta[property="og:type"]')?.getAttribute("content")?.trim().toLowerCase();
-  if (og === "article" || declares(doc, ARTICLE_TYPES, /schema\.org\/(?:Article|NewsArticle|BlogPosting|Report|ScholarlyArticle|TechArticle)\b/)) return "article";
+  const articleDeclared = og === "article" || declares(doc, ARTICLE_TYPES, /schema\.org\/(?:Article|NewsArticle|BlogPosting|Report|ScholarlyArticle|TechArticle)\b/);
   const sample = units.slice(0, SAMPLE);
-  if (sample.length === 0) return "other";
   const posts = new Map<Element, number>();
   let inPosts = 0;
   for (const unit of sample) {
@@ -78,12 +77,36 @@ export function pageKindOf(doc: Document, address: { hostname: string; pathname:
     inPosts++;
     posts.set(post, (posts.get(post) ?? 0) + unit.wordCount);
   }
-  if (posts.size >= MANY_VOICES && inPosts * 2 > sample.length) return "feed";
-  // One author's text: most of the words read stand in one article, or in the page's main.
   const total = sample.reduce((n, u) => n + u.wordCount, 0);
   const largest = Math.max(0, ...posts.values());
   const main = doc.querySelector("main, [role=main]");
   const inMain = main ? sample.filter((u) => main.contains(u.topElement)).reduce((n, u) => n + u.wordCount, 0) : 0;
-  if (total > 0 && (largest * 10 >= total * 6 || (posts.size <= 1 && inMain * 10 >= total * 6))) return "article";
+  return {
+    feedHost: hostIn(address.hostname, FEED_HOSTS),
+    feedRole: doc.querySelector('[role="feed"]') !== null,
+    forumPath: FORUM_PATH.test(address.pathname) || (address.hostname === "news.ycombinator.com" && address.pathname === "/item"),
+    declared: forumDeclared ? "forum" : articleDeclared ? "article" : null,
+    posts: posts.size,
+    inPosts,
+    sample: sample.length,
+    largestShare: total > 0 ? largest / total : 0,
+    mainShare: total > 0 ? inMain / total : 0,
+  };
+}
+
+/** The kind the signals make, by `rule`: forum, feed, article or other (a document is the
+ *  caller's to say). */
+export function kindFrom(s: KindSignals, rule: KindRule = DEFAULT_KIND_RULE): PageKind {
+  if (s.declared === "forum" || s.forumPath) return "forum";
+  if (s.feedHost || s.feedRole) return "feed";
+  if (s.declared === "article") return "article";
+  if (s.sample === 0) return "other";
+  if (s.posts >= rule.manyVoices && s.inPosts * 2 > s.sample) return "feed";
+  // One author's text: most of the words read stand in one article, or in the page's main.
+  if (s.largestShare >= rule.articleShare || (s.posts <= 1 && s.mainShare >= rule.articleShare)) return "article";
   return "other";
+}
+
+export function pageKindOf(doc: Document, address: { hostname: string; pathname: string }, units: readonly Unit[]): PageKind {
+  return kindFrom(kindSignals(doc, address, units));
 }

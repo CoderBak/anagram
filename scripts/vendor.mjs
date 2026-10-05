@@ -126,6 +126,19 @@ await buildChecked("surfaces.min.mjs", {
 });
 console.log(`vendor/surfaces.min.mjs  ${(statSync(join(OUT, "surfaces.min.mjs")).size / 1024).toFixed(1)} kB`);
 
+// The reading log's recorder (lib/stats/chunk.ts): loaded only while statistics are on, so a
+// page that records nothing parses none of it. Built the same way and for the same reason.
+await buildChecked("stats.min.mjs", {
+  entryPoints: [join(ROOT, "lib", "stats", "chunk.ts")],
+  bundle: true,
+  format: "esm",
+  minify: true,
+  target: ["chrome110", "firefox128"],
+  outfile: join(OUT, "stats.min.mjs"),
+  logLevel: "error",
+});
+console.log(`vendor/stats.min.mjs  ${(statSync(join(OUT, "stats.min.mjs")).size / 1024).toFixed(1)} kB`);
+
 // Both workers start from a file of ours that first installs what pdf.js needs and an older
 // browser lacks (lib/pdf/upsert.ts), then loads the worker itself, unchanged.
 const START = join(OUT, "start");

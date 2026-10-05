@@ -41,6 +41,22 @@
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
       .links span { line-height: 24px; }
       .row .row-note.stats-warn { color: var(--foreground); }
+      .row .row-note.stats-warn p { margin: 4px 0 0; }
+      .stats-dims { flex: 1 0 100%; display: grid; gap: 8px; min-width: 0; overflow-x: auto; }
+      .stats-dims table.dims { width: 100%; table-layout: fixed; font-size: 13px; }
+      .stats-dims table.dims th:first-child { width: 52%; }
+      .stats-dims table.dims th, .stats-dims table.dims td { white-space: normal; overflow-wrap: anywhere; }
+      .stats-dims table.dims td { vertical-align: top; padding: 6px 8px; }
+      .stats-dims table.dims .select { width: 100%; min-width: 0; max-width: 260px; }
+      .stats-dims table.dims td.name label { display: block; font-weight: 500; }
+      .stats-dims table.dims td.name .hint { display: block; color: var(--muted-foreground); font-size: 12px; }
+      .stats-dims table.dims label.hash { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 2px; padding-inline-start: 4px; font-size: 12px; color: var(--muted-foreground); }
+      /* Hit areas, not paint: an invisible 24x24 box centred on each small box and dot (the
+         tick is Basecoat's ::after of a checkbox, the dot its ::before of a radio). */
+      input.input[type="checkbox"]:not([role="switch"]), input.input[type="radio"] { position: relative; }
+      input.input[type="checkbox"]:not([role="switch"])::before, input.input[type="radio"]::after {
+        content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: 24px; min-height: 24px;
+      }
       .group:focus { outline: none; }
       dialog.stats-dialog { margin: auto; width: min(440px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); background: var(--card, var(--background)); }
       dialog.stats-dialog::backdrop { background: rgb(0 0 0 / .4); }
@@ -52,6 +68,12 @@
       @media (max-width: 520px) {
         .group { grid-template-columns: minmax(0, 1fr); }
         .group > .group-label { padding-top: 6px; }
+        /* Each field over its choice. */
+        .stats-dims table.dims thead { display: none; }
+        .stats-dims table.dims, .stats-dims table.dims tbody, .stats-dims table.dims tr, .stats-dims table.dims td { display: block; width: 100%; }
+        .stats-dims table.dims td { padding: 0 0 4px; }
+        .stats-dims table.dims tr { padding: 6px 0; }
+        .stats-dims table.dims .select { max-width: none; }
       }
     </style>
   </head>
@@ -161,21 +183,34 @@
             <span class="group-label" id="statsLabel" data-i18n="optStats">Statistics</span>
             <div class="group-body rows" role="group" aria-labelledby="statsLabel">
               <div class="row">
-                <label for="statsLevel" data-i18n="optStatsLevel">Record</label>
-                <span class="row-body">
-                  <select id="statsLevel" class="select" aria-describedby="statsLevelNote statsPagesWarn">
-                    <option value="off" data-i18n="statsLevelOff">Off</option>
-                    <option value="daily" data-i18n="statsLevelDaily">Daily totals</option>
-                    <option value="sites" data-i18n="statsLevelSites">Daily totals and sites</option>
-                    <option value="pages" data-i18n="statsLevelPages">Every page</option>
-                  </select>
-                </span>
-                <p id="statsLevelNote" class="row-note"></p>
-                <p id="statsPagesWarn" class="row-note stats-warn" data-i18n="statsPagesWarning" hidden>This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it.</p>
+                <label for="statsPreset" data-i18n="optStatsLevel">Record</label>
+                <span class="row-body"><select id="statsPreset" class="select" aria-describedby="statsPresetNote statsWarnings"></select></span>
+                <p id="statsPresetNote" class="row-note"></p>
+                <div id="statsWarnings" class="row-note stats-warn"></div>
               </div>
               <div class="row">
-                <label for="statsRetention" data-i18n="optStatsKeep">Keep</label>
-                <span class="row-body"><select id="statsRetention" class="select"></select></span>
+                <span class="row-label" data-i18n="optStatsDetail">In detail</span>
+                <span class="row-body"><button type="button" class="btn" data-variant="outline" data-size="sm" id="statsCustomize" aria-expanded="false" aria-controls="statsDims" data-i18n="optStatsCustomize">Choose field by field…</button></span>
+                <div id="statsDims" class="stats-dims" hidden>
+                  <p class="row-note" data-i18n="optStatsDimsLead">Each kind of thing Anagram can keep, from the most exact to nothing. A coarser choice can always be made from a finer one, never the other way.</p>
+                  <p id="statsMoved" class="row-note" role="status"></p>
+                </div>
+              </div>
+              <div class="row">
+                <label for="statsFine" data-i18n="optStatsFine">Keep every step for</label>
+                <span class="row-body"><select id="statsFine" class="select"></select></span>
+              </div>
+              <div class="row">
+                <label for="statsDetailDays" data-i18n="optStatsDetailKeep">Keep paragraphs and visits for</label>
+                <span class="row-body"><select id="statsDetailDays" class="select"></select></span>
+              </div>
+              <div class="row">
+                <label for="statsTotals" data-i18n="optStatsTotalsKeep">Keep daily totals for</label>
+                <span class="row-body"><select id="statsTotals" class="select"></select></span>
+              </div>
+              <div class="row">
+                <span class="row-label" data-i18n="optStatsSize">Space used</span>
+                <span class="row-body" id="statsSize"></span>
               </div>
               <div class="row lead">
                 <span class="row-body">
@@ -205,8 +240,8 @@
       </dialog>
 
       <dialog class="stats-dialog" id="dropStatsDialog" aria-labelledby="dropStatsTitle" aria-describedby="dropStatsText">
-        <p class="dialog-title" id="dropStatsTitle"></p>
-        <p id="dropStatsText" data-i18n="statsDropText">Anagram records less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.</p>
+        <p class="dialog-title" id="dropStatsTitle" data-i18n="statsStripTitle">Delete what the new setting doesn't keep?</p>
+        <p id="dropStatsText" data-i18n="statsStripText">Anagram keeps less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.</p>
         <div class="actions">
           <button type="button" class="btn" data-variant="outline" data-size="sm" id="dropStatsKeep" data-i18n="statsDropKeep">Keep them</button>
           <button type="button" class="btn" data-variant="destructive" data-size="sm" id="dropStatsConfirm" data-i18n="statsDropConfirm">Delete them</button>

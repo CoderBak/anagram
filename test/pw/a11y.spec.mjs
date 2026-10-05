@@ -48,7 +48,7 @@ import { test as base, expect } from "./fixtures.mjs";
 import { BADGE_SEL, waitForRegistration, popupOver, menuReport } from "../harness.mjs";
 import { SMALL_PDF } from "../a11y-pdf.mjs";
 import { LOCKED_PDF } from "../pdf-fixture.mjs";
-import { seedStats, statsWeek } from "../stats-fixture.mjs";
+import { presetConfig, seedStats, statsVisit, statsWeek } from "../stats-fixture.mjs";
 import { installProbe, settle, settleAll, still, chipsSettled } from "../a11y-probe.mjs";
 import { scriptEngine } from "../webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS, cancelAutoSetup } from "../webengine/model-server.mjs";
@@ -426,20 +426,55 @@ const PAGE_SPECS = [
     },
   },
   {
-    // A week recorded by page: the headline, the trend with its table open, the tables of kinds,
-    // feeds and sites, the coverage, and the pages.
+    // A week recorded in full: the headline, the trend with its table open, how it counts, the
+    // tables of kinds, feeds and sites, the coverage, the pages, and a visit's replay.
     name: "statistics (a week recorded)",
     path: "stats.html",
     viewport: { width: 1100, height: 900 },
     async before(storage, extension) {
-      await storage.set({ statsLevel: "pages" });
+      await storage.set({ statsConfig: await presetConfig("full") });
       await seedStats(extension.worker(), statsWeek());
+      await seedStats(extension.worker(), statsVisit());
     },
     async prepare(page) {
       await page.click('#ranges [data-range="7"]');
       await page.waitForSelector("#trendChart svg g.col", { timeout: 8000 });
       await page.click("#trendCard summary");
+      await page.click("#lens summary");
+      await page.click("#visitsTable button.linkish");
+      await page.waitForSelector("#replay:not([hidden])", { timeout: 8000 });
       await page.waitForTimeout(200);
+    },
+  },
+  {
+    // The export dialog, with every field's choice shown and the preview of the file.
+    name: "statistics (export)",
+    path: "stats.html",
+    viewport: { width: 1100, height: 900 },
+    async before(storage, extension) {
+      await storage.set({ statsConfig: await presetConfig("full") });
+      await seedStats(extension.worker(), statsVisit());
+    },
+    async prepare(page) {
+      await page.click("#export");
+      await page.waitForSelector("#exportDialog[open]", { timeout: 8000 });
+      await page.click("#exportDimsBox summary");
+      await page.waitForSelector("#exportPreview details", { timeout: 8000 });
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    // Settings' statistics, field by field.
+    name: "settings (statistics field by field)",
+    path: "options.html#statistics",
+    viewport: { width: 1100, height: 900 },
+    async before(storage) {
+      await storage.set({ statsConfig: await presetConfig("fullText") });
+    },
+    async prepare(page) {
+      await page.waitForSelector("#statsWarnings p", { timeout: 8000 });
+      await page.click("#statsCustomize");
+      await page.waitForSelector("#statsDims table.dims", { timeout: 8000 });
     },
   },
   {

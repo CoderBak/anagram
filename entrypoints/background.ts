@@ -49,9 +49,12 @@ import { closeWebEngine, webEngineRunning } from "../lib/webengine/client";
 import { createSetupFeed, type SetupListener } from "../lib/backend/setupFeed";
 import { createWarmup } from "../lib/backend/warmup";
 import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol";
-import { createStatsRecorder } from "../lib/stats/worker";
+import { createStatsKeeper } from "../lib/stats/worker";
 import { openStatsStore } from "../lib/stats/store";
-import { retentionOf, statsLevelOf } from "../lib/stats/model";
+import { createTabTracker } from "../lib/stats/tabs";
+import { readStatsConfig, statsSecret } from "../lib/stats/settings";
+import { noteStatsContext } from "../lib/stats/context";
+import { localDate } from "../lib/stats/model";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 /** Where a text was read, for the caches pages share (RequestOrigin.partition in
@@ -183,18 +186,45 @@ export default defineBackground(() => {
   });
   browser.webNavigation.onBeforeNavigate.addListener((details) => void warmup(details));
 
-  // The reading statistics, which pages send their numbers to and which only this worker
-  // writes (lib/stats/worker.ts). Off unless the reader chose a level.
-  const stats = createStatsRecorder({
-    store: openStatsStore(),
-    level: async () => statsLevelOf(await settings.statsLevel.getValue()),
-    retention: async () => retentionOf(await settings.statsRetentionDays.getValue()),
+  // The reading log, which pages' recorders send what they learn to and which only this
+  // worker writes (lib/stats/worker.ts). Off unless the reader chose what to keep.
+  const statsStore = openStatsStore();
+  const statsModel = () => {
+    const { id, ver, calibration } = getScoreClient().model();
+    return id === "none" ? null : { id, ver, calibration };
+  };
+  const statsEngine = async () => {
+    const kind = await engineTransport().current().catch(() => null);
+    const { device, dtype } = getScoreClient().runtime();
+    return kind ? { kind, backend: device, tier: dtype } : null;
+  };
+  const statsTabs = createTabTracker({ store: statsStore, config: readStatsConfig });
+  statsTabs.install();
+  const stats = createStatsKeeper({
+    store: statsStore,
+    config: readStatsConfig,
     enabledFor: (hostname) => hostname ? enabledForSite(hostname) : settings.enabled.getValue(),
-    model: () => {
-      const { id, ver, calibration } = getScoreClient().model();
-      return id === "none" ? null : { id, ver, calibration };
-    },
+    model: statsModel,
+    engine: statsEngine,
+    secret: statsSecret,
+    tabs: statsTabs,
   });
+  // A visit's last message, posted on its document's session port as the page goes
+  // (lib/access/session.ts postDocumentMessage): held to the same schema and roles as one sent
+  // as a runtime message, and kept unless the document's access was withdrawn.
+  documentAuthority.setPortHandler((record, sender, value) => {
+    const msg = parseWorkerMessage(value);
+    if (msg?.action !== ACTIONS.STATS_RECORD) return;
+    const role = callerRole(sender, browser.runtime.id, browser.runtime.getURL("/"));
+    if (!role || !permitsMessage(role, msg, sender) || msg.session !== record.session) return;
+    void documentAuthority.allowsPort(record, sender).then((ok) => ok ? stats.record(msg.wire, sender, role === "reader" ? "reader" : "content") : false).catch(() => false);
+  });
+  // What the log is recorded under: noted when the worker starts and when any of it changes.
+  const noteContext = (): void => void noteStatsContext({ store: statsStore, model: statsModel, engine: statsEngine }).catch(() => undefined);
+  noteContext();
+  for (const item of [settings.statsConfig, settings.flagFrom, settings.displayMode, settings.underlineScope, settings.showHighlights, cacheModeStorage, settings.pdfReadAhead, settings.autoOpenPdfs, settings.siteOverrides, settings.enabled]) {
+    item.watch(noteContext);
+  }
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
   // LINKS to a .pdf, which is where a reader decides to open one — the tab that is
@@ -508,9 +538,18 @@ export default defineBackground(() => {
         return {missing} satisfies CommentAccessReply;
       }
       case ACTIONS.STATS_RECORD:
-        // Answered the same whether anything was kept: a page learns nothing of the level.
-        await stats.record(msg,sender,role === "reader" ? "reader" : "content").catch(()=>false);
+        // Answered the same whether anything was kept: a page learns nothing of what is kept.
+        await stats.record(msg.wire,sender,role === "reader" ? "reader" : "content").catch(()=>false);
         return {ok:true};
+      case ACTIONS.STATS_UI: {
+        const config=await readStatsConfig();
+        if (!config.on || config.layers.rows !== "event" || config.layers.ui !== "events") return {ok:true};
+        const tab=msg.tabId ?? sender.tab?.id;
+        const at=Date.now();
+        await statsStore.tab({at,date:localDate(new Date(at)),kind:"ui",ui:msg.kind,
+          ...(tab !== undefined && config.layers.tabs !== "none" ? {tab:statsTabs.tabId(tab),visit:statsTabs.topVisit(tab)} : {})}).catch(()=>undefined);
+        return {ok:true};
+      }
       case ACTIONS.COUNT_TOKENS: {
         const counts=await tokenCounter.count(msg.texts,document!.signal,await partitionOf(sender,document!)).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;

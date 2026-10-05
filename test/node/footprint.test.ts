@@ -248,13 +248,14 @@ describe.each(["chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
     expect(existsSync(join(OUT, "pdf-loader.html"))).toBe(true);
   });
 
-  it.skipIf(!ready)("makes only the three content-script chunks web accessible, and no icon, whose address in a page would name the extension", () => {
+  it.skipIf(!ready)("makes only the four content-script chunks web accessible, and no icon, whose address in a page would name the extension", () => {
     expect(manifest().web_accessible_resources).toEqual([
       {
         resources: [
           "vendor/purify.min.mjs",
           "vendor/diagnostics.min.mjs",
           "vendor/surfaces.min.mjs",
+          "vendor/stats.min.mjs",
         ],
         matches: ["<all_urls>"],
         use_dynamic_url: true,

@@ -6,11 +6,12 @@
 // the module is asked the questions the product asks it: does a grant register the script
 // and reach the tabs that are already open, does a withdrawal stop them, is any of it
 // upset by the same event arriving twice or by a worker that was evicted halfway.
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { ALL_SITES, matchesAny } from "../../lib/access/patterns";
 import { ensureInjected, installAccess, syncRegistration } from "../../lib/access/worker";
+import { documentAuthority } from "../../lib/access/authority";
 
 const SCRIPT = "/content-scripts/content.js";
 const SHADOW_SCRIPT = "/content-scripts/shadow.js";
@@ -131,6 +132,7 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
   };
 
   const webNavigation = {
+    onCommitted: event<[{ tabId: number; frameId: number }]>(),
     getAllFrames: async ({ tabId }: { tabId: number }) => {
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab) throw new Error("No tab with id");
@@ -154,7 +156,7 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
     calls,
     registered,
     tabs,
-    events: { onAdded, onRemoved, onInstalled, onStartup },
+    events: { onAdded, onRemoved, onInstalled, onStartup, onTabUpdated, onCommitted: webNavigation.onCommitted },
     /** What the browser reports as granted from now on. */
     grant(...added: string[]) {
       origins = [...new Set([...origins, ...added])];
@@ -453,5 +455,23 @@ describe("ensureInjected", () => {
     const env = environment([{ id: 5, url: "chrome://extensions", closed: true }]);
     expect(await ensureInjected(5)).toBe(false);
     expect(env.calls.injected).toEqual([]);
+  });
+});
+
+describe("a document's sessions end with the document", () => {
+  it("last through a route change within the page, and end when a new document commits in the tab", async () => {
+    const env = environment();
+    installAccess();
+    await settle();
+    const forget = vi.spyOn(documentAuthority, "forget");
+    // history.pushState: Chrome reports the tab "loading", and the document is the same one.
+    env.events.onTabUpdated.emit(7, { status: "loading" });
+    expect(forget).not.toHaveBeenCalled();
+    // A frame's new document is the frame's own business.
+    env.events.onCommitted.emit({ tabId: 7, frameId: 3 });
+    expect(forget).not.toHaveBeenCalled();
+    env.events.onCommitted.emit({ tabId: 7, frameId: 0 });
+    expect(forget).toHaveBeenCalledWith(7, 2000);
+    forget.mockRestore();
   });
 });

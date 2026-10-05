@@ -119,7 +119,7 @@ test("the header: version, browser, languages, the hostname alone, the page, the
     has("document language `en`") && has(/viewport \d+×\d+/) && has(`${dom.elements} elements`) && has("hydration marker: none"),
     "header: document language, viewport, element count, hydration marker",
   ).toBe(true);
-  expect.soft(text, "header: scope, merge, minimum length and display settings").toContain("merge short paragraphs on · minimum 50 words · show `all`");
+  expect.soft(text, "header: minimum length and display settings").toContain("- minimum 50 words · show `all`");
   expect.soft(has("state: running") && has("daemon: up ·"), `header: the state and the fixture: ${line("- daemon")}`).toBe(true);
 });
 

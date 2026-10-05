@@ -331,6 +331,10 @@ export async function ensureInjected(tabId: number): Promise<boolean> {
  * MV3 wakes a worker by re-running it and a listener added later would miss the event
  * that woke it.
  */
+/** How long a document that a new one replaced in its tab keeps its session: long enough for
+ *  what it says as it goes to arrive. */
+const LEAVING_MS = 2000;
+
 export function installAccess(): void {
   browser.permissions.onAdded.addListener((added) => {
     documentAuthority.grantsAdded();
@@ -347,7 +351,11 @@ export function installAccess(): void {
   browser.runtime.onInstalled.addListener(() => void syncRegistration());
   browser.runtime.onStartup?.addListener(() => void syncRegistration());
   browser.tabs.onRemoved.addListener((tabId) => documentAuthority.forget(tabId));
-  browser.tabs.onUpdated.addListener((tabId,change) => { if(change.status === "loading") documentAuthority.forget(tabId); });
+  // A new document in the tab ends the sessions of the old one: when it commits, not when a
+  // tab reports "loading", which Chrome also reports for a single-page site's route change
+  // (history.pushState) — the same document, whose session, and whatever it had in flight
+  // (a batch, the reading log's last message of a visit), must not be cut off.
+  browser.webNavigation.onCommitted.addListener(({tabId,frameId}) => { if(frameId === 0) documentAuthority.forget(tabId, LEAVING_MS); });
   documentAuthority.install();
   // And once per worker life: the grant may have landed while this worker was evicted.
   void syncRegistration();

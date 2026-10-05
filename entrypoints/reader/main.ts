@@ -473,6 +473,9 @@ async function startAnalysis(owned: number): Promise<void> {
   orchestrator = createOrchestrator(null, {
     toolbarOwner: true,
     pageKind: () => "document",
+    statsSurface: "pdf",
+    statsRecorder: () => import("../../lib/stats/recorder"),
+    statsPdf: () => ({ pages: app.pdfDocument?.numPages ?? 0, reader: structure ? "structure" : "reflow", drawn: pages.size }),
     // The report counts every page read so far (the orchestrator keeps what the viewer lets
     // go, and what the read-ahead reads): say how many that is while it is not all of them.
     reportScopeNote: scopeNote,

@@ -103,11 +103,14 @@ export const ACTIONS = {
   /** SW → content / popup: the in-browser engine's download has moved, while it runs and they
    *  show it (lib/backend/setupFeed.ts). */
   ENGINE_SETUP: "engineSetup",
-  /** content / reader → SW: words read since the last one, as numbers only — each paragraph's
-   *  words and probabilities, the words that had no verdict — and the kind of page. The worker
-   *  takes the site, the date and whether the window is private from the browser, and adds
-   *  them to the statistics if the reader asked for them (lib/stats/worker.ts). */
+  /** content / reader → SW: what a page's recorder learned since its last message
+   *  (lib/stats/wire.ts). The worker takes the site, the date and whether the window is
+   *  private from the browser, and keeps it at the layers the reader chose
+   *  (lib/stats/worker.ts). */
   STATS_RECORD: "statsRecord",
+  /** popup / reader / statistics page / Settings → SW: one use of Anagram's own pages (the
+   *  menu opened, a flagged paragraph jumped to…), kept where the statistics keep such events. */
+  STATS_UI: "statsUi",
 } as const;
 
 /** SW → content (response to COMMENT_ACCESS): the providers' patterns nothing grants. */

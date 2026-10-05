@@ -144,6 +144,7 @@ export default defineContentScript({
       placeBadge: surface?.placeBadge,
       // A Google Doc and what a surface reads are documents, whatever page holds them.
       ...(docs || surface ? { pageKind: () => "document" as const } : {}),
+      statsSurface: docs ? "docs" : surface && surfaceId ? surfaceId : "web",
     });
 
     // Site rules are keyed on the TOP page's hostname — that is what the popup writes.

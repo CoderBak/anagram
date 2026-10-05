@@ -82,11 +82,45 @@
       dialog.stats-dialog .field { margin-top: 14px; display: grid; gap: 4px; }
       dialog.stats-dialog .field > label, dialog.stats-dialog legend { font-size: 13px; font-weight: 500; }
       dialog.stats-dialog fieldset { margin: 14px 0 0; padding: 0; border: 0; }
-      dialog.stats-dialog fieldset label { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; }
+      dialog.stats-dialog fieldset label { display: flex; align-items: center; gap: 8px; min-height: 28px; padding-inline-start: 4px; font-size: 13px; }
       dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
       .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
       .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
       .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+      /* How it counts: the lens. */
+      details.lens { margin: 0 0 14px; border: 1px solid var(--border); border-radius: 10px; padding: 0 12px; }
+      details.lens > summary { cursor: pointer; min-height: 36px; line-height: 36px; font-size: 13px; font-weight: 500; }
+      details.lens .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; padding: 4px 0 12px; }
+      details.lens label { display: grid; gap: 4px; font-size: 12.5px; min-width: 0; }
+      details.lens .select { width: 100%; min-width: 0; }
+      details.lens label.check { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+      details.lens .actions { display: flex; justify-content: flex-end; padding-bottom: 12px; }
+      .range-inputs { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+      .range-inputs input { width: 140px; }
+      /* A visit's replay: a row per paragraph, a bar for each spell it was on screen. */
+      .replay { display: block; width: 100%; height: auto; margin-top: 8px; }
+      .replay .lane { fill: var(--muted); }
+      .replay .on { fill: var(--c); }
+      .replay .scroll { stroke: var(--foreground); stroke-width: 1.2; fill: none; opacity: .6; }
+      .replay text { fill: var(--muted-foreground); font-size: 10.5px; }
+      .seg-tabs { display: inline-flex; gap: 4px; margin-top: 8px; }
+      table.table button.linkish { border: 0; background: none; padding: 0; min-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font: inherit; }
+      /* The export dialog: the dimension table and the preview scroll inside it. */
+      dialog.stats-dialog.wide { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+      dialog.stats-dialog table.dims td { vertical-align: top; padding: 5px 8px; white-space: normal; }
+      dialog.stats-dialog table.dims .select { width: 100%; min-width: 0; max-width: 260px; }
+      dialog.stats-dialog table.dims td.name label { display: block; font-weight: 500; }
+      dialog.stats-dialog table.dims td.name .hint { display: block; color: var(--muted-foreground); font-size: 12px; }
+      dialog.stats-dialog table.dims label.hash { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 2px; padding-inline-start: 4px; font-size: 12px; color: var(--muted-foreground); }
+      .preview { margin-top: 12px; font-size: 12px; }
+      .preview table { font-size: 11.5px; }
+      .preview .table-container { max-height: 180px; overflow: auto; }
+      /* Hit areas, not paint: an invisible 24x24 box centred on each small box and dot (the
+         tick is Basecoat's ::after of a checkbox, the dot its ::before of a radio). */
+      input.input[type="checkbox"]:not([role="switch"]), input.input[type="radio"] { position: relative; }
+      input.input[type="checkbox"]:not([role="switch"])::before, input.input[type="radio"]::after {
+        content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: 24px; min-height: 24px;
+      }
       [hidden] { display: none !important; }
       /* Hit areas, not paint (WCAG 2.5.8). */
       .tabs > [role="tablist"] > [role="tab"] { position: relative; }
@@ -105,28 +139,20 @@
         </div>
       </header>
 
-      <!-- Recording is off: what each level would keep, and the way to turn it on. -->
+      <!-- Recording is off: what each preset would keep, and the way to turn one on. -->
       <section class="card" id="offCard" aria-labelledby="offTitle" hidden>
         <header>
           <h2 id="offTitle" data-i18n="statsOffTitle">Statistics are off</h2>
           <p data-i18n="statsOffLead">Anagram can keep a record of how much of what you read reads as AI-generated. It stays on this computer, and nothing is ever sent anywhere.</p>
         </header>
         <section>
-          <ul class="levels">
-            <li><strong data-i18n="statsLevelDaily">Daily totals</strong><span data-i18n="statsLevelDailyHint">Each day: how many words you read, how they read from human to AI-generated, and on what kind of page. No sites, no pages.</span></li>
-            <li><strong data-i18n="statsLevelSites">Daily totals and sites</strong><span data-i18n="statsLevelSitesHint">The same, and each site's share of the day. No page addresses.</span></li>
-            <li><strong data-i18n="statsLevelPages">Every page</strong><span data-i18n="statsLevelPagesHint">The same, and each page you read: its address, its title, when you opened it and for how long.</span></li>
-          </ul>
-          <p class="note" data-i18n="statsNeverNote">Never any text from a page. Never private windows, sites you switched Anagram off for, or Analyze text.</p>
+          <ul class="levels" id="presetList"></ul>
+          <p class="note" data-i18n="statsNeverNote">Never private windows, sites you switched Anagram off for, Analyze text, what you type, or what you select or copy.</p>
           <div class="form-row">
-            <select id="turnOnLevel" class="select" aria-label="Record" data-i18n-aria-label="optStatsLevel">
-              <option value="daily" data-i18n="statsLevelDaily">Daily totals</option>
-              <option value="sites" data-i18n="statsLevelSites">Daily totals and sites</option>
-              <option value="pages" data-i18n="statsLevelPages">Every page</option>
-            </select>
+            <select id="turnOnPreset" class="select" aria-label="Record" data-i18n-aria-label="optStatsLevel"></select>
             <button type="button" class="btn" data-size="sm" id="turnOn" data-i18n="statsTurnOn">Turn on</button>
           </div>
-          <p class="warn" id="turnOnWarn" data-i18n="statsPagesWarning" hidden>This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it.</p>
+          <div id="turnOnWarn"></div>
         </section>
       </section>
 
@@ -142,11 +168,35 @@
           <select id="month" class="select" aria-label="Month" data-i18n-aria-label="statsMonth">
             <option value="" data-i18n="statsMonthPick">A month…</option>
           </select>
+          <span class="range-inputs">
+            <label class="vh" for="rangeFrom" data-i18n="statsFrom">From</label>
+            <input type="date" class="input" id="rangeFrom" />
+            <span aria-hidden="true">–</span>
+            <label class="vh" for="rangeTo" data-i18n="statsTo">To</label>
+            <input type="date" class="input" id="rangeTo" />
+          </span>
           <span class="grow"></span>
           <button type="button" class="btn" data-variant="outline" data-size="sm" id="export" data-i18n="statsExport">Export…</button>
           <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clear" data-i18n="statsClear">Clear statistics</button>
           <p class="period" id="period" role="status" aria-live="polite"></p>
         </div>
+
+        <details class="lens" id="lens">
+          <summary data-i18n="statsLens">How it counts</summary>
+          <p class="note" id="lensNote"></p>
+          <div class="grid">
+            <label><span data-i18n="statsLensRead">Read after</span><select class="select" id="lensRead"></select></label>
+            <label><span data-i18n="statsLensVisible">On screen means</span><select class="select" id="lensVisible"></select></label>
+            <label><span data-i18n="statsLensOnce">A paragraph read again counts</span><select class="select" id="lensOnce"></select></label>
+            <label><span data-i18n="statsLensEstimator">Shares from</span><select class="select" id="lensEstimator"></select></label>
+            <label><span data-i18n="statsLensWeight">Each paragraph weighs</span><select class="select" id="lensWeight"></select></label>
+            <label><span data-i18n="statsLensHeadline">The headline is</span><select class="select" id="lensHeadline"></select></label>
+            <label><span data-i18n="statsLensMinWords">Paragraphs of at least</span><select class="select" id="lensMinWords"></select></label>
+            <label class="check"><input type="checkbox" class="input" id="lensFocused" /><span data-i18n="statsLensFocused">Only a focused window</span></label>
+            <label class="check"><input type="checkbox" class="input" id="lensFling" /><span data-i18n="statsLensFling">Leave out what was flung past</span></label>
+          </div>
+          <div class="actions"><button type="button" class="btn" data-variant="outline" data-size="sm" id="lensReset" data-i18n="statsLensReset">Count as Anagram does</button></div>
+        </details>
 
         <section class="card" id="emptyCard" hidden>
           <section><p class="empty" id="emptyText" data-i18n="statsNothing">Nothing was recorded in this period.</p></section>
@@ -213,22 +263,50 @@
               <p class="note" id="pagesMore"></p>
             </section>
           </section>
+
+          <section class="card" id="visitsCard" aria-labelledby="visitsTitle">
+            <header>
+              <h2 id="visitsTitle" data-i18n="statsVisits">Visits</h2>
+              <p class="sub" data-i18n="statsVisitsHint">Each page or document as it was read, newest first. Where every step was kept, Replay shows when each paragraph was on screen.</p>
+            </header>
+            <section>
+              <div class="table-container" id="visitsTable"></div>
+              <p class="note" id="visitsMore"></p>
+              <div id="replay" hidden>
+                <h3 class="card-sub" id="replayTitle"></h3>
+                <div id="replayChart"></div>
+                <p class="note" data-i18n="statsReplayNote">A row per paragraph, in the order they were found; a bar for each spell any of it was on screen, in its chip's colour; the line is how far down the page was scrolled.</p>
+              </div>
+            </section>
+          </section>
         </div>
       </div>
 
-      <dialog class="stats-dialog" id="exportDialog" aria-labelledby="exportTitle">
+      <dialog class="stats-dialog wide" id="exportDialog" aria-labelledby="exportTitle">
         <form method="dialog" id="exportForm">
           <h2 id="exportTitle" data-i18n="statsExportTitle">Export statistics</h2>
           <p id="exportRange"></p>
           <div class="field">
-            <label for="exportLevel" data-i18n="statsExportLevel">Detail</label>
-            <select id="exportLevel" class="select"></select>
+            <label for="exportPreset" data-i18n="statsExportLevel">Detail</label>
+            <select id="exportPreset" class="select"></select>
+            <p class="muted" id="exportPresetNote"></p>
           </div>
+          <details class="table-view" id="exportDimsBox">
+            <summary data-i18n="statsExportFields">Field by field</summary>
+            <div class="table-container" id="exportDims"></div>
+          </details>
+          <fieldset>
+            <legend data-i18n="statsExportLink">Ids and hashes</legend>
+            <label><input type="radio" class="input" name="link" value="file" checked /> <span data-i18n="statsExportLinkFile">This file's own: another file cannot be matched with it</span></label>
+            <label><input type="radio" class="input" name="link" value="stable" /> <span data-i18n="statsExportLinkStable">The same in every file from this browser: a study can join your files</span></label>
+          </fieldset>
           <fieldset>
             <legend data-i18n="statsExportFormat">Format</legend>
-            <label><input type="radio" class="input" name="format" value="json" checked /> <span data-i18n="statsExportJson">JSON (everything at this detail)</span></label>
-            <label><input type="radio" class="input" name="format" value="csv" /> <span data-i18n="statsExportCsv">CSV (one row a day)</span></label>
+            <label><input type="radio" class="input" name="format" value="json" checked /> <span data-i18n="statsExportJson">JSON</span></label>
+            <label><input type="radio" class="input" name="format" value="jsongz" /> <span data-i18n="statsExportJsonGz">JSON, compressed (.json.gz)</span></label>
+            <label><input type="radio" class="input" name="format" value="csv" /> <span data-i18n="statsExportCsv">CSV, a file per table, in a .zip</span></label>
           </fieldset>
+          <div class="preview" id="exportPreview" aria-live="polite"></div>
           <p class="muted" data-i18n="statsExportNote">The file is saved on this computer. Anagram never uploads it: whether to share it is up to you. You can open it and see everything it holds.</p>
           <div class="actions">
             <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportCancel" data-i18n="buttonCancel">Cancel</button>
