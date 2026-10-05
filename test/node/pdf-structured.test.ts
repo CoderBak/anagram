@@ -1414,6 +1414,22 @@ describe("structuredBlocks — the document", () => {
     expectRunsToMatch(blocks[0]!, pages);
   });
 
+  it("joins a part to its paragraph after another block has begun, the paragraph's pieces packed by then", () => {
+    const first = node(1, [{ text: "the paragraph begins on one page, over a note-", x: 72, y: 700 }]);
+    const note = node(1, [{ text: "A note set at the foot of the page.", x: 72, y: 760 }]);
+    const second = node(2, [{ text: "worthy page, and ends on the next.", x: 72, y: 80 }]);
+    const pages = [pageText(1, [...first.items, ...note.items]), pageText(2, second.items)];
+    const reader = createStructuredReader(structure([
+      paragraph(1, [first], { nextPart: [2] }),
+      paragraph(1, [note]),
+      paragraph(2, [second], { previousPart: [0] }),
+    ], 2));
+    const blocks = reader.blocks(pages);
+    expect(blocks.map((b) => b.text)).toEqual(["the paragraph begins on one page, over a noteworthy page, and ends on the next.", "A note set at the foot of the page."]);
+    expect(reader.pagesOf(blocks[0]!)).toEqual([1, 2]);
+    expectRunsToMatch(blocks[0]!, pages);
+  });
+
   it("marks a break after a bibliography entry, a page turn at a new page, and neither at an equation", () => {
     const a = node(1, [{ text: "first paragraph.", x: 72, y: 100 }]);
     const b = node(1, [{ text: "second paragraph.", x: 72, y: 130 }]);

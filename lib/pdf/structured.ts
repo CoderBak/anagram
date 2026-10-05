@@ -1042,92 +1042,125 @@ const FOLDED_MIN = 16;
 /** Where down the page a glyph's middle is: PDF space grows upward. */
 const down = (g: Glyph): number => -(g.y1 + g.y2) / 2;
 
+/** A bare number of a text, which may number its line: `at` is the text, `from` where in it
+ *  the number's run starts. */
+type Mark = NumberMark & { run: Piece[]; folded: boolean; at: number; from: number };
+
 /**
- * The pieces of these blocks that number their lines: a bare number of Zotero's text —
- * digits set against each other, nothing set against them — that stands first or last on
+ * The numbers of a document's texts that number their lines: a bare number of Zotero's text
+ * — digits set against each other, nothing set against them — that stands first or last on
  * its line among every glyph of the page, in a column of such numbers counting on.
+ *
+ * The texts are given one at a time (`add`), and of each only its bare numbers and its pages
+ * are kept: a 2,445-page book's pieces held all at once came to over 500 MB. Where the numbers
+ * may make a column, `find` reads the texts on their pages again (`readAt`, the same pieces
+ * each time) to see what else stands on their lines; a number's run is then taken from the
+ * text read last, so the runs it returns are pieces of what `readAt` gave.
  */
-function* lineNumberPieces(texts: Piece[][]): Generator<void, Set<Piece>> {
-  const marks: (NumberMark & { run: Piece[]; folded: boolean })[] = [];
-  for (const pieces of texts) {
-    yield;
-    for (let i = 0; i < pieces.length; i++) {
-      const g = pieces[i]!.glyph;
-      if (!g || !DIGIT.test(pieces[i]!.ch)) continue;
-      let j = i + 1;
-      while (j < pieces.length && DIGIT.test(pieces[j]!.ch) && within(pieces[j - 1], pieces[j])) j++;
-      const run = pieces.slice(i, j);
-      const text = run.map((p) => p.ch).join("");
-      if (BARE_NUMBER.test(text) && !glued(pieces[i - 1], pieces[i]) && !within(pieces[j - 1], pieces[j])) {
-        const glyphs = run.map((p) => p.glyph!);
-        // Set against the text by Zotero's glyphs, and parted from it only by the run.
-        let k = i + 1;
-        while (k < pieces.length && DIGIT.test(pieces[k]!.ch) && glued(pieces[k - 1], pieces[k])) k++;
-        const folded = !(BARE_NUMBER.test(pieces.slice(i, k).map((p) => p.ch).join("")) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[k - 1], pieces[k]));
-        marks.push({
-          page: g.page, x1: least(glyphs, (q) => q.x1), x2: most(glyphs, (q) => q.x2),
-          y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run, folded,
-        });
+function lineNumberScan(): { add(at: number, pieces: Piece[]): void; find(readAt: (at: number) => Piece[]): Generator<void, Mark[]> } {
+  const marks: Mark[] = [];
+  /** The pages each text's glyphs lie on, by its index. */
+  const onPages: (number[] | undefined)[] = [];
+  return {
+    add(at, pieces) {
+      const pages = new Set<number>();
+      for (let i = 0; i < pieces.length; i++) {
+        const g = pieces[i]!.glyph;
+        if (g) pages.add(g.page);
+        if (!g || !DIGIT.test(pieces[i]!.ch)) continue;
+        let j = i + 1;
+        while (j < pieces.length && DIGIT.test(pieces[j]!.ch) && within(pieces[j - 1], pieces[j])) j++;
+        const run = pieces.slice(i, j);
+        const text = run.map((p) => p.ch).join("");
+        if (BARE_NUMBER.test(text) && !glued(pieces[i - 1], pieces[i]) && !within(pieces[j - 1], pieces[j])) {
+          const glyphs = run.map((p) => p.glyph!);
+          // Set against the text by Zotero's glyphs, and parted from it only by the run.
+          let k = i + 1;
+          while (k < pieces.length && DIGIT.test(pieces[k]!.ch) && glued(pieces[k - 1], pieces[k])) k++;
+          const folded = !(BARE_NUMBER.test(pieces.slice(i, k).map((p) => p.ch).join("")) && !glued(pieces[i - 1], pieces[i]) && !glued(pieces[k - 1], pieces[k]));
+          marks.push({
+            page: g.page, x1: least(glyphs, (q) => q.x1), x2: most(glyphs, (q) => q.x2),
+            y: down(g), h: g.y2 - g.y1, value: Number(text), first: true, last: true, run, folded, at, from: i,
+          });
+          for (const q of glyphs) pages.add(q.page);
+        }
+        i = j - 1;
       }
-      i = j - 1;
-    }
-  }
-  // A page of numbered prose holds this many lines at least; an algorithm's, a list's or a
-  // table's numbers, which the run alone parts from their text, are fewer, and found nothing.
-  const foldedOn = new Map<number, number>();
-  for (const m of marks) if (m.folded) foldedOn.set(m.page, (foldedOn.get(m.page) ?? 0) + 1);
-  for (const m of marks) if (m.folded && foldedOn.get(m.page)! < FOLDED_MIN) m.weak = true;
-  if (!mayHoldColumn(marks)) return new Set();
-  // Where each mark stands on its line, among every glyph of its page; and what else each
-  // printed line of the pages holds, from where it starts to where it ends.
-  const pages = new Set(marks.map((m) => m.page));
-  const byPage = new Map<number, Glyph[]>();
-  const inMark = new Set<Piece>(marks.flatMap((m) => m.run));
-  const content: PageContent[] = marks.map((m) => ({ page: m.page, x1: m.x1, x2: m.x2, y: m.y, weight: m.run.length, mark: m }));
-  for (const pieces of texts) {
-    yield;
-    if (!pieces.some((p) => p.glyph && pages.has(p.glyph.page))) continue;
-    for (const row of rowsOf(pieces, inMark)) {
-      if (!pages.has(row.page)) continue;
-      const list = byPage.get(row.page) ?? [];
-      byPage.set(row.page, list);
-      let x1 = Infinity, x2 = -Infinity, weight = 0;
-      /** Where the row's own number ended, while its text has not begun. */
-      let number: Glyph | null = null;
-      /** The text starts where the number ends, in the run after it: the space between them
-       *  was folded out, and the text stands at least a space further right. */
-      let folded = 0;
-      for (const p of row.pieces) {
-        if (!p.glyph) continue;
-        list.push(p.glyph);
-        if (inMark.has(p)) { number = p.glyph; continue; }
-        if (number && weight === 0 && p.glyph.start && /^[\p{L}\p{N}]$/u.test(p.ch) && sameLine(number, p.glyph) && Math.abs(p.glyph.x1 - number.x2) <= (p.glyph.y2 - p.glyph.y1) * TOUCH) folded = p.glyph.y2 - p.glyph.y1;
-        x1 = Math.min(x1, p.glyph.x1);
-        x2 = Math.max(x2, p.glyph.x2);
-        weight++;
+      onPages[at] = [...pages];
+    },
+    *find(readAt) {
+      // A page of numbered prose holds this many lines at least; an algorithm's, a list's or a
+      // table's numbers, which the run alone parts from their text, are fewer, and found nothing.
+      const foldedOn = new Map<number, number>();
+      for (const m of marks) if (m.folded) foldedOn.set(m.page, (foldedOn.get(m.page) ?? 0) + 1);
+      for (const m of marks) if (m.folded && foldedOn.get(m.page)! < FOLDED_MIN) m.weak = true;
+      if (!mayHoldColumn(marks)) return [];
+      // Where each mark stands on its line, among every glyph of its page; and what else each
+      // printed line of the pages holds, from where it starts to where it ends. Each glyph is
+      // held against the marks of its page as it comes, down the page: the marks, and the
+      // height of the tallest.
+      const pages = new Map<number, { marks: Mark[]; h: number }>();
+      for (const m of marks) {
+        const on = pages.get(m.page) ?? { marks: [], h: 0 };
+        pages.set(m.page, on);
+        on.marks.push(m);
+        on.h = Math.max(on.h, m.h);
       }
-      x1 += folded;
-      x2 += folded;
-      if (weight > 0) content.push({ page: row.page, x1, x2, y: (row.top + row.bottom) / 2, weight });
-    }
-  }
-  for (const list of byPage.values()) list.sort((a, b) => down(a) - down(b));
-  for (const m of marks) {
-    yield;
-    const list = byPage.get(m.page)!;
-    const own = new Set(m.run.map((p) => p.glyph));
-    const g = m.run[0]!.glyph!;
-    const mid = (m.x1 + m.x2) / 2;
-    let lo = 0, hi = list.length;
-    while (lo < hi) { const k = (lo + hi) >> 1; if (down(list[k]!) < m.y - 2 * m.h) lo = k + 1; else hi = k; }
-    for (let k = lo; k < list.length && down(list[k]!) <= m.y + 2 * m.h; k++) {
-      const o = list[k]!;
-      if (own.has(o) || !sameLine(o, g)) continue;
-      if ((o.x1 + o.x2) / 2 < mid) m.first = false;
-      else m.last = false;
-    }
-  }
-  return new Set([...lineNumberMarks(marks, content)].flatMap((m) => m.run));
+      for (const on of pages.values()) on.marks.sort((a, b) => a.y - b.y);
+      /** A glyph within two of a mark's heights of it, on its line and not its own, stands
+       *  before it or after it. */
+      const against = (o: Glyph): void => {
+        const on = pages.get(o.page)!;
+        const d = down(o);
+        let lo = 0, hi = on.marks.length;
+        while (lo < hi) { const k = (lo + hi) >> 1; if (on.marks[k]!.y < d - 3 * on.h) lo = k + 1; else hi = k; }
+        for (let k = lo; k < on.marks.length && on.marks[k]!.y <= d + 3 * on.h; k++) {
+          const m = on.marks[k]!;
+          if (d < m.y - 2 * m.h || d > m.y + 2 * m.h) continue;
+          if (m.run.some((p) => p.glyph === o) || !sameLine(o, m.run[0]!.glyph!)) continue;
+          if ((o.x1 + o.x2) / 2 < (m.x1 + m.x2) / 2) m.first = false;
+          else m.last = false;
+        }
+      };
+      const marksOf = new Map<number, Mark[]>();
+      for (const m of marks) {
+        const list = marksOf.get(m.at);
+        if (list) list.push(m);
+        else marksOf.set(m.at, [m]);
+      }
+      const content: PageContent[] = marks.map((m) => ({ page: m.page, x1: m.x1, x2: m.x2, y: m.y, weight: m.run.length, mark: m }));
+      for (const [at, on] of onPages.entries()) {
+        yield;
+        if (!on?.some((n) => pages.has(n))) continue;
+        const pieces = readAt(at);
+        const own = marksOf.get(at) ?? [];
+        for (const m of own) m.run = pieces.slice(m.from, m.from + m.run.length);
+        const inMark = new Set<Piece>(own.flatMap((m) => m.run));
+        for (const row of rowsOf(pieces, inMark)) {
+          if (!pages.has(row.page)) continue;
+          let x1 = Infinity, x2 = -Infinity, weight = 0;
+          /** Where the row's own number ended, while its text has not begun. */
+          let number: Glyph | null = null;
+          /** The text starts where the number ends, in the run after it: the space between them
+           *  was folded out, and the text stands at least a space further right. */
+          let folded = 0;
+          for (const p of row.pieces) {
+            if (!p.glyph) continue;
+            against(p.glyph);
+            if (inMark.has(p)) { number = p.glyph; continue; }
+            if (number && weight === 0 && p.glyph.start && /^[\p{L}\p{N}]$/u.test(p.ch) && sameLine(number, p.glyph) && Math.abs(p.glyph.x1 - number.x2) <= (p.glyph.y2 - p.glyph.y1) * TOUCH) folded = p.glyph.y2 - p.glyph.y1;
+            x1 = Math.min(x1, p.glyph.x1);
+            x2 = Math.max(x2, p.glyph.x2);
+            weight++;
+          }
+          x1 += folded;
+          x2 += folded;
+          if (weight > 0) content.push({ page: row.page, x1, x2, y: (row.top + row.bottom) / 2, weight });
+        }
+      }
+      return [...lineNumberMarks(marks, content)];
+    },
+  };
 }
 
 /**
@@ -1296,24 +1329,25 @@ function plain(r: Reading, pieces: Piece[]): Prepared | Marker {
  * The readings of a document whose lines are numbered: every number left out, and the runs
  * of consecutive numbered prose — paragraphs, list items, tables that are prose — read again
  * as the paragraphs their lines make. A heading keeps its place; a reading with no number
- * on it is Zotero's as it was. (With `everything`, the numbers only are left out.)
+ * on it is Zotero's as it was, and stands as its index, to be read when its draft is made.
+ * (With `everything`, the numbers only are left out.) `numbered` holds the texts with a
+ * number on them; `textAt` reads any other.
  */
-function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null)[], numbers: ReadonlySet<Piece>, everything: boolean): (Prepared | Marker)[] {
-  const out: (Prepared | Marker)[] = [];
+function numberedReadings(readings: (Reading | Marker)[], textAt: (k: number) => Piece[] | null, numbered: ReadonlyMap<number, Piece[]>, numbers: ReadonlySet<Piece>, everything: boolean): (Prepared | Marker | number)[] {
+  const out: (Prepared | Marker | number)[] = [];
   /** Each run of numbered prose: its readings, and their lines. */
   const pools: { at: number; readings: Reading[]; rows: Row[] }[] = [];
   let pool: { at: number; readings: Reading[]; rows: Row[] } | null = null;
   // Zotero takes numbered lines for the numbered entries of a bibliography, wherever they
   // are: before the document's own References heading, such an entry is its prose.
-  const bibliography = readings.findIndex((r, k) => typeof r !== "string" && r.kind !== "table" && REFERENCES_HEAD.test(withoutNumbers(texts[k] ?? [], numbers).map((p) => p.ch).join("").trim()));
+  const bibliography = readings.findIndex((r, k) => typeof r !== "string" && r.kind !== "table" && REFERENCES_HEAD.test(withoutNumbers(numbered.get(k) ?? textAt(k) ?? [], numbers).map((p) => p.ch).join("").trim()));
   readings.forEach((r, k) => {
-    const pieces = texts[k];
     // A run of numbered prose goes on past what is skipped — a page's furniture, a figure —
     // and stops at a bibliography's barrier or a display equation.
-    if (typeof r === "string" || !pieces) { if (r !== "skip") pool = null; out.push(r as Marker); return; }
-    const numbered = pieces.some((p) => numbers.has(p));
-    if (r.kind === "reference" && (!numbered || bibliography < 0 || k >= bibliography)) { pool = null; out.push("barrier"); return; }
-    if (!numbered) { pool = null; out.push(plain(r, pieces)); return; }
+    if (typeof r === "string") { if (r !== "skip") pool = null; out.push(r); return; }
+    const pieces = numbered.get(k);
+    if (r.kind === "reference" && (!pieces || bibliography < 0 || k >= bibliography)) { pool = null; out.push("barrier"); return; }
+    if (!pieces) { pool = null; out.push(k); return; }
     const kept = withoutNumbers(pieces, numbers);
     if (everything || r.kind === "heading") {
       pool = null;
@@ -1324,8 +1358,8 @@ function numberedReadings(readings: (Reading | Marker)[], texts: (Piece[] | null
     if (r.kind === "table") {
       // Prose only if nearly every line carried a number and hardly any holds a cell's gap.
       const lines = rowsOf(pieces, numbers);
-      const numbered = lines.filter((l) => l.numbered).length;
-      if (numbered < lines.length * NUMBERED_TABLE || rows.filter((l) => l.gapped).length > rows.length * GAPPED_TABLE) {
+      const counted = lines.filter((l) => l.numbered).length;
+      if (counted < lines.length * NUMBERED_TABLE || rows.filter((l) => l.gapped).length > rows.length * GAPPED_TABLE) {
         out.push("skip");
         return;
       }
@@ -1456,7 +1490,7 @@ const FINAL = "final";
 // ---- a paragraph's pieces, packed until its pages come ----------------------------------
 
 /**
- * The pieces of a block that is not read for good yet, from its first answer on: a character
+ * The pieces of a block that is not read for good yet, from when it is drafted on: a character
  * and a byte of flags each, and of each glyph only the numbers the glyph before it does not
  * give already — its page, its line's top and bottom, its left edge where it starts at the
  * right edge of the one before — as doubles, so that what is unpacked is the very same
@@ -1464,7 +1498,7 @@ const FINAL = "final";
  * whose pages the reader had not read yet held 525 MB of them, and the page 680–700 MB in all
  * when the structure came; packed, 195 MB in all (an 813-page one's: 280 MB of pieces, 22 MB
  * packed; 2026-10-04, M4). Unpacked again, for one answer, only when one of the block's pages
- * comes or goes.
+ * comes or goes, and for a part Zotero says continues it.
  */
 export interface PackedPieces {
   chars: Uint16Array;
@@ -1536,9 +1570,9 @@ export function unpackPieces({ chars, flags, values }: PackedPieces): Piece[] {
 
 interface Draft {
   block: StructuredBlock;
-  /** Its pieces, until it has been answered for once; empty while they are `packed`. */
+  /** Its pieces where they could not be packed; empty while they are `packed`. */
   pieces: Piece[];
-  /** Its pieces from its first answer until it is read for good (packPieces). */
+  /** Its pieces from when it is drafted until it is read for good (packPieces). */
   packed: PackedPieces | null;
   /** 1-based pages the block's glyphs lie on. */
   pages: number[];
@@ -1566,90 +1600,162 @@ export interface StructuredReader {
   pagesOf(block: StructuredBlock): readonly number[];
 }
 
-/** The drafts and the vocabulary, in a scope of their own: the reader's closures then keep
- *  neither the structure nor what was made on the way (39 MB at 300 pages). */
+/**
+ * The drafts and the vocabulary, in a scope of their own: the reader's closures then keep
+ * neither the structure nor what was made on the way (39 MB at 300 pages).
+ *
+ * Most documents number no lines, and their readings are read once, each made a draft as it
+ * comes, and every draft packed (packPieces) once the next is begun — at 813 pages the pieces
+ * of every block held at once came to 300 MB more than the structure. A manuscript whose lines
+ * are numbered is read again whole, as its lines are found again as paragraphs
+ * (numberedReadings).
+ */
 function* prepare(structure: SdtStructure, everything: boolean): Generator<void, Drafted> {
   const readings = readInColumns(yield* readingsOf(structure.content, everything));
   yield;
   const read = (r: Reading): Piece[] => placeMarks(piecesOf(r.block, (node) => isRaisedCitation(node, structure.content)));
+  /** Each text read, packed where it can be (packPieces): what is read again is unpacked, not
+   *  parsed from the glyph maps again. */
+  const texts: (PackedPieces | Piece[] | null)[] = [];
+  // (A copy: the array itself becomes a draft's, which a continuation is appended to.)
+  const keep = (k: number, pieces: Piece[]): void => { texts[k] = packPieces(pieces) ?? [...pieces]; };
+  const textAt = (k: number): Piece[] | null => {
+    const t = texts[k];
+    return t == null || Array.isArray(t) ? t ?? null : unpackPieces(t);
+  };
+  // As if no line were numbered: what is left out as a caption, then each reading as it is.
   // A bibliography is read only where the lines are numbered, and asked about then.
-  const texts: (Piece[] | null)[] = [];
-  for (const r of readings) {
-    texts.push(typeof r === "string" || r.kind === "reference" ? null : read(r));
+  const plainReadings = [...readings];
+  if (!everything) yield* leaveOutCaptions(plainReadings, structure.content, () => false);
+  const scan = lineNumberScan();
+  const drafts = draftsOf(everything);
+  for (const [k, r] of readings.entries()) {
     yield;
+    const pieces = typeof r !== "string" && r.kind !== "reference" ? read(r) : null;
+    if (pieces) { scan.add(k, pieces); keep(k, pieces); }
+    const as = plainReadings[k]!;
+    drafts.add(typeof as === "string" ? as : plain(as, pieces ?? []));
   }
-  let numbers = yield* lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+  if ((yield* scan.find((k) => textAt(k)!)).length === 0) return yield* drafts.done();
+  drafts.drop();
   // A manuscript's numbered lines are read again as the paragraphs they make, which a float's
-  // supposed rest is no part of.
-  if (numbers.size > 0) readings.forEach((r, k) => { if (typeof r !== "string" && r.carriesOn) { readings[k] = "skip"; texts[k] = null; } });
-  if (numbers.size > 0) {
-    readings.forEach((r, k) => { if (typeof r !== "string" && r.kind === "reference") texts[k] = read(r); });
+  // supposed rest is no part of; and its bibliography is read, for Zotero may have taken
+  // numbered prose for one.
+  const again = lineNumberScan();
+  for (const [k, r] of readings.entries()) {
     yield;
-    numbers = yield* lineNumberPieces(texts.filter((t): t is Piece[] => t !== null));
+    if (typeof r === "string") continue;
+    if (r.carriesOn) { readings[k] = "skip"; texts[k] = null; continue; }
+    if (r.kind === "reference") keep(k, read(r));
+    again.add(k, textAt(k)!);
+  }
+  // The texts a number was found in, as the pieces the numbers are.
+  const numbered = new Map<number, Piece[]>();
+  const numbers = new Set<Piece>();
+  for (const m of yield* again.find((k) => textAt(k)!)) {
+    let pieces = numbered.get(m.at);
+    if (!pieces) numbered.set(m.at, (pieces = textAt(m.at)!));
+    for (let i = m.from; i < m.from + m.run.length; i++) numbers.add(pieces[i]!);
   }
   // Numbered lines are read again as the paragraphs they make, and a caption among them is
   // told there, once its lines are one paragraph (numberedReadings).
-  if (!everything) yield* leaveOutCaptions(readings, structure.content, (k) => texts[k]?.some((p) => numbers.has(p)) === true);
+  if (!everything) yield* leaveOutCaptions(readings, structure.content, (k) => numbered.has(k));
   yield;
   const prepared = numbers.size > 0
-    ? numberedReadings(readings, texts, numbers, everything)
-    : readings.map((r, k) => (typeof r === "string" ? r : plain(r, texts[k] ?? [])));
-  yield;
+    ? numberedReadings(readings, textAt, numbered, numbers, everything)
+    : readings.map((r, k) => (typeof r === "string" ? r : k));
+  const made = draftsOf(everything);
+  for (const r of prepared) {
+    yield;
+    made.add(typeof r === "number" ? plain(readings[r] as Reading, textAt(r) ?? []) : r);
+  }
+  return yield* made.done();
+}
+
+/**
+ * The drafts of a document's prepared readings, given in order: a paragraph carried over an
+ * equation, a column or a page is one draft, and a draft is packed (packPieces) with its
+ * pages and its written text kept as soon as another is begun — unpacked again only when a
+ * part Zotero says continues it comes later.
+ */
+function draftsOf(everything: boolean): { add(r: Prepared | Marker): void; done(): Generator<void, Drafted>; drop(): void } {
   /** The draft each read path became, for the parts that continue it. */
   const byPath = new Map<string, Draft>();
-  const drafts: Draft[] = [];
+  let drafts: Draft[] = [];
+  /** Each draft's text as written, for the vocabulary, by its index; and the index of each. */
+  let writtens: string[] = [];
+  const indexOf = new Map<Draft, number>();
   let barrier = true;
   /** The last paragraph read, still open for a continuation. */
   let open: Draft | null = null;
-  for (const r of prepared) {
-    yield;
-    if (r === "barrier") { barrier = true; open = null; continue; }
-    if (r === "display" && open) open.display = true;
-    if (r === "skip" || r === "display") continue;
-    const pieces = r.pieces;
-    const part = r.previousPart ? byPath.get(r.previousPart) : undefined;
-    const prev = part ?? (r.kind === "paragraph" && open !== null && !everything && continues(open.pieces, pieces) ? open : undefined);
-    if (prev) {
-      // Carried over an equation, a column or a page: one paragraph. A hyphen the break
-      // left behind is mended when what follows is a lowercase continuation.
-      const last = prev.pieces.at(-1);
-      const first = pieces.find((p) => p.ch !== " ");
-      if (last && last.ch === "-" && first && /\p{Ll}/u.test(first.ch)) prev.pieces.pop();
-      else prev.pieces.push({ ch: " ", glyph: null });
-      append(prev.pieces, pieces);
-      prev.display = false;
-      for (const path of r.paths) byPath.set(path, prev);
-      continue;
-    }
-    // Not the rest of the paragraph before it: what Zotero set beside the text stays there.
-    if (r.carriesOn) continue;
-    const page = r.page;
-    const previous = drafts.at(-1);
-    // A page is no break in the writing where the sentence before it goes on over it —
-    // most often into a display equation at the head of the next page. Where it ended, short
-    // paragraphs are not read together across the page, but one that cannot stand alone may
-    // still join the paragraph before it (ReflowBlock.pageTurn).
-    const turned = previous !== undefined && endPage(previous) !== page && !(previous.block.kind === "paragraph" && runsOn(previous.pieces));
-    const block: StructuredBlock = {
-      kind: r.kind, text: "", page, runs: [], apart: false,
-      columnBreak: barrier || !previous,
-      ...(turned && !barrier ? { pageTurn: true } : {}),
-      ...(everything ? { origin: r.origin } : {}),
-    };
-    barrier = false;
-    const draft: Draft = { block, pieces, packed: null, pages: [], seen: null, result: null, display: false };
-    drafts.push(draft);
-    for (const path of r.paths) byPath.set(path, draft);
-    open = r.kind === "paragraph" ? draft : null;
-  }
-  for (const d of drafts) {
-    yield;
+  const seal = (d: Draft): void => {
     const on = new Set<number>();
     for (const p of d.pieces) if (p.glyph) on.add(p.glyph.page + 1);
     d.pages = [...on].sort((a, b) => a - b);
-  }
-  yield;
-  return { drafts, vocab: yield* vocabularyInSlices(drafts.map((d) => written(d.pieces))) };
+    writtens[indexOf.get(d)!] = written(d.pieces);
+    const packed = packPieces(d.pieces);
+    if (packed) { d.packed = packed; d.pieces = []; }
+  };
+  return {
+    add(r) {
+      if (r === "barrier") { barrier = true; open = null; return; }
+      if (r === "display" && open) open.display = true;
+      if (r === "skip" || r === "display") return;
+      const pieces = r.pieces;
+      const part = r.previousPart ? byPath.get(r.previousPart) : undefined;
+      const prev = part ?? (r.kind === "paragraph" && open !== null && !everything && continues(open.pieces, pieces) ? open : undefined);
+      if (prev) {
+        const sealed = prev.packed !== null;
+        if (sealed) { prev.pieces = unpackPieces(prev.packed!); prev.packed = null; }
+        // Carried over an equation, a column or a page: one paragraph. A hyphen the break
+        // left behind is mended when what follows is a lowercase continuation.
+        const last = prev.pieces.at(-1);
+        const first = pieces.find((p) => p.ch !== " ");
+        if (last && last.ch === "-" && first && /\p{Ll}/u.test(first.ch)) prev.pieces.pop();
+        else prev.pieces.push({ ch: " ", glyph: null });
+        append(prev.pieces, pieces);
+        prev.display = false;
+        for (const path of r.paths) byPath.set(path, prev);
+        if (sealed || prev !== drafts.at(-1)) seal(prev);
+        return;
+      }
+      // Not the rest of the paragraph before it: what Zotero set beside the text stays there.
+      if (r.carriesOn) return;
+      const page = r.page;
+      const previous = drafts.at(-1);
+      // A page is no break in the writing where the sentence before it goes on over it —
+      // most often into a display equation at the head of the next page. Where it ended, short
+      // paragraphs are not read together across the page, but one that cannot stand alone may
+      // still join the paragraph before it (ReflowBlock.pageTurn).
+      const turned = previous !== undefined && endPage(previous) !== page && !(previous.block.kind === "paragraph" && runsOn(previous.pieces));
+      const block: StructuredBlock = {
+        kind: r.kind, text: "", page, runs: [], apart: false,
+        columnBreak: barrier || !previous,
+        ...(turned && !barrier ? { pageTurn: true } : {}),
+        ...(everything ? { origin: r.origin } : {}),
+      };
+      barrier = false;
+      if (previous && previous.packed === null) seal(previous);
+      const draft: Draft = { block, pieces, packed: null, pages: [], seen: null, result: null, display: false };
+      indexOf.set(draft, drafts.length);
+      drafts.push(draft);
+      for (const path of r.paths) byPath.set(path, draft);
+      open = r.kind === "paragraph" ? draft : null;
+    },
+    *done() {
+      const last = drafts.at(-1);
+      if (last && last.packed === null) seal(last);
+      yield;
+      return { drafts, vocab: yield* vocabularyInSlices(writtens) };
+    },
+    drop() {
+      drafts = [];
+      writtens = [];
+      byPath.clear();
+      indexOf.clear();
+      open = null;
+    },
+  };
 }
 
 /** What prepare() makes of a structure: the drafts of its blocks and their vocabulary. */

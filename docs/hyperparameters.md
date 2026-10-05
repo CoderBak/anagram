@@ -1226,7 +1226,7 @@ Some neighbouring values belong to other sections:
 | Transfer deadlines (`TICKET_TTL_MS`, `READ_TIMEOUT_MS`, `CLAIM_TIMEOUT_MS`, local XHR, `SOURCE_TIMEOUT`) | 30 s, 30 s, 15 s, 30 s, 45 s | `lib/pdf/handoff.ts:21-27`, `lib/pdf/loader.ts:52`, `lib/pdf/sourceTransfer.ts:10` | How long fetching a document may take | Judgement | A slow 50 MB download fails as "read". The relay and the loader use 30 s and 45 s for the same job. |
 | `CHUNK_BYTES` | 256 KiB | `lib/pdf/handoff.ts:15` | Relay chunk, one in flight | Judgement | Throughput only; no measurement found. |
 | `MAGIC_WINDOW` | 1,024 bytes | `lib/pdf/sourceTransfer.ts:25` | How deep `%PDF-` may sit | Platform | pdf.js's own window. A login page served as PDF is refused as "type". |
-| Glyphs freed once read (`pagesStay`) | when every page of a block has text | `lib/pdf/structured.ts:1710` | When a paragraph's glyphs are let go for good | Measured | 150 MB held at 300 pages otherwise. Unread blocks stay packed (`packPieces`: 525 MB of objects at 2,445 pages). |
+| Glyphs freed once read (`pagesStay`) | when every page of a block has text | `lib/pdf/structured.ts:1816` | When a paragraph's glyphs are let go for good | Measured | 150 MB held at 300 pages otherwise. Unread blocks stay packed (`packPieces`: 525 MB of objects at 2,445 pages), each from when it is drafted: preparing a 2,448-page structure peaked at 1,032 MB live with them unpacked, 162 MB packed (2026-10-05, M4; the PDF benchmark's output unchanged). |
 
 ### Zotero structure: page ranges and deadlines
 

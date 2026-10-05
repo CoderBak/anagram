@@ -227,7 +227,8 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   process at 2,445 pages. In ranges that book took 27.5 s to its structure, the process
   peaking at 2.0 GB, 195 MB of page memory as the structure came rising to 310 MB as it was
   read (the glyphs of the paragraphs not read yet are kept packed, `packPieces` in
-  `lib/pdf/structured.ts`: 525 MB of them as objects), and no frame over 150 ms as the
+  `lib/pdf/structured.ts`: 525 MB of them as objects; each is packed as it is drafted, and
+  preparing a 2,448-page structure holds some 160 MB beside it, not 1 GB), and no frame over 150 ms as the
   structure came (the reader's preparation goes 32 blocks at a time; it was a 0.3 s pause in
   one piece); an 813-page book, 9.6 s and 270 MB, no pause over 150 ms (2026-10-04, M4). What Zotero works out
   over the document — running heads, reference lists, the outline's pages — it works out over
