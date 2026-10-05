@@ -15,6 +15,16 @@
 // asked has changed anything. After CRASH_LIMIT such deaths within CRASH_WINDOW_MS, with
 // no batch answered in between, the engine is given up on: scoring is refused without
 // starting it until retry().
+//
+// A request's timeout runs while the engine works on it, not while it waits its turn. Both
+// engines score one request at a time in the order they came (anagramd/native_host.py's score
+// lane, lib/webengine/engine.ts's scoreChain), and the router keeps several batches with the
+// engine (lib/backend/router.ts MAX_IN_FLIGHT): timed from posting, the fourth of four batches
+// on a processor that takes ten seconds a batch failed as Unavailable although the engine was
+// sound. So each lane (LANES) keeps the order it posted in, and a request's timer starts when
+// the one before it has been answered — or has run out of time itself. A cancelled request the
+// engine is still working through keeps its place, with a timer of its own: if the engine
+// never answers it, the request after it is not left waiting for ever.
 import { MAX_NATIVE_BYTES, isRecord, parseNativeReply, type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
 import { NativeTransportError, RECONNECT_MS, type EngineTransport } from "./transport";
 
@@ -30,6 +40,13 @@ const RESTART_WAIT_MS = 60_000;
 const REPLAYABLE = new Set<NativeOperation>(["score", "tokens", "health", "status", "runtime"]);
 /** What is refused once the engine was given up on. Setup and Settings still reach it. */
 const ENGINE_WORK = new Set<NativeOperation>(["score", "tokens", "health"]);
+/** What an engine works through one at a time, in the order it came, each op a lane of its
+ *  own (counting tokens never waits behind a score batch). */
+const LANES = new Set<NativeOperation>(["score", "tokens"]);
+
+/** A place in a lane: a request the engine has, answered or not. `timer` runs only for a
+ *  cancelled request whose turn it is, which nobody waits for but the requests behind it. */
+interface Turn { id: string; timeout: number; timer?: ReturnType<typeof setTimeout> }
 
 export interface NativePort {
   postMessage(message: unknown): void;
@@ -48,8 +65,10 @@ interface Pending {
   /** The restart's own question, never the caller's. */
   internal: boolean;
   resolve(reply: NativeReply): void; reject(error: Error): void;
-  /** Its timeout runs while an engine has it, not while it waits for one. */
+  /** Its timeout runs while an engine works on it: not while it waits for one, nor while it
+   *  waits its turn in its lane. */
   arm(): void; disarm(): void; cleanup(): void;
+  timeout: number;
 }
 
 export interface PortMessages {
@@ -72,6 +91,8 @@ export class PortTransport implements EngineTransport {
   /** What the current engine was given and has not answered, whether or not anybody still
    *  waits for it (a cancelled batch is still being worked on). */
   private working = new Set<string>();
+  /** Each lane's requests on the current port, in the order they were posted. */
+  private lanes = new Map<NativeOperation, Turn[]>();
   private pending = new Map<string, Pending>();
   private sequence = 0;
   private retryAt = 0;
@@ -105,6 +126,7 @@ export class PortTransport implements EngineTransport {
     this.port = port;
     this.answered = false;
     this.working.clear();
+    this.clearLanes();
     port.onMessage.addListener((value) => this.received(port, value));
     port.onDisconnect.addListener(() => {
       // Chrome lastError must be consumed in this callback to avoid an unchecked error.
@@ -120,6 +142,7 @@ export class PortTransport implements EngineTransport {
     if (!reply) { this.close("native_protocol", "Invalid local component response"); return; }
     this.answered = true;
     this.working.delete(reply.id);
+    this.passTurn(reply.id);
     const request = this.pending.get(reply.id);
     if (!request) return; // a cancelled/timed-out request may still finish in the engine
     this.pending.delete(reply.id);
@@ -148,6 +171,7 @@ export class PortTransport implements EngineTransport {
   private lost(port: NativePort, message: string): void {
     if (this.port !== port) return;
     this.port = null;
+    this.clearLanes();
     const outstanding = this.working.size > 0 || [...this.pending.values()].some((request) => request.port === null);
     if (this.answered && outstanding) { this.crashed(port); return; }
     this.stopRestart();
@@ -246,7 +270,7 @@ export class PortTransport implements EngineTransport {
       const target = port ?? (this.restarting ? null : this.connectPort());
       return new Promise((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const abort = () => settle(new NativeTransportError("cancelled", "Request cancelled"));
+        const abort = () => { settle(new NativeTransportError("cancelled", "Request cancelled")); this.keepTurn(id); };
         const disarm = () => clearTimeout(timer);
         const cleanup = () => { disarm(); signal?.removeEventListener("abort", abort); };
         const settle = (error: Error) => {
@@ -254,6 +278,8 @@ export class PortTransport implements EngineTransport {
           cleanup(); reject(error);
         };
         const began = Date.now();
+        /** Out of time: the engine may still be at it, but the next in its lane starts its own. */
+        const expire = () => { settle(new NativeTransportError("native_timeout", "Local component did not answer in time")); this.passTurn(id); };
         const arm = () => {
           clearTimeout(timer);
           timer = setTimeout(() => {
@@ -264,14 +290,14 @@ export class PortTransport implements EngineTransport {
               void this.isLoading(on).then((loading) => {
                 if (!this.pending.has(id) || request.port !== on) return;
                 if (loading && Date.now() - began < wait) arm();
-                else settle(new NativeTransportError("native_timeout", "Local component did not answer in time"));
+                else expire();
               });
               return;
             }
-            settle(new NativeTransportError("native_timeout", "Local component did not answer in time"));
+            expire();
           }, timeout);
         };
-        const request: Pending = {op, message, port: null, replayed: false, internal, resolve, reject, arm, disarm, cleanup};
+        const request: Pending = {op, message, port: null, replayed: false, internal, resolve, reject, arm, disarm, cleanup, timeout};
         this.pending.set(id, request);
         signal?.addEventListener("abort", abort, {once: true});
         if (target) this.post(target, request);
@@ -290,10 +316,51 @@ export class PortTransport implements EngineTransport {
 
   private post(port: NativePort, request: Pending): void {
     request.port = port;
-    request.arm();
     this.working.add(request.message.id);
+    const lane = LANES.has(request.op) ? this.lanes.get(request.op) ?? [] : null;
+    if (lane) {
+      this.lanes.set(request.op, lane);
+      lane.push({id: request.message.id, timeout: request.timeout});
+    }
+    // In a lane, its time starts at its turn (startTurn).
+    if (!lane || lane.length === 1) request.arm();
     try { port.postMessage(request.message); }
     catch { this.close("native_unavailable", "Local component disconnected"); }
+  }
+
+  /** `id` is done with its lane — answered, or out of time — and the next in it starts. */
+  private passTurn(id: string): void {
+    for (const lane of this.lanes.values()) {
+      const at = lane.findIndex((turn) => turn.id === id);
+      if (at < 0) continue;
+      clearTimeout(lane[at]!.timer);
+      lane.splice(at, 1);
+      if (at === 0) this.startTurn(lane);
+      return;
+    }
+  }
+
+  /** The head of `lane` is what the engine works on now: its timeout starts. A request
+   *  cancelled meanwhile is still worked on, and keeps the lane's time for it. */
+  private startTurn(lane: Turn[]): void {
+    const head = lane[0];
+    if (!head) return;
+    const request = this.pending.get(head.id);
+    if (request && request.port !== null) request.arm();
+    else head.timer = setTimeout(() => this.passTurn(head.id), head.timeout);
+  }
+
+  /** A cancelled request leaves `pending` but not its lane: the engine has it. If it was the
+   *  one being worked on, the lane times it from here. */
+  private keepTurn(id: string): void {
+    for (const lane of this.lanes.values()) {
+      if (lane[0]?.id === id && lane[0].timer === undefined) lane[0].timer = setTimeout(() => this.passTurn(id), lane[0].timeout);
+    }
+  }
+
+  private clearLanes(): void {
+    for (const lane of this.lanes.values()) for (const turn of lane) clearTimeout(turn.timer);
+    this.lanes.clear();
   }
 
   private rejectAll(error: Error): void {
@@ -306,6 +373,7 @@ export class PortTransport implements EngineTransport {
   close(code = "native_unavailable", message = "Local connection restarted"): void {
     const port = this.port;
     this.port = null;
+    this.clearLanes();
     this.stopRestart();
     this.rejectAll(new NativeTransportError(code, message));
     this.notifyDisconnect();

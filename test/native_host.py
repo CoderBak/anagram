@@ -177,7 +177,7 @@ class FramingTests(unittest.TestCase):
                 written.release()
         reader, writer = QueuedReader(), Writer()
         thread = threading.Thread(target=host.run_host, args=(reader, writer, Component()))
-        with patch.object(host, "QUEUE_TIMEOUT_S", 0.2):
+        with patch.object(host, "MOST_QUEUE_WAIT_S", 0.2):
             thread.start()
             reader.queue.put(frame(request("score", "slow", {"id": "slow"})))
             self.assertTrue(entered.wait(2))

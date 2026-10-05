@@ -60,6 +60,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- On an engine that scores slowly (a processor), a paragraph could come back Unavailable although the engine was working: the 30 s an engine is given to answer was counted from the moment a batch was sent, and a batch waits behind the others the engine has, which it scores one at a time; four batches of ten seconds each failed the fourth. A batch's time now starts at its turn. The local engine no longer drops a batch that waited more than 30 s for its turn either.
 - A verdict that came from the cache could show a different word from the same paragraph scored fresh, when its score lay within 0.0005 of a cut (0.1666, Human, came back from the cache as 0.167, Lightly edited): the cache kept three decimals of the four both engines give. It keeps all four.
 - In the PDF reader, a line skewed by a tenth of a degree, as a scan's text layer often is, was taken for rotated text and not read at all, and so was text set in a slanted (synthetic italic) font: the test compared the run's matrix, font size included, with a fixed 0.02. A run is now rotated when its baseline turns more than 5° from the horizontal, which still leaves out arXiv's identifier down the margin, diagonal watermarks and text upside down.
 - A paragraph longer than the 200,000 characters Anagram reads of one counted all its words, though the model read only what came before the cut.

@@ -27,8 +27,13 @@ MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024 - 1024
 MAX_PENDING_SCORES = 8
 MAX_PENDING_TOKENS = 8
-# The extension stops waiting for a native reply after 30 s (nativeTransport.ts).
+# The extension stops waiting for a native reply after 30 s of the engine's work on it
+# (lib/backend/portTransport.ts): it times a score or a token count from its turn, once
+# the one before it in the same lane has been answered, or has had its 30 s.
 QUEUE_TIMEOUT_S = 30
+# So a request can wait its turn behind every other one in its lane, each taking all of its
+# time, and still be wanted; past that the browser has stopped waiting for it.
+MOST_QUEUE_WAIT_S = QUEUE_TIMEOUT_S * max(MAX_PENDING_SCORES, MAX_PENDING_TOKENS)
 OPS = {"status", "health", "score", "tokens", "runtime", "runtime.benchmark", "runtime.config",
        "runtime.cancel", "models.download", "models.pause", "models.delete",
        "engine.stop", "engine.resume", "engine.settings", "component.update", "component.uninstall"}
@@ -154,7 +159,7 @@ def run_host(reader, writer, component=None, startup_error=None):
 
     def queued_work(request, received, capacity):
         try:
-            if time.monotonic() - received >= QUEUE_TIMEOUT_S:
+            if time.monotonic() - received >= MOST_QUEUE_WAIT_S:
                 # The browser has already given up on it; keep the worker for live requests.
                 output.write(error_reply(request["id"], "busy", f"The {request['op']} request waited too long in the queue", 409))
             else:
