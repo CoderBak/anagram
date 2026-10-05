@@ -38,7 +38,6 @@ export interface StatsRecorderDeps {
   enabledFor(hostname: string | null): Promise<boolean>;
   /** The model that answers now, or null before one is known. */
   model(): ModelInfo | null;
-  minWords(): Promise<number>;
   now?(): Date;
 }
 
@@ -119,7 +118,6 @@ export function createStatsRecorder(deps: StatsRecorderDeps) {
           units: msg.units.map((u) => ({ words: u.w, probs: normalized(u.p) })),
           skipped: msg.skipped.map((s) => ({ words: s.w, why: s.why })),
           model: deps.model(),
-          minWords: await deps.minWords(),
         };
         await prune(date).catch(() => undefined);
         await deps.store.record(level, reading);

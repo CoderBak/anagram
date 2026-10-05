@@ -23,7 +23,7 @@ export interface Surface {
   /** The document's units, by the walker's claim protocol: what a live unit already owns
    *  exactly is left alone, the rest comes back fresh. A surface without it only places
    *  chips, and the page is always walked. */
-  collect?(claim: (nodes: Text[]) => "take" | "skip", mergeShorts: boolean, minWords: number): Unit[];
+  collect?(claim: (nodes: Text[]) => "take" | "skip", minWords?: number): Unit[];
   /** Ranges over the page for stretches of one of its units; undefined for any other unit. */
   ranges(unit: Unit, spans: readonly Span[]): Range[][] | null | undefined;
   /** Put a chip for one of its units (true), fail to (false), or null for any other unit. */

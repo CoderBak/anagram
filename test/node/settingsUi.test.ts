@@ -49,7 +49,7 @@ describe("Settings is one list", () => {
 
   it("names its rows: Engine, Sites, PDFs, Marks, Length, Cache and Statistics", () => {
     const labels = [...html.matchAll(/class="group-label"[^>]*data-i18n="(\w+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["optEngine", "optSites", "optPdfs", "optMarks", "optLength", "optCache", "optStats"]);
+    expect(labels).toEqual(["optEngine", "optSites", "optPdfs", "optMarks", "optCache", "optStats"]);
   });
 
   it("no longer holds the PDF reader or the paste page: the popup does", () => {

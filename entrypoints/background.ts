@@ -38,7 +38,7 @@ import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";
 import type { PdfReopenResult } from "../lib/pdf/sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../lib/surface";
-import { settings, cacheModeStorage, enabledForSite } from "../lib/settings/settings";
+import { settings, cacheModeStorage, enabledForSite, RETIRED_SETTINGS } from "../lib/settings/settings";
 import { t } from "../lib/i18n";
 import { handleNativePageMessage } from "../lib/backend/nativeBridge";
 import { readEngineSetup } from "../lib/backend/engineSetup";
@@ -52,7 +52,6 @@ import { NATIVE_MESSAGE, NATIVE_UNINSTALL } from "../lib/backend/nativeProtocol"
 import { createStatsRecorder } from "../lib/stats/worker";
 import { openStatsStore } from "../lib/stats/store";
 import { retentionOf, statsLevelOf } from "../lib/stats/model";
-import { minWordsOf } from "../lib/dom/text";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 /** Where a text was read, for the caches pages share (RequestOrigin.partition in
@@ -195,7 +194,6 @@ export default defineBackground(() => {
       const { id, ver, calibration } = getScoreClient().model();
       return id === "none" ? null : { id, ver, calibration };
     },
-    minWords: async () => minWordsOf(await settings.minWords.getValue()),
   });
 
   // Context menus; recreated idempotently on install/update. The PDF entry is offered on
@@ -204,6 +202,7 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install" || details.reason === "update") {
       void browser.storage.local.remove(EXTENSION_UPDATE_KEY);
+      if (details.reason === "update") void browser.storage.local.remove(RETIRED_SETTINGS);
     }
     void browser.contextMenus.removeAll().then(() => {
       browser.contextMenus.create({

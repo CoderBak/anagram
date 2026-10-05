@@ -71,7 +71,7 @@ function recorder(over: Partial<StatsRecorderDeps> = {}) {
   let clock = new Date(2026, 9, 4, 9, 15);
   const deps: StatsRecorderDeps = {
     store, level: async () => "pages", retention: async () => 90, enabledFor: async () => true,
-    model: () => ({ id: "fake-editlens", ver: "test", calibration: "none" }), minWords: async () => 50,
+    model: () => ({ id: "fake-editlens", ver: "test", calibration: "none" }),
     now: () => clock, ...over,
   };
   return { store, rec: createStatsRecorder(deps), setClock: (d: Date) => { clock = d; } };
@@ -130,11 +130,10 @@ describe("what each level keeps", () => {
     expect(applyReading("sites", reading(), { day, site: { date: "2026-10-04", site: "example.com", tally: emptyTally() } }).site!.tally.scored).toBe(100);
   });
 
-  it("notes the day's models and minimum lengths, each once", () => {
-    let records = applyReading("daily", reading({ model: { id: "m", ver: "1", calibration: "c" }, minWords: 50 }), {});
-    records = applyReading("daily", reading({ model: { id: "m", ver: "1", calibration: "c" }, minWords: 75 }), records);
+  it("notes the day's models, each once", () => {
+    let records = applyReading("daily", reading({ model: { id: "m", ver: "1", calibration: "c" } }), {});
+    records = applyReading("daily", reading({ model: { id: "m", ver: "1", calibration: "c" } }), records);
     expect(records.day!.models).toEqual([{ id: "m", ver: "1", calibration: "c" }]);
-    expect(records.day!.minWords).toEqual([50, 75]);
   });
 });
 
@@ -200,7 +199,7 @@ describe("what the worker takes from the browser", () => {
 });
 
 describe("the export", () => {
-  const ctx: ExportContext = { generatedAt: "2026-10-04", extensionVersion: "0.8.2", flagFrom: "heavy", minWords: 50, mergeShorts: true };
+  const ctx: ExportContext = { generatedAt: "2026-10-04", extensionVersion: "0.8.2", flagFrom: "heavy" };
   async function recordedByPage() {
     const { store, rec, setClock } = recorder();
     await rec.record(message({ units: [{ w: 100, p: AI }, { w: 50, p: HUMAN }], skipped: [{ w: 20, why: "short" }], dwell: 9 }), tab("https://example.com/a"), "content");
@@ -214,7 +213,7 @@ describe("the export", () => {
     const file = buildExport(range, "2026-10-01", "2026-10-04", recordedLevel(range), "pages", ctx);
     expect(file).toMatchObject({ schema: "anagram-stats", version: 1, generatedAt: "2026-10-04", extension: { version: "0.8.2" },
       model: [{ id: "fake-editlens", ver: "test", calibration: "none" }], level: { recorded: "pages", exported: "pages" }, range: { from: "2026-10-01", to: "2026-10-04" },
-      settings: { minWords: [50], minWordsNow: 50, flagFrom: "heavy" }, scale: { bands: ["human", "light", "heavy", "ai"] } });
+      settings: { minWords: 50, flagFrom: "heavy" }, scale: { bands: ["human", "light", "heavy", "ai"] } });
     expect(file.words).toEqual({ viewed: 210, scored: 190 });
     expect(file.coverage).toEqual({ short: 20, language: 0, unavailable: 0 });
     expect(file.days.map((d) => d.date)).toEqual(["2026-10-03", "2026-10-04"]);

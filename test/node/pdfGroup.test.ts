@@ -102,13 +102,8 @@ describe("a PDF's short paragraphs", () => {
     // 32 words a paragraph: at the model's 75 words the three together clear the floor, the
     // two after the second heading do not and are read by nobody — exactly what the walker
     // does on a page. At the shipped 50 the two are one unit of their own.
-    expect(groupsOf(blocks, true, 75)).toEqual([[1, 2, 3]]);
-    expect(groupsOf(blocks, true, 50)).toEqual([[1, 2, 3], [5, 6]]);
-  });
-
-  it("reads nothing under the floor at all in strict per-paragraph mode", () => {
-    const blocks = reflowPdf([shortParagraphPage()]);
-    expect(groupsOf(blocks, false)).toEqual([]);
+    expect(groupsOf(blocks, 75)).toEqual([[1, 2, 3]]);
+    expect(groupsOf(blocks, 50)).toEqual([[1, 2, 3], [5, 6]]);
   });
 
   it("still gives every full paragraph a unit of its own", () => {
@@ -182,9 +177,9 @@ describe("a PDF's short paragraphs", () => {
     if (blocks.length !== 5) return; // the gutter finder did not see two columns here
     expect(blocks[3]!.columnBreak).toBe(true);
     expect(blocks[1]!.columnBreak).toBe(false);
-    expect(groupsOf(blocks, true, 75)).toEqual([[0, 1, 2]]);
+    expect(groupsOf(blocks, 75)).toEqual([[0, 1, 2]]);
     // At 50 the right column's two are enough by themselves — still never read with the left.
-    expect(groupsOf(blocks, true, 50)).toEqual([[0, 1, 2], [3, 4]]);
+    expect(groupsOf(blocks, 50)).toEqual([[0, 1, 2], [3, 4]]);
   });
   it("reads the short tail a page cut off at a full stop with the paragraph before it, and no shorts together across the page", () => {
     const words = (n: number, end = "."): string => `${Array.from({ length: n }, (_, i) => WORDS[i % WORDS.length]).join(" ")}${end}`;

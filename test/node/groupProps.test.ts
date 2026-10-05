@@ -19,7 +19,11 @@ import {
   modelSized,
   type PlanBlock,
 } from "../../lib/plan/group";
-import { MIN_WORDS_CHOICES } from "../../lib/dom/text";
+import { MIN_WORDS } from "../../lib/dom/text";
+
+/** The floor the extension reads at, and others the benchmarks measure at: the grouping's
+ *  properties hold at any. */
+const FLOORS: readonly number[] = [25, MIN_WORDS, 75, 100, 150];
 import { WINDOW_CHARS } from "../../lib/capture/windows";
 import { rng, seeds, type Rng } from "./random";
 
@@ -54,7 +58,7 @@ const roleOf = (b: PlanBlock): string => b.role ?? "prose";
 describe("groupBlocks", () => {
   it("returns groups in document order, each ascending, none overlapping", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       const groups = groupBlocks(blocks, floor);
       const seen = new Set<number>();
@@ -76,7 +80,7 @@ describe("groupBlocks", () => {
 
   it("gives every group the evidence floor", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       for (const g of groupBlocks(blocks, floor)) {
         expect(clearsFloor(g.map((i) => blocks[i]!), floor)).toBe(true);
@@ -87,7 +91,7 @@ describe("groupBlocks", () => {
 
   it("keeps a group inside one model window unless the floor forbids the cut or an orphan would be lost", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       for (const g of groupBlocks(blocks, floor)) {
         const parts = g.map((i) => blocks[i]!);
@@ -104,7 +108,7 @@ describe("groupBlocks", () => {
 
   it("drops a short text only where no full paragraph of its stretch stands next to it", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       const placed = new Set(groupBlocks(blocks, floor).flat());
       blocks.forEach((b, i) => {
@@ -130,7 +134,7 @@ describe("groupBlocks", () => {
 
   it("never reads across a barrier, a block set apart, or a column break", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       for (const g of groupBlocks(blocks, floor)) {
         for (const i of g) expect(["prose", "apart"]).toContain(roleOf(blocks[i]!));
@@ -148,7 +152,7 @@ describe("groupBlocks", () => {
 
   it("reads every block that clears the floor by itself, and drops only orphans", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       const groups = groupBlocks(blocks, floor);
       const placed = new Set(groups.flat());
@@ -167,7 +171,7 @@ describe("groupBlocks", () => {
 
   it("is deterministic, and grouping one group again returns that same group", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const blocks = sequence(r, floor);
       const groups = groupBlocks(blocks, floor);
       expect(groupBlocks(blocks, floor)).toEqual(groups);
@@ -192,7 +196,7 @@ describe("modelSized", () => {
 
   it("keeps a stretch that fits one window whole", () => {
     forSeeds(200, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const stretch = shorts(r, floor);
       if (!fitsWindow(stretch)) return;
       expect(modelSized(stretch, floor)).toEqual([stretch]);
@@ -201,7 +205,7 @@ describe("modelSized", () => {
 
   it("divides in order, losing nothing and repeating nothing", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const stretch = shorts(r, floor);
       expect(modelSized(stretch, floor).flat()).toEqual(stretch);
     });
@@ -209,7 +213,7 @@ describe("modelSized", () => {
 
   it("gives every piece the floor once the whole stretch has it", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const stretch = shorts(r, floor);
       if (!clearsFloor(stretch, floor)) return;
       for (const piece of modelSized(stretch, floor)) expect(clearsFloor(piece, floor)).toBe(true);
@@ -218,7 +222,7 @@ describe("modelSized", () => {
 
   it("makes no more pieces than it needs to", () => {
     forSeeds(300, (r) => {
-      const floor = r.pick(MIN_WORDS_CHOICES);
+      const floor = r.pick(FLOORS);
       const stretch = shorts(r, floor);
       const pieces = modelSized(stretch, floor);
       expect(pieces.length).toBeGreaterThanOrEqual(1);

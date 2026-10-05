@@ -9,7 +9,7 @@
 //           <em>, links, drop caps — never splits a sentence, and neither does a
 //           sidenote floated into the margin: it is read after its paragraph. <br> and
 //           blank lines in preserved-whitespace contexts are paragraph breaks.
-//   asm   — a paragraph of at least the minimum length (Settings; CollectOptions.minWords)
+//   asm   — a paragraph of at least the minimum length (MIN_WORDS; CollectOptions.minWords)
 //           is a unit of its own. Consecutive SHORT runs of ONE VOICE (the lines of a post, list items, the short paragraphs of an
 //           article or of one comment) MERGE into multi-part units — short text gets
 //           covered instead of silently skipped. The stretch is read to its end and then
@@ -76,7 +76,7 @@ import {
   runQuoteDepth,
   skipOffsets,
   unitPartText,
-  DEFAULT_MIN_WORDS,
+  MIN_WORDS,
   MIN_LINE_WORDS,
   MODEL_MIN_WORDS,
   unitTextOf,
@@ -232,15 +232,9 @@ export interface CollectOptions {
    */
   claimFilter?: (nodes: Text[]) => "take" | "skip";
   /**
-   * Group sub-floor paragraphs with compatible neighbors of the same voice, and read a
-   * post that fits one model window whole (default). False = strict per-paragraph
-   * mode: every full paragraph by itself, short runs skipped.
-   */
-  mergeShorts?: boolean;
-  /**
-   * The evidence floor in words — the reader's minimum length (Settings, lib/dom/text.ts):
-   * a paragraph this long is a unit of its own, and shorter ones of one voice are grouped
-   * until they reach it. Default DEFAULT_MIN_WORDS.
+   * The evidence floor in words: a paragraph this long is a unit of its own, and shorter
+   * ones of one voice are grouped until they reach it. MIN_WORDS (lib/dom/text.ts), which is
+   * what the extension reads at; another is for measuring (the benchmarks, the tests).
    */
   minWords?: number;
   /**
@@ -248,9 +242,7 @@ export interface CollectOptions {
    * under the evidence floor with nobody of its own voice to join. Called with its text
    * nodes as the assembler gives up on it, which is the only moment the answer exists —
    * it is not a property of anything `collectUnits` returns, and deriving it afterwards
-   * would mean reading the page a second time. Not called in strict per-paragraph mode
-   * (`mergeShorts: false`), where a short run is dropped before anything has decided
-   * whether it was prose or a timestamp.
+   * would mean reading the page a second time.
    */
   onShortText?: (nodes: Text[]) => void;
   /**
@@ -545,7 +537,7 @@ export function* collectUnitsInSlices(
     opts.scopesRead.add(el);
     return false;
   };
-  const asm = createAssembler(scopes, opts.mergeShorts ?? true, opts.minWords ?? DEFAULT_MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
+  const asm = createAssembler(scopes, opts.minWords ?? MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -1565,7 +1557,6 @@ interface Frame {
 function createAssembler(
   /** The voices of this scan (see scopesOfScan). */
   scopes: Scopes,
-  mergeShorts: boolean,
   /** The evidence floor (CollectOptions.minWords). */
   minWords: number,
   walkRoot: Element,
@@ -1885,10 +1876,6 @@ function createAssembler(
    * that fits one window is read whole (settle).
    */
   function full(r: Run): void {
-    if (!mergeShorts) {
-      release([r]); // strict per-paragraph mode: nothing is grouped, so nothing is held
-      return;
-    }
     const f = enter(scopeOf(r.container));
     catchUp(f);
     const lead = endGroup(f, r);
@@ -2085,7 +2072,7 @@ function createAssembler(
       return;
     }
     if (r.words >= minWords) full(r);
-    else if (mergeShorts) short(r); // strict per-paragraph mode: sub-floor runs skipped
+    else short(r);
   }
 
   return {
@@ -2097,7 +2084,6 @@ function createAssembler(
 
     owned(found: Found): void {
       const index = runIndex++;
-      if (!mergeShorts) return; // strict per-paragraph mode: nothing stands beside anything
       const f = enter(scopeOf(found.container));
       if (!f.live) {
         f.unread.push({ ...found, index });

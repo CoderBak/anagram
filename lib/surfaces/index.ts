@@ -10,7 +10,7 @@
 // document is not on it.
 import type { OrchestratorOptions } from "../capture/orchestrator";
 import { collectUnits } from "../dom/walker";
-import { DEFAULT_MIN_WORDS } from "../dom/text";
+import { MIN_WORDS } from "../dom/text";
 import type { MarkPainter, RangeLocator } from "../render/highlight";
 import type { Surface } from "./types";
 
@@ -63,7 +63,7 @@ export interface PageSurface {
 export function asPageSurface(surface: Surface): PageSurface {
   return {
     collect: (root, claim, opts) =>
-      surface.collect && surface.active() ? surface.collect(claim, opts.mergeShorts ?? true, opts.minWords ?? DEFAULT_MIN_WORDS) : collectUnits(root, opts),
+      surface.collect && surface.active() ? surface.collect(claim, opts.minWords ?? MIN_WORDS) : collectUnits(root, opts),
     placeBadge: (unit, host) => surface.place(unit, host),
     ranges: (unit, spans) => surface.ranges(unit, spans),
     painter: surface.painter ?? null,

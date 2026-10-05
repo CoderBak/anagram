@@ -152,8 +152,6 @@ Nothing is written to `storage.sync`, `storage.session` or `storage.managed`.
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `flagFrom` | the word paragraphs are flagged from: lightly edited, heavily edited (default) or AI-generated |
 | `underlineScope` | underlines on the flagged paragraphs (default) or on every paragraph read |
-| `mergeShorts` | group short paragraphs to reach the minimum length |
-| `minWords` | the minimum length in words: 25, 50, 75, 100 or 150 |
 | `statsLevel` | how much of the reading statistics is recorded: `off` (default), `daily`, `sites` or `pages` |
 | `statsRetentionDays` | how many days of reading statistics are kept: 30, 90 (default) or 365 |
 

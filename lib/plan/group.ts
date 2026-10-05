@@ -15,9 +15,9 @@
 // hands over the whole sequence at once and takes the groups back. Both get the same
 // floor, the same window and the same even division, because there is one copy of them.
 //
-// The thresholds themselves are NOT defined here — the floor is the reader's minimum length
-// (Settings; lib/dom/text.ts has the choices), handed in by every caller, and the window is
-// the model's (lib/capture/windows.ts).
+// The thresholds themselves are NOT defined here — the floor is the minimum length
+// (MIN_WORDS in lib/dom/text.ts, or another a benchmark measures at), handed in by every
+// caller, and the window is the model's (lib/capture/windows.ts).
 import { WINDOW_CHARS } from "../capture/windows";
 
 /** All the rules ever read of a block: how much writing it is. */
@@ -41,7 +41,7 @@ export function groupWords(blocks: readonly Sized[]): number {
   return total;
 }
 
-/** Enough writing to be judged at all: `floor` words, the reader's minimum length. */
+/** Enough writing to be judged at all: `floor` words, the minimum length. */
 export function clearsFloor(blocks: readonly Sized[], floor: number): boolean {
   return groupWords(blocks) >= floor;
 }

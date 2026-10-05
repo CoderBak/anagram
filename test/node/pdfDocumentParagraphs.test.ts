@@ -117,12 +117,12 @@ function layerOf(page: PdfPageText): { layer: Element; spans: HTMLElement[] } {
 const shape = (p: { order: number; text: string; words: number; page: number | undefined }) => ({ order: p.order, text: p.text, words: p.words, page: p.page });
 const unitShape = (u: Unit) => shape({ order: u.order, text: u.text, words: u.wordCount, page: u.page });
 
-function read(drawnPages: readonly number[], mergeShorts = true, floor = 50): { plan: DocumentParagraph[]; units: Unit[]; blocks: StructuredBlock[]; reader: ReturnType<typeof createStructuredReader>; layers: Map<number, Element> } {
+function read(drawnPages: readonly number[], floor = 50): { plan: DocumentParagraph[]; units: Unit[]; blocks: StructuredBlock[]; reader: ReturnType<typeof createStructuredReader>; layers: Map<number, Element> } {
   const { structure, pages } = documentOf();
   const reader = createStructuredReader(structure);
   // The reader has the text of every page, drawn or read ahead (entrypoints/reader/main.ts).
   const blocks = reader.blocks(pages);
-  const plan = documentParagraphs(blocks, (block) => reader.pagesOf(block as StructuredBlock), mergeShorts, floor);
+  const plan = documentParagraphs(blocks, (block) => reader.pagesOf(block as StructuredBlock), floor);
   const source = createPdfUnitSource();
   source.setBlocks(blocks);
   const layers = new Map<number, Element>();
@@ -131,7 +131,7 @@ function read(drawnPages: readonly number[], mergeShorts = true, floor = 50): { 
     layers.set(n, layer);
     source.setPage(n, { layer, spans });
   }
-  return { plan, units: source.collect(() => "take", mergeShorts, floor), blocks, reader, layers };
+  return { plan, units: source.collect(() => "take", floor), blocks, reader, layers };
 }
 
 describe("StructuredReader.pagesOf", () => {
@@ -210,8 +210,8 @@ describe("documentParagraphs", () => {
     expect(plan.map((p) => p.order)).toEqual(plan.map((_, i) => i));
   });
 
-  it.each([[false, 50], [true, 25], [true, 75]] as const)("is the units under the reader's own setting too (merge shorts %s, floor %i)", (merge, floor) => {
-    const { plan, units } = read([1, 2, 3], merge, floor);
+  it.each([25, 75])("is the units at another floor too (%i, as a benchmark measures)", (floor) => {
+    const { plan, units } = read([1, 2, 3], floor);
     expect(plan.length).toBeGreaterThan(0);
     expect(units.map(unitShape)).toEqual(plan.map(shape));
   });
@@ -321,7 +321,7 @@ describe("documentParagraphs and blocks on no page", () => {
       block(unread, 2, []),
     ];
     const pages = new Map<ReflowBlock, number[]>([[blocks[0]!, [1]], [blocks[1]!, []], [blocks[2]!, [2]]]);
-    const plan = documentParagraphs(blocks, (b) => pages.get(b)!, false, 1);
+    const plan = documentParagraphs(blocks, (b) => pages.get(b)!, 1);
     expect(plan.map((p) => p.text)).toEqual([first, unread]);
     expect(plan.map((p) => p.order)).toEqual([0, 2]);
     expect(plan.map((p) => p.pages)).toEqual([[1], [2]]);

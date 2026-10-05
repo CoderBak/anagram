@@ -12,7 +12,7 @@ import { createStructuredReaderInSlices, type StructuredBlock, type StructuredRe
 import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, documentParagraphs, planInSlices, type DocumentParagraph, type PdfUnitSource } from "../../lib/pdf/units";
 import { createPacer, inScope, readingDistance, seedFor, takeBatch, type Pacer } from "../../lib/pdf/readAhead";
-import { DEFAULT_MIN_WORDS } from "../../lib/dom/text";
+import { MIN_WORDS } from "../../lib/dom/text";
 import { pdfFileName, pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
 import { claimPdfBytes } from "../../lib/pdf/handoff";
 import type { PdfReopenResult } from "../../lib/pdf/sourceTransfer";
@@ -94,8 +94,6 @@ const unread = new Set<number>();
 let plan: DocumentParagraph[] | null = null;
 /** Their texts: a verdict kept on any other is of a paragraph read differently since. */
 let planTexts: Set<string> | null = null;
-/** The settings the units are read under, as the orchestrator last asked for them. */
-let reading = { mergeShorts: true, minWords: DEFAULT_MIN_WORDS as number };
 /** One across documents: how fast a pass is here is the device's, not the document's. */
 let pacer: Pacer = createPacer();
 /** The menu asked for the whole document where only the pages around are read on their own. */
@@ -142,7 +140,7 @@ function rebuild(): void {
     const reader = structure;
     const blocks = reader.blocks([...texts.values()].sort((a, b) => a.page - b.page));
     source.setBlocks(blocks);
-    plan = documentParagraphs(blocks, (block) => reader.pagesOf(block as StructuredBlock), reading.mergeShorts, reading.minWords);
+    plan = documentParagraphs(blocks, (block) => reader.pagesOf(block as StructuredBlock));
     planTexts = new Set(plan.map((p) => p.text));
   } else {
     source.setBlocks(reflowRendered([...pages.values()].map(({text}) => text).sort((a, b) => a.page - b.page)));
@@ -196,7 +194,7 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
     if (!reader || owned !== generation) return false;
     await readAround(pages.keys(), owned);
     if (owned !== generation) return false;
-    await planInSlices(await reader.blocksInSlices([...texts.values()].sort((a, b) => a.page - b.page)), reading.minWords);
+    await planInSlices(await reader.blocksInSlices([...texts.values()].sort((a, b) => a.page - b.page)), MIN_WORDS);
     if (owned !== generation) return false;
     structure = reader;
     rebuild();
@@ -484,15 +482,11 @@ async function startAnalysis(owned: number): Promise<void> {
     oneUnitBatches: () => pacer.speed() !== "fast",
     // The read-ahead keeps its own pace, and waits for the page's own queue to empty.
     pacedBackground: false,
-    collect: (_root, claim, options) => {
+    collect: (_root, claim) => {
       if (answered === claim) return [];
       answered = claim;
-      // The read-ahead reads paragraphs as the units are read: the same grouping and floor.
-      if (options.mergeShorts !== reading.mergeShorts || options.minWords !== reading.minWords) {
-        reading = { mergeShorts: options.mergeShorts ?? true, minWords: options.minWords ?? DEFAULT_MIN_WORDS };
-        rebuild();
-      } else prune();
-      return currentSource.collect(claim, options.mergeShorts, options.minWords);
+      prune();
+      return currentSource.collect(claim);
     },
     placeBadge: (unit, host) => placeChip({pageOf: (layer) => [...pages.values()].find(({view}) => view.layer === layer)?.view}, unit, host),
   });

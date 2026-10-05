@@ -87,16 +87,13 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
   await expect.poll(overlay, { message: failed }).toMatchObject({ hosts: 1, chips: 2, v1: false, v2: true, refreshable: true });
 });
 
-// Page 1 alone is two units, the second of them the two short paragraphs read with the first
-// half of P4; page 2 is drawn once those have their chips, and P4 is then one paragraph across
-// the page break, P2 and P3 are read again without it, and P5 is read: four units. Page 3
-// makes a fifth. What the engine is sent is the document's paragraphs, not the viewer's lines.
+// Page 1 alone is three units: P1, the two short paragraphs read together, and the first half
+// of P4, long enough by itself; page 2 is drawn once those have their chips, and P4 is then one
+// paragraph across the page break, and P5 is read: four units. Page 3 makes a fifth. What the
+// engine is sent is the document's paragraphs, not the viewer's lines.
 test("Google Drive preview: the document's paragraphs are read (lines joined, hyphens mended, pages sewn — a page drawn after the first units were sent joins the paragraph running onto it), chips and marks drawn over the page", async ({ context, page, nativeHost, chunkLoads, storage }) => {
   // Every paragraph read is underlined, so the marks are checked on all of them.
   await storage.set({ underlineScope: "all" });
-  // The document's paragraphs were written around the model's 75 words (P2 and P3 under it,
-  // read together): that is the minimum this reading is checked at.
-  await storage.set({ minWords: 75 });
   const fixture = readFileSync(join(FIXTURES, "surfaces", "drive-preview.html"), "utf8");
   const from = fixture.indexOf('<div class="kd-page" data-page-slot="2"');
   const to = fixture.indexOf('<div class="kd-page" data-page-slot="3"');
@@ -114,10 +111,10 @@ test("Google Drive preview: the document's paragraphs are read (lines joined, hy
   const draw = (n) => page.evaluate((n) => {
     document.querySelector(`[data-page-slot="${n}"]`).replaceWith(document.getElementById(`page-${n}`).content.firstElementChild.cloneNode(true));
   }, n);
-  await expect.poll(onPages, { message: `${drive} (page 1)` }).toBeGreaterThanOrEqual(2);
-  // A pending chip can answer that wait before the batch leaves: wait for page 1's two units
+  await expect.poll(onPages, { message: `${drive} (page 1)` }).toBeGreaterThanOrEqual(3);
+  // A pending chip can answer that wait before the batch leaves: wait for page 1's three units
   // to reach the engine, so "sent before page 2 was drawn" means what it says.
-  await expect.poll(() => nativeHost.textsSince(mark).length, { message: `${drive} (page 1 sent)` }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => nativeHost.textsSince(mark).length, { message: `${drive} (page 1 sent)` }).toBeGreaterThanOrEqual(3);
   const beforeDraw = nativeHost.textsSince(mark).length;
   await draw(2);
   await expect.poll(onPages, { message: `${drive} (pages 1 and 2)` }).toBeGreaterThanOrEqual(4);
@@ -135,8 +132,9 @@ test("Google Drive preview: the document's paragraphs are read (lines joined, hy
   expect.soft(await page.locator(".kd-page > [data-anagram] > div:not([hidden])").count(), `${drive} (marks drawn)`).toBeGreaterThan(20);
   const sent = nativeHost.textsSince(mark);
   expect.soft(sent.filter((t) => t.includes("north-") || /show\s*\n\s*the stones/.test(t)).map((t) => t.slice(0, 40)), `${drive} (no viewer lines)`).toEqual([]);
-  // Page 1 alone read P4's first half with P2 and P3 before page 2 was drawn.
-  expect.soft(sent.slice(0, beforeDraw).some((s) => flat(s).startsWith(DRIVE.p2) && flat(s).endsWith("We had never heard of these")), `${drive} (half of P4 read before page 2)`).toBe(true);
+  // Page 1 alone read P4's first half, and P2 and P3 together, before page 2 was drawn.
+  expect.soft(sent.slice(0, beforeDraw).some((s) => flat(s).startsWith(DRIVE.p4.slice(0, 40)) && flat(s).endsWith("We had never heard of these")), `${drive} (half of P4 read before page 2)`).toBe(true);
+  expect.soft(sent.slice(0, beforeDraw).some((s) => flat(s) === `${DRIVE.p2} ${DRIVE.p3}`), `${drive} (P2 and P3 read together)`).toBe(true);
   expect.soft(chunkLoads.get(page) ?? 0, `${drive} (the surfaces chunk)`).toBeGreaterThan(0);
 });
 

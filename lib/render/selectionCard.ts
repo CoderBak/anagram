@@ -18,8 +18,7 @@ import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
 import { DIST_CSS, distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
-import { countWords } from "../dom/text";
-import { readMinWords } from "../settings/settings";
+import { countWords, MIN_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
 const CARD_CSS = `
@@ -203,10 +202,8 @@ export async function analyzeSelection(): Promise<void> {
   // computation, so without it the control announces as the glyph "✕".
   const closeBtn = `<button class="close" type="button" aria-label="${t("selClose")}" title="${t("selClose")}">✕</button>`;
 
-  // The reader's minimum length (Settings) is the selection's floor as it is a paragraph's.
-  const floor = await readMinWords();
-  if (_host !== host) return; // dismissed while the setting was read
-
+  // The minimum length is the selection's floor as it is a paragraph's.
+  const floor = MIN_WORDS;
   if (words < floor) {
     card.innerHTML =
       closeBtn +

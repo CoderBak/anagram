@@ -1059,18 +1059,6 @@
     "message": "Off",
     "description": "Option: no underline."
   },
-  "optMerge": {
-    "message": "Group short paragraphs",
-    "description": "Switch: analyze short neighbouring paragraphs together."
-  },
-  "optMinWords": {
-    "message": "Minimum words",
-    "description": "Settings, Reading: label of the select that sets how many words a paragraph (or a group of short ones) needs to be analyzed."
-  },
-  "optMinWordsValue": {
-    "message": "$1 words",
-    "description": "Settings, Reading: one choice of the minimum length. $1 = a number of words (25, 50, 75, 100 or 150)."
-  },
   "optAutoOpenPdfs": {
     "message": "Open PDFs in Anagram automatically",
     "description": "Switch: open PDFs in the reader automatically."
@@ -1263,20 +1251,12 @@
     "message": "on the processor",
     "description": "Settings engine row: the model runs on the CPU."
   },
-  "optMinWordsHint": {
-    "message": "Under 75 words is less reliable.",
-    "description": "Settings: tiny hint under the minimum length."
-  },
   "optEngine": {
     "message": "Engine",
     "description": "Settings: row label."
   },
   "optPdfs": {
     "message": "PDFs",
-    "description": "Settings: row label."
-  },
-  "optLength": {
-    "message": "Length",
     "description": "Settings: row label."
   },
   "optCache": {

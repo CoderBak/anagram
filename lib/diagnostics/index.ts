@@ -13,7 +13,7 @@ import { messageLocale } from "../i18n";
 import { loadDiagnostics } from "../lazy";
 import { ACTIONS } from "../messaging/protocol";
 import type { BackendStatus } from "../messaging/protocol";
-import { effectiveRule, readMinWords, settings } from "../settings/settings";
+import { effectiveRule, settings } from "../settings/settings";
 import type { DaemonFacts, DiagnosticsEnv } from "./report";
 
 /** What the content script knows about this page and the chunk cannot ask for. */
@@ -90,13 +90,11 @@ async function copyText(text: string): Promise<CopyResult["via"]> {
 
 export async function copyPageDiagnostics(facts: DiagnosticsFacts): Promise<CopyResult> {
   const manifest = browser.runtime.getManifest();
-  const [chunk, daemon, rule, globallyEnabled, mergeShorts, minWords, displayMode] = await Promise.all([
+  const [chunk, daemon, rule, globallyEnabled, displayMode] = await Promise.all([
     loadDiagnostics(),
     daemonFacts(),
     effectiveRule(facts.host).catch(() => null),
     settings.enabled.getValue().catch(() => true),
-    settings.mergeShorts.getValue().catch(() => true),
-    readMinWords(),
     settings.displayMode.getValue().catch(() => "all"),
   ]);
   const text = await chunk.buildDiagnostics({
@@ -105,8 +103,6 @@ export async function copyPageDiagnostics(facts: DiagnosticsFacts): Promise<Copy
     manifestVersion: manifest.manifest_version,
     uiLanguage: uiLanguage(),
     messageLocale: messageLocale(),
-    mergeShorts,
-    minWords,
     displayMode,
     siteRule: rule,
     globallyEnabled,

@@ -23,7 +23,7 @@ import { CONTRACT_VERSION, modelDim } from "../contract";
 import { collectUnitsInSlices, inPageOrder, type CollectOptions } from "../dom/walker";
 import { finishInSlices } from "../slices";
 import { restoreSplits } from "../dom/splits";
-import { partTextOf, minWordsOf, isShortText, DEFAULT_MIN_WORDS, MAX_UNIT_TEXT_CHARS, type MinWords } from "../dom/text";
+import { partTextOf, isShortText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
@@ -184,8 +184,6 @@ interface SettingsSnapshot {
   underlineScope: "flagged" | "all";
   displayMode: "all" | "flagged";
   flagFrom: FlagFrom;
-  mergeShorts: boolean;
-  minWords: MinWords;
 }
 
 /** Storage answered nothing (dead extension context) — boot with the shipped defaults. */
@@ -194,8 +192,6 @@ const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   underlineScope: "flagged",
   displayMode: "all",
   flagFrom: DEFAULT_FLAG_FROM,
-  mergeShorts: true,
-  minWords: DEFAULT_MIN_WORDS,
 };
 
 export interface OrchestratorOptions {
@@ -298,14 +294,10 @@ export function createOrchestrator(
   /** Underlines on the flagged paragraphs, or on every paragraph read (Settings). */
   let underlineScope: "flagged" | "all" = "flagged";
   const flagged = (r: ScoreResult): boolean => isFlagged(r, flagFrom);
-  let mergeShorts = true;
-  let minWords: MinWords = DEFAULT_MIN_WORDS;
   let unwatchHighlights: (() => void) | null = null;
   let unwatchDisplay: (() => void) | null = null;
   let unwatchFlagFrom: (() => void) | null = null;
   let unwatchUnderlineScope: (() => void) | null = null;
-  let unwatchMerge: (() => void) | null = null;
-  let unwatchMinWords: (() => void) | null = null;
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
   let l1Dim: string | null = null;
@@ -712,8 +704,6 @@ export function createOrchestrator(
   function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip", changed?: readonly Node[], meter?: { waited: number }): Unit[] | Promise<Unit[]> {
     const options: CollectOptions = {
       claimFilter,
-      mergeShorts,
-      minWords,
       scopesRead,
       ...(changed ? { changed } : {}),
       onShortText: (nodes) => {
@@ -1215,21 +1205,6 @@ export function createOrchestrator(
     setHighlightsVisible(visible && highlightsEnabled);
   }
 
-  /** Merging changes the segmentation itself, so the page must be collected again. */
-  function applyMergeShorts(v: boolean): void {
-    if (v === mergeShorts) return;
-    mergeShorts = v;
-    if (started) rescan();
-  }
-
-  /** The minimum length decides what is read and what is grouped: the same re-collection. */
-  function applyMinWords(v: unknown): void {
-    const next = minWordsOf(v);
-    if (next === minWords) return;
-    minWords = next;
-    if (started) rescan();
-  }
-
   function updateToolbar(): void {
     void notifyToolbarBadge(flaggedCount());
   }
@@ -1539,21 +1514,17 @@ export function createOrchestrator(
   /** One awaited read of every setting the first collect depends on. */
   async function readSettings(): Promise<SettingsSnapshot> {
     try {
-      const [showHighlights, scope, mode, from, merge, floor] = await Promise.all([
+      const [showHighlights, scope, mode, from] = await Promise.all([
         settings.showHighlights.getValue(),
         settings.underlineScope.getValue(),
         settings.displayMode.getValue(),
         settings.flagFrom.getValue(),
-        settings.mergeShorts.getValue(),
-        settings.minWords.getValue(),
       ]);
       return {
         showHighlights,
         underlineScope: scope === "all" ? "all" : "flagged",
         displayMode: mode,
         flagFrom: flagFromOf(from),
-        mergeShorts: merge,
-        minWords: minWordsOf(floor),
       };
     } catch (e) {
       // Storage throws once the extension context is invalidated (reload/update).
@@ -1571,8 +1542,6 @@ export function createOrchestrator(
     underlineScope = s.underlineScope;
     displayMode = s.displayMode;
     flagFrom = s.flagFrom;
-    mergeShorts = s.mergeShorts;
-    minWords = s.minWords;
     setHighlightsVisible(visible && highlightsEnabled);
   }
 
@@ -1587,10 +1556,6 @@ export function createOrchestrator(
       unwatchFlagFrom = settings.flagFrom.watch(applyFlagFrom);
       unwatchUnderlineScope?.();
       unwatchUnderlineScope = settings.underlineScope.watch(applyUnderlineScope);
-      unwatchMerge?.();
-      unwatchMerge = settings.mergeShorts.watch(applyMergeShorts);
-      unwatchMinWords?.();
-      unwatchMinWords = settings.minWords.watch(applyMinWords);
     } catch (e) {
       // Dead extension context: the page keeps the settings it booted with.
       log.warn("settings watchers unavailable", e);
@@ -1689,10 +1654,6 @@ export function createOrchestrator(
     unwatchFlagFrom = null;
     unwatchUnderlineScope?.();
     unwatchUnderlineScope = null;
-    unwatchMerge?.();
-    unwatchMerge = null;
-    unwatchMinWords?.();
-    unwatchMinWords = null;
     // The worker is still at this run's batches, and a new document session is what makes
     // it drop them. Only once the toolbar count is cleared, and only if nothing has started
     // again or replaced the session meanwhile: a page analyzed on a one-off grant is

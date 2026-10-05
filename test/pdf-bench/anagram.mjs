@@ -108,7 +108,7 @@ export async function runAnagram(engine, file, { window = 0, minWords } = {}) {
   return {
     numPages, producer, creator, pages, blocks,
     words: pipeline.planWords(blocks),
-    units: pipeline.unitsOf(blocks, true, minWords),
+    units: pipeline.unitsOf(blocks, minWords),
     timing: { extractMs, reflowMs, totalMs: extractMs.reduce((a, b) => a + b, 0) + reflowMs },
   };
 }
@@ -128,7 +128,7 @@ export async function runStructured(engine, file, structure, structureMs = 0, { 
   return {
     numPages, producer, creator, pages, blocks,
     words: pipeline.planWords(blocks),
-    units: pipeline.unitsOf(blocks, true, minWords),
+    units: pipeline.unitsOf(blocks, minWords),
     timing: { extractMs, reflowMs, structureMs, totalMs: extractMs.reduce((a, b) => a + b, 0) + reflowMs + structureMs },
   };
 }

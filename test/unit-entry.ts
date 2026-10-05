@@ -3,17 +3,15 @@
 // injects it into a real Chromium page (the walker needs real computed styles,
 // which jsdom cannot provide) and runs table-driven cases against it.
 import { collectUnits as walk, type CollectOptions } from "../lib/dom/walker";
-import { MODEL_MIN_WORDS } from "../lib/dom/text";
 
-/**
- * The walker at the open model's training minimum, 75 words: the floor every case and every
- * structural fixture here was written for, when it was the only one. A case about the
- * minimum length Settings offers passes `minWords` itself (and the fixtures are also walked
- * at every other floor, for the invariants that hold at any: no two voices, no chrome).
- */
+/** The walker as the extension runs it, at MIN_WORDS (50). A case about another floor — the
+ *  ones the benchmarks measure at — passes `minWords` itself, and the fixtures are also walked
+ *  at FLOORS for the invariants that hold at any: no two voices, no chrome. */
 export function collectUnits(root?: ParentNode, opts: CollectOptions = {}) {
-  return walk(root, { minWords: MODEL_MIN_WORDS, ...opts });
+  return walk(root, opts);
 }
+/** Floors a measurement may read at; the extension reads at MIN_WORDS. */
+export const FLOORS = [25, 50, 75, 100, 150];
 export { inPageOrder, collectUnitsInSlices, MAX_WALK_DEPTH } from "../lib/dom/walker";
 export { noteShadowHost } from "../lib/dom/shadow";
 export { createScopes } from "../lib/dom/scope";
@@ -32,8 +30,7 @@ export {
   endsInColon,
   wordShape,
   MODEL_MIN_WORDS,
-  DEFAULT_MIN_WORDS,
-  MIN_WORDS_CHOICES,
+  MIN_WORDS,
   isShortText,
   MIN_MERGE_WORDS,
   MIN_SENTENCE_WORDS,

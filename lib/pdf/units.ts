@@ -38,7 +38,7 @@ import {
   wordShape,
   MAX_UNIT_TEXT_CHARS,
   MIN_SENTENCE_WORDS,
-  DEFAULT_MIN_WORDS,
+  MIN_WORDS,
   type Unit,
   type UnitPart,
 } from "../dom/text";
@@ -73,11 +73,10 @@ export interface PdfUnitSource {
   /**
    * The document's units, as `OrchestratorOptions.collect` asks for them: everything a
    * live unit already owns exactly is left alone, and the rest comes back fresh.
-   * `mergeShorts` is the reader's own setting, exactly as the walker takes it: false is
-   * strict per-paragraph mode, in which a paragraph under the floor is read by nobody, and
-   * `minWords` is that floor (Settings, CollectOptions.minWords).
+   * `minWords` is the floor, MIN_WORDS unless a measurement asks for another
+   * (CollectOptions.minWords).
    */
-  collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts?: boolean, minWords?: number): Unit[];
+  collect(claim: (nodes: Text[]) => "take" | "skip", minWords?: number): Unit[];
   /**
    * Ranges over the page's own glyphs for each of `spans` — what lib/render/highlight.ts
    * paints instead of re-deriving the text from the nodes, which for a PDF never matches.
@@ -187,23 +186,12 @@ export function planInSlices(blocks: readonly ReflowBlock[], floor: number): Pro
 /** Blocks planned between two looks at the clock. */
 const PLAN_SLICE = 16;
 
-/** Strict per-paragraph mode, as the walker means it (CollectOptions.mergeShorts false):
- *  every block that clears the floor by itself, and nothing else. */
-function soloGroups(plan: readonly PlanBlock[], floor: number): number[][] {
-  const out: number[][] = [];
-  plan.forEach((b, i) => {
-    if (b.role !== "barrier" && b.role !== "skip" && b.words >= floor) out.push([i]);
-  });
-  return out;
-}
-
 /**
  * Which blocks are read together, as groups of indices into `blocks`. Pure — the vitest
  * suite drives it with reflowed pages and nothing else (test/node/pdfGroup.test.ts).
  */
-export function groupsOf(blocks: readonly ReflowBlock[], mergeShorts = true, floor: number = DEFAULT_MIN_WORDS): number[][] {
-  const plan = planOf(blocks, floor);
-  return mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
+export function groupsOf(blocks: readonly ReflowBlock[], floor: number = MIN_WORDS): number[][] {
+  return groupBlocks(planOf(blocks, floor), floor);
 }
 
 /** A unit's text: its paragraphs joined the way a merged unit's text is joined everywhere
@@ -241,11 +229,10 @@ export interface DocumentParagraph {
 export function documentParagraphs(
   blocks: readonly ReflowBlock[],
   pagesOf: (block: ReflowBlock) => readonly number[],
-  mergeShorts = true,
-  floor: number = DEFAULT_MIN_WORDS,
+  floor: number = MIN_WORDS,
 ): DocumentParagraph[] {
   const plan = planOf(blocks, floor);
-  const groups = mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
+  const groups = groupBlocks(plan, floor);
   const out: DocumentParagraph[] = [];
   groups.forEach((group, order) => {
     const members = group.map((at) => blocks[at]!);
@@ -295,9 +282,8 @@ export function createPdfUnitSource(): PdfUnitSource {
   const placed = new Map<string, Blueprint>();
   /** The blueprints of the current blocks, rebuilt when the reconstruction changes. */
   let built: Blueprint[] | null = null;
-  /** The settings the blueprints were built under: changing either changes the segmentation. */
-  let merged = true;
-  let builtFloor: number = DEFAULT_MIN_WORDS;
+  /** The floor the blueprints were built at: another changes the segmentation. */
+  let builtFloor: number = MIN_WORDS;
 
   function setBlocks(next: ReflowBlock[]): void {
     blocks = next;
@@ -383,12 +369,11 @@ export function createPdfUnitSource(): PdfUnitSource {
     return { parts, text, words, paragraphs: members.length, order, topElement, container, runs, nodes, minted: null };
   }
 
-  function rebuild(mergeShorts: boolean, floor: number): Blueprint[] {
-    if (built && merged === mergeShorts && builtFloor === floor && built.every((b) => b.nodes.every((n) => n.isConnected))) return built;
-    merged = mergeShorts;
+  function rebuild(floor: number): Blueprint[] {
+    if (built && builtFloor === floor && built.every((b) => b.nodes.every((n) => n.isConnected))) return built;
     builtFloor = floor;
     const plan = planOf(blocks, floor);
-    const groups = mergeShorts ? groupBlocks(plan, floor) : soloGroups(plan, floor);
+    const groups = groupBlocks(plan, floor);
     const out: Blueprint[] = [];
     groups.forEach((group, i) => {
       const p = build(group.map((at) => blocks[at]!), group.map((at) => plan[at]!.words), i);
@@ -435,13 +420,13 @@ export function createPdfUnitSource(): PdfUnitSource {
     return null;
   }
 
-  function collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts = true, minWords: number = DEFAULT_MIN_WORDS): Unit[] {
+  function collect(claim: (nodes: Text[]) => "take" | "skip", minWords: number = MIN_WORDS): Unit[] {
     const out: Unit[] = [];
     for (const [id, blueprint] of placed) {
       if (blueprint.nodes.some((node) => !node.isConnected)) placed.delete(id);
     }
     const taken: Blueprint[] = [];
-    for (const candidate of rebuild(mergeShorts, minWords)) {
+    for (const candidate of rebuild(minWords)) {
       // Two paragraphs on the very same nodes would restate each other at every collect: the
       // first is read.
       if (taken.some((other) => sameNodes(other, candidate))) continue;

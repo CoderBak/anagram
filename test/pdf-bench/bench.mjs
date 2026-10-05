@@ -273,7 +273,7 @@ async function zotero() {
     const known = base.get(doc.id);
     const result = {
       numPages: z.pages, analysedPages: z.pages, producer: known?.producer ?? "", creator: known?.creator ?? "",
-      blocks, words: pipeline.planWords(blocks), units: pipeline.unitsOf(blocks, true, MIN_WORDS),
+      blocks, words: pipeline.planWords(blocks), units: pipeline.unitsOf(blocks, MIN_WORDS),
       timing: { totalMs: z.ms }, features: known?.features ?? { twoColumn: false, lineNumbered: false, wordMade: false, mathShare: null },
     };
     const record = scoreDocument(dir, doc, result, await truthFor(doc, result.features.wordMade));

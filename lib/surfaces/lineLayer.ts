@@ -29,7 +29,7 @@ import type { PdfPageText, ReflowBlock } from "../pdf/reflow";
 import { createPdfUnitSource } from "../pdf/units";
 import { scaleColor, SCALE_STEPS } from "../render/scale";
 import type { MarkPainter } from "../render/highlight";
-import { unitParagraphs } from "../dom/text";
+import { MIN_WORDS, unitParagraphs } from "../dom/text";
 import { MARK_ATTR, type Unit } from "../types";
 import type { Span, Surface } from "./types";
 
@@ -194,7 +194,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
     units.setBlocks(reflowRuns(pages, sizes));
   }
 
-  function collect(claim: (nodes: Text[]) => "take" | "skip", mergeShorts: boolean, minWords: number): Unit[] {
+  function collect(claim: (nodes: Text[]) => "take" | "skip", minWords = MIN_WORDS): Unit[] {
     // A mutation burst asks once per changed root; the whole document answers the first.
     if (answered) return [];
     answered = true;
@@ -219,7 +219,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
     const handed = new WeakSet<Text>();
     const own = (nodes: Text[]): "take" | "skip" => (nodes.length > 0 && nodes.every((n) => handed.has(n)) ? "skip" : claim(nodes));
     const fresh: Unit[] = [];
-    for (let batch = units.collect(own, mergeShorts, minWords); batch.length > 0; batch = units.collect(own, mergeShorts, minWords)) {
+    for (let batch = units.collect(own, minWords); batch.length > 0; batch = units.collect(own, minWords)) {
       for (const unit of batch) {
         for (const part of unit.parts) for (const node of part.nodes) handed.add(node);
         mine.set(unit.id, unit);

@@ -28,10 +28,9 @@ export interface DayRecord {
   /** How many site and page records the day has — what the per-day bounds count. */
   siteCount: number;
   pageCount: number;
-  /** The models that scored the day's reading and the minimum lengths in force: both change
-   *  what the numbers mean, and either can change within a day. */
+  /** The models that scored the day's reading: a model changes what the numbers mean, and
+   *  can change within a day. */
   models: ModelInfo[];
-  minWords: number[];
 }
 
 /** A site's share of a day (level "sites" and up). The site is the host the tab showed,
@@ -72,7 +71,6 @@ export interface Reading {
   units: readonly ReadUnit[];
   skipped: readonly ReadSkip[];
   model?: ModelInfo | null;
-  minWords?: number | null;
 }
 
 /** A day keeps at most this many site and page records: past them its totals still count. */
@@ -100,13 +98,12 @@ export function applyReading(level: StatsLevel, reading: Reading, now: Records):
   const out: Records = {};
   if (words > 0) {
     const day: DayRecord = now.day ? structuredClone(now.day) : {
-      date: reading.date, level, total: emptyTally(), kinds: {}, siteCount: 0, pageCount: 0, models: [], minWords: [],
+      date: reading.date, level, total: emptyTally(), kinds: {}, siteCount: 0, pageCount: 0, models: [],
     };
     day.level = finer(day.level, level) as DayRecord["level"];
     addTally(day.total, read);
     addTally((day.kinds[reading.kind] ??= emptyTally()), read);
     note(day.models, reading.model);
-    note(day.minWords, reading.minWords);
     out.day = day;
     if (atLeast(level, "sites") && (now.site || day.siteCount < MAX_SITES_PER_DAY)) {
       if (!now.site) day.siteCount++;

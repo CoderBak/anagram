@@ -22,7 +22,7 @@ import {
   shortRole,
   unitPartText,
   unitTextOf,
-  DEFAULT_MIN_WORDS,
+  MIN_WORDS,
   type Unit,
 } from "../dom/text";
 import { groupBlocks, type BlockRole, type PlanBlock } from "../plan/group";
@@ -68,7 +68,7 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
     active: () => source.paragraphs() !== null,
     ranges: () => undefined,
     place: () => null,
-    collect(claim, mergeShorts, minWords = DEFAULT_MIN_WORDS) {
+    collect(claim, minWords = MIN_WORDS) {
       if (answered) return [];
       answered = true;
       queueMicrotask(() => {
@@ -83,9 +83,7 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
       });
       const usable = blocks.filter((b) => b.nodes.length > 0 && b.text !== "");
       const plan: PlanBlock[] = usable;
-      const groups = mergeShorts
-        ? groupBlocks(plan, minWords)
-        : usable.flatMap((b, i) => (b.role === "prose" && b.words >= minWords ? [[i]] : []));
+      const groups = groupBlocks(plan, minWords);
       const out: Unit[] = [];
       for (const group of groups) {
         const members = group.map((i) => usable[i]!);

@@ -127,7 +127,7 @@ export function measure(opts: MeasureOptions) {
   const mutated = false;
   const base = document.body;
   const t = performance.now();
-  const units: Unit[] = base ? inPageOrder(collectUnits(base, { mergeShorts: true, minWords: opts.minWords })) : [];
+  const units: Unit[] = base ? inPageOrder(collectUnits(base, { minWords: opts.minWords })) : [];
   const collectMs = performance.now() - t;
 
   const out = {

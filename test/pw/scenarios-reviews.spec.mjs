@@ -33,17 +33,3 @@ for (const [site, chips] of [["trustpilot", 4], ["googlemaps", 5], ["tripadvisor
     expect(got.find((r) => r.who === "reviewer-1")?.short, `${site}: the 96-word review's card does not`).toBe(false);
   });
 }
-
-test("the minimum length re-reads an open review page: at 25 words the 32-word review gets its chip, and back at 75 only the long ones keep theirs", async ({ page, pages, storage }) => {
-  pages.serve({ "/reviews-trustpilot.html": readFileSync(join(FIXTURES, "reviews-trustpilot.html"), "utf8") });
-  await page.goto(pages.url("/reviews-trustpilot.html"), { waitUntil: "load" });
-  await chipsSettle(page, 4);
-  const chipOf = async (who) => (await perReview(page)).find((r) => r.who === who)?.chips;
-  await storage.set({ minWords: 25 });
-  await chipsSettle(page, 5);
-  expect(await chipOf("reviewer-4"), "at 25 words the 32-word review is read").toBe(1);
-  expect(await chipOf("reviewer-2"), "…and the 18-word one still is not").toBe(0);
-  await storage.set({ minWords: 75 });
-  await chipsSettle(page, 2);
-  expect((await perReview(page)).filter((r) => r.chips > 0).map((r) => r.who), "at 75 words: the 96- and 140-word reviews").toEqual(["reviewer-1", "reviewer-6"]);
-});

@@ -25,7 +25,7 @@ export function statsRecords(date = localDate(), scale = 1) {
   const total = tally(8400, [5000, 1500, 724, 1176], [40, 10, 6, 9], [1200, 500, 100]);
   return {
     days: [{ date, level: "pages", total: s(total), siteCount: 2, pageCount: 1, kinds: { feed: s(feed), article: s(article) },
-      models: [{ id: "fake-editlens", ver: "test", calibration: "none" }], minWords: [50] }],
+      models: [{ id: "fake-editlens", ver: "test", calibration: "none" }] }],
     sites: [{ date, site: "news.example", tally: s(article) }, { date, site: "social.example", tally: s(feed) }],
     pages: [{ date, key: "https://news.example/story", url: "https://news.example/story", title: "A story", start: "09:15", dwell: 125, kind: "article", tally: s(tally(5400, [3500, 1000, 384, 516], [20, 5, 3, 5])) }],
   };

@@ -45,7 +45,7 @@ for (const subset of SUBSETS) {
 const write = (reading, pdf, blocks) => {
   const name = `${pdf.replace(/\.pdf$/, "")}_pg1_repeat1.md`;
   const text = blocks.map((b) => b.text).join("\n\n");
-  const units = pipeline.unitsOf(blocks).filter((u) => u.words >= pipeline.DEFAULT_MIN_WORDS).map((u) => u.text).join("\n\n");
+  const units = pipeline.unitsOf(blocks).filter((u) => u.words >= pipeline.MIN_WORDS).map((u) => u.text).join("\n\n");
   for (const [dir, body] of [[reading, text], [`${reading}-scored`, units]]) {
     const file = join(out, dir, name);
     mkdirSync(dirname(file), { recursive: true });

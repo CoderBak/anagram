@@ -6,6 +6,7 @@
 // saved as daily totals alone, and then it holds no site and no page, not even how many
 // there were. Every number is the stored one, rounded for the file.
 import type { ModelInfo } from "../contract";
+import { MIN_WORDS } from "../dom/text";
 import { SCORE_CUTS } from "../render/scale";
 import { atLeast, coarser, viewedWords, type StatsLevel, type Tally } from "./model";
 import type { DayRecord, PageRecord, SiteRecord } from "./record";
@@ -22,8 +23,6 @@ export interface ExportContext {
   extensionVersion: string;
   /** The reader's settings when the file was made. */
   flagFrom: string;
-  minWords: number;
-  mergeShorts: boolean;
 }
 
 /** A Tally as the file has it: words viewed and scored, expected words and units per band
@@ -41,7 +40,7 @@ export interface StatsExport extends ExportTally {
   generatedAt: string;
   extension: { version: string };
   model: ModelInfo[];
-  settings: { minWords: number[]; minWordsNow: number; flagFrom: string; mergeShorts: boolean };
+  settings: { minWords: number; flagFrom: string };
   scale: { bands: string[]; cuts: number[] };
   level: { recorded: StatsLevel; exported: ExportLevel };
   range: { from: string; to: string };
@@ -76,10 +75,8 @@ export function buildExport(range: StatsRange, from: string, to: string, recorde
   const level = (recorded === "off" ? "daily" : coarser(wanted, recorded)) as ExportLevel;
   const days = [...range.days].sort((a, b) => a.date.localeCompare(b.date));
   const models: ModelInfo[] = [];
-  const minWords = new Set<number>();
   for (const d of days) {
     for (const m of d.models) if (!models.some((x) => x.id === m.id && x.ver === m.ver && x.calibration === m.calibration)) models.push(m);
-    for (const n of d.minWords) minWords.add(n);
   }
   const out: StatsExport = {
     schema: EXPORT_SCHEMA,
@@ -87,7 +84,7 @@ export function buildExport(range: StatsRange, from: string, to: string, recorde
     generatedAt: ctx.generatedAt,
     extension: { version: ctx.extensionVersion },
     model: models,
-    settings: { minWords: [...minWords].sort((a, b) => a - b), minWordsNow: ctx.minWords, flagFrom: ctx.flagFrom, mergeShorts: ctx.mergeShorts },
+    settings: { minWords: MIN_WORDS, flagFrom: ctx.flagFrom },
     scale: { bands: ["human", "light", "heavy", "ai"], cuts: [...SCORE_CUTS].map((c) => Math.round(c * 10_000) / 10_000) },
     level: { recorded, exported: level },
     range: { from, to },

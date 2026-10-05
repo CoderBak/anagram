@@ -366,7 +366,7 @@ describe("a drawn paragraph whose text grows when the next page is read ahead", 
     let claims = 0;
     const {controller} = await reader({
       collect: (_root, claim, options) => {
-        const units = source.collect((nodes) => { claims++; return claim(nodes); }, options.mergeShorts, options.minWords);
+        const units = source.collect((nodes) => { claims++; return claim(nodes); }, options.minWords);
         minted.push(...units);
         return units;
       },
@@ -426,7 +426,7 @@ describe("a drawn page let go", () => {
     const minted: Unit[] = [];
     const {controller} = await reader({
       documentTexts,
-      collect: (_root, claim, options) => { const units = source.collect(claim, options.mergeShorts, 1); minted.push(...units); return units; },
+      collect: (_root, claim, options) => { const units = source.collect(claim, 1); minted.push(...units); return units; },
     });
     calls.renders[0]!(await calls.sends[0]!([minted[0]!], "viewport"), 0);
     expect(controller.pageReport().counts.read).toBe(1);

@@ -1,12 +1,15 @@
 // Storage-backed reading preferences and per-site rules.
 import { storage } from "#imports";
 import type { ScoreCacheMode } from "../cachePolicy";
-import { DEFAULT_MIN_WORDS, minWordsOf, type MinWords } from "../dom/text";
 import { DEFAULT_FLAG_FROM, type FlagFrom } from "../render/flagLevel";
 import { DEFAULT_RETENTION, DEFAULT_STATS_LEVEL, type StatsLevel } from "../stats/model";
 export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
+
+/** Settings that no longer exist, removed from storage on update: the minimum length and
+ *  merging short paragraphs are fixed (lib/dom/text.ts MIN_WORDS) since 2026-10-05. */
+export const RETIRED_SETTINGS = ["minWords", "mergeShorts"];
 
 export const settings = {
   enabled: storage.defineItem<boolean>("local:enabled", { fallback: true }),
@@ -33,27 +36,12 @@ export const settings = {
   // The word a paragraph is flagged from (lib/render/band.ts): counted, listed in the toolbar
   // menu and underlined; below it a paragraph has its chip only. Read through flagFromOf.
   flagFrom: storage.defineItem<FlagFrom>("local:flagFrom", { fallback: DEFAULT_FLAG_FROM }),
-  // Group short neighbors to reach the evidence floor; otherwise skip short paragraphs.
-  mergeShorts: storage.defineItem<boolean>("local:mergeShorts", { fallback: true }),
-  // The minimum length in words: what is read at all, and what short paragraphs are grouped
-  // up to (lib/dom/text.ts has the choices). Read through minWordsOf, which answers a value
-  // that is not one of them with the default.
-  minWords: storage.defineItem<number>("local:minWords", { fallback: DEFAULT_MIN_WORDS }),
   // Personal reading statistics (lib/stats/): off until the reader picks a level, and kept on
   // this computer only. Read through statsLevelOf and retentionOf, which answer a value that
   // is not one of the choices with the default.
   statsLevel: storage.defineItem<StatsLevel>("local:statsLevel", { fallback: DEFAULT_STATS_LEVEL }),
   statsRetentionDays: storage.defineItem<number>("local:statsRetentionDays", { fallback: DEFAULT_RETENTION }),
 };
-
-/** The minimum length as a floor, the default when storage holds something else or nothing. */
-export async function readMinWords(): Promise<MinWords> {
-  try {
-    return minWordsOf(await settings.minWords.getValue());
-  } catch {
-    return DEFAULT_MIN_WORDS; // dead extension context
-  }
-}
 
 // Per-site rules inherit from parent domains; the most specific wins. Ignore leading www.
 

@@ -88,25 +88,18 @@ export function unitParagraphs(unit: Unit): number {
 
 /**
  * The open EditLens model was trained and evaluated only on texts of at least 75 words, and
- * scores shorter ones less reliably. A text under this still gets a verdict when the reader's
- * minimum length allows it, and every place that shows one says it is short (coverageNote).
+ * scores shorter ones less reliably. A text under this still gets a verdict when it clears
+ * MIN_WORDS, and every place that shows one says it is short (coverageNote).
  */
 export const MODEL_MIN_WORDS = 75;
 
-/** The minimum lengths Settings offers, in words: the evidence floor a unit is emitted at.
- *  What the floor decides is which paragraphs are read at all, and how far short ones are
- *  grouped before they are (lib/plan/group.ts). */
-export const MIN_WORDS_CHOICES = [25, 50, 75, 100, 150] as const;
-export type MinWords = (typeof MIN_WORDS_CHOICES)[number];
-
-/** The shipped floor: the minimum of Pangram's commercial product, under the open model's
- *  training minimum. Short texts are shown with that said (MODEL_MIN_WORDS). */
-export const DEFAULT_MIN_WORDS: MinWords = 50;
-
-/** A stored or passed value as a floor: one of the choices, else the default. */
-export function minWordsOf(value: unknown): MinWords {
-  return (MIN_WORDS_CHOICES as readonly unknown[]).includes(value) ? (value as MinWords) : DEFAULT_MIN_WORDS;
-}
+/** The minimum length, in words: the evidence floor a unit is emitted at, which decides which
+ *  paragraphs are read at all and how far short ones of one voice are grouped before they are
+ *  (lib/plan/group.ts). Pangram's commercial product reads from 50 words, under the open
+ *  model's training minimum, and verdicts under that say so (MODEL_MIN_WORDS). It is fixed,
+ *  not a setting (the user's decision of 2026-10-05): every reader, and every participant of a
+ *  study, reads under the same rule, and short paragraphs are always grouped. */
+export const MIN_WORDS = 50;
 
 /** A verdict on this few words is outside what the model was trained on. */
 export function isShortText(words: number): boolean {

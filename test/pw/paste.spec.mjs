@@ -32,12 +32,11 @@ async function analyze(page, text) {
   await page.locator("#results").waitFor({ state: "visible" });
 }
 
-test("the minimum length (75 words here) refuses 74 words without waking the idle engine, and the first score wakes it", async ({ page, extension, nativeHost, storage }) => {
-  await storage.set({ minWords: 75 });
+test("the minimum length (50 words) refuses 49 words without waking the idle engine, and the first score wakes it", async ({ page, extension, nativeHost }) => {
   await page.goto(extension.url("paste.html"));
-  await page.locator("#text").fill(TEXT.replace(/ aloud\.$/, "."));
+  await page.locator("#text").fill(TEXT.split(" ").slice(0, 49).join(" "));
   await page.locator("#analyze").click();
-  await page.waitForFunction(() => document.querySelector("#status").textContent.includes("75"));
+  await page.waitForFunction(() => document.querySelector("#status").textContent.includes("50"));
   expect(nativeHost.requests().filter((r) => r.op === "score")).toHaveLength(0);
   expect(nativeHost.state().component.state, "Health checks must not wake the idle model").toBe("idle");
 
@@ -106,8 +105,7 @@ test("a pass cleared in flight unlocks at once, and its text is never shown or s
 // Paragraphs, as blank lines part them: each one long enough read alone, with its chip after it;
 // two short ones read together (×2); one too short to read with anything left in muted ink; the
 // whole text's verdict from the paragraphs, and how much of it, in words, reads as each word.
-test("the text is read paragraph by paragraph, as a page is: a chip after each, short ones together, the flagged ones underlined", async ({ page, extension, storage }) => {
-  await storage.set({ minWords: 75 });
+test("the text is read paragraph by paragraph, as a page is: a chip after each, short ones together, the flagged ones underlined", async ({ page, extension }) => {
   await page.goto(extension.url("paste.html"));
   const second = TEXT.replace("The local library", "The town museum");
   const shortA = "A short note about the museum café, which serves good coffee to visitors on weekday mornings before the galleries open.";

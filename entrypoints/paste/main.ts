@@ -4,8 +4,8 @@ import { localizePage } from "../../lib/ui/localize";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { t, tn } from "../../lib/i18n";
 import { CONTRACT_VERSION, modelDim, type ModelInfo, type ScoreResult } from "../../lib/contract";
-import { countWords } from "../../lib/dom/text";
-import { readMinWords, settings } from "../../lib/settings/settings";
+import { countWords, MIN_WORDS } from "../../lib/dom/text";
+import { settings } from "../../lib/settings/settings";
 import { shortTextNote } from "../../lib/render/coverage";
 import { hasLookalikes } from "../../lib/dom/lookalikes";
 import { meanVerdict, readInWindows, unitVerdict, type UnitVerdict } from "../../lib/capture/windows";
@@ -76,8 +76,7 @@ analyze.addEventListener("click", async () => {
   const seq = ++generation; clearResult();
   if (text.length > 200_000) { status.textContent = t("pasteTooLarge"); return; }
   const words = countWords(text);
-  const floor = await readMinWords();
-  if (seq !== generation) return;
+  const floor = MIN_WORDS;
   if (words < floor) { status.textContent = t("pasteShort", floor); return; }
   analyze.disabled = true; status.textContent = t("pasteBusy");
   // The paragraphs are read as a page's are: each that clears the minimum length by itself,

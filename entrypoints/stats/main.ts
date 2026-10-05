@@ -13,7 +13,6 @@ import { messageLocale, t, type MessageKey } from "../../lib/i18n";
 import { bandLabel, BUCKET_BANDS } from "../../lib/render/band";
 import { bandColorRules } from "../../lib/render/scale";
 import { settings } from "../../lib/settings/settings";
-import { minWordsOf } from "../../lib/dom/text";
 import { flagFromOf } from "../../lib/render/flagLevel";
 import {
   addDays, aiShare, atLeast, localDate, monthRange, retentionOf, shares, STATS_LEVELS, statsLevelOf, viewedWords,
@@ -408,10 +407,10 @@ $("exportForm").addEventListener("submit", (e) => {
   if (!shown) return;
   const { range, from, to, recorded } = shown;
   const format = (new FormData(e.target as HTMLFormElement).get("format") === "csv") ? "csv" : "json";
-  void Promise.all([settings.flagFrom.getValue(), settings.minWords.getValue(), settings.mergeShorts.getValue()]).then(([flagFrom, minWords, mergeShorts]) => {
+  void settings.flagFrom.getValue().then((flagFrom) => {
     const file = buildExport(range, from, to, recorded, exportLevel.value as ExportLevel, {
       generatedAt: localDate(), extensionVersion: browser.runtime.getManifest().version,
-      flagFrom: flagFromOf(flagFrom), minWords: minWordsOf(minWords), mergeShorts,
+      flagFrom: flagFromOf(flagFrom),
     });
     const name = `anagram-stats-${from}${from === to ? "" : `-to-${to}`}`;
     if (format === "csv") save(`${name}.csv`, "text/csv", dailyCsv(file));

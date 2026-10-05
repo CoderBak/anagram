@@ -9,7 +9,7 @@ import { formatScore } from "./score";
 
 /**
  * The line a verdict on a short text carries, or "": a text under the model's training
- * minimum (MODEL_MIN_WORDS) is read only because the reader's minimum length allows it, and
+ * minimum (MODEL_MIN_WORDS) is read only because the minimum length (MIN_WORDS) allows it, and
  * its verdict is less reliable. The hover card, the selection card, the report and the text
  * analysis page all say it the same way.
  */

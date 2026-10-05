@@ -52,20 +52,13 @@ const results = await page.evaluate(() => {
   check("long paragraph → one 1-part unit", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   {
-    const below = collect(`<p>${words(74)}</p>`);
-    const at = collect(`<p>${words(75)}</p>`);
-    check("at the open model's training minimum (these cases' floor): 74 words alone are not read, 75 are",
-      PW.MODEL_MIN_WORDS === 75 && below.length === 0 && at.length === 1 && at[0].words === 75, JSON.stringify([below.length, at.map(x => x.words)]));
-  }
-  {
-    // THE MINIMUM LENGTH is the reader's (Settings): 25, 50, 75, 100 or 150 words, 50 unless
-    // chosen. It decides what is read at all and what short paragraphs are grouped up to.
-    const floorOf = (n, minWords) => collect(`<p>${words(n)}</p>`, minWords === undefined ? { minWords: undefined } : { minWords }).length;
-    check("the shipped minimum length is 50 words, one of 25 / 50 / 75 / 100 / 150",
-      PW.DEFAULT_MIN_WORDS === 50 && JSON.stringify(PW.MIN_WORDS_CHOICES) === "[25,50,75,100,150]" && floorOf(49) === 0 && floorOf(50) === 1,
-      JSON.stringify([PW.DEFAULT_MIN_WORDS, floorOf(49), floorOf(50)]));
-    const at = PW.MIN_WORDS_CHOICES.map((f) => [floorOf(f - 1, f), floorOf(f, f)]);
-    check("each choice is the floor: one word under it is not read, it is", at.every(([under, on]) => under === 0 && on === 1), JSON.stringify(at));
+    // THE MINIMUM LENGTH is fixed at 50 words. It decides what is read at all and what short
+    // paragraphs are grouped up to; the benchmarks may measure at another floor.
+    const floorOf = (n, minWords) => collect(`<p>${words(n)}</p>`, minWords === undefined ? {} : { minWords }).length;
+    check("the minimum length is 50 words: 49 alone are not read, 50 are",
+      PW.MIN_WORDS === 50 && floorOf(49) === 0 && floorOf(50) === 1, JSON.stringify([PW.MIN_WORDS, floorOf(49), floorOf(50)]));
+    const at = PW.FLOORS.map((f) => [floorOf(f - 1, f), floorOf(f, f)]);
+    check("a floor a benchmark measures at is the floor: one word under it is not read, it is", at.every(([under, on]) => under === 0 && on === 1), JSON.stringify(at));
     // The grouping target moves with it: two 30-word paragraphs are one unit from a floor of
     // 50 on, and at 25 each stands alone; at 75 they are read by nobody.
     const pair = `<p>${words(30)}</p><p>${words(30)}</p>`;
@@ -97,7 +90,7 @@ const results = await page.evaluate(() => {
   check("heading is a merge barrier", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
 
   u = collect(`<p>${words(40)}</p><p>${words(40)}</p>`);
-  check("two 40w shorts merge past the floor", u.length === 1 && u[0].words >= 75);
+  check("two 40w shorts merge past the floor", u.length === 1 && u[0].words >= PW.MIN_WORDS);
 
   u = collect(`<section><p>${words(40)}</p></section><section><p>${words(40)}</p></section>`);
   check("shorts in unrelated sections do NOT merge", u.length === 0, JSON.stringify(u.map(x => [x.parts, x.words])));
@@ -158,11 +151,11 @@ const results = await page.evaluate(() => {
     // an article's paragraph that trails off in an ellipsis is, and so is a longer excerpt.
     const cut = (n, end) => `${words(n).slice(0, -1)}${end}`;
     const teaser = (i, text) => `<div class="post"><h3><a href="https://example.org/post-${i}">Post ${i}</a></h3><p>${text}</p><span>May ${i}</span></div>`;
-    u = collect(`<p>${words(90)}</p>${teaser(1, cut(60, " […]"))}${teaser(2, cut(60, "…"))}${teaser(3, cut(60, "... Read more"))}`, { minWords: 50 });
-    const linked = collect(`<a href="https://example.org/p" style="display:block"><h3>Title</h3><p>${cut(60, "…")}</p></a>`, { minWords: 50 });
-    const trailing = collect(`<article><h2>Notes</h2><p>${words(90)}</p><p>${cut(60, "…")}</p></article>`, { minWords: 50 });
-    const long = collect(teaser(4, cut(80, " […]")), { minWords: 50 });
-    const uncut = collect(teaser(5, words(60)), { minWords: 50 });
+    u = collect(`<p>${words(90)}</p>${teaser(1, cut(60, " […]"))}${teaser(2, cut(60, "…"))}${teaser(3, cut(60, "... Read more"))}`);
+    const linked = collect(`<a href="https://example.org/p" style="display:block"><h3>Title</h3><p>${cut(60, "…")}</p></a>`);
+    const trailing = collect(`<article><h2>Notes</h2><p>${words(90)}</p><p>${cut(60, "…")}</p></article>`);
+    const long = collect(teaser(4, cut(80, " […]")));
+    const uncut = collect(teaser(5, words(60)));
     check("a teaser's excerpt cut by the site in a card titled by a link elsewhere, or inside one, is not read under 75 words; an article's trailing ellipsis, a longer excerpt and an uncut one are",
       u.length === 1 && u[0].words === 90 && linked.length === 0 && trailing.length === 1 && trailing[0].words === 150 && long.length === 1 && uncut.length === 1,
       JSON.stringify([u.map((x) => x.words), linked.length, trailing.map((x) => x.words), long.length, uncut.length]));
@@ -455,14 +448,6 @@ const results = await page.evaluate(() => {
   u = collect(`<p>${words(40)}          ${words(40)}</p>`);
   check("8+ source spaces in collapsed HTML do not drop prose", u.length === 1, JSON.stringify(u.map(x => x.words)));
 
-  // 5a) strict per-paragraph mode (mergeShorts:false): sub-floor runs are skipped.
-  sandbox.innerHTML = `<p>${words(30)}</p><p>${words(30)}</p><p>${words(30)}</p>`;
-  const strict = PW.collectUnits(sandbox, { mergeShorts: false });
-  check("mergeShorts:false — shorts never grouped", strict.length === 0, JSON.stringify(strict.length));
-  sandbox.innerHTML = `<p>${words(80)}</p><p>${words(20)}</p>`;
-  const strictLong = PW.collectUnits(sandbox, { mergeShorts: false });
-  check("mergeShorts:false — full paragraphs still scored", strictLong.length === 1 && strictLong[0].parts.length === 1);
-
   // 5) shorts must not merge ACROSS an existing claimed unit.
   sandbox.innerHTML = `<p>${words(20)}</p><p>${words(80)}</p><p>${words(20)}</p>`;
   const first = PW.collectUnits(sandbox);
@@ -687,9 +672,6 @@ const results = await page.evaluate(() => {
   u = collect(`<div><div>${line(5)}</div><div>${sent(40)}</div><div>${sent(40)}</div></div>`);
   check("…and dropped when what follows is another block", u.length === 1 && u[0].parts === 2, JSON.stringify(u.map(x => [x.parts, x.words])));
 
-  sandbox.innerHTML = Array.from({ length: 13 }, () => `<p>${sent(6)}</p>`).join("");
-  check("mergeShorts:false — one-sentence paragraphs are still skipped in strict mode", PW.collectUnits(sandbox, { mergeShorts: false }).length === 0);
-
   {
     // Incremental re-scan of an ARTICLE (longer than a window): the full paragraph a live
     // unit owns still ends the group before it, and nothing is emitted a second time.
@@ -763,9 +745,6 @@ const results = await page.evaluate(() => {
     u = collect(`<article><p>${sent(40)}</p><ul><li><p>ITEM ${sent(11)}</p></li><li><p>ITEM ${sent(11)}</p></li></ul><p>LAST ${sent(39)}</p></article>`);
     check("the paragraphs on both sides of a list set a level deeper, and the list's items, are one text", u.length === 1 && u[0].parts === 4 && u[0].text.includes("LAST") && u[0].text.includes("ITEM"), shape(u));
 
-    sandbox.innerHTML = xPost([`A ${sent(29)}`, `B ${sent(79)}`, `C ${sent(19)}`]);
-    const strictPost = PW.collectUnits(sandbox, { mergeShorts: false });
-    check("mergeShorts:false — a post is NOT read whole: strict per-paragraph mode", strictPost.length === 1 && strictPost[0].parts.length === 1 && strictPost[0].wordCount === 80, JSON.stringify(strictPost.map((x) => [x.parts.length, x.wordCount])));
   }
   {
     // Groups no longer close at the floor — on the bare page and in articles alike.
@@ -832,8 +811,6 @@ const results = await page.evaluate(() => {
     check("div-soup thread: the next speaker's short message does NOT join the full message before it — the name row lets it go", shape(u) === JSON.stringify([[1, 80]]) && !u[0].text.includes("BOB"), shape(u));
     u = collect(`<p>${sent(250)}</p><p>${sent(40)}</p><p>${sent(40)}</p>`);
     check("shorts that reach the floor together stand by themselves; only an orphan joins", shape(u) === JSON.stringify([[1, 250], [2, 80]]), shape(u));
-    sandbox.innerHTML = `<p>${sent(80)}</p><p>${sent(20)}</p>`;
-    check("mergeShorts:false — nothing joins anything", JSON.stringify(PW.collectUnits(sandbox, { mergeShorts: false }).map((x) => [x.parts.length, x.wordCount])) === "[[1,80]]");
 
     u = collect(xPost([`FULL ${sent(79)}`, `Here is what happened next`, `LAST ${sent(29)}`]));
     check("X: an unpunctuated line after a FULL paragraph of the same text block is still a line of that post", u.length === 1 && u[0].parts === 3 && u[0].text.includes("Here is what happened next"), shape(u));
@@ -849,7 +826,7 @@ const results = await page.evaluate(() => {
     // with no DOM anywhere (lib/pdf/units.ts). The same paragraphs, expressed as <p>s and as
     // bare word/character counts, must come out grouped the same way; if they ever did not,
     // a paper and a web page would be read by two different rules.
-    // At every minimum length Settings offers.
+    // At the floor, and at the floors the benchmarks measure at.
     const asPlan = (ns) => ns.map((n) => ({ words: n, chars: words(n).length }));
     const planShape = (ns, floor) =>
       JSON.stringify(PW.groupBlocks(asPlan(ns), floor).map((g) => [g.length, g.reduce((sum, i) => sum + ns[i], 0)]));
@@ -868,7 +845,7 @@ const results = await page.evaluate(() => {
       Array.from({ length: 50 }, () => 20),
     ]) {
       const label = ns.length > 6 ? `${ns.length}×${ns[0]} words` : `[${ns}]`;
-      for (const floor of PW.MIN_WORDS_CHOICES) {
+      for (const floor of PW.FLOORS) {
         check(`the walker and the source-free rule group ${label} the same way at ${floor} words`, walkShape(ns, floor) === planShape(ns, floor),
           `walker ${walkShape(ns, floor)} · plan ${planShape(ns, floor)}`);
       }
@@ -955,11 +932,11 @@ const results = await page.evaluate(() => {
       check("list items keep their own rule inside a post too: a five-word item beside long unpunctuated ones is skipped, not a line of verse (Google's terms, an sspai article)",
         u.length === 1 && u[0].parts === 3 && !u[0].text.includes("spoons"), shape(u));
 
-      // LinkedIn as measured on the live page, longer: prose three words short of the floor and a line
+      // LinkedIn as measured on the live page: prose two words short of the floor and a line
       // that is all hashtags.
       const tags = `<a href="/feed/hashtag/?keywords=oncall">#oncall</a> <a href="/feed/hashtag/?keywords=sre">#sre</a> <a href="/feed/hashtag/?keywords=reliability">#reliability</a>`;
-      u = collect(`<div role="list"><div><div role="listitem"><div class="hd">${by("alice")}</div><p><span data-testid="expandable-text-box">${sent(35)}<br><br>${sent(35)}<br><br>${tags}</span></p></div></div><div><div role="listitem"><div class="hd">${by("bob")}</div><p><span>${sent(30)}</span></p></div></div></div>`);
-      check("LinkedIn: 72 words of prose and an all-link hashtag line stay unjudged — the hashtags are never what lifts a post over the floor", u.length === 0, shape(u));
+      u = collect(`<div role="list"><div><div role="listitem"><div class="hd">${by("alice")}</div><p><span data-testid="expandable-text-box">${sent(24)}<br><br>${sent(24)}<br><br>${tags}</span></p></div></div><div><div role="listitem"><div class="hd">${by("bob")}</div><p><span>${sent(30)}</span></p></div></div></div>`);
+      check("LinkedIn: 48 words of prose and an all-link hashtag line stay unjudged — the hashtags are never what lifts a post over the floor", u.length === 0, shape(u));
     }
 
     // One text body: deeper because of LIST markup, never because of a layout box.
@@ -1005,18 +982,18 @@ const results = await page.evaluate(() => {
       [`<span aria-label="3 of 5"></span>`, `<span aria-label="12 people found this helpful"></span>`, `<div role="radio" aria-label="5 stars"></div>`, `<button aria-label="4 stars">★</button>`]
         .every((ev) => recognised(rated(ev), ".card").every((r) => !r)));
     const micro = (n, w) => `<div itemprop="review" itemscope itemtype="https://schema.org/Review"><p class="meta">By <span itemprop="author">Reviewer ${n}</span> on <time itemprop="datePublished">March 3</time>, a verified buyer who rated it well.</p><div itemprop="reviewBody">R${n} ${sent(w - 1)}</div></div>`;
-    u = collect(`<section>${micro(1, 60)}${micro(2, 30)}${micro(3, 60)}</section>`, { minWords: 50 });
+    u = collect(`<section>${micro(1, 60)}${micro(2, 30)}${micro(3, 60)}</section>`);
     check("schema.org microdata: each review a voice, only its reviewBody read — the punctuated \"By … on …\" line is the card's — and a short one read by nobody",
       u.length === 2 && u.every((x) => x.parts === 1 && /^R[13] /.test(x.text)), shape(u));
     const rdfa = (n) => `<div property="review" typeof="Review"><p>By <span property="author">Reviewer ${n}</span>, who wrote this in March and rated it four.</p><div property="reviewBody"><p>D${n} ${sent(29)}</p><p>${sent(30)}</p></div></div>`;
-    u = collect(`<section vocab="https://schema.org/">${rdfa(1)}${rdfa(2)}</section>`, { minWords: 50 });
+    u = collect(`<section vocab="https://schema.org/">${rdfa(1)}${rdfa(2)}</section>`);
     check("…and RDFa: a review's two paragraphs one unit, its byline sentence left out", u.length === 2 && u.every((x) => x.parts === 2 && /^D\d /.test(x.text)), shape(u));
     const ld = (texts) => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "Product", review: texts.map((t) => ({ "@type": "Review", reviewBody: t })) })}</script>`;
     const found = [1, 2, 3].map((n) => `J${n} ${sent(59)}`);
-    u = collect(`${ld(found)}<div class="list">${found.map((t, i) => `<div class="c"><div class="who">Reviewer ${i + 1}, a regular here, wrote this in March.</div><p>${t}</p></div>`).join("")}</div>`, { minWords: 50 });
+    u = collect(`${ld(found)}<div class="list">${found.map((t, i) => `<div class="c"><div class="who">Reviewer ${i + 1}, a regular here, wrote this in March.</div><p>${t}</p></div>`).join("")}</div>`);
     check("the reviews of the page's JSON-LD, found in the page by their words: each card a voice, only the review's text read",
       u.length === 3 && u.every((x) => x.parts === 1 && /^J\d /.test(x.text)), shape(u));
-    u = collect(`${ld([found[0]])}<p>INTRO ${sent(59)}</p><div class="c"><div class="who">Reviewer 1 wrote this.</div><p>${found[0]}</p></div>`, { minWords: 50 });
+    u = collect(`${ld([found[0]])}<p>INTRO ${sent(59)}</p><div class="c"><div class="who">Reviewer 1 wrote this.</div><p>${found[0]}</p></div>`);
     check("…but ONE review in JSON-LD says nothing about where its card ends: the page around it is read as it always was", u.length === 2 && u[0].text.startsWith("INTRO"), shape(u));
     const reviewCard = (n, own = "") => `<div class="r"><span class="who">Reviewer ${n}</span> <time>2h</time><p>S${n} ${sent(29)}</p>${own}</div>`;
     const disclaimer = `<p class="d">This review is the opinion of a member and not of the site, which checks every review it shows.</p>`;
@@ -1026,15 +1003,15 @@ const results = await page.evaluate(() => {
     u = collect(`<div class="list">${[1, 2, 3, 4, 5, 6].map((n) => reviewCard(n, n <= 2 ? "<p>Would buy again from this shop without a second thought.</p>" : "")).join("")}</div>`, { minWords: 25 });
     check("…while a sentence two reviews of six happen to share stays theirs", u.length === 6 && u.filter((x) => x.parts === 2).length === 2, shape(u));
     // What the web benchmark caught the first version of these rules doing.
-    u = collect(`<div class="page"><nav class="side"><p>Install the package with the tool.</p></nav><article class="doc"><p>A ${sent(199)}</p><p>S1 ${sent(29)}</p><h2>Install the package with the tool.</h2><p>S2 ${sent(29)}</p><p>B ${sent(199)}</p></article><aside class="toc"><p>Install the package with the tool.</p></aside></div>`, { minWords: 50 });
+    u = collect(`<div class="page"><nav class="side"><p>Install the package with the tool.</p></nav><article class="doc"><p>A ${sent(199)}</p><p>S1 ${sent(29)}</p><h2>Install the package with the tool.</h2><p>S2 ${sent(29)}</p><p>B ${sent(199)}</p></article><aside class="toc"><p>Install the package with the tool.</p></aside></div>`);
     check("…but a column beside two sidebars is no list of cards: a heading its table of contents repeats stays a heading, and a boundary",
       u.length === 2 && u.every((x) => x.parts === 2), shape(u));
     const quoting = (n) => `<div class="post"><div class="m"><a href="/u/p${n}">p${n}</a> <time>2h</time></div><blockquote><p>Q ${sent(29)}</p></blockquote><p>R${n} ${sent(29)}</p></div>`;
-    u = collect(`<div class="topic"><div class="post"><div class="m"><a href="/u/op">op</a> <time>3h</time></div><p>Q ${sent(29)}</p><p>OP ${sent(29)}</p></div>${[1, 2, 3].map(quoting).join("")}</div>`, { minWords: 50 });
+    u = collect(`<div class="topic"><div class="post"><div class="m"><a href="/u/op">op</a> <time>3h</time></div><p>Q ${sent(29)}</p><p>OP ${sent(29)}</p></div>${[1, 2, 3].map(quoting).join("")}</div>`);
     check("…and a post three replies quote is still its author's: the quoted paragraph stays in the opening post",
       u.some((x) => x.parts === 2 && x.text.startsWith("Q ") && x.text.includes("OP ")), shape(u));
     const mover = (n) => `<section class="mover"><h3>Mover ${n}</h3><div class="summary"><p>M${n} ${sent(24)}</p><a href="/q">Get a quote</a></div><div class="info"><p>E${n} ${sent(59)}</p><p>${sent(40)}</p></div></section>`;
-    u = collect(`${ld([1, 2, 3].map((n) => `M${n} ${sent(24)}`))}${[1, 2, 3].map(mover).join("")}`, { minWords: 50 });
+    u = collect(`${ld([1, 2, 3].map((n) => `M${n} ${sent(24)}`))}${[1, 2, 3].map(mover).join("")}`);
     check("a card known from JSON-LD holds no more than a card's name, stars and date beside the review: the editor's text beside it is read (movebuddha)",
       u.length === 3 && u.every((x) => /^E\d /.test(x.text)), shape(u));
 
@@ -3286,7 +3263,6 @@ for (const file of fixtureFiles) {
       manifestVersion: 3,
       uiLanguage: "en",
       messageLocale: "en",
-      mergeShorts: true,
       displayMode: "all",
       siteRule: null,
       globallyEnabled: true,
@@ -3391,7 +3367,7 @@ for (const file of fixtureFiles) {
       `<iframe src="data:text/html,x" width="640" height="300"></iframe>`;
     const report = () => PW.buildDiagnostics({
       version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en",
-      mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
+      displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
       running: true, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
       frameGate: { minWidth: 200, minArea: 40000 }, clickedFrameId: 0,
       target: null, detectLanguage: async () => null,
@@ -3443,7 +3419,7 @@ for (const file of fixtureFiles) {
       const walked = PW.collectUnits(document.body).filter((u) => u.parts.some((p) => box.contains(p.container))).length;
       const report = await PW.buildDiagnostics({
         version: "0.0.0-test", manifestVersion: 3, uiLanguage: "en", messageLocale: "en",
-        mergeShorts: true, displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
+        displayMode: "all", siteRule: null, globallyEnabled: true, daemon: { state: "up" },
         running: false, onceForPage: false, pdf: false, docs: null, counts: { scored: 0, flagged: 0, unsupported: 0, unavailable: 0 },
         frameGate: { minWidth: 200, minArea: 40000 }, clickedFrameId: 0, target: null, detectLanguage: async () => null,
       });

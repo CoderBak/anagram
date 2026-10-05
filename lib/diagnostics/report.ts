@@ -20,7 +20,7 @@
 // that does run in the content script. It also makes the whole report provable in a plain
 // browser page, which is where test/unit.mjs checks that no page text escapes it.
 import { findMainContent } from "../dom/mainContent";
-import { MIN_MERGE_WORDS } from "../dom/text";
+import { MIN_MERGE_WORDS, MIN_WORDS } from "../dom/text";
 import { captureRegion, pathOf } from "./anonymise";
 import { surveyPage, type SilentStretch } from "./silence";
 import { HYDRATION_MARKERS } from "./vocabulary";
@@ -48,9 +48,6 @@ export interface DiagnosticsEnv {
    *  they differ on a zh-TW browser, and that difference has been a bug report before. */
   uiLanguage: string;
   messageLocale: string;
-  mergeShorts: boolean;
-  /** The minimum length in words (Settings). */
-  minWords: number;
   displayMode: string;
   /** The per-site rule that decides this host, and the global switch behind it. */
   siteRule: { host: string; mode: string } | null;
@@ -200,7 +197,7 @@ function regionFor(target: Element | null): { el: Element; why: string } {
 // ---- the report --------------------------------------------------------------------------
 
 export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
-  const survey = surveyPage({ running: env.running, max: MAX_SILENT, minWords: env.minWords });
+  const survey = surveyPage({ running: env.running, max: MAX_SILENT });
   const coverage = survey.proseWords > 0 ? Math.round((survey.wordsJudged / survey.proseWords) * 100) : 0;
 
   const lines: string[] = [];
@@ -219,7 +216,7 @@ export async function buildDiagnostics(env: DiagnosticsEnv): Promise<string> {
       `${document.getElementsByTagName("*").length} elements · hydration marker: ${hydrationMarker()}`,
   );
   lines.push(
-    `- merge short paragraphs ${env.mergeShorts ? "on" : "off"} · minimum ${env.minWords} words · show \`${env.displayMode}\``,
+    `- minimum ${MIN_WORDS} words · show \`${env.displayMode}\``,
   );
   lines.push(`- ${stateLine(env)}`);
   lines.push(`- ${daemonLine(env.daemon)}`);

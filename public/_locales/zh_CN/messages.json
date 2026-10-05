@@ -819,15 +819,6 @@
   "optUnderlineOff": {
     "message": "关闭"
   },
-  "optMerge": {
-    "message": "合并短段落"
-  },
-  "optMinWords": {
-    "message": "最少词数"
-  },
-  "optMinWordsValue": {
-    "message": "$1 个词"
-  },
   "optAutoOpenPdfs": {
     "message": "自动在 Anagram 中打开 PDF"
   },
@@ -973,17 +964,11 @@
   "engineWordsCpu": {
     "message": "使用处理器"
   },
-  "optMinWordsHint": {
-    "message": "少于 75 个词可靠性较低。"
-  },
   "optEngine": {
     "message": "引擎"
   },
   "optPdfs": {
     "message": "PDF"
-  },
-  "optLength": {
-    "message": "长度"
   },
   "optCache": {
     "message": "缓存"

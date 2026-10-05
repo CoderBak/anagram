@@ -40,7 +40,7 @@ import {
   isServerDiagnostic,
   symbolNoiseRatio,
   MIN_MERGE_WORDS,
-  DEFAULT_MIN_WORDS,
+  MIN_WORDS,
   type Unit,
 } from "../dom/text";
 import { MARK_ATTR } from "../types";
@@ -125,8 +125,10 @@ function containsComposed(ancestor: Element, node: Element): boolean {
 
 // ---- the survey -----------------------------------------------------------------------
 
+/** `minWords` is MIN_WORDS, what the extension reads at; another is for measuring (the web
+ *  benchmark explains a walk at the floor it ran). */
 export function surveyPage(opts: { running: boolean; max: number; minWords?: number }): PageSurvey {
-  const floor = opts.minWords ?? DEFAULT_MIN_WORDS;
+  const floor = opts.minWords ?? MIN_WORDS;
   const styles = createStyleCache();
   const cs = (el: Element): CSSStyleDeclaration | null => styles.get(el);
   const body = document.body;

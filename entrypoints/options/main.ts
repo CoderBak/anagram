@@ -28,7 +28,6 @@ import { mountPdfRows } from "../../lib/ui/pdfRows";
 import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
-import { MIN_WORDS_CHOICES, minWordsOf } from "../../lib/dom/text";
 import { RETENTION_CHOICES, atLeast, retentionOf, statsLevelOf, type StatsLevel } from "../../lib/stats/model";
 import { openStatsStore } from "../../lib/stats/store";
 
@@ -47,7 +46,6 @@ const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const underlineEl = document.getElementById("underline") as HTMLSelectElement;
 const flagFromEl = document.getElementById("flagFrom") as HTMLSelectElement;
 const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
-const mergeShortsEl = document.getElementById("mergeShorts") as HTMLInputElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
 const addRuleEl = document.getElementById("addRule") as HTMLFormElement;
@@ -179,7 +177,6 @@ localizePage();
 followSystemTheme();
 linkSourceCode();
 bindToggle(enabledEl, settings.enabled);
-bindToggle(mergeShortsEl, settings.mergeShorts);
 // The site rows first (they come before the toggle in the list), then the PDF rows.
 {
   const holder = document.createElement("div");
@@ -196,18 +193,6 @@ bindSelect<"flagged" | "all" | "off">(underlineEl, {
     await settings.showHighlights.setValue(v !== "off");
   },
 });
-
-// --- minimum length ----------------------------------------------------------------------
-// What is read at all, and what short paragraphs are grouped up to. Open pages re-read
-// themselves when it changes (lib/capture/orchestrator.ts watches it).
-{
-  const minWordsEl = document.getElementById("minWords") as HTMLSelectElement;
-  for (const n of MIN_WORDS_CHOICES) minWordsEl.add(new Option(t("optMinWordsValue", n), String(n)));
-  bindSelect<string>(minWordsEl, {
-    getValue: async () => String(minWordsOf(await settings.minWords.getValue())),
-    setValue: (v) => settings.minWords.setValue(minWordsOf(Number(v))),
-  });
-}
 
 showSites();
 settings.siteOverrides.watch(showSites);

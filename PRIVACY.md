@@ -127,7 +127,7 @@ requests carry normal download metadata and never page text.
     human, lightly edited, heavily edited or AI-generated, how many paragraphs showed each
     word, how many words could not be scored and why (too short, not English, engine
     unavailable), the same per kind of page (feed, article, forum, document, other), and which
-    model and minimum length were in force.
+    model was in force.
   - *Daily totals and sites*: the same numbers per site (its hostname) and day.
   - *Every page*: the same numbers per page and day, with the page's address (without the
     query or the fragment), its title, the minute you first read it that day and how long it

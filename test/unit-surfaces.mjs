@@ -135,11 +135,11 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
         return units;
       };
       const layerBefore = [...document.querySelectorAll(".kd-layer")].map((l) => l.innerHTML).join("");
-      const first = take(s.collect(claim, true));
+      const first = take(s.collect(claim));
       const units = first.map((u) => ({ text: u.text, parts: u.parts.length, paragraphs: u.paragraphs, textFixed: u.textFixed === true }));
-      const again = s.collect(claim, true).length; // the same burst: answered already
+      const again = s.collect(claim).length; // the same burst: answered already
       await new Promise((r) => setTimeout(r, 0));
-      const unchanged = s.collect(claim, true).length; // a later burst: nothing new
+      const unchanged = s.collect(claim).length; // a later burst: nothing new
 
       // Marks and chips, through the page's own marking and chip code.
       PW.registerHighlightStyles();
@@ -197,7 +197,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       await new Promise((r) => setTimeout(r, 0));
       const slot = document.querySelector('[data-page-slot="3"]');
       slot.replaceWith(document.getElementById("page-3").content.firstElementChild.cloneNode(true));
-      const later = take(s.collect(claim, true)).map((u) => u.text);
+      const later = take(s.collect(claim)).map((u) => u.text);
 
       // The units a surface hands out are its own; clearing one takes its marks away.
       PW.clearHighlight(first[0].id);
@@ -269,7 +269,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       const layers = () => [...document.querySelectorAll(".textLayer")].map((l) => l.innerHTML).join("");
       const before = layers();
       const s = PW.createSurface("pdfjs", document);
-      const units = s.collect(() => "take", true);
+      const units = s.collect(() => "take");
       PW.registerHighlightStyles();
       PW.setMarkPainter(s.painter);
       PW.setRangeLocator((u, spans) => s.ranges(u, spans));
@@ -330,7 +330,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
     await page.addScriptTag({ path: bundle });
     const r = await page.evaluate(async (id) => {
       const texts = (units) => units.map((u) => u.text).sort();
-      const whole = texts(PW.createSurface(id, document).collect(() => "take", true));
+      const whole = texts(PW.createSurface(id, document).collect(() => "take"));
       // Page 2 not drawn yet: Drive's box is an empty slot, pdf.js's page has no text layer.
       const box = id === "drive" ? document.querySelector('[data-page-slot="2"]') : document.querySelector('.page[data-page-number="2"] .textLayer');
       const parent = box.parentElement, next = box.nextSibling;
@@ -363,10 +363,10 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
         }
         return units;
       };
-      const first = ingest(s.collect(claim, true));
+      const first = ingest(s.collect(claim));
       await new Promise((r) => setTimeout(r, 0));
       draw();
-      const burst = ingest(s.collect(claim, true));
+      const burst = ingest(s.collect(claim));
       const kept = first.filter((u) => live.get(u.id) === u).map((u) => u.text);
       return { whole, first: texts(first), live: texts([...live.values()]), burst: burst.map((u) => [u.parts.length, u.paragraphs, u.text.slice(0, 40)]), kept };
     }, id);
@@ -443,7 +443,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       };
       const walked = PW.collectUnits(document.body);
       const s = PW.createSurface("webnovel", document);
-      const units = s.collect(() => "take", true, PW.MODEL_MIN_WORDS);
+      const units = s.collect(() => "take");
       const chapterOf = (el) => el.closest("[data-voice]")?.getAttribute("data-voice");
       return {
         walkedMissing: coverage(walked),
@@ -456,12 +456,13 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
     });
     check(
       "webnovel: the walk alone leaves short paragraphs whose boxes also hold their counters unread (why the surface exists)",
-      r.walkedMissing >= 3,
+      r.walkedMissing >= 2,
       JSON.stringify({ missing: r.walkedMissing, of: r.expected }),
     );
     check(
       "webnovel: every paragraph is read, grouped within its chapter and never across one, the comment counters left out",
-      r.active && r.missing === 0 && r.units.length === 2 && r.units.every((u) => u.chapters.length === 1) &&
+      // A full paragraph stands alone (50 words), and the dialogue lines join the one before them.
+      r.active && r.missing === 0 && JSON.stringify(r.units.map((u) => u.parts)) === "[4,1,3]" && r.units.every((u) => u.chapters.length === 1) &&
         !r.units.some((u) => /\d/.test(u.text)) && r.place === null,
       JSON.stringify(r.units.map((u) => [u.parts, u.chapters, u.text.slice(0, 40)])),
     );
@@ -473,7 +474,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
   // page's layout, and these fixtures (modelled — see each file's header) hold it to that.
   // Same annotations as test/fixtures/: data-voice names a voice, data-expect="unit"|"none"
   // says whether some unit covers text there, data-chrome marks rows no unit may take in.
-  const WALKED = { "ao3-work": [1, 1], "playbooks-reader": [2, 0], "epub-chapter": [2, 1] };
+  const WALKED = { "ao3-work": [1, 1], "playbooks-reader": [2, 0], "epub-chapter": [3, 0] };
   for (const [name, [wantUnits, wantMerged]] of Object.entries(WALKED)) {
     const page = await browser.newPage();
     await page.goto(pathToFileURL(join(fixtures, "surfaces", `${name}.html`)).href);
@@ -513,7 +514,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       ["drive", "pdfjs", "kindle", "webnovel"].map((id) => {
         const s = PW.createSurface(id, document);
         const wrapped = PW.asPageSurface(s);
-        const opts = { minWords: PW.DEFAULT_MIN_WORDS };
+        const opts = { minWords: PW.MIN_WORDS };
         const viaSurface = wrapped.collect(document.body, () => "take", opts).map((u) => u.text);
         const walked = PW.collectUnits(document.body, opts).map((u) => u.text);
         const unit = { id: "u_x", parts: [], text: "" };

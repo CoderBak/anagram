@@ -104,10 +104,10 @@ older version shows as off until you switch it on again.
   misspellings lowered detection by 2 points at most. Swapping in synonyms lowered it from
   29% to 18%, and paraphrasing with another model to 6%. Text whose letters were replaced
   with look-alike Cyrillic ones gets no verdict: it shows as another language.
-- A paragraph needs 50 words to be scored; **Minimum words** in Settings offers 25, 50,
-  75, 100 or 150. Shorter paragraphs are scored together with their neighbours in the same
-  section, never across a heading; a ×2 on a chip means it covers two paragraphs, and a
-  short paragraph with nothing to join is not scored. The open model was trained on texts
+- A paragraph needs 50 words to be scored, as in Pangram's own product. Shorter paragraphs
+  are scored together with their neighbours in the same section, never across a heading; a
+  ×2 on a chip means it covers two paragraphs, and a short paragraph with nothing to join is
+  not scored. The open model was trained on texts
   of 75 words or more, so the card of a verdict on fewer says "Short text: less reliable".
   On EditLens test texts cut to length, the word was right for 67% of texts of
   25–49 words, 72% of 50–74 and 79% of 75–149, and 2% of human texts under 75 words read
@@ -173,7 +173,6 @@ The toolbar icon's gear opens Settings, one list of rows.
 - **Marks**: from which word a paragraph is flagged (Lightly edited, Heavily edited, the
   default, or AI-generated only), chips on every paragraph or only flagged ones, and
   underlines on flagged paragraphs or none.
-- **Length**: the minimum words, and grouping short paragraphs.
 - **Cache**: how long verdicts are kept, and clearing them.
 - **Statistics**: what Anagram records of your reading (off by default), how long it is kept,
   and the statistics page, export and clearing (below).
