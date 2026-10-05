@@ -21,7 +21,7 @@ import {
   looksLikeNameList,
   shortRole,
   unitPartText,
-  MAX_UNIT_TEXT_CHARS,
+  unitTextOf,
   DEFAULT_MIN_WORDS,
   type Unit,
 } from "../dom/text";
@@ -94,11 +94,12 @@ export function createParagraphSurface(source: ParagraphSource): Surface {
         if (members.every((m) => claim(m.nodes) === "skip")) continue;
         if (claim(members.flatMap((m) => m.nodes)) === "skip") continue;
         const seq = _seq++;
+        const { text, wordCount } = unitTextOf(members.map((m) => m.text), () => members.reduce((n, m) => n + m.words, 0));
         out.push({
           id: `w_${seq.toString(36)}`,
           parts: members.map((m) => ({ nodes: m.nodes, container: m.p.el })),
-          text: members.map((m) => m.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS),
-          wordCount: members.reduce((n, m) => n + m.words, 0),
+          text,
+          wordCount,
           formulas: 0,
           order: seq,
           topElement: members[0]!.p.el,

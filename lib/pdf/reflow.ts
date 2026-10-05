@@ -46,6 +46,21 @@ export interface PdfTextItem {
   rotated?: boolean;
 }
 
+/** How far a run's baseline may turn from the page's horizontal before it counts as rotated.
+ *  A scan's OCR layer is commonly skewed by a degree or two and is still the page's text;
+ *  arXiv's identifier down the margin is at 90°, a diagonal watermark at 45°, and a line
+ *  upside down at 180°. */
+export const MOST_TILT_DEGREES = 5;
+
+/** Whether a run set by this matrix (in the page's top-down space, `[a, b, c, d, e, f]`) is
+ *  rotated: the angle of its baseline, (a, b), and nothing else. The entries themselves
+ *  scale with the font size, and a slanted font (a synthetic italic) shears c, which turns
+ *  no baseline. */
+export function isRotated(matrix: readonly number[]): boolean {
+  const [a = 1, b = 0] = matrix;
+  return Math.abs(Math.atan2(b, a)) * (180 / Math.PI) > MOST_TILT_DEGREES;
+}
+
 /** One page's runs plus the page box they were placed in. */
 export interface PdfPageText {
   /** 1-based page number, the way the reader prints it. */

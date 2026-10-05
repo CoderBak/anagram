@@ -79,7 +79,7 @@ import {
   DEFAULT_MIN_WORDS,
   MIN_LINE_WORDS,
   MODEL_MIN_WORDS,
-  MAX_UNIT_TEXT_CHARS,
+  unitTextOf,
   writingSystem,
 } from "./text";
 import { type Scopes, createScopes, surveyScopes } from "./scope";
@@ -1606,12 +1606,12 @@ function createAssembler(
 
   function emit(runs: Run[]): void {
     const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container, preserved: r.preserved, ...(r.skips.length > 0 ? { skips: r.skips } : {}) }));
-    const text = runs.map((r) => r.text).join("\n\n").slice(0, MAX_UNIT_TEXT_CHARS);
+    const { text, wordCount } = unitTextOf(runs.map((r) => r.text), () => groupWords(runs));
     const unit: Unit = {
       id: "",
       parts,
       text,
-      wordCount: groupWords(runs),
+      wordCount,
       formulas: runs.reduce((n, r) => n + r.formulas, 0),
       order: 0,
       topElement: runs[0]!.container,

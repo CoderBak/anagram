@@ -6,7 +6,7 @@
 // lines the way a typesetter would — a left margin, a constant pitch, a measure — so a
 // test reads as the page it describes.
 import { describe, expect, it } from "vitest";
-import { reflowPdf, type PdfPageText, type PdfTextItem, type SourceRun } from "../../lib/pdf/reflow";
+import { isRotated, reflowPdf, type PdfPageText, type PdfTextItem, type SourceRun } from "../../lib/pdf/reflow";
 import { readReflowed } from "../../lib/pdf/reading";
 import { looksLikePdfUrl, pdfNameFromUrl, readerQuery } from "../../lib/pdf/source";
 
@@ -51,6 +51,30 @@ function column(lines: string[], top: number, x = 72, measure = 460): Placed[] {
 }
 
 const texts = (blocks: { text: string }[]): string[] => blocks.map((b) => b.text);
+
+describe("which runs count as rotated", () => {
+  const at = (deg: number, size = 10, shear = 0): number[] => {
+    const r = (deg * Math.PI) / 180;
+    return [size * Math.cos(r), size * Math.sin(r), size * (shear - Math.sin(r)), size * Math.cos(r), 72, 100];
+  };
+  it("keeps a slightly skewed line, whatever its size", () => {
+    for (const size of [6, 10, 24, 72]) {
+      expect(isRotated(at(0.1, size))).toBe(false); // a scan's OCR layer, a tenth of a degree off
+      expect(isRotated(at(-2, size))).toBe(false);
+      expect(isRotated(at(4.9, size))).toBe(false);
+    }
+  });
+  it("keeps a slanted font: a synthetic italic shears the run, it does not turn it", () => {
+    expect(isRotated(at(0, 10, 0.25))).toBe(false);
+  });
+  it("drops the margin stamp, a diagonal watermark and text upside down", () => {
+    expect(isRotated(at(90))).toBe(true);
+    expect(isRotated(at(-90))).toBe(true);
+    expect(isRotated(at(45))).toBe(true);
+    expect(isRotated(at(180))).toBe(true);
+    expect(isRotated(at(6))).toBe(true);
+  });
+});
 
 describe("reflowPdf — single column", () => {
   it("joins the lines of a paragraph and separates two paragraphs by their gap", () => {

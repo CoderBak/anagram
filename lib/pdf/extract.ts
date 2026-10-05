@@ -1,6 +1,6 @@
 import type { PDFPageProxy } from "pdfjs-dist";
 import { loadPdfjs } from "../lazy";
-import type { PdfPageText, PdfTextItem } from "./reflow";
+import { isRotated, type PdfPageText, type PdfTextItem } from "./reflow";
 
 /** Match the upstream TextLayerBuilder options so item offsets refer to the same text. */
 export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> {
@@ -16,7 +16,7 @@ export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> 
     items.push({
       str: item.str, x: matrix[4], y: matrix[5], width: item.width, height: item.height,
       fontName: item.fontName, hasEOL: item.hasEOL,
-      rotated: Math.abs(matrix[1]) > .02 || Math.abs(matrix[2]) > .02,
+      rotated: isRotated(matrix),
     });
     // The font's PDF name reaches the main thread with the page's drawing, which the
     // viewer has done by the time it builds the text layer; a font not there yet is

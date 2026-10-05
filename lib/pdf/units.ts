@@ -332,9 +332,11 @@ export function createPdfUnitSource(): PdfUnitSource {
   function build(members: readonly ReflowBlock[], wordsPer: readonly number[], order: number): Blueprint | null {
     const { text, starts } = joined(members);
     // The words are the ones already counted for the plan; a grouped unit's count is the
-    // sum of its paragraphs', exactly as a merged unit's is on a page (lib/dom/walker.ts).
-    let words = 0;
-    for (const n of wordsPer) words += n;
+    // sum of its paragraphs', exactly as a merged unit's is on a page (lib/dom/walker.ts),
+    // unless the storage cap cut the text, when only the words kept count (unitTextOf).
+    const words = text.length < starts.at(-1)! + members.at(-1)!.text.length
+      ? countWords(text)
+      : wordsPer.reduce((n, w) => n + w, 0);
 
     const parts: UnitPart[] = [];
     const runs: SourceRun[] = [];

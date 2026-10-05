@@ -145,6 +145,17 @@ export const MIN_LINE_WORDS = 4;
  */
 export const MAX_UNIT_TEXT_CHARS = 200_000;
 
+/** A unit's text from its paragraphs, "\n\n" between them, cut at MAX_UNIT_TEXT_CHARS, and
+ *  its words: `words()`, what the caller counted of the paragraphs already, unless the cut
+ *  took some, when only the words of the text kept count. The model never reads the rest,
+ *  and the statistics count the words scored. */
+export function unitTextOf(paragraphs: readonly string[], words: () => number): { text: string; wordCount: number } {
+  const whole = paragraphs.join("\n\n");
+  if (whole.length <= MAX_UNIT_TEXT_CHARS) return { text: whole, wordCount: words() };
+  const text = whole.slice(0, MAX_UNIT_TEXT_CHARS);
+  return { text, wordCount: countWords(text) };
+}
+
 
 // ---- extraction / normalization ---------------------------------------------------
 

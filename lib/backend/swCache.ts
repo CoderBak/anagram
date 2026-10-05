@@ -96,12 +96,15 @@ const FLUSH_MS = 250;
  */
 const MAX_AGE_MS = SCORE_CACHE_MAX_AGE_MS;
 
+/** A stored verdict is the one the engine gave, to its last digit: both engines round to
+ *  4 decimals (anagramd/scoring.py, lib/webengine/scoring.ts), and a cached verdict rounded
+ *  any further could show another word than the same text scored fresh, near a cut. */
 function toStored(key: string, r: ScoreResult, at = Date.now()): Stored {
   const s: Stored = {
     key,
     b: r.bucket,
-    p: r.probs.map((p) => Math.round(p * 1000) / 1000),
-    s: Math.round(r.score * 1000) / 1000,
+    p: [...r.probs],
+    s: r.score,
     t: at,
   };
   if (typeof r.tokens === "number") s.k = r.tokens;

@@ -9,6 +9,7 @@ import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createSwCache } from "../../lib/backend/swCache";
 import { fakeScoreStore as fakeStore } from "./scoreStore";
 import type { ScoreResult } from "../../lib/contract";
+import { levelOf } from "../../lib/render/scale";
 
 const DIM = "model-a@1";
 const DAY = 24 * 60 * 60 * 1000;
@@ -83,5 +84,22 @@ describe("how long a verdict is kept", () => {
     expect(await cache.count()).toBe(2);
     await cache.clear();
     expect(await cache.count()).toBe(0);
+  });
+});
+
+describe("what a verdict is stored as", () => {
+  it("keeps the engine's four decimals, so a cached verdict shows the word a fresh one does", async () => {
+    const store = fakeStore();
+    // 0.1666 is under the first cut (1/6) and reads Human; at three decimals it would be
+    // 0.167, over the cut, and read Lightly edited from the cache.
+    const fresh: ScoreResult = { id: "", bucket: 0, probs: [0.6668, 0.1666, 0.1666, 0], score: 0.1666 };
+    createSwCache(store).set("a paragraph that sits on a cut", fresh, DIM);
+    await flushed();
+    const cache = createSwCache(store); // a new worker: the verdict comes from the disk
+    const key = cache.keyOf("a paragraph that sits on a cut", DIM);
+    const cached = (await cache.getMany([key])).get(key);
+    expect(cached?.score).toBe(fresh.score);
+    expect(cached?.probs).toEqual(fresh.probs);
+    expect(levelOf(cached!.score)).toBe(levelOf(fresh.score));
   });
 });
