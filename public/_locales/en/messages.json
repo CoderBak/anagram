@@ -543,10 +543,6 @@
     "message": "Installs the local engine with one command in Terminal. It runs on your NVIDIA graphics card.",
     "description": "The terminal card on Linux beside an NVIDIA GPU."
   },
-  "engineTerminalWhatNvidiaWindows": {
-    "message": "Installs the local engine with one command in PowerShell. It runs on your NVIDIA graphics card.",
-    "description": "The terminal card on Windows beside an NVIDIA GPU."
-  },
   "engineTerminalButton": {
     "message": "Use the local engine",
     "description": "Setup page, local engine card: its button. It asks the browser to let Anagram talk to the engine, then shows the install command."

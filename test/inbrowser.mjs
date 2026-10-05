@@ -314,7 +314,7 @@ for (const lang of ["en", "zh-CN"]) {
 
 // ---- what the device can afford --------------------------------------
 
-for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "lighter"]]) {
+for (const [name, want] of [["linux-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "lighter"]]) {
   const w = words("en");
   const server = await modelServer({ rate: 15e6 });
   const run = await launch("en", server, undefined, deviceBuild(name, DEVICES[name]));
@@ -327,7 +327,7 @@ for (const [name, want] of [["windows-nvidia", "nvidia"], ["linux-2gb", "cannot"
       const seen = await setup.evaluate(() => ({
         terminal: document.querySelector('.engine-choice-card[data-engine="native"]')?.innerText.replace(/\s+/g, " ").trim() ?? "",
         figures: [...document.querySelectorAll(".engine-choice > .engine-note")].filter((el) => !el.hidden).map((el) => el.textContent) }));
-      check("NVIDIA on Windows: the choice, the local engine said to run on the NVIDIA card, and no figures", seen.terminal.includes(w("engineTerminalWhatNvidiaWindows")) &&
+      check("NVIDIA on Linux: the choice, the local engine said to run on the NVIDIA card, and no figures", seen.terminal.includes(w("engineTerminalWhatNvidia")) &&
         seen.figures.length === 0 && server.requests.length === 0, JSON.stringify(seen));
     } else if (want === "cannot") {
       const said = await until(() => textOf(setup, ".engine-cannot"), 15000);

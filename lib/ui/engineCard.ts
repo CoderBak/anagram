@@ -175,8 +175,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
       oneClickTight.textContent = t(d.tier === "fp16" ? "engineLighter" : "engineTight");
       oneClickTight.hidden = !(d.tight || d.tier === "fp16");
-      terminalWhat.textContent = t(d.machine === "nvidia"
-        ? (d.os === "windows" ? "engineTerminalWhatNvidiaWindows" : "engineTerminalWhatNvidia")
+      terminalWhat.textContent = t(d.reason === "nvidia" ? "engineTerminalWhatNvidia"
         : d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
       if (d.offer === "terminal-only") { delete terminalButton.dataset.variant; } else terminalButton.dataset.variant = "outline";
     }

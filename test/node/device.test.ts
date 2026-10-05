@@ -34,19 +34,25 @@ describe("the rule, row by row", () => {
     expect(decide(firefox({ navigatorPlatform: "MacIntel", gpu: null, webgl: { vendor: "Intel", renderer: "Intel(R) HD Graphics, or similar" } }))).toMatchObject({ offer: "auto-inbrowser", machine: "intel-mac", native: false });
   });
 
-  it("offers Windows and Linux with an NVIDIA GPU the choice", () => {
-    expect(decide(chrome(WIN_NVIDIA))).toMatchObject({ offer: "choice", reason: "nvidia", machine: "nvidia", native: true });
+  it("offers Linux with an NVIDIA GPU the choice", () => {
+    expect(decide(chrome({ ...WIN_NVIDIA, platform: "Linux", navigatorPlatform: "Linux x86_64" }))).toMatchObject({ offer: "choice", reason: "nvidia", machine: "nvidia", native: true });
     // WebGL's renderer, where WebGPU has no adapter (Chrome on Linux, mostly).
     expect(decide(chrome({ platform: "Linux", architecture: "x86", gpu: null, webgl: { vendor: "Google Inc. (NVIDIA Corporation)", renderer: "ANGLE (NVIDIA Corporation, NVIDIA GeForce GTX 1080/PCIe/SSE2, OpenGL 4.5.0)" } })))
       .toMatchObject({ offer: "choice", machine: "nvidia", path: "cpu" });
     expect(decide(firefox({ navigatorPlatform: "Linux x86_64", webgl: { vendor: "NVIDIA Corporation", renderer: "NVIDIA GeForce RTX 4090, or similar" } }))).toMatchObject({ offer: "choice", machine: "nvidia" });
   });
 
+  it("runs Windows with an NVIDIA GPU in the browser without a choice: the local engine has no CUDA there", () => {
+    expect(decide(chrome(WIN_NVIDIA))).toMatchObject({ offer: "auto-inbrowser", reason: "no-local-gpu", machine: "nvidia", native: true, path: "webgpu" });
+    // Where the model does not fit the browser, the local engine on the processor is no way out either.
+    expect(decide(chrome({ ...WIN_NVIDIA, deviceMemory: 0.5 }))).toMatchObject({ offer: "cannot-run", reason: "memory" });
+  });
+
   it("runs Windows and Linux with any other GPU, or none, in the browser without a choice", () => {
     expect(decide(chrome({ platform: "Windows", architecture: "x86", gpu: { vendor: "amd" }, webgl: { renderer: "ANGLE (AMD, AMD Radeon RX 6800 Direct3D11 vs_5_0 ps_5_0, D3D11)" } })))
-      .toMatchObject({ offer: "auto-inbrowser", reason: "no-nvidia", native: true, path: "webgpu" });
-    expect(decide(chrome({ platform: "Windows", architecture: "x86", gpu: { vendor: "intel" } }))).toMatchObject({ offer: "auto-inbrowser", reason: "no-nvidia" });
-    expect(decide(chrome({ platform: "Linux", architecture: "x86", gpu: null, webgl: null }))).toMatchObject({ offer: "auto-inbrowser", reason: "no-nvidia", path: "cpu" });
+      .toMatchObject({ offer: "auto-inbrowser", reason: "no-local-gpu", native: true, path: "webgpu" });
+    expect(decide(chrome({ platform: "Windows", architecture: "x86", gpu: { vendor: "intel" } }))).toMatchObject({ offer: "auto-inbrowser", reason: "no-local-gpu" });
+    expect(decide(chrome({ platform: "Linux", architecture: "x86", gpu: null, webgl: null }))).toMatchObject({ offer: "auto-inbrowser", reason: "no-local-gpu", path: "cpu" });
     expect(decide(firefox({ navigatorPlatform: "Linux x86_64", gpu: null, webgl: { renderer: "llvmpipe, or similar" } }))).toMatchObject({ offer: "auto-inbrowser" });
   });
 
@@ -65,7 +71,7 @@ describe("what the device can afford", () => {
     expect(decide(chrome({ platform: "Linux", gpu: null, deviceMemory: 2 }))).toMatchObject({ offer: "cannot-run", reason: "memory", path: null });
     expect(decide(chrome({ ...INTEL_MAC, deviceMemory: 2 }))).toMatchObject({ offer: "cannot-run", reason: "memory" });
     expect(decide(chrome({ ...M4, deviceMemory: 2 }))).toMatchObject({ offer: "terminal-only", reason: "memory" });
-    expect(decide(chrome({ ...WIN_NVIDIA, deviceMemory: 0.5 }))).toMatchObject({ offer: "terminal-only", reason: "memory" });
+    expect(decide(chrome({ ...WIN_NVIDIA, platform: "Linux", navigatorPlatform: "Linux x86_64", deviceMemory: 0.5 }))).toMatchObject({ offer: "terminal-only", reason: "memory" });
   });
 
   it("runs on 4 GB with a note that the computer may slow down, and on unknown memory as on plenty", () => {

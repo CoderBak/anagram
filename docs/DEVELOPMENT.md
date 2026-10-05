@@ -48,7 +48,8 @@ Work on `dev`; `main` holds the published README only.
 One extension carries both engines; the person's choice (`storage.local` `engine`) decides
 at run time, and `engineTransport()` (`lib/backend/engines.ts`) is the one in use. Before
 anything is chosen the setup page decides (`lib/device.ts`, `lib/ui/engineCard.ts`): the
-choice on Apple Silicon and beside an NVIDIA GPU, the in-browser engine by itself elsewhere,
+choice on Apple Silicon and on Linux beside an NVIDIA GPU, the in-browser engine by itself elsewhere
+(Windows beside an NVIDIA GPU included: PyPI's Windows Torch has no CUDA),
 nothing where the model does
 not fit (the local engine alone where it installs). Where FP32 does not fit but FP16 does (`TIERS`, `affordable()`), the in-browser engine
 runs the modelkit's FP16 model on WebGPU; the page's tier travels with `setEngine` into

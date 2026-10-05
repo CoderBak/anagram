@@ -30,7 +30,7 @@ Step 1 decides how Anagram runs its model. Either way the model runs on this com
   1.4 GB, one time, from Hugging Face into the browser's own storage (from its mirror
   hf-mirror.com where Hugging Face cannot be reached, as in mainland China). With Data Saver on, or
   too little disk space, it waits for **Set up (one-time 1.4 GB download)** instead.
-- **On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card**, the
+- **On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card**, the
   page asks first, and nothing downloads until you pick:
   **One click** runs in the browser as above. **Terminal** asks the browser to let Anagram
   talk to a local engine, then shows one command: run it in Terminal. No administrator

@@ -4,11 +4,16 @@
 //
 //   Apple Silicon Mac                    choice: native MLX scores a paragraph in 43 ms at
 //                                        ~1.8 GB, the browser in 92 ms at up to 2.5 GB
-//   Windows or Linux with an NVIDIA GPU  choice: native PyTorch CUDA
+//   Linux with an NVIDIA GPU             choice: native PyTorch CUDA
 //   Intel Mac                            in the browser, automatically: install.sh has no
 //                                        Intel macOS runtime
 //   anything else                        in the browser, automatically: native ONNX on the
-//                                        processor measured slower than the browser's WASM
+//                                        processor measured slower than the browser's WASM.
+//                                        Windows with an NVIDIA GPU too: PyPI has no CUDA
+//                                        build of Torch for Windows, so the local engine would
+//                                        run on the processor there, and the browser's engine
+//                                        runs on the graphics card (the user's decision of
+//                                        2026-10-05: offer nothing that was never run)
 //
 // and the in-browser engine only where the device can afford it (affordable() below). The
 // function is pure; lib/ui/deviceInputs.ts reads its inputs in a page.
@@ -47,8 +52,9 @@ export type Machine = "apple-silicon" | "intel-mac" | "nvidia" | "other";
 export type Reason =
   /** choice */
   | "apple-silicon" | "nvidia"
-  /** auto-inbrowser */
-  | "intel-mac" | "no-nvidia" | "no-installer"
+  /** auto-inbrowser: no GPU the local engine can use here (none, not NVIDIA, or NVIDIA on
+   *  Windows, where it has no CUDA), an Intel Mac, a system with no installer */
+  | "intel-mac" | "no-local-gpu" | "no-installer"
   /** the in-browser engine does not fit; terminal-only where the local engine installs */
   | "memory" | "disk" | "browser" | "webgpu";
 
@@ -130,6 +136,11 @@ function machineOf(i: DeviceInputs, os: Os): Machine {
   return "other";
 }
 
+/** Where the local engine runs on an NVIDIA GPU: Linux, where install.sh adds Torch's CUDA build. */
+function cuda(os: Os, machine: Machine): boolean {
+  return os === "linux" && machine === "nvidia";
+}
+
 /** Where the local engine installs: Apple Silicon macOS, x64 Windows, glibc Linux (x86_64 or
  *  arm64). A Mac whose kind nobody could tell is given the benefit of the doubt: the
  *  installer itself says so on an Intel one. */
@@ -187,7 +198,7 @@ export function decide(i: DeviceInputs): Decision {
   if (!fits.tier) {
     // Nothing is downloaded where the model does not fit, and nothing is ever scored
     // anywhere else; where the local engine installs, it is what is left.
-    const choiceDevice = native && (machine === "apple-silicon" || machine === "nvidia");
+    const choiceDevice = native && (machine === "apple-silicon" || cuda(os, machine));
     return { ...base, offer: choiceDevice ? "terminal-only" : "cannot-run", reason: fits.short ?? "memory" };
   }
   if (i.browser === "safari" && (fits.tier.id === "fp32" ? i.gpu?.fits !== true : i.gpu?.fitsFp16 !== true || i.gpu?.f16 !== true)) {
@@ -197,7 +208,7 @@ export function decide(i: DeviceInputs): Decision {
   const path: "webgpu" | "cpu" = fits.tier.id === "fp16" || (i.gpu && i.gpu.fits !== false) ? "webgpu" : "cpu";
   const inBrowser = { ...base, path, tight: fits.tight, tier: fits.tier.id, fallback: i.browser === "safari" ? null : fits.fallback };
   if (native && machine === "apple-silicon") return { ...inBrowser, offer: "choice", reason: "apple-silicon" };
-  if (native && machine === "nvidia") return { ...inBrowser, offer: "choice", reason: "nvidia" };
-  const reason = machine === "intel-mac" ? "intel-mac" : os === "windows" || os === "linux" ? "no-nvidia" : "no-installer";
+  if (native && cuda(os, machine)) return { ...inBrowser, offer: "choice", reason: "nvidia" };
+  const reason = machine === "intel-mac" ? "intel-mac" : os === "windows" || os === "linux" ? "no-local-gpu" : "no-installer";
   return { ...inBrowser, offer: "auto-inbrowser", reason };
 }

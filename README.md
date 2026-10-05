@@ -22,7 +22,7 @@ Nothing you read leaves your machine.
    and choose that folder.
 4. The setup page opens with three numbered steps, each ticked off once it is done. First
    the engine: on most computers the model (1.4 GB) downloads into the browser by itself.
-   On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics card, it asks
+   On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card, it asks
    first: **One click** runs the model in the browser; **Terminal** installs a faster local
    engine with one command, which installs a private Python runtime, registers the extension
    and downloads the model files. Settings switches later.

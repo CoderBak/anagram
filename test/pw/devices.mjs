@@ -5,8 +5,9 @@ const ROOMY = { quota: 200e9, usage: 1e9 };
 export const DEVICES = {
   /** An Apple Silicon Mac: the choice between the two engines. */
   "apple-silicon": { platform: "macOS", architecture: "arm", navigatorPlatform: "MacIntel", gpu: { vendor: "apple", architecture: "metal-3", fits: true }, deviceMemory: 8, storage: ROOMY },
-  /** Windows beside an NVIDIA GPU: the choice, without the M4's figures. */
-  "windows-nvidia": { platform: "Windows", architecture: "x86", navigatorPlatform: "Win32", gpu: { vendor: "nvidia", architecture: "ada", fits: true }, deviceMemory: 8, storage: ROOMY },
+  /** Linux beside an NVIDIA GPU: the choice, without the M4's figures. (On Windows an NVIDIA GPU
+   *  gets the in-browser engine alone: the local engine has no CUDA there.) */
+  "linux-nvidia": { platform: "Linux", architecture: "x86", navigatorPlatform: "Linux x86_64", gpu: { vendor: "nvidia", architecture: "ada", fits: true }, deviceMemory: 8, storage: ROOMY },
   /** Linux with no NVIDIA GPU: the in-browser engine, without a choice. */
   "linux-cpu": { platform: "Linux", architecture: "x86", navigatorPlatform: "Linux x86_64", gpu: null, webgl: { vendor: "Mesa", renderer: "llvmpipe" }, deviceMemory: 8, storage: ROOMY },
   /** The same with 4 GB: it runs, and says the computer may slow down. */

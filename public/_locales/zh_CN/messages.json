@@ -427,9 +427,6 @@
   "engineTerminalWhatNvidia": {
     "message": "在终端中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
   },
-  "engineTerminalWhatNvidiaWindows": {
-    "message": "在 PowerShell 中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
-  },
   "engineTerminalButton": {
     "message": "使用本地引擎"
   },
