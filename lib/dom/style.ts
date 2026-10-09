@@ -95,15 +95,14 @@ const CLIP_MAX_VIEWPORT_SHARE = 0.9;
  * shows three lines (`span[data-testid=expandable-text-box]`, `-webkit-line-clamp:3;
  * overflow:hidden`; the old UI's `div.feed-shared-inline-show-more-text` measures 60 px
  * around 497 px of text), Substack's Notes feed clamps `div.pencraft` to 168 px of
- * 1 708 px. Scoring that text judged a post by words nobody read, and put the chip
- * inside the clipped box where nobody sees it.
+ * 1 708 px. Only the page diagnostics ask it now (lib/diagnostics/): nothing a walk reads or
+ * scores depends on it, and placing a chip asks another question (lib/render/badge.ts).
  *
  * The rule is a measurement, not a declaration: `overflow-y` must be `hidden` or `clip`
  * (`auto`/`scroll` are readable, and a carousel's `overflow-x:hidden` computes `overflow-y`
  * to `auto`), and the content must be at least twice the height of the box. Guards keep
  * it off everything that legitimately overflows: page-level boxes and `<details>`, boxes
- * as tall as the viewport, and a few pixels of decorative overflow. After the reader
- * expands the box the class/style/attribute change marks it dirty and it is scored then.
+ * as tall as the viewport, and a few pixels of decorative overflow.
  *
  * COST: `clientHeight`/`scrollHeight` force layout, so they are read only once the cheap
  * computed-style test says the box clips at all. The walk mutates nothing, so the first

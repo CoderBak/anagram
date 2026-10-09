@@ -73,8 +73,9 @@ const DRAIN_COST_SPACING = 19;
  *  as long as twenty such drains: it is read within this instead. Only drains dearer than
  *  260 ms, which no page has been seen to cost, take more than a twentieth again. */
 const DRAIN_MAX_SPACING_MS = 5000;
-// Prefetch margin for the "near" lane: at reading-speed scrolling, ~1.5 screens ahead
-// keeps chips landing before the paragraph enters the viewport.
+// Prefetch margin for the "near" lane: 1200 px ahead, about a screen and a half of a laptop's
+// (1.4 at the budgets' 850 px) and less than one of a tall monitor's, keeps chips landing
+// before the paragraph enters the viewport at reading speed.
 const ROOT_MARGIN = "1200px 0px";
 /** Min interval between attribute-driven re-scans of the SAME element. */
 const ATTR_RESCAN_MIN_MS = 1500;

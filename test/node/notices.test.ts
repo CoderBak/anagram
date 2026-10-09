@@ -76,6 +76,7 @@ describe(NOTICES_FILE, () => {
   it("names our own source, a vendored package and a bundler helper apart", () => {
     expect(packageOfModule(join(ROOT, "lib", "hash.ts"))).toBeNull();
     expect(packageOfModule("lib/surfaces/chunk.ts")).toBeNull();
+    expect(packageOfModule("anagramd/contract.json")).toBeNull();
     expect(packageOfModule("\0anagram:en-messages")).toBeNull();
     expect(packageOfModule(`${ROOT}/node_modules/@floating-ui/dom/dist/floating-ui.dom.mjs`)).toBe("@floating-ui/dom");
     expect(packageOfModule("../../node_modules/dompurify/dist/purify.es.mjs")).toBe("dompurify");

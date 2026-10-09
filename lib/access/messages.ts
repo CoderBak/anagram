@@ -2,7 +2,7 @@
 import * as v from "valibot";
 import { safePdfSource } from "../pdf/source";
 import { isCommentOrigin } from "./commentFrames";
-import { CONTRACT_VERSION } from "../contract";
+import { CONTRACT_LIMITS, CONTRACT_VERSION } from "../contract";
 import { ACTIONS } from "../messaging/protocol";
 import { UI_EVENTS } from "../stats/model";
 import { STATS_LIMITS, StatsWireSchema } from "../stats/wire";
@@ -13,6 +13,9 @@ export interface AccessSender {
 }
 export type CallerRole = "content" | "reader" | "popup" | "options" | "onboarding" | "paste" | "stats";
 export const SESSION_PORT = "anagram-document";
+/** How long a document's session port has to say its session, on both sides of it: the
+ *  document gives up on it, and the worker closes it, after this. */
+export const SESSION_HANDSHAKE_MS = 2000;
 export const SESSION_KEY = "__anagramDocumentSession";
 export const SessionSchema = v.pipe(v.string(), v.regex(/^[a-f0-9-]{36}$/));
 const session = v.optional(SessionSchema);
@@ -24,16 +27,17 @@ const pdfUrl = v.pipe(v.string(), v.check((s) => safePdfSource(s) !== null));
 /** A comment provider's pattern (lib/access/commentFrames.ts), and nothing else: the page
  *  may not ask the worker what else is granted. */
 const commentOrigin = v.pipe(v.string(), v.check(isCommentOrigin));
-const Block = v.strictObject({id:v.pipe(v.string(),v.minLength(1),v.maxLength(64)),text:v.pipe(v.string(),v.maxLength(16000))});
+const { blocks: MOST_BLOCKS, text_chars: MOST_TEXT, token_texts: MOST_TOKEN_TEXTS, token_chars: MOST_CHARS, id_chars: MOST_ID } = CONTRACT_LIMITS;
+const Block = v.strictObject({id:v.pipe(v.string(),v.minLength(1),v.maxLength(MOST_ID)),text:v.pipe(v.string(),v.maxLength(MOST_TEXT))});
 export const ScoreRequestSchema = v.pipe(v.strictObject({
   v:v.literal(CONTRACT_VERSION), session:v.pipe(v.string(),v.minLength(1),v.maxLength(64)),
   priority:v.picklist(["viewport","near","background"]),
-  blocks:v.pipe(v.array(Block),v.minLength(1),v.maxLength(256)),
+  blocks:v.pipe(v.array(Block),v.minLength(1),v.maxLength(MOST_BLOCKS)),
 }),v.check((r) => new Set(r.blocks.map((b)=>b.id)).size === r.blocks.length, "duplicate block IDs"),
-  v.check((r) => r.blocks.reduce((n,b)=>n+b.text.length,0) <= 256_000,"request too large"),
+  v.check((r) => r.blocks.reduce((n,b)=>n+b.text.length,0) <= MOST_CHARS,"request too large"),
   v.check((r) => new TextEncoder().encode(JSON.stringify(r)).byteLength <= 900_000,"encoded request too large"));
-const TokenTexts = v.pipe(v.array(v.pipe(v.string(),v.maxLength(16000))),v.minLength(1),v.maxLength(512),
-  v.check((texts) => texts.reduce((n,t)=>n+t.length,0) <= 256_000,"request too large"));
+const TokenTexts = v.pipe(v.array(v.pipe(v.string(),v.maxLength(MOST_TEXT))),v.minLength(1),v.maxLength(MOST_TOKEN_TEXTS),
+  v.check((texts) => texts.reduce((n,t)=>n+t.length,0) <= MOST_CHARS,"request too large"));
 const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.SCORE_BATCH),session,req:ScoreRequestSchema}),
   v.strictObject({action:v.literal(ACTIONS.COUNT_TOKENS),session,texts:TokenTexts}),
@@ -61,8 +65,8 @@ export type WorkerMessage = v.InferOutput<typeof schema>;
 export function parseWorkerMessage(value: unknown): WorkerMessage | null {
   // Reject excessive fan-out before the schema traverses any block values.
   const raw=value as {action?:unknown;req?:{blocks?:unknown}}|null;
-  if(raw?.action === ACTIONS.SCORE_BATCH && Array.isArray(raw.req?.blocks) && raw.req.blocks.length>256)return null;
-  if(raw?.action === ACTIONS.COUNT_TOKENS && Array.isArray((raw as {texts?:unknown}).texts) && (raw as {texts:unknown[]}).texts.length>512)return null;
+  if(raw?.action === ACTIONS.SCORE_BATCH && Array.isArray(raw.req?.blocks) && raw.req.blocks.length>MOST_BLOCKS)return null;
+  if(raw?.action === ACTIONS.COUNT_TOKENS && Array.isArray((raw as {texts?:unknown}).texts) && (raw as {texts:unknown[]}).texts.length>MOST_TOKEN_TEXTS)return null;
   if(raw?.action === ACTIONS.STATS_RECORD){
     const wire=(raw as {wire?:Record<string,unknown>}).wire;
     if(Array.isArray(wire?.units) && wire.units.length>STATS_LIMITS.units)return null;

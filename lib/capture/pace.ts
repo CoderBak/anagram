@@ -10,13 +10,15 @@
 // idle minutes, another tab's work ahead of it — is not taken at its word; two in a row are.
 //
 // - Pace: a duty cycle. After a batch that kept the engine busy for B ms the background rests
-//   B·(1 − d)/d, with d by how fast the engine is — about half its time on a GPU, a third on a
-//   CPU, a seventh on a slow one — and half that on battery. (The spellcheckers' "cold mode"
+//   B·(1 − d)/d, with d by how fast the engine is — half its time on a GPU, a third on a CPU,
+//   15% on a slow one — and half that on battery. (The spellcheckers' "cold mode"
 //   and Zotero's indexer work in slices on the same principle.) A speed changes class only a
 //   fifth past the line, so one odd batch does not swing it.
-// - Batches: about a second of the engine's time where it is fast, ONE paragraph where it is
-//   not, so what comes on screen next waits behind at most one paragraph — and one paragraph
-//   until something has been measured, whatever the device says. Where it is not fast the
+// - Batches (the PDF reader's; a web page's background lane keeps its own budget, one
+//   paragraph a batch where the engine is not fast, lib/capture/orchestrator.ts): about a
+//   second of the engine's time where it is fast, ONE paragraph where it is not, so what comes
+//   on screen next waits behind at most one paragraph — and one paragraph until something has
+//   been measured, whatever the device says. Where it is not fast the
 //   paragraphs on screen go one at a time too: a pass pads its texts to the longest of them
 //   (three paragraphs of a page took 4.8 s together on an M4's CPU, 3.1 s one by one), and
 //   each chip is up as soon as its paragraph is read.

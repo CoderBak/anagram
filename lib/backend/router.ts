@@ -2,7 +2,7 @@
 // inference, and complete model provenance. Browser authority supplies document keys.
 import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult,
   ScoreBatchRequest, ScoreBatchResponse } from "../contract";
-import { BUCKET_COUNT, modelDim } from "../contract";
+import { BUCKET_COUNT, DOCUMENT_SHARE, modelDim } from "../contract";
 import { modelText } from "../dom/text";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { createSwCache, type SwCache } from "./swCache";
@@ -10,7 +10,7 @@ import { retryWaitMs } from "./retry";
 import { createLogger } from "../log";
 
 const log = createLogger("router");
-const BATCH_CHAR_BUDGET = 6000;
+const ENGINE_BATCH_CHARS = 6000;
 const MAX_IN_FLIGHT = 4;
 const MAX_DOCUMENT_IN_FLIGHT = 2;
 const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, background: 0 };
@@ -22,7 +22,7 @@ const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, backgroun
 export const ROUTER_LIMITS = Object.freeze({
   requests: 256, blocks: 1024, chars: 1_000_000,
   tabRequests: 128, tabBlocks: 512, tabChars: 500_000,
-  documentRequests: 16, documentBlocks: 256, documentChars: 250_000,
+  documentRequests: 16, documentBlocks: DOCUMENT_SHARE.blocks, documentChars: DOCUMENT_SHARE.chars,
 });
 
 export interface RequestOrigin {
@@ -237,7 +237,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
         const first = group[0]!;
         let entry = inFlight.get(key);
         if (!entry) {
-          if (!batch || (size && size + first.text.length > BATCH_CHAR_BUDGET)) {
+          if (!batch || (size && size + first.text.length > ENGINE_BATCH_CHARS)) {
             batch = { priority: PRIORITY[req.priority] ?? 0, queuedAt: Date.now(),
               entries: [], controller: new AbortController(), epoch: requestEpoch, cacheEpoch, revision };
             batches.push(batch); size = 0;

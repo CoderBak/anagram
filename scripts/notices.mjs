@@ -349,7 +349,7 @@ export function packageOfModule(id) {
   if (/^virtual:wxt-/.test(clean)) return "wxt";
   if (/^anagram:/.test(clean) || clean === "<stdin>") return null;
   const path = clean.replaceAll("\\", "/");
-  if (path.startsWith("/") || /^[A-Za-z]:\//.test(path) || /^(lib|entrypoints|public|scripts)\//.test(path)) return null;
+  if (path.startsWith("/") || /^[A-Za-z]:\//.test(path) || /^(lib|entrypoints|public|scripts|anagramd)\//.test(path)) return null;
   // Anything else is a module of unknown origin: name it, and the check will refuse it.
   return `(unknown module ${clean})`;
 }

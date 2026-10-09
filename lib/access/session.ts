@@ -1,6 +1,6 @@
 // A document nonce plus a live port binds messages on browsers without documentId.
 import { browser } from "#imports";
-import { SESSION_KEY, SESSION_PORT } from "./messages";
+import { SESSION_HANDSHAKE_MS, SESSION_KEY, SESSION_PORT } from "./messages";
 
 interface Connection {
   session: string;
@@ -63,7 +63,7 @@ function connection(): Connection {
   connected = record;
   try {
     port = browser.runtime.connect({ name: SESSION_PORT });
-    timer = setTimeout(() => record.close(), 2000);
+    timer = setTimeout(() => record.close(), SESSION_HANDSHAKE_MS);
     port.onDisconnect.addListener(() => { void browser.runtime.lastError; record.close(); });
     port.onMessage.addListener((message) => {
       if (settled || record.signal.aborted || message?.session !== session) return;

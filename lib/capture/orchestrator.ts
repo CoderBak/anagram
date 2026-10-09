@@ -19,9 +19,9 @@ import type { BackendStatus, CommentAccessReply, EngineSetup } from "../messagin
 import { commentOriginsIn } from "../access/commentFrames";
 import type { Unit, Lane } from "../types";
 import type { ModelInfo, ScoreBlock, ScoreResult, ScoreBatchRequest } from "../contract";
-import { CONTRACT_VERSION, modelDim } from "../contract";
+import { CONTRACT_VERSION, PAGE_IN_FLIGHT, modelDim } from "../contract";
 import { collectUnitsInSlices, inPageOrder, type CollectOptions } from "../dom/walker";
-import { finishInSlices } from "../slices";
+import { SLICE_MS, finishInSlices } from "../slices";
 import { restoreSplits } from "../dom/splits";
 import { partTextOf, isShortText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, type Observers } from "./observers";
@@ -58,20 +58,19 @@ const log = createLogger("orchestrator");
 
 // Per-lane batch sizes (chars): the viewport lane favours time-to-first-chip, the
 // background prefetch lane favours model throughput (see scheduler.ts).
-const BATCH_CHAR_BUDGET = { near: 4000, background: 6000 } as const;
+const LANE_BATCH_CHARS = { near: 4000, background: 6000 } as const;
 /** The lanes' budgets. On screen one unit a batch, always: each chip goes up as soon as its
  *  paragraph is read, the first after one paragraph's pass rather than all of the screen's, and
  *  a pass costs the engine little beyond its tokens (12 ms on an M4's GPU, a paragraph's tenth).
  *  Off screen, one unit a batch too while `one` says so. */
 function laneBudgets(one: () => boolean): Record<Lane, () => number> {
-  const of = (lane: "near" | "background") => () => (one() ? 1 : BATCH_CHAR_BUDGET[lane]);
+  const of = (lane: "near" | "background") => () => (one() ? 1 : LANE_BATCH_CHARS[lane]);
   return { viewport: () => 1, near: of("near"), background: of("background") };
 }
 /** How soon the idle prefetch looks again for units the observers have still not placed (the
  *  observers ask as they place them; Observers.placed gives up waiting after a second). */
 const PLACE_RETRY_MS = 1100;
-const MAX_IN_FLIGHT = 4;
-/** Background prefetch may hold at most this many of the in-flight slots. */
+/** Background prefetch may hold at most this many of the in-flight slots (PAGE_IN_FLIGHT). */
 const MAX_BACKGROUND_IN_FLIGHT = 1;
 /** Units enqueued per idle prefetch pass (huge pages drain in successive passes). */
 const PREFETCH_PASS = 300;
@@ -84,8 +83,6 @@ const PREFETCH_PASS = 300;
 const URL_REFRESH_DEBOUNCE_MS = 300;
 /** While the daemon is down: how often the content script asks the worker to re-probe. */
 const DOWN_POLL_MS = 5000;
-/** How long a walk runs before it lets the page's own work through (collectUnitsInSlices). */
-const WALK_SLICE_MS = 8;
 /** How long a jump to a kept paragraph waits for its page to be drawn, and how much of a
  *  regrouped paragraph's opening must match for the jump to land on it. */
 const JUMP_WAIT_MS = 5000;
@@ -747,7 +744,7 @@ export function createOrchestrator(
     };
     return opts.collect
       ? opts.collect(root, claimFilter, options)
-      : finishInSlices(collectUnitsInSlices(root, options), WALK_SLICE_MS, meter);
+      : finishInSlices(collectUnitsInSlices(root, options), SLICE_MS, meter);
   }
 
   /** Register freshly collected units: claim their nodes, observe, index. */
@@ -790,10 +787,11 @@ export function createOrchestrator(
 
   // --- idle prefetch -----------------------------------------------------------------
   // Everything the observers have not yet asked for is scored in the background lane
-  // during idle time, in document order, so by the time the reader scrolls there the
-  // verdict is already cached (both here and in the daemon-side persistent cache).
-  // The lane is lowest priority and capped to one in-flight batch, so it never delays
-  // the viewport; a unit that scrolls into view meanwhile is simply upgraded.
+  // during idle time, in document order and at the pace lib/capture/pace.ts sets, so by the
+  // time the reader scrolls there the verdict is already cached (here and in the worker's
+  // persistent cache, lib/backend/swCache.ts). The lane is lowest priority and holds one
+  // batch in flight at most, so what comes on screen waits behind that one batch at most (the
+  // engine finishes a pass it has begun); a unit that scrolls into view meanwhile is upgraded.
   let prefetchScheduled = false;
   function schedulePrefetch(): void {
     if (prefetchScheduled || frozen) return;
@@ -1261,7 +1259,7 @@ export function createOrchestrator(
 
   const scheduler: Scheduler = createScheduler<UnitVerdict>({
     batchCharBudget: laneBudgets(opts.oneUnitBatches ?? (() => onProcessor)),
-    maxInFlight: MAX_IN_FLIGHT,
+    maxInFlight: PAGE_IN_FLIGHT,
     maxBackgroundInFlight: MAX_BACKGROUND_IN_FLIGHT,
     send,
     render,

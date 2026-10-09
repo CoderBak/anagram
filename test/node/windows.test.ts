@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { readInWindows, unitVerdict, blockText, fitsWithoutCounting, wordsOf, requestSlices, MAX_BLOCK_CHARS, MAX_WINDOWS, PASS_TOKENS, REQUEST_BLOCKS, REQUEST_CHARS, type CountTokens, type ScoreBlocks, type WindowVerdict } from "../../lib/capture/windows";
 import { ROUTER_LIMITS } from "../../lib/backend/router";
-import type { ScoreBlock, ScoreResult } from "../../lib/contract";
+import { PAGE_IN_FLIGHT, type ScoreBlock, type ScoreResult } from "../../lib/contract";
 import { modelText } from "../../lib/dom/text";
 import { fakeCounts, planText, spanTokens } from "./fakeCounts";
 
@@ -234,9 +234,9 @@ it("sends the most a batch can hold in requests the worker takes, four of them a
     expect(slice.reduce((n, b) => n + b.text.length, 0)).toBeLessThanOrEqual(REQUEST_CHARS);
   }
   // lib/access/messages.ts refuses past 256 blocks or 256 000 characters; the router answers
-  // Unavailable past its per-page share, which the orchestrator's four batches split.
-  expect(REQUEST_BLOCKS * 4).toBeLessThanOrEqual(Math.min(256, ROUTER_LIMITS.documentBlocks));
-  expect(REQUEST_CHARS * 4).toBeLessThanOrEqual(Math.min(256_000, ROUTER_LIMITS.documentChars));
+  // Unavailable past its per-page share, which the orchestrator's batches in flight split.
+  expect(REQUEST_BLOCKS * PAGE_IN_FLIGHT).toBeLessThanOrEqual(Math.min(256, ROUTER_LIMITS.documentBlocks));
+  expect(REQUEST_CHARS * PAGE_IN_FLIGHT).toBeLessThanOrEqual(Math.min(256_000, ROUTER_LIMITS.documentChars));
   expect(REQUEST_CHARS * 6 + REQUEST_BLOCKS * 100).toBeLessThanOrEqual(900_000);
   expect(requestSlices([{id: "one", text: "x".repeat(10)}], (b) => b.text.length)).toHaveLength(1);
 });

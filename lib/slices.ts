@@ -13,10 +13,13 @@ export function finish<T>(steps: Generator<void, T>): T {
   }
 }
 
+/** How long a slice runs before the page's own work is let through: half a frame at 60 Hz. */
+export const SLICE_MS = 8;
+
 /** Run `steps` to its end, handing the main thread back whenever a slice has run `sliceMs`.
  *  `meter.waited` adds up the time it was handed back, so that what the work itself cost is
  *  the time it took less that (Observers' drain pacing, lib/capture/observers.ts). */
-export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = 8, meter?: { waited: number }): Promise<T> {
+export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = SLICE_MS, meter?: { waited: number }): Promise<T> {
   let began = performance.now();
   for (;;) {
     const step = steps.next();

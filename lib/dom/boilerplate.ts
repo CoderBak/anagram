@@ -479,7 +479,7 @@ export function isConsentBanner(el: Element): boolean {
 }
 
 /** A line of text this long beside a box is the text the box stands in. */
-const RUNNING_TEXT_CHARS = 40;
+const BESIDE_TEXT_CHARS = 40;
 
 /** The words of a text, lower case, one space between them: what a pull quote repeats. */
 function wordsOf(text: string): string {
@@ -490,12 +490,12 @@ function wordsOf(text: string): string {
  *  phrase element — the tags a browser lays out inline, and custom elements, which are
  *  inline until a stylesheet says otherwise. */
 function runningText(node: Node): boolean {
-  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim().length >= RUNNING_TEXT_CHARS;
+  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim().length >= BESIDE_TEXT_CHARS;
   if (node.nodeType !== Node.ELEMENT_NODE) return false;
   const tag = node.nodeName.toUpperCase();
   if (tag === "BR") return true;
   if (tag !== "P" && !INLINE_FALLBACK_TAGS.has(tag) && !tag.includes("-")) return false;
-  return (node.textContent ?? "").trim().length >= RUNNING_TEXT_CHARS;
+  return (node.textContent ?? "").trim().length >= BESIDE_TEXT_CHARS;
 }
 
 /** Prose of its own: a paragraph, a quotation, a caption or an item with this much text

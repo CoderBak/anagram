@@ -82,7 +82,7 @@ const DESCENT = 0.35;
 const DRIFT = 1.5;
 /** How far right of a glyph, in run heights, the run it came from may stand: the spaces
  *  Zotero's fork dropped from a line add up along it (boxesFor). */
-const REACH = 4;
+const RUN_REACH = 4;
 
 // ---- glyphs -----------------------------------------------------------------------------
 
@@ -148,7 +148,7 @@ function centreOf(g: Glyph, m: number[]): { cx: number; cy: number; h: number } 
 /**
  * The runs a glyph may belong to, the likeliest first: the run whose box holds its centre
  * (the nearest when several do), else the nearest one to its right within DRIFT heights;
- * after it, every other run to its right on the line within REACH heights, nearest first.
+ * after it, every other run to its right on the line within RUN_REACH heights, nearest first.
  *
  * Zotero's fork folds a dropped word space into the glyphs after it and sets the rest of
  * the line on from there, so a glyph can stand a space's width LEFT of where pdf.js drew
@@ -181,7 +181,7 @@ function boxesFor(index: PageIndex, g: Glyph): Box[] {
     if (dx <= slack) {
       if (score < bestScore) { best = b; bestScore = score; }
     } else if (cx < b.x1 && dx <= b.h * DRIFT && score < nearScore) { near = b; nearScore = score; }
-    if (cx < b.x1 && b.x1 - cx <= b.h * REACH) right.push(b);
+    if (cx < b.x1 && b.x1 - cx <= b.h * RUN_REACH) right.push(b);
   }
   const first = best ?? near;
   if (!first) return [];
@@ -589,7 +589,7 @@ function plainText(block: SdtBlock, depth = 0): string {
 
 /** A bibliography entry's label, "[12]", and the year an entry cites. */
 const ENTRY_LABEL = /^\[\d{1,4}\]/u;
-const YEAR = /\b(?:1[5-9]|20)\d\d[a-z]?\b/u;
+const ENTRY_YEAR = /\b(?:1[5-9]|20)\d\d[a-z]?\b/u;
 /** Shares of a list's items that must open with a label, and cite a year. */
 const LABELLED_ITEMS = 0.6;
 const DATED_ITEMS = 0.5;
@@ -604,7 +604,7 @@ function isBibliography(list: SdtBlock): boolean {
   const items = (list.content ?? []).filter((c): c is SdtBlock => !isTextNode(c)).map(plainText);
   return items.length > 0
     && items.filter((t) => ENTRY_LABEL.test(t)).length >= items.length * LABELLED_ITEMS
-    && items.filter((t) => YEAR.test(t)).length >= items.length * DATED_ITEMS;
+    && items.filter((t) => ENTRY_YEAR.test(t)).length >= items.length * DATED_ITEMS;
 }
 
 /** An entry of a table of contents or of a list of figures or tables: a dot leader, then
@@ -995,7 +995,7 @@ interface Prepared {
 const DIGIT = /^\p{Nd}$/u;
 const HYPHEN_PIECE = /^[-‐]$/u;
 /** Two glyphs closer than this share of their height are set against each other: no space. */
-const TOUCH = 0.15;
+const GLYPH_TOUCH = 0.15;
 /** As lib/pdf/reflow.ts: a gap of this many line pitches, an indent of this share of the
  *  size, and a last line this many sizes short of the measure start a paragraph. */
 const PARA_GAP = 1.45;
@@ -1020,7 +1020,7 @@ const FRESH_START = /^[\p{Lu}\p{Lt}\d"“'‘([]/u;
 function touching(a: Glyph, b: Glyph): boolean {
   const h = Math.max(a.y2 - a.y1, b.y2 - b.y1);
   const gap = b.x1 - a.x2;
-  return sameLine(a, b) && gap < h * TOUCH && gap > -h;
+  return sameLine(a, b) && gap < h * GLYPH_TOUCH && gap > -h;
 }
 
 /** Two pieces set against each other in one text node; a new node is another run. */
@@ -1148,7 +1148,7 @@ function lineNumberScan(): { add(at: number, pieces: Piece[]): void; find(readAt
             if (!p.glyph) continue;
             against(p.glyph);
             if (inMark.has(p)) { number = p.glyph; continue; }
-            if (number && weight === 0 && p.glyph.start && /^[\p{L}\p{N}]$/u.test(p.ch) && sameLine(number, p.glyph) && Math.abs(p.glyph.x1 - number.x2) <= (p.glyph.y2 - p.glyph.y1) * TOUCH) folded = p.glyph.y2 - p.glyph.y1;
+            if (number && weight === 0 && p.glyph.start && /^[\p{L}\p{N}]$/u.test(p.ch) && sameLine(number, p.glyph) && Math.abs(p.glyph.x1 - number.x2) <= (p.glyph.y2 - p.glyph.y1) * GLYPH_TOUCH) folded = p.glyph.y2 - p.glyph.y1;
             x1 = Math.min(x1, p.glyph.x1);
             x2 = Math.max(x2, p.glyph.x2);
             weight++;

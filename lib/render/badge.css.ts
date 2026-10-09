@@ -26,6 +26,11 @@
 import { DIST_CSS } from "./dist";
 import { bandColorRules } from "./scale";
 
+/** A jump-target chip pulses this long, this many times; its card stays open as long
+ *  (badge.ts flash). */
+export const FLASH_PULSE_MS = 800;
+export const FLASH_PULSES = 2;
+
 export const BADGE_CSS: string = `
 :host {
   all: initial;
@@ -325,7 +330,7 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
   0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
   25%, 65% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--c, var(--dot, #a3a3a3)) 35%, transparent); }
 }
-.pill.pg-flash { animation: anagram-flash 800ms ease-in-out 2; }
+.pill.pg-flash { animation: anagram-flash ${FLASH_PULSE_MS}ms ease-in-out ${FLASH_PULSES}; }
 
 @media (prefers-reduced-motion: reduce) {
   .pill.pending .dot { animation: none; opacity: 0.6; }

@@ -10,6 +10,7 @@
 // package (scripts/webengine.mjs puts it there, checked against the same size and hash) and
 // is read from it, and checked again, whenever the model loads.
 import modelkit from "../../anagramd/modelkit.json";
+import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES } from "../contract";
 
 export interface PinnedFile {
   /** The file's name in the engine's storage. */
@@ -67,13 +68,11 @@ export function pinnedFiles(tier: ModelTier = "fp32"): PinnedFile[] {
   return files;
 }
 
-/** engine.py's MODEL_ID and CALIBRATION. The FP16 model has an id of its own, so that the
+/** engine.py's MODEL_ID. The FP16 model has an id of its own, so that the
  *  two never share a cached score (cache keys are folded from the id). */
 export const MODEL_ID = "editlens_roberta-large";
 export const modelId = (tier: ModelTier = "fp32"): string => (tier === "fp16" ? `${MODEL_ID}-fp16` : MODEL_ID);
-export const CALIBRATION = "editlens-4bucket-cosine(0.03,0.15)";
-export const BUCKET_LABELS = ["human", "lightly-edited", "heavily-edited", "ai-generated"];
-export const SUPPORTED_LANGUAGES = ["en"];
+export { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES };
 
 /** The pin of `tier`, with lid.176.ftz at `lidUrl`: LID_PATH as the extension serves it. */
 export function pin(lidUrl: string, tier: ModelTier = "fp32"): Pin {

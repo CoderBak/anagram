@@ -1,14 +1,23 @@
 // lib/contract.ts
 // The versioned surface↔backend contract carried by Native Messaging.
-// Model inference runs in the local component; transport adapters and test fixtures
-// exchange the same scoring payloads.
+// Model inference runs in the local component or the in-browser engine; transport adapters
+// and test fixtures exchange the same scoring payloads.
 //
-// v2.0 (EditLens): the detector is a 4-way classifier over the EXTENT of AI editing
-// (Thai et al., ICLR 2026 — pangram/editlens_roberta-large). A result carries the
-// full bucket distribution plus its probability-weighted score; the UI derives
-// verdict bands from the bucket and shows the score as a 0–1 number (".93").
+// EditLens: the detector is a 4-way classifier over the EXTENT of AI editing (Thai et al.,
+// ICLR 2026 — pangram/editlens_roberta-large). A result carries the full bucket
+// distribution plus its probability-weighted score; the chip's word comes from the score
+// (lib/render/scale.ts levelOf), which it shows as a 0–1 number (".93").
 
-export const CONTRACT_VERSION = "3.0";
+import CONTRACT from "../anagramd/contract.json";
+
+/** What both engines answer by, held in one file the local engine reads too
+ *  (anagramd/contract.json, anagramd/engine.py): its version, the model's calibration, its four
+ *  buckets, the languages it reads, and the most one request may carry. */
+export const CONTRACT_VERSION = CONTRACT.version as "3.0";
+export const CALIBRATION = CONTRACT.calibration;
+export const BUCKET_LABELS: readonly string[] = CONTRACT.buckets;
+export const SUPPORTED_LANGUAGES: readonly string[] = CONTRACT.languages;
+export const CONTRACT_LIMITS = CONTRACT.limits;
 
 /** A text's tokens counted word by word, in order: each word `alone`, as a pass starts
  *  on it, and `following` a space, as it reads inside a pass (the `tokens` operation). */
@@ -19,6 +28,12 @@ export interface TokenCounts {
 
 /** Bucket count the UI is built for: 0 human · 1 lightly edited · 2 heavily edited · 3 AI-generated. */
 export const BUCKET_COUNT = 4;
+
+/** What of one page the worker scores at once (lib/backend/router.ts answers Unavailable past
+ *  it), and the batches a page keeps in flight inside it (lib/capture/orchestrator.ts): each
+ *  batch is sent as requests of at most an equal part of the share (lib/capture/windows.ts). */
+export const DOCUMENT_SHARE = Object.freeze({ blocks: 256, chars: 250_000 });
+export const PAGE_IN_FLIGHT = 4;
 
 /**
  * One scoreable text as sent to the backend: a whole unit, or ONE WINDOW of a unit longer
@@ -111,8 +126,8 @@ export interface ScoredBatch {
 }
 
 /**
- * The backend seam. NativeScoreClient sends batches to the local component. Failed
- * batches become degraded results; no browser-side inference fallback exists.
+ * The backend seam: batches go to the engine in use, the local component or the in-browser
+ * one (lib/backend/). Failed batches become degraded results.
  */
 export interface ScoreClient {
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */

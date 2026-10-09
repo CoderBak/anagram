@@ -2,7 +2,7 @@
 import { browser } from "#imports";
 import * as v from "valibot";
 import { ACTIONS } from "../messaging/protocol";
-import { callerRole, pageAddress, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
+import { callerRole, pageAddress, SESSION_HANDSHAKE_MS, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
 import { matcher, matchesAny } from "./patterns";
 
 interface Identity {tabId:number;frameId:number;url:string;origin:string;documentId?:string;session:string}
@@ -61,7 +61,7 @@ export function createDocumentAuthority() {
         const role = sender ? callerRole(sender,browser.runtime.id,browser.runtime.getURL("/")) : null;
         if (!sender || !["content","reader","paste"].includes(role ?? "") || (role !== "paste" && (!Number.isInteger(sender.tab?.id) || !Number.isInteger(sender.frameId)))) {port.disconnect();return;}
         let record:Live | undefined;
-        const timer=setTimeout(()=>{if(!record)port.disconnect();},2000);
+        const timer=setTimeout(()=>{if(!record)port.disconnect();},SESSION_HANDSHAKE_MS);
         port.onDisconnect.addListener(()=>{clearTimeout(timer);if(record)retire(record);});
         port.onMessage.addListener((value) => {
           if (record) { onPortMessage?.(record, sender, value); return; }

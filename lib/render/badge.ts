@@ -41,7 +41,7 @@ import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
 import { distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
 import { levelOf } from "./scale";
-import { BADGE_CSS } from "./badge.css";
+import { BADGE_CSS, FLASH_PULSE_MS, FLASH_PULSES } from "./badge.css";
 import { isDarkContext } from "./theme";
 
 export interface BadgeLayer {
@@ -585,7 +585,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       pill.classList.remove("pg-flash");
       const host = hosts.get(id);
       if (host && host !== _openCardHost && !host.matches(":hover")) clearActiveUnit(id);
-    }, 1600);
+    }, FLASH_PULSE_MS * FLASH_PULSES);
   }
 
   function teardownAll(): void {
@@ -882,9 +882,8 @@ const CLIP_MIN_HIDDEN_PX = 32;
 /**
  * Does this box keep text of its own below its bottom edge, where the reader cannot get at
  * it? That is the only question placement has to answer, and it is NOT the question
- * lib/dom/style.ts asks: `clipsOwnText` decides whether a box is a post behind "see more"
- * — worth scoring although only three lines show — and for that it insists on twice as much
- * content as box. A Steam review card 663 px tall holding 771 px of review fails that test
+ * lib/dom/style.ts asks: `clipsOwnText` tells the diagnostics whether a box is a post behind
+ * "see more", and for that it insists on twice as much content as box. A Steam review card 663 px tall holding 771 px of review fails that test
  * by a mile, and the 108 px it cuts off still held whole paragraphs and the chips that
  * close them: the session survey counted 25 such chips out of sight on one page. So this
  * rule asks only whether something is hidden, and leaves it to each chip's own last line

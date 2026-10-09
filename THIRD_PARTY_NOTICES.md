@@ -268,7 +268,7 @@ end of terms and conditions
 The licenses of externally maintained libraries from which parts of the Software is derived are listed [here](https://github.com/rolldown/rolldown/blob/main/THIRD-PARTY-LICENSE).
 ```
 
-### DOMPurify (3.4.15)
+### DOMPurify (3.4.16)
 
 - Project: https://github.com/cure53/DOMPurify
 - Licence: MPL-2.0 OR Apache-2.0 (full text under Licence texts below)

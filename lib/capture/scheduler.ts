@@ -17,8 +17,9 @@
 // split across two batches or rendered half-done. `V` is that verdict; the scheduler
 // never looks inside it.
 //
-// Budgets are per lane because the trade-off differs: the viewport lane wants the
-// first chip fast (small batch), the background prefetch lane can afford a larger one.
+// Budgets are per lane because the trade-off differs: the viewport lane sends one unit a
+// batch, so each chip is up after its own paragraph's pass, while the near and background
+// lanes can afford larger ones where the engine is fast (lib/capture/orchestrator.ts).
 // Batching buys less than one would hope — it amortises the per-request overhead (native
 // framing, tokenizer, language id), not the forward pass, which is already
 // compute-bound: on our own M4 24GB benchmark (2026-09, roberta-large) 60-word paragraphs

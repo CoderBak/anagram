@@ -23,7 +23,8 @@ import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import type { SdtStructure } from "./structured";
 
-/** Reading takes about 20 ms a page on an Apple Silicon Mac; ten times that is a hang. */
+/** Reading takes about 20 ms a page on an Apple Silicon Mac; twelve and a half times that is
+ *  a hang. */
 const TIMEOUT_BASE_MS = 20_000;
 const TIMEOUT_PER_PAGE_MS = 250;
 /** The most pages one worker reads: a book's length, whose peak and answer were measured. */

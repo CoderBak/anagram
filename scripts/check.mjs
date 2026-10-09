@@ -9,6 +9,7 @@
 //   npm run check                     # everything
 //   npm run check -- --from pw        # start at the browser suites
 //   PW_WORKERS=2 npm run check        # fewer browsers at once (a full disk, a small machine)
+//   ANAGRAM_FIREFOX=<binary> npm run check   # and the Firefox suites, in that Firefox (153+)
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -30,6 +31,7 @@ const SUITES = [
   ["native setup in the browser", "node test/native-browser.mjs", posix ? null : "its stdio launcher fixture is POSIX"],
   ["pw", `npx playwright test --project chromium --workers=${workers}`, null],
   ["pseudo-locale", "node test/pseudo-locale.mjs", null],
+  ["firefox", "npm run test:firefox", process.env.ANAGRAM_FIREFOX ? null : "set ANAGRAM_FIREFOX to a Firefox binary, 153 or newer"],
   ["backend (Python)", "sh test/backend.sh", !posix ? "needs a POSIX shell" : python ? null : "set ANAGRAMD_PYTHON to a Python with the engine's locked packages (anagramd/uv.lock)"],
 ];
 

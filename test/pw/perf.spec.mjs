@@ -29,10 +29,10 @@
 //    them afterwards costs 229.
 //
 // E) The PDF reader on a thirty-page two-column paper: it shows the REAL pages, so what
-//    it costs is its own shape — time to the first page drawn, time to every page's text
-//    layer (they are all built up front, which is what makes the units and browser find
-//    work over the whole document), the long tasks that building them costs, and the
-//    canvases still holding a bitmap after a scroll to the end and back.
+//    it costs is its own shape — time to the first page drawn and to its text layer, that
+//    opening builds the text layers of the pages drawn only (the whole document's text is
+//    read from the document itself, lib/pdf/readAhead.ts), the long tasks that drawing them
+//    costs, and the canvases still holding a bitmap after a scroll to the end and back.
 //
 // F) Long feed sessions (test/perf-feeds.mjs): an X-like timeline that virtualizes and a
 //    Reddit-like feed that keeps every post, both ticking counters and times and changing

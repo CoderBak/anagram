@@ -21,7 +21,7 @@
 // This file is pure text and arithmetic — no DOM — so the vitest suite can drive it. The
 // mapping of a stretch back to text nodes lives in lib/dom/locate.ts.
 import type { ScoreBlock, ScoreResult, TokenCounts } from "../contract";
-import { BUCKET_COUNT } from "../contract";
+import { BUCKET_COUNT, DOCUMENT_SHARE, PAGE_IN_FLIGHT } from "../contract";
 import { foldLookalikes } from "../dom/lookalikes";
 import { modelForm, modelText, sentenceStarts } from "../dom/text";
 
@@ -100,12 +100,12 @@ export const MAX_BLOCK_CHARS = 4000;
  * Unavailable past 256 blocks or 250 000 characters of one page's at a time
  * (lib/backend/router.ts). One unit can pass all of that alone: MAX_WINDOWS windows, each
  * up to MAX_BLOCK_CHARS, and twice as many halves when the daemon cuts them. So what a
- * batch sends goes in requests of this size, one after another, and the four batches the
- * orchestrator keeps in flight stay inside the page's share together. At six bytes a
- * character, the most JSON takes to escape one, a request also stays under the worker's
- * 900 000 encoded bytes.
+ * batch sends goes in requests of this size, one after another, and the batches the
+ * orchestrator keeps in flight (PAGE_IN_FLIGHT) stay inside the page's share together. At six
+ * bytes a character, the most JSON takes to escape one, a request also stays under the
+ * worker's 900 000 encoded bytes.
  */
-export const REQUEST_BLOCKS = 64;
+export const REQUEST_BLOCKS = DOCUMENT_SHARE.blocks / PAGE_IN_FLIGHT;
 export const REQUEST_CHARS = 48_000;
 
 /** `items` in consecutive requests of at most REQUEST_BLOCKS blocks and REQUEST_CHARS

@@ -221,9 +221,9 @@ const MAX_NAME_CHARS = 40;
 const MAX_CAPTION_CHARS = 200;
 
 /** Text this long right beside a link or a date means it stands IN a sentence. */
-const RUNNING_TEXT_CHARS = 24;
+const IN_SENTENCE_CHARS = 24;
 /** Wrappers looked through for that: `<b><a>@alice</a></b>` in the middle of a sentence. */
-const MAX_WRAPPER_HOPS = 3;
+const SENTENCE_WRAPPER_HOPS = 3;
 /** How far above a lone reply a post of its shape is looked for. */
 const MAX_NEST_HOPS = 8;
 /** Text of at most this length may stand between a byline and the edge of its post: the
@@ -271,7 +271,7 @@ function isText(node: Node | null): node is Text {
 }
 
 function besideRunningText(node: Node | null): boolean {
-  return isText(node) && (node.textContent ?? "").trim().length > RUNNING_TEXT_CHARS;
+  return isText(node) && (node.textContent ?? "").trim().length > IN_SENTENCE_CHARS;
 }
 
 /**
@@ -282,7 +282,7 @@ function besideRunningText(node: Node | null): boolean {
  */
 function inRunningText(el: Element): boolean {
   let cur = el;
-  for (let hops = 0; hops <= MAX_WRAPPER_HOPS; hops++) {
+  for (let hops = 0; hops <= SENTENCE_WRAPPER_HOPS; hops++) {
     if (besideRunningText(cur.previousSibling) || besideRunningText(cur.nextSibling)) return true;
     const parent = cur.parentElement;
     if (!parent || parent.childElementCount !== 1) return false;

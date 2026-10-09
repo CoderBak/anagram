@@ -424,7 +424,7 @@ const BRACKETS = /\[[^[\]]*\]/gu;
 const NUMBERS = /^\d{1,4}[a-z]?(?:\s?[–-]\s?\d{1,4}[a-z]?)?$/u;
 /** A reference of a mark: a number, a range, or an alphabetic key ("Kir08", "ABC+20", "KS17b"). */
 const REFERENCE = /^(?:\d{1,4}[a-z]?(?:\s?[–-]\s?\d{1,4}[a-z]?)?|\p{Lu}[\p{L}+]{0,6}\d{2}[a-z]?)$/u;
-const YEAR = /(?<![\p{L}\p{N}])(?:1[5-9]|20)\d\d[a-z]?(?![\p{L}\p{N}])/u;
+const MARK_YEAR = /(?<![\p{L}\p{N}])(?:1[5-9]|20)\d\d[a-z]?(?![\p{L}\p{N}])/u;
 /** Words a part of a mark has at most: a locator ("Theorem 3.9") or a note ("e.g."), not a phrase. */
 const MARK_PART_WORDS = 3;
 /** What stands between two marks of one run. */
@@ -433,7 +433,7 @@ const RUN = /^\s?[,;–-]\s?$/u;
 function isBracketMark(inner: string): boolean {
   const parts = inner.split(/[,;]/u).map((part) => part.trim());
   if (parts.every((part) => NUMBERS.test(part))) return true;
-  if (YEAR.test(inner)) return false;
+  if (MARK_YEAR.test(inner)) return false;
   return parts.some((part) => REFERENCE.test(part)) && parts.every((part) => part.split(/\s+/u).length <= MARK_PART_WORDS);
 }
 
@@ -1705,9 +1705,9 @@ function classifyFrontMatter(front: Draft[], bodySize: number): void {
 // ---- the entry point ------------------------------------------------------------------
 
 /**
- * Rebuild a document's paragraphs from its pages' text runs. Pages may be a prefix of
- * the document (the reader extracts progressively); running-head detection then works
- * from what it has, which is why the reader only renders once it holds several pages.
+ * Rebuild a document's paragraphs from its pages' text runs. The pages may be some of the
+ * document only — the pages drawn, where the reader goes without Zotero's structure, or what
+ * a reading surface shows — and running-head detection then works from what it has.
  */
 export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   if (pages.length === 0) return [];

@@ -1429,7 +1429,7 @@ function composedContains(root: Element, el: Element): boolean {
 
 /** How many wrappers `unwrapped` looks through, and what a wrapper is: a box of layout, never
  *  list or table markup — an item a level deeper stays out of the post's text. */
-const MAX_WRAPPER_HOPS = 3;
+const LAYOUT_WRAPPER_HOPS = 3;
 const LAYOUT_WRAPPERS = new Set(["DIV", "SPAN"]);
 
 /**
@@ -1444,7 +1444,7 @@ const LAYOUT_WRAPPERS = new Set(["DIV", "SPAN"]);
  */
 function unwrapped(el: Element, scope: Element | null): Element {
   let at = el;
-  for (let hops = 0; hops < MAX_WRAPPER_HOPS; hops++) {
+  for (let hops = 0; hops < LAYOUT_WRAPPER_HOPS; hops++) {
     const parent = at.parentElement;
     if (!parent || parent === scope || parent.childElementCount !== 1 || !LAYOUT_WRAPPERS.has(tagOf(parent))) break;
     let alone = true;

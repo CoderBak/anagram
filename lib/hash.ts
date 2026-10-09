@@ -6,10 +6,11 @@
 // text was read in (lib/backend/router.ts), never the site's name itself.
 //
 // cyrb53 (https://github.com/bryc/code, jshash/experimental/cyrb53.js, public domain,
-// © 2018 bryc): 53-bit output. Both cache layers key results by hashed normalized text;
-// a 32-bit hash (the SW side used FNV-1a) makes wrong-badge collisions realistic
-// over a long session of heavy browsing — birthday bound ~1 in 2^16 per ~300
-// unique paragraphs vs ~1 in 2^26 here.
+// © 2018 bryc): 53-bit output, for what stays within one page — the content script's own
+// cache of its verdicts (lib/capture/cache.ts) and the reading log's paragraphs within a
+// visit (lib/stats/). A 32-bit hash made wrong-chip collisions realistic over a long
+// session of heavy browsing: birthday bound ~1 in 2^16 per ~300 unique paragraphs, against
+// ~1 in 2^26 here.
 import { Sha256 } from "./webengine/sha256";
 
 const encoder = new TextEncoder();

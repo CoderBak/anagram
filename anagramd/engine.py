@@ -17,6 +17,7 @@ for _offline_var in (
     os.environ[_offline_var] = "1"
 import hashlib
 import inspect
+import json
 import logging
 import re
 import sys
@@ -30,7 +31,9 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_valida
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scoring import Tokenizer, score_texts
 
-CONTRACT_VERSION = "3.0"
+# What both engines answer by, read by the browser's from the same file (lib/contract.ts).
+CONTRACT = json.loads((Path(__file__).resolve().parent / "contract.json").read_text(encoding="utf-8"))
+CONTRACT_VERSION = CONTRACT["version"]
 CONTRACT_MAJOR = CONTRACT_VERSION.split(".")[0]
 MODEL_ID = "editlens_roberta-large"
 PIPELINE_REV = "pre1"
@@ -42,15 +45,15 @@ PIPELINE_FILES = (
     "merges.txt",
     "special_tokens_map.json",
 )
-CALIBRATION = "editlens-4bucket-cosine(0.03,0.15)"
+CALIBRATION = CONTRACT["calibration"]
 LABEL_SCHEMA = CALIBRATION
-BUCKET_LABELS = ["human", "lightly-edited", "heavily-edited", "ai-generated"]
-SUPPORTED_LANGUAGES = ["en"]
-MAX_BLOCKS = 256
-MAX_TEXT_CHARS = 16000
-MAX_TOKEN_TEXTS = 512
-MAX_TOKEN_CHARS = 256000
-MAX_ID_CHARS = 64
+BUCKET_LABELS = CONTRACT["buckets"]
+SUPPORTED_LANGUAGES = CONTRACT["languages"]
+MAX_BLOCKS = CONTRACT["limits"]["blocks"]
+MAX_TEXT_CHARS = CONTRACT["limits"]["text_chars"]
+MAX_TOKEN_TEXTS = CONTRACT["limits"]["token_texts"]
+MAX_TOKEN_CHARS = CONTRACT["limits"]["token_chars"]
+MAX_ID_CHARS = CONTRACT["limits"]["id_chars"]
 log = logging.getLogger("anagramd")
 
 

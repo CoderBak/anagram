@@ -1,0 +1,7 @@
+{
+  "version": "3.0",
+  "calibration": "editlens-4bucket-cosine(0.03,0.15)",
+  "buckets": ["human", "lightly-edited", "heavily-edited", "ai-generated"],
+  "languages": ["en"],
+  "limits": { "blocks": 256, "text_chars": 16000, "token_texts": 512, "token_chars": 256000, "id_chars": 64 }
+}

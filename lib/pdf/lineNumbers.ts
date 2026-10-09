@@ -60,9 +60,10 @@ const OUTER = 0.1;
 /** …and at most this many things per number may start (or, right of the text, end) in line
  *  with it: a list's items and a table's rows do, line numbers in a margin do not. */
 const IN_LINE = 0.2;
-/** What starts within this many heights of a column's edge stands in line with it. */
-const REACH = 0.5;
-const TOUCH = 0.15;
+/** What starts within this many heights of a column's edge stands in line with it, and what
+ *  crosses the edge by no more than this many still keeps to its side. */
+const EDGE_REACH = 0.5;
+const EDGE_SLACK = 0.15;
 
 /** A column as found: which edge of its lines it stands at, which of its own edges its
  *  numbers are aligned on (right-aligned "9" and "10" share their right edge), and where. */
@@ -94,11 +95,11 @@ function clear(marks: NumberMark[], side: "first" | "last", content: readonly Pa
   let total = 0, outer = 0, inLine = 0;
   for (const c of content) {
     if (c.mark && own.has(c.mark)) continue;
-    if (side === "first" ? c.x1 >= x1 - h * REACH && c.x1 <= x2 + h * TOUCH : c.x2 <= x2 + h * REACH && c.x2 >= x1 - h * TOUCH) inLine++;
+    if (side === "first" ? c.x1 >= x1 - h * EDGE_REACH && c.x1 <= x2 + h * EDGE_SLACK : c.x2 <= x2 + h * EDGE_REACH && c.x2 >= x1 - h * EDGE_SLACK) inLine++;
     if (c.y < top || c.y > bottom) continue;
     total += c.weight;
     // Beyond the column, further out than it: a caption set across it is not.
-    if (side === "first" ? c.x2 <= x1 + h * TOUCH : c.x1 >= x2 - h * TOUCH) outer += c.weight;
+    if (side === "first" ? c.x2 <= x1 + h * EDGE_SLACK : c.x1 >= x2 - h * EDGE_SLACK) outer += c.weight;
   }
   return outer <= total * OUTER && inLine <= marks.length * IN_LINE;
 }
