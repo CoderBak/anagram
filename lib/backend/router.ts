@@ -1,6 +1,6 @@
 // Service-worker score scheduling: bounded admission, per-request cancellation, shared
 // inference, and complete model provenance. Browser authority supplies document keys.
-import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult,
+import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult, ScoredBatch,
   ScoreBatchRequest, ScoreBatchResponse } from "../contract";
 import { BUCKET_COUNT, DOCUMENT_SHARE, modelDim } from "../contract";
 import { modelText } from "../dom/text";
@@ -11,6 +11,17 @@ import { createLogger } from "../log";
 
 const log = createLogger("router");
 const ENGINE_BATCH_CHARS = 6000;
+/**
+ * How long one engine batch should take at most: a third of the 30 s a request has from its
+ * turn in the engine (lib/backend/portTransport.ts). On a processor several times slower than
+ * an M4's (about a second a thousand characters), a full batch of a long paragraph's windows
+ * took the whole 30 s and the paragraph came back Unavailable; a slow engine's batches are
+ * made smaller instead, by its pace as measured here — the median of the last few batches of
+ * at least PACE_MIN_CHARS, so a model loading after an idle spell does not shrink them all.
+ */
+const BATCH_TARGET_MS = 10_000;
+const PACE_SAMPLES = 5;
+const PACE_MIN_CHARS = 500;
 const MAX_IN_FLIGHT = 4;
 const MAX_DOCUMENT_IN_FLIGHT = 2;
 const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, background: 0 };
@@ -81,6 +92,28 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
   const lastServed = new Map<string, number>();
   const total: Usage = { requests: 0, blocks: 0, chars: 0 };
   let epoch = 0, serial = 0, turn = 0, running = 0;
+  /** The engine's pace (ms per thousand characters) over its last batches, and when it was
+   *  last free: it reads one batch at a time, so a batch started at the later of being sent
+   *  and the one before it coming back. */
+  const paces: number[] = [];
+  let engineFreeAt = 0;
+  const noteEngine = (sentAt: number, blocks: readonly ScoreBlock[], produced: ScoredBatch): void => {
+    const doneAt = Date.now();
+    const began = Math.max(sentAt, engineFreeAt);
+    engineFreeAt = Math.max(engineFreeAt, doneAt);
+    const read = new Set(produced.results.filter((r) => !r.degraded).map((r) => r.id));
+    const chars = blocks.reduce((n, b) => n + (read.has(b.id) ? b.text.length : 0), 0);
+    if (chars < PACE_MIN_CHARS) return;
+    paces.push(((doneAt - began) * 1000) / chars);
+    if (paces.length > PACE_SAMPLES) paces.shift();
+  };
+  /** Characters an engine batch carries: ENGINE_BATCH_CHARS, or what the engine reads in
+   *  BATCH_TARGET_MS at its measured pace where that is less (one block at the least). */
+  const batchChars = (): number => {
+    if (paces.length < 3) return ENGINE_BATCH_CHARS;
+    const pace = [...paces].sort((a, b) => a - b)[paces.length >> 1]!;
+    return pace > 0 ? Math.min(ENGINE_BATCH_CHARS, Math.floor((BATCH_TARGET_MS * 1000) / pace)) : ENGINE_BATCH_CHARS;
+  };
   let cacheMode: ScoreCacheMode = "persistent";
   const revisionMatches = (revision: number | undefined): boolean =>
     revision === undefined || client.revision?.() === revision;
@@ -111,7 +144,12 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
   async function score(batch: Batch, blocks: ScoreBlock[]) {
     for (let attempt = 0; ; attempt++) {
       if (batch.controller.signal.aborted || batch.epoch !== epoch || !revisionMatches(batch.revision)) return null;
-      try { return await client.scoreBatch(blocks, batch.controller.signal); }
+      try {
+        const sentAt = Date.now();
+        const produced = await client.scoreBatch(blocks, batch.controller.signal);
+        noteEngine(sentAt, blocks, produced);
+        return produced;
+      }
       catch (error) {
         if (batch.controller.signal.aborted) return null;
         const wait = attempt < 1 ? retryWaitMs(error) : null;
@@ -230,6 +268,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       });
       const promises: Promise<void>[] = [];
       const batches: Batch[] = [];
+      const most = batchChars();
       let batch: Batch | undefined, size = 0;
       for (const [cacheKey, group] of groups) {
         const key = `${revision ?? "none"}:${cacheKey}`;
@@ -237,7 +276,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
         const first = group[0]!;
         let entry = inFlight.get(key);
         if (!entry) {
-          if (!batch || (size && size + first.text.length > ENGINE_BATCH_CHARS)) {
+          if (!batch || (size && size + first.text.length > most)) {
             batch = { priority: PRIORITY[req.priority] ?? 0, queuedAt: Date.now(),
               entries: [], controller: new AbortController(), epoch: requestEpoch, cacheEpoch, revision };
             batches.push(batch); size = 0;

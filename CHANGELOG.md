@@ -63,6 +63,7 @@ local component and the installer all carry the same version.
 
 ### Fixed
 
+- On a slow processor, a long paragraph no longer comes back Unavailable for taking too long: the engine is given a long paragraph's windows a few at a time where it is slow, each batch about ten seconds of its time at its measured pace, rather than as much as 6,000 characters at once, which on a computer five times slower than an M4's processor took the whole 30 seconds a request has.
 - On a single-page site, moving to another route cut off what the page had in flight: Chrome reports a route change (`history.pushState`) as the tab loading, and the worker ended the page's session then, refusing a batch already sent. A tab's sessions now end when a new document commits, a moment after it.
 - On an engine that scores slowly (a processor), a paragraph could come back Unavailable although the engine was working: the 30 s an engine is given to answer was counted from the moment a batch was sent, and a batch waits behind the others the engine has, which it scores one at a time; four batches of ten seconds each failed the fourth. A batch's time now starts at its turn. The local engine no longer drops a batch that waited more than 30 s for its turn either.
 - A verdict that came from the cache could show a different word from the same paragraph scored fresh, when its score lay within 0.0005 of a cut (0.1666, Human, came back from the cache as 0.167, Lightly edited): the cache kept three decimals of the four both engines give. It keeps all four.

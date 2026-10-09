@@ -573,3 +573,46 @@ it("bounds all queued block references even when requests contain short text", a
   expect(extra.results[0]!.degraded).toBe(true); expect(client.calls).toHaveLength(4);
   client.release(); await Promise.all(held);
 });
+
+describe("engine batches by the engine's pace", () => {
+  /** A long paragraph's windows, each its own text. */
+  const windows = (tag: string, n: number, chars = 1000): string[] =>
+    Array.from({ length: n }, (_, i) => `${tag} window ${i}: ${"words of the paragraph ".repeat(chars / 23)}`.slice(0, chars));
+  /** The fake engine, on a clock of its own: `msPerK` milliseconds a thousand characters. */
+  function paced(msPerK: number, loadingMs = 0) {
+    let clock = 1_000_000;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const client = fakeClient(A);
+    const inner = client.scoreBatch.bind(client);
+    client.scoreBatch = async (blocks, signal) => {
+      clock += (client.calls.length === 0 ? loadingMs : 0) + (blocks.reduce((n, b) => n + b.text.length, 0) * msPerK) / 1000;
+      return inner(blocks, signal);
+    };
+    return { client, restore: () => now.mockRestore() };
+  }
+
+  it("are made smaller on a slow engine, so each comes back well within the timeout", async () => {
+    // Five times an M4's processor: 5 s a thousand characters.
+    const { client, restore } = paced(5000);
+    try {
+      const router = createRouter(client);
+      for (const tag of ["one", "two", "three"]) await router.handle(req(windows(tag, 3)));
+      expect(client.calls.map((c) => c.length)).toEqual([3, 3, 3]);
+      await router.handle(req(windows("long", 12)));
+      const long = client.calls.slice(3);
+      expect(long.flat()).toHaveLength(12);
+      // 10 s of the engine's time at the most: two windows of 1,000 characters.
+      for (const call of long) expect(call.reduce((n, b) => n + b.text.length, 0)).toBeLessThanOrEqual(2000);
+    } finally { restore(); }
+  });
+
+  it("stay whole on a fast one, and a slow first batch (a model loading) does not shrink them", async () => {
+    const { client, restore } = paced(200, 20_000);
+    try {
+      const router = createRouter(client);
+      for (const tag of ["one", "two", "three"]) await router.handle(req(windows(tag, 3)));
+      await router.handle(req(windows("long", 12)));
+      expect(client.calls.slice(3).map((c) => c.length)).toEqual([6, 6]);
+    } finally { restore(); }
+  });
+});
