@@ -27,6 +27,9 @@ export const ACTIONS = {
    *  frame cannot read it, and `document.referrer` is empty under a no-referrer policy —
    *  but the worker sees the tab's URL on the sender. */
   GET_TOP_HOST: "getTopHost",
+  /** content (a frame's stub, entrypoints/frame.content.ts) → SW: this frame is large enough
+   *  and holds text; put the reader in it. The frame and its document come off the sender. */
+  READ_FRAME: "readFrame",
   /** SW (context menu) → content: score the current selection, show a card. */
   ANALYZE_SELECTION: "analyzeSelection",
   /** SW (context menu) → content: analyze this page once, whatever the settings say. */

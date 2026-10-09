@@ -23,6 +23,7 @@ import { browser } from "#imports";
 import { ACTIONS } from "../messaging/protocol";
 import type { PingReply } from "../messaging/protocol";
 import { browsingOrigins, matchesAny } from "./patterns";
+import { pageAddress, type AccessSender } from "./messages";
 import { createLogger } from "../log";
 import { documentAuthority } from "./authority";
 import { readerSitesFor } from "../surfaces/frames";
@@ -43,6 +44,10 @@ const SHADOW_SCRIPT = "/content-scripts/shadow.js";
  *  the order they were registered, in Chrome and in Firefox, and its id sorts first too. */
 const SHADOW_PORT_ID = "anagram-port";
 const SHADOW_PORT = "/content-scripts/shadowPort.js";
+/** The stub every frame below a page's top runs instead (entrypoints/frame.content.ts): it
+ *  asks for the content script (readFrame) only where the frame could hold something to read. */
+const FRAME_SCRIPT_ID = "anagram-frame";
+const FRAME_SCRIPT = "/content-scripts/frame.js";
 
 /** How long `ensureInjected` waits for a freshly injected script to start listening.
  *  executeScript resolves when the file has been evaluated, which is before the async
@@ -67,11 +72,14 @@ async function grantedMatches(): Promise<string[]> {
 type Registration = Parameters<typeof browser.scripting.registerContentScripts>[0][number];
 
 /**
- * The scripts the granted origins ask for, the content script first. All also run in the
- * frames of a granted page that have no address of their own — about:blank and srcdoc
- * frames, blob: documents — by the origin they take from it, which the browser reports on
- * their messages (lib/access/messages.ts): an EPUB reader shows every chapter in a srcdoc
- * frame. Chrome 119+ and Firefox both do.
+ * The scripts the granted origins ask for, the content script first: in a page's top frame;
+ * in the frames below it, a stub of a few KB that asks for it where the frame is large enough
+ * and holds text (readFrame) — the content script is 240 KB to parse and compile, ~12 ms, and
+ * a page's ad slots and pixels each paid it for nothing. All also run in the frames of a
+ * granted page that have no address of their own — about:blank and srcdoc frames, blob:
+ * documents — by the origin they take from it, which the browser reports on their messages
+ * (lib/access/messages.ts): an EPUB reader shows every chapter in a srcdoc frame. Chrome 119+
+ * and Firefox both do.
  */
 function registrations(matches: string[]): Registration[][] {
   return [
@@ -81,6 +89,17 @@ function registrations(matches: string[]): Registration[][] {
         id: SCRIPT_ID,
         matches,
         js: [CONTENT_SCRIPT],
+        allFrames: false,
+        matchOriginAsFallback: true,
+        runAt: "document_end",
+        persistAcrossSessions: true,
+      },
+    ],
+    [
+      {
+        id: FRAME_SCRIPT_ID,
+        matches,
+        js: [FRAME_SCRIPT],
         allFrames: true,
         matchOriginAsFallback: true,
         runAt: "document_end",
@@ -118,6 +137,7 @@ function registrations(matches: string[]): Registration[][] {
 function differs(current: Registration, script: Registration): boolean {
   return (
     !sameMatches(current.matches ?? [], script.matches ?? []) ||
+    (current.allFrames ?? false) !== (script.allFrames ?? false) ||
     (current.matchOriginAsFallback ?? false) !== (script.matchOriginAsFallback ?? false)
   );
 }
@@ -167,7 +187,7 @@ async function syncNow(): Promise<void> {
   try {
     const matches = await grantedMatches();
     const registered = await browser.scripting
-      .getRegisteredContentScripts({ ids: [SCRIPT_ID, SHADOW_PORT_ID, SHADOW_SCRIPT_ID] })
+      .getRegisteredContentScripts({ ids: [SCRIPT_ID, FRAME_SCRIPT_ID, SHADOW_PORT_ID, SHADOW_SCRIPT_ID] })
       .catch(() => []);
     if (matches.length === 0) {
       if (registered.length > 0) await browser.scripting.unregisterContentScripts({ ids: registered.map((s) => s.id) });
@@ -175,13 +195,14 @@ async function syncNow(): Promise<void> {
       return;
     }
     // One group at a time: a browser that refuses the page-world companion still gets the
-    // content script, which reads everything but a shadow root attached after its walk.
+    // content script, which reads everything but a shadow root attached after its walk; one
+    // that refuses the frames' stub still reads every page's top frame.
     for (const group of registrations(matches)) {
       try {
         await ensureGroup(group, registered);
       } catch (e) {
         if (group[0]!.id === SCRIPT_ID) throw e;
-        log.log("page-world script not registered", e);
+        log.log("script not registered", group[0]!.id, e);
       }
     }
     log.log("registered on", matches.join(" "));
@@ -262,13 +283,31 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  *
  * A page that already holds a running script is left alone: the probe can miss one that
  * has not added its message listener yet (its main() is still reading the settings), and
- * marking THAT page would quietly stop an ordinary run on a site the user has granted.
+ * marking THAT page would quietly stop an ordinary run on a site the user has granted. So is
+ * a frame whose stub runs (entrypoints/frame.content.ts): it is a granted frame, waiting for
+ * text before it asks for the script.
  */
 function markOnDemand(): {session:string;url:string} {
   const world = window as unknown as Record<string, unknown>;
-  if (!world.__anagramContentScript) world.__anagramOnDemand = true;
+  if (!world.__anagramContentScript && !world.__anagramFrame) world.__anagramOnDemand = true;
   if (typeof world.__anagramDocumentSession !== "string") world.__anagramDocumentSession = crypto.randomUUID();
   return {session:world.__anagramDocumentSession as string,url:location.href};
+}
+
+/**
+ * Put the content script in the frame whose stub asked for it (entrypoints/frame.content.ts):
+ * a frame below a page's top that is large enough and holds text. Into that document only —
+ * the frame may have gone on to another since — and only while its address is granted.
+ */
+export async function readFrame(sender: AccessSender): Promise<boolean> {
+  const tabId = sender.tab?.id;
+  const frameId = sender.frameId;
+  const address = pageAddress(sender);
+  if (tabId === undefined || frameId === undefined || frameId === 0 || !address) return false;
+  if (!matchesAny(await grantedMatches().catch(() => []), address)) return false;
+  // Firefox names no documents: there, the frame.
+  const target = sender.documentId ? { tabId, documentIds: [sender.documentId] } : { tabId, frameIds: [frameId] };
+  return browser.scripting.executeScript({ target, files: [CONTENT_SCRIPT] }).then(() => true, () => false);
 }
 
 /** Is a content script listening in this tab? Only the top frame is asked. */

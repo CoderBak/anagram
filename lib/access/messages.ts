@@ -48,6 +48,7 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.GET_CACHE_COUNT)}),
   v.strictObject({action:v.literal(ACTIONS.UPDATE_BADGE),session,flagged:v.pipe(v.number(),v.integer(),v.minValue(0),v.maxValue(1_000_000))}),
   v.strictObject({action:v.literal(ACTIONS.GET_TOP_HOST),session}),
+  v.strictObject({action:v.literal(ACTIONS.READ_FRAME)}),
   v.strictObject({action:v.literal(ACTIONS.GET_BACKEND_STATUS),session,probe:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.COMMENT_ACCESS),session,origins:v.pipe(v.array(commentOrigin),v.maxLength(8))}),
   v.strictObject({action:v.literal(ACTIONS.GET_ENGINE)}),
@@ -118,6 +119,8 @@ export function permitsMessage(role: CallerRole, msg: WorkerMessage, sender: Acc
     case ACTIONS.PDF_PASS_ONCE: case ACTIONS.PDF_REOPEN: return role === "reader" && Number.isInteger(sender.tab?.id);
     case ACTIONS.SCORE_BATCH: case ACTIONS.COUNT_TOKENS: return role === "content" || role === "reader" || role === "paste";
     case ACTIONS.GET_TOP_HOST: return role === "content";
+    // A frame's stub, which has no session yet: the reader it asks for opens one.
+    case ACTIONS.READ_FRAME: return role === "content" && sender.frameId !== 0;
     case ACTIONS.UPDATE_BADGE: return (role === "content" || role === "reader") && sender.frameId === 0;
     case ACTIONS.GET_BACKEND_STATUS: return true;
     case ACTIONS.COMMENT_ACCESS: return role === "content" && sender.frameId === 0;

@@ -28,17 +28,29 @@ export const SHADOW_PORT_EVENT = "anagram-shadow-port";
 const SHADOW_EVENT_KEY = "__anagramShadowEvent";
 /** What a name drawn by the page-world script looks like. */
 const SHADOW_EVENT_NAME = /^[a-z]{20}$/;
+/** Set, in the same world, once the page has attached a shadow root. */
+const SHADOW_SEEN_KEY = "__anagramShadowSeen";
 
-/** Hear the page-world script's one message (entrypoints/shadowPort.content.ts). */
+/** Hear the page-world script's one message (entrypoints/shadowPort.content.ts), and the
+ *  first shadow root after it: a frame's stub (entrypoints/frame.content.ts) asks for the
+ *  reader where one was attached, whose text it cannot see. */
 export function hearShadowPort(): void {
+  const world = window as unknown as Record<string, unknown>;
   document.addEventListener(
     SHADOW_PORT_EVENT,
     (e) => {
       const name = (e as CustomEvent<unknown>).detail;
-      if (typeof name === "string" && SHADOW_EVENT_NAME.test(name)) (window as unknown as Record<string, string>)[SHADOW_EVENT_KEY] = name;
+      if (typeof name !== "string" || !SHADOW_EVENT_NAME.test(name)) return;
+      world[SHADOW_EVENT_KEY] = name;
+      document.addEventListener(name, () => { world[SHADOW_SEEN_KEY] = true; }, { capture: true, once: true });
     },
     { capture: true, once: true },
   );
+}
+
+/** The page has attached a shadow root since the page-world script started. */
+export function shadowRootSeen(): boolean {
+  return (window as unknown as Record<string, unknown>)[SHADOW_SEEN_KEY] === true;
 }
 
 /** The name of the event the page-world script dispatches on a host that was given a shadow

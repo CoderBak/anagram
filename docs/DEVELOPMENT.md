@@ -15,7 +15,7 @@ Work on `dev`; `main` holds the published README only.
 | Third-party notices | `scripts/notices.mjs` writes `THIRD_PARTY_NOTICES.md`; the build and `test/node/notices.test.ts` refuse what it does not list |
 | Background: authorization, site access, message ACL | `entrypoints/background.ts`, `lib/access/`, `lib/messaging/protocol.ts` |
 | Scoring router and cache | `lib/backend/router.ts`, `lib/backend/swCache.ts`, `lib/backend/nativeTransport.ts` |
-| Page capture and scheduling | `entrypoints/content.ts`, `lib/capture/orchestrator.ts`, `lib/capture/scheduler.ts`, `lib/dom/walker.ts` |
+| Page capture and scheduling | `entrypoints/content.ts` (a page's top frame; the frames below it from `entrypoints/frame.content.ts`, a stub that asks for it, `lib/dom/frameGate.ts`), `lib/capture/orchestrator.ts`, `lib/capture/scheduler.ts`, `lib/dom/walker.ts` |
 | Sites the walk cannot read (Google Drive's preview, pdf.js viewers) | `lib/surfaces/` (an on-demand chunk; fixtures in `test/fixtures/surfaces/`) |
 | In-page rendering | `lib/render/scale.ts` (score to word, colour, doubt), `lib/render/badge.ts` (chips, card), `lib/render/highlight.ts` |
 | Setup, popup, settings | `entrypoints/onboarding/`, `entrypoints/popup/`, `entrypoints/options/`; the engine panels and the rows they share are in `lib/ui/` (`engineCard.ts`, `inBrowserEngine.ts`, `componentSettings.ts`, `siteAccess.ts`, `pdfRows.ts`) |
@@ -294,12 +294,15 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
     (`lib/dom/kept.ts`), but a feed changes it between any two drains (a class on the post
     entering view, a counter), so recognising its posts (`lib/dom/scope.ts`) is made again
     each time: half of what a drain costs there.
-  - The content script is 242 KB, parsed and compiled at every load of every granted page and
+  - The content script is 242 KB, parsed and compiled at every load of a granted page's top
     frame: ~11.5 ms (V8's preparse 6 ms; content scripts get no code cache), ~17 ms over a plain
     browser on a page with nothing to read. V8's explicit compile hint
-    (`//# allFunctionsCalledOnLoad`) made it 16 ms. What would cut it is a small registered
-    script that has the worker inject the reader (`scripting.executeScript`, no web-accessible
-    file) where a frame is large enough and a page has text.
+    (`//# allFunctionsCalledOnLoad`) made it 16 ms. The frames below the top run a 6 KB stub
+    instead (`entrypoints/frame.content.ts`), which has the worker inject the content script
+    (`readFrame`, `scripting.executeScript` into that document) once the frame is large enough
+    and holds text. A top frame with nothing to read still pays it: told apart at
+    document_end, Google Docs' canvas and pages whose text comes later or sits in shadow roots
+    would be passed over.
 - Hostile pages and documents (fuzzing of 2026-10-04: `test/unit.mjs` "pages built to break the
   reader", `test/pw/hostile-pages.spec.mjs`, `test/node/pdfStructuredProps.test.ts`, and the
   hostile-input cases in `test/native_host.py`). The limits are where they apply:

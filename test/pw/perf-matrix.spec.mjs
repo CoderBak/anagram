@@ -6,21 +6,22 @@
 // every request off this machine refused, and measured by test/perf-kit.mjs.
 //
 //   ANAGRAM_PERF_MATRIX=1 npx playwright test --project perf --no-deps perf-matrix
-//   ONLY=real,idle,bigdom,chatty,spa,menu,paste   scenarios to run (all by default)
+//   ONLY=real,idle,bigdom,chatty,spa,menu,paste,startup   scenarios to run (all by default)
 //   THROTTLE=4                                     a slow machine (CDP CPU throttling)
 //   TOP=6 PAGES=12                                 the corpus pages: the largest, then the
 //                                                  largest of each kind
 //   SAVE_PROFILE=<prefix>                          keep the CPU profiles (test/perf-kit.mjs)
+//   BUILD=<path>                                   another unpacked build, to set against this one
 //
 // "real" reads the web benchmark's corpus (test/web-bench/corpus.mjs), ~/anagram-bench/webbench/corpus
 // unless ANAGRAM_WEB_BENCH says otherwise.
 import { readFileSync } from "node:fs";
 import { test as base } from "./fixtures.mjs";
-import { launchPlain, popupOver, menuReport } from "../harness.mjs";
+import { BADGE_SEL, launchPlain, popupOver, menuReport } from "../harness.mjs";
 import { measure, settle, scrollThrough, brief } from "../perf-kit.mjs";
 
 const test = base.extend({});
-test.use({ launch: { viewport: { width: 1100, height: 850 } }, tracing: false });
+test.use({ launch: { viewport: { width: 1100, height: 850 } }, tracing: false, ...(process.env.BUILD ? { build: process.env.BUILD } : {}) });
 test.skip(!process.env.ANAGRAM_PERF_MATRIX, "a survey run by hand: ANAGRAM_PERF_MATRIX=1");
 const THROTTLE = Number(process.env.THROTTLE ?? 1);
 const only = process.env.ONLY ? process.env.ONLY.split(",") : null;
@@ -50,7 +51,7 @@ async function pair(tag, context, url, act) {
     const ctl = await measure(c.ctx, url, { act, throttle: THROTTLE });
     await ctl.page.close();
     const e = brief(ext), k = brief(ctl);
-    out(tag, { ext: e, ctl: k, extra: { script: e.script - k.script, task: e.task - k.task, layout: e.layout - k.layout, style: e.style - k.style, layouts: e.layouts - k.layouts, heapMB: e.heapMB - k.heapMB, nodes: e.nodes - k.nodes }, ourTop: ext.cpu?.top.slice(0, 8), ourLongFrames: ext.ourLongFrames.slice(0, 5) });
+    out(tag, { ext: e, ctl: k, extra: { script: e.script - k.script, task: e.task - k.task, layout: e.layout - k.layout, style: e.style - k.style, layouts: e.layouts - k.layouts, heapMB: e.heapMB - k.heapMB, nodes: e.nodes - k.nodes }, ourTop: ext.cpu?.top.slice(0, 8), ourLongFrames: ext.ourLongFrames.slice(0, 5), ...(ext.firstChipMs !== undefined ? { firstChipMs: ext.firstChipMs } : {}), ...(ext.frames ? { frames: ext.frames, ctlFrames: ctl.frames } : {}) });
   } finally { await c.close(); }
 }
 
@@ -154,6 +155,54 @@ test("SPA: fifty route changes, what is kept", async ({ context, pages }) => {
     const ctl = await measure(c.ctx, pages.url("/spa.html"), { act: run, throttle: THROTTLE });
     out("spa", { ext: { heldMB: ext.heldMB, ...brief(ext) }, ctl: { heldMB: ctl.heldMB, ...brief(ctl) } });
   } finally { await c.close(); }
+});
+
+test("start-up: a page with nothing to read, and an article among a dozen ad and tracking frames", async ({ context, pages }) => {
+  test.skip(!want("startup"));
+  test.setTimeout(15 * 60_000);
+  // Frames of the page's own origin, so their scripts run on the page's own thread and in its
+  // metrics: an ad slot's few words under a picture, and pixels.
+  const ads = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`/ad${i}.html`, PAGE(`ad ${i}`, `<a href="#ad"><div style="width:280px;height:200px;background:#c8d">Offer ${i}: save today</div></a>`)]));
+  const frames = [...Array.from({ length: 8 }, (_, i) => `<iframe src="/ad${i}.html" width="300" height="250"></iframe>`), ...Array.from({ length: 4 }, () => `<iframe src="/pixel.html" width="1" height="1"></iframe>`)].join("");
+  // The same frames from another site, each site's frames in a process of their own, as an
+  // ad network's are: measured there (frameProcesses).
+  const other = new URL(pages.url("/")).port;
+  const elsewhere = frames.replace(/src="\//g, `src="http://127.0.0.1:${other}/`);
+  pages.serve({
+    ...ads,
+    "/pixel.html": PAGE("pixel", ""),
+    "/framed.html": PAGE("framed article", `${Array.from({ length: 12 }, (_, i) => `<p>${words(i + 70, 90)}.</p>`).join("")}${frames}`),
+    "/xframed.html": PAGE("framed from elsewhere", `${Array.from({ length: 12 }, (_, i) => `<p>${words(i + 70, 90)}.</p>`).join("")}${elsewhere}`),
+    "/blank.html": PAGE("nothing to read", `<canvas width="800" height="500"></canvas><button>Play</button>`),
+  });
+  /** What the frames from 127.0.0.1 cost in the process(es) they run in: read through each
+   *  frame, once per process (frames sharing one read the same). */
+  const frameProcesses = async (page) => {
+    const seen = new Map();
+    for (const f of page.frames()) {
+      if (!f.url().startsWith("http://127.0.0.1")) continue;
+      const s = await page.context().newCDPSession(f).catch(() => null);
+      if (!s) continue;
+      await s.send("Performance.enable");
+      const m = Object.fromEntries((await s.send("Performance.getMetrics")).metrics.map((x) => [x.name, x.value]));
+      seen.set(`${m.ScriptDuration}:${m.JSHeapUsedSize}`, { scriptMs: Math.round(m.ScriptDuration * 1000), taskMs: Math.round(m.TaskDuration * 1000), heapMB: Math.round(m.JSHeapUsedSize / 104857.6) / 10, listeners: m.JSEventListeners });
+      await s.detach().catch(() => {});
+    }
+    return [...seen.values()];
+  };
+  /** When the first chip was drawn, in the page's own time. */
+  const firstChip = async (page) => ({ firstChipMs: await page.evaluate(async (sel) => {
+    for (let i = 0; i < 1500 && !document.querySelector(sel); i++) await new Promise((r) => setTimeout(r, 10));
+    return document.querySelector(sel) ? Math.round(performance.now()) : null;
+  }, BADGE_SEL) });
+  const quiet = async (page) => { await page.waitForTimeout(3000); };
+  const framed = async (page) => { const at = await firstChip(page); await settle(page, { quiet: 2000, most: 15_000 }); return at; };
+  const xframed = async (page) => ({ ...(await framed(page)), frames: await frameProcesses(page) });
+  for (let i = 0; i < Number(process.env.REPEAT ?? 3); i++) {
+    await pair("startup blank", context, pages.url("/blank.html"), quiet);
+    await pair("startup framed", context, pages.url("/framed.html"), framed);
+    await pair("startup xframed", context, pages.url("/xframed.html"), xframed);
+  }
 });
 
 test("the toolbar menu over a page of 400 read paragraphs", async ({ context, pages }) => {

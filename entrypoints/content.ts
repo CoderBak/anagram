@@ -1,8 +1,10 @@
 import { sendDocumentMessage } from "../lib/access/session";
 // entrypoints/content.ts — main content script.
-// Runs in EVERY frame (allFrames): the top frame gets the toolbar report, Docs actions, and popup state; subframes run a chrome-less pipeline so framed
-// article content (webmail readers, embedded posts) is scored too — gated on
-// frame size so ad slots and tracking pixels never pay for a walk.
+// A granted page's top frame runs it from its registration; a frame below it, from the worker,
+// once the frame's stub (entrypoints/frame.content.ts) has found it large enough and holding
+// text. The top frame gets the toolbar report, Docs actions, and popup state; subframes run a
+// chrome-less pipeline so framed article content (webmail readers, embedded posts) is scored
+// too — gated on frame size so ad slots and tracking pixels never pay for a walk.
 import { defineContentScript, browser } from "#imports";
 import { createOrchestrator } from "../lib/capture/orchestrator";
 import { effectiveRule, enabledForSite, settings } from "../lib/settings/settings";
@@ -27,10 +29,8 @@ import { isConsentFrame } from "../lib/dom/consentBanners";
 import { surfaceFor } from "../lib/surfaces";
 import { loadSurface } from "../lib/surfaces/load";
 import { setMarkPainter, setRangeLocator } from "../lib/render/highlight";
+import { MIN_FRAME_AREA, MIN_FRAME_WIDTH, frameLargeEnough } from "../lib/dom/frameGate";
 
-/** Min frame viewport for a subframe to be worth scanning (ad slots are smaller). */
-const MIN_FRAME_AREA = 40_000; // e.g. 400×100
-const MIN_FRAME_WIDTH = 200;
 /** How long a subframe waits for the worker's answer before falling back. A sleeping
  *  MV3 worker normally wakes in tens of ms; nothing here is worth stalling a scan for. */
 const TOP_HOST_TIMEOUT_MS = 1000;
@@ -190,10 +190,7 @@ export default defineContentScript({
      */
     let translated = isPageTranslated();
 
-    const frameGateOk = (): boolean =>
-      isTop ||
-      (window.innerWidth >= MIN_FRAME_WIDTH &&
-        window.innerWidth * window.innerHeight >= MIN_FRAME_AREA);
+    const frameGateOk = (): boolean => isTop || frameLargeEnough();
 
     /**
      * What the reader last opened the context menu on. "Copy page diagnostics" describes

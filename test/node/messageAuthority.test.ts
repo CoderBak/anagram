@@ -173,6 +173,14 @@ describe("worker message schema and roles",()=>{
     const status=parseWorkerMessage({action:ACTIONS.GET_PDF_STATUS,tabId:7})!;
     expect(permitsMessage("popup",status,sender())).toBe(true);expect(permitsMessage("content",status,sender())).toBe(false);
   });
+  it("lets only a frame below the top ask for the content script, and with nothing more than the asking",()=>{
+    const read=parseWorkerMessage({action:ACTIONS.READ_FRAME})!;
+    expect(read).not.toBeNull();
+    expect(parseWorkerMessage({action:ACTIONS.READ_FRAME,tabId:7})).toBeNull();
+    expect(permitsMessage("content",read,sender(3))).toBe(true);
+    expect(permitsMessage("content",read,sender(0))).toBe(false);
+    for(const role of ["reader","popup","options","onboarding","paste","stats"] as const)expect(permitsMessage(role,read,sender(3))).toBe(false);
+  });
   it("rejects subframe badge writes and PDF announcements that differ from the sender",()=>{
     const msg=parseWorkerMessage({action:ACTIONS.PDF_TAB_OPENED,url:"https://top.test/file.pdf",contentType:"application/pdf",protocol:"https:",navigationType:"navigate"})!;
     expect(permitsMessage("content",msg,sender())).toBe(false);

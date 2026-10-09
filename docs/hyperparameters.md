@@ -850,8 +850,10 @@ This area covers when and how fast Anagram reads, scores and draws on a web page
 
 | Parameter | Value | Where | Controls | Basis | Notes |
 |---|---|---|---|---|---|
-| `MIN_FRAME_AREA` | 40 000 px² | `entrypoints/content.ts:32` | Smallest subframe that is read | Judgement | Below it nothing in the frame is read, counted or recorded in statistics. |
-| `MIN_FRAME_WIDTH` | 200 px | `entrypoints/content.ts:33` | Narrowest subframe that is read | Judgement | Narrow chat or comment frames start only once resized past it. |
+| `MIN_FRAME_AREA` | 40 000 px² | `lib/dom/frameGate.ts:7` | Smallest subframe that is read | Judgement | Below it nothing in the frame is read, counted or recorded in statistics, and its stub never asks for the content script. |
+| `MIN_FRAME_WIDTH` | 200 px | `lib/dom/frameGate.ts:6` | Narrowest subframe that is read | Judgement | Narrow chat or comment frames start only once resized past it. |
+| Frame text before the content script | `MIN_WORDS` (50) characters other than white space, or a shadow root | `entrypoints/frame.content.ts:34`; `lib/dom/frameGate.ts:21` | When a subframe's stub asks the worker to inject the 240 KB content script | Safety | An upper bound: every word holds such a character, so no frame with a readable paragraph is passed over. Text in a shadow root is not counted; any root asks. 12 ad frames: page-thread CPU 36–43 → 30–34 ms, their own process's heap 12.9 → 8.5 MB, first chip 215–235 → 208–214 ms (2026-10-09, M4, `perf-matrix` startup). |
+| `RECOUNT_MS` | 500 ms | `entrypoints/frame.content.ts:16` | How long after a change a waiting frame's text is counted again | Judgement | A frame that fills in later is read up to half a second later than its change. |
 | `TOP_HOST_TIMEOUT_MS` | 1000 ms | `entrypoints/content.ts:36` | Wait for the worker to name the tab's host | Judgement | The fallback is the referrer, then the frame's own host, so the wrong site rule may apply. |
 | Shadow event name | 20 random letters per document | `entrypoints/shadow.content.ts:61` | Name of the attachShadow event | Safety | Prevents pages from listening for, or faking, Anagram's event. |
 | `TALLER` | 1.25 × median line height | `lib/surfaces/lineLayer.ts:70, 85` | Heading lines on Drive and pdf.js surfaces | Judgement | Feeds the PDF reflow (another area). |
@@ -931,7 +933,7 @@ These are the soft assertions in `test/pw/perf.spec.mjs`. `test/perf-kit.mjs` ho
 5. **Drain pacing** (`DRAIN_COST_SPACING` 19, `DRAIN_MAX_SPACING_MS` 5 s, `MAX_SCAN_ROOTS` 10). These hold the cost of live pages (budgets B, F, I). They also bound how late new content is read: up to 5 s on expensive pages.
 6. **`NEAR_MARGIN` 100 %** (`highlight.ts:141`). It trades Chromium's highlight revalidation cost (budget G) against marks drawn a frame late. It is backed by a measurement.
 7. **`HYDRATION_MAX_MS` 2.5 s** (`insertionGate.ts:40`). On every Next, Nuxt or Astro page, chips may wait up to 2.5 s after scoring is done.
-8. **`MIN_FRAME_AREA` / `MIN_FRAME_WIDTH`** (`content.ts:32-33`). Smaller frames are not read, reported or counted in statistics at all.
+8. **`MIN_FRAME_AREA` / `MIN_FRAME_WIDTH`** (`frameGate.ts:6-7`). Smaller frames are not read, reported or counted in statistics at all.
 
 #### Duplicates and contradictions
 

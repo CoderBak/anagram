@@ -26,7 +26,7 @@ import type {
   ScoreBatchReply,
   TopHostReply,
 } from "../lib/messaging/protocol";
-import { ensureInjected, installAccess } from "../lib/access/worker";
+import { ensureInjected, installAccess, readFrame } from "../lib/access/worker";
 import { documentAuthority } from "../lib/access/authority";
 import { applyCacheMode, invalidateAndNotify } from "../lib/access/cacheControls";
 import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } from "../lib/access/messages";
@@ -430,6 +430,8 @@ export default defineBackground(() => {
     if (!msg) return {ok:false,error:"invalid_request"};
     const role=callerRole(sender,browser.runtime.id,browser.runtime.getURL("/"));
     if (!role || !permitsMessage(role,msg,sender)) return {ok:false,error:"forbidden"};
+    // A frame's stub has no session: whether its frame may be read is the grant's to say.
+    if (msg.action === ACTIONS.READ_FRAME) return {ok:await readFrame(sender)};
     const needsDocument=role === "content" || role === "reader" || role === "paste";
     const document=needsDocument ? await documentAuthority.authorize(sender,"session" in msg ? msg.session : undefined) : null;
     if (needsDocument && (!document || document.signal.aborted)) return {ok:false,error:"forbidden"};

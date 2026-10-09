@@ -10,12 +10,13 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { ALL_SITES, matchesAny } from "../../lib/access/patterns";
-import { ensureInjected, installAccess, syncRegistration } from "../../lib/access/worker";
+import { ensureInjected, installAccess, readFrame, syncRegistration } from "../../lib/access/worker";
 import { documentAuthority } from "../../lib/access/authority";
 
 const SCRIPT = "/content-scripts/content.js";
 const SHADOW_SCRIPT = "/content-scripts/shadow.js";
 const SHADOW_PORT = "/content-scripts/shadowPort.js";
+const FRAME_SCRIPT = "/content-scripts/frame.js";
 
 interface Listener<A extends unknown[]> {
   addListener(fn: (...args: A) => void): void;
@@ -47,14 +48,14 @@ interface Tab {
  *  extension requires no host permission of its own: what the browser reports granted is
  *  what the user granted. */
 function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMainWorld?: boolean; refuseFallback?: boolean } = {}) {
-  const registered: { id: string; matches: string[]; js: string[]; world?: string; matchOriginAsFallback?: boolean }[] = [];
+  const registered: { id: string; matches: string[]; js: string[]; world?: string; allFrames?: boolean; matchOriginAsFallback?: boolean }[] = [];
   const calls = {
     /** The content script's matches, per register / update call. Its page-world companion
      *  follows it, and is checked on its own below. */
     register: [] as string[][],
     update: [] as string[][],
     unregister: 0,
-    injected: [] as { tabId: number; allFrames: boolean; func: boolean }[],
+    injected: [] as { tabId: number; allFrames: boolean; func: boolean; documentIds?: string[]; frameIds?: number[] }[],
     sent: [] as { tabId: number; action: string }[],
   };
   const onAdded = event<[{ origins?: string[] }]>();
@@ -101,7 +102,7 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
       target,
       files,
     }: {
-      target: { tabId: number; allFrames?: boolean };
+      target: { tabId: number; allFrames?: boolean; documentIds?: string[]; frameIds?: number[] };
       files?: string[];
       func?: () => void;
     }) => {
@@ -111,6 +112,8 @@ function environment(tabs: Tab[] = [], origins: string[] = [], opts: { refuseMai
         tabId: target.tabId,
         allFrames: target.allFrames === true,
         func: files === undefined,
+        ...(target.documentIds ? { documentIds: target.documentIds } : {}),
+        ...(target.frameIds ? { frameIds: target.frameIds } : {}),
       });
       if (files) tab.script = true;
       return [{frameId:0,documentId:`doc-${tab.id}`,result:files ? null : {session:crypto.randomUUID(),url:tab.url ?? "https://one-shot.test/"}}];
@@ -184,7 +187,7 @@ describe("the registration follows the grant", () => {
     expect(env.registered).toEqual([]);
   });
 
-  it("registers on exactly the granted origins, with the options the manifest used to declare", async () => {
+  it("registers on exactly the granted origins: the content script in a page's top frame, the frames' stub in every frame", async () => {
     const env = environment();
     env.grant("https://example.com/*");
     await syncRegistration();
@@ -192,22 +195,40 @@ describe("the registration follows the grant", () => {
     expect(env.registered[0]).toMatchObject({
       id: "anagram-content",
       js: [SCRIPT],
+      allFrames: false,
+      runAt: "document_end",
+      persistAcrossSessions: true,
+    });
+    expect(env.registered[1]).toMatchObject({
+      id: "anagram-frame",
+      matches: ["https://example.com/*"],
+      js: [FRAME_SCRIPT],
       allFrames: true,
       runAt: "document_end",
       persistAcrossSessions: true,
     });
   });
 
+  it("brings the content script an earlier version registered in every frame back to the top frame", async () => {
+    const env = environment();
+    env.grant("https://example.com/*");
+    env.registered.push({ id: "anagram-content", matches: ["https://example.com/*"], js: [SCRIPT], allFrames: true, matchOriginAsFallback: true });
+    await syncRegistration();
+    expect(env.calls.update).toEqual([["https://example.com/*"]]);
+    expect(env.registered.find((s) => s.id === "anagram-content")?.allFrames).toBe(false);
+    expect(env.registered.find((s) => s.id === "anagram-frame")?.allFrames).toBe(true);
+  });
+
   it("reaches a granted page's srcdoc, about:blank and blob: frames too, and still registers where that is refused", async () => {
     const env = environment();
     env.grant("https://example.com/*");
     await syncRegistration();
-    expect(env.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", true], ["anagram-port", true], ["anagram-shadow", true]]);
+    expect(env.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", true], ["anagram-frame", true], ["anagram-port", true], ["anagram-shadow", true]]);
     // Chrome before 119 knows no such option and refuses the whole script over it.
     const old = environment([], [], { refuseFallback: true });
     old.grant("https://example.com/*");
     await syncRegistration();
-    expect(old.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", undefined], ["anagram-port", undefined], ["anagram-shadow", undefined]]);
+    expect(old.registered.map((s) => [s.id, s.matchOriginAsFallback])).toEqual([["anagram-content", undefined], ["anagram-frame", undefined], ["anagram-port", undefined], ["anagram-shadow", undefined]]);
   });
 
   it("updates a registration made without the frames option", async () => {
@@ -233,7 +254,7 @@ describe("the registration follows the grant", () => {
       persistAcrossSessions: true,
     });
     // Its isolated listener runs first: scripts of one moment run in the order registered.
-    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-port", "anagram-shadow"]);
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-frame", "anagram-port", "anagram-shadow"]);
     expect(env.registered.find((s) => s.id === "anagram-port")).toMatchObject({
       matches: ["https://example.com/*"],
       js: [SHADOW_PORT],
@@ -246,7 +267,7 @@ describe("the registration follows the grant", () => {
     await syncRegistration();
     expect(env.registered.find((s) => s.id === "anagram-shadow")?.matches).toEqual(["https://example.com/*", ...ALL_SITES]);
     expect(env.registered.find((s) => s.id === "anagram-port")?.matches).toEqual(["https://example.com/*", ...ALL_SITES]);
-    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-port", "anagram-shadow"]);
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-frame", "anagram-port", "anagram-shadow"]);
     env.withdraw("https://example.com/*", ...ALL_SITES);
     await syncRegistration();
     expect(env.registered).toEqual([]);
@@ -257,14 +278,14 @@ describe("the registration follows the grant", () => {
     env.grant("https://example.com/*");
     env.registered.push({ id: "anagram-shadow", matches: ["https://example.com/*"], js: [SHADOW_SCRIPT], world: "MAIN", matchOriginAsFallback: true });
     await syncRegistration();
-    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-port", "anagram-shadow"]);
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-frame", "anagram-port", "anagram-shadow"]);
   });
 
   it("still registers the content script where the page world is refused", async () => {
     const env = environment([], [], { refuseMainWorld: true });
     env.grant("https://example.com/*");
     await syncRegistration();
-    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content"]);
+    expect(env.registered.map((s) => s.id)).toEqual(["anagram-content", "anagram-frame"]);
   });
 
   it("never registers on the daemon's own hosts", async () => {
@@ -286,7 +307,7 @@ describe("the registration follows the grant", () => {
     await syncRegistration();
     expect(env.calls.register).toHaveLength(1);
     expect(env.calls.update).toEqual([["https://a.com/*", ...ALL_SITES]]);
-    expect(env.registered).toHaveLength(3);
+    expect(env.registered).toHaveLength(4);
   });
 
   it("does nothing when a sync finds what is already registered", async () => {
@@ -317,7 +338,7 @@ describe("the registration follows the grant", () => {
     env.grant(...ALL_SITES);
     await Promise.all([syncRegistration(), syncRegistration(), syncRegistration()]);
     expect(env.calls.register).toHaveLength(1);
-    expect(env.registered).toHaveLength(3);
+    expect(env.registered).toHaveLength(4);
   });
 
   it("re-asserts itself on install, on startup and when the worker wakes", async () => {
@@ -336,6 +357,43 @@ describe("the registration follows the grant", () => {
     env.events.onStartup.emit();
     await settle();
     expect(env.calls.register).toHaveLength(3);
+  });
+});
+
+describe("a frame's stub asks for the content script", () => {
+  const frame = (over: Record<string, unknown> = {}) => ({
+    url: "https://example.com/embed", origin: "https://example.com", frameId: 3, documentId: "doc-frame", tab: { id: 1, url: "https://news.test/" }, ...over,
+  });
+
+  it("puts it in that frame's document alone, where the frame's address is granted", async () => {
+    const env = environment([{ id: 1, url: "https://news.test/" }]);
+    env.grant("https://example.com/*");
+    expect(await readFrame(frame())).toBe(true);
+    expect(env.calls.injected).toEqual([{ tabId: 1, allFrames: false, func: false, documentIds: ["doc-frame"] }]);
+  });
+
+  it("by the frame where the browser names no documents (Firefox)", async () => {
+    const env = environment([{ id: 1, url: "https://news.test/" }]);
+    env.grant("https://example.com/*");
+    expect(await readFrame(frame({ documentId: undefined }))).toBe(true);
+    expect(env.calls.injected).toEqual([{ tabId: 1, allFrames: false, func: false, frameIds: [3] }]);
+  });
+
+  it("an about:blank or srcdoc frame by the origin it took from its page", async () => {
+    const env = environment([{ id: 1, url: "https://example.com/book" }]);
+    env.grant("https://example.com/*");
+    expect(await readFrame(frame({ url: "about:srcdoc" }))).toBe(true);
+    expect(env.calls.injected).toHaveLength(1);
+  });
+
+  it("not where the frame's address is not granted, nor for a top frame, a sandboxed frame or a closed page", async () => {
+    const env = environment([{ id: 1, url: "https://news.test/" }, { id: 2, url: "https://example.com/", closed: true }]);
+    env.grant("https://example.com/*");
+    expect(await readFrame(frame({ url: "https://ads.test/slot", origin: "https://ads.test" }))).toBe(false);
+    expect(await readFrame(frame({ frameId: 0 }))).toBe(false);
+    expect(await readFrame(frame({ url: "about:srcdoc", origin: "null" }))).toBe(false);
+    expect(env.calls.injected).toEqual([]);
+    expect(await readFrame(frame({ tab: { id: 2 } }))).toBe(false);
   });
 });
 
