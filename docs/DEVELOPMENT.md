@@ -209,9 +209,18 @@ on real test computers.
 
 `npm run bump <version>` rewrites the version in package files, `anagramd/pyproject.toml`
 and `uv.lock`. `npm run release` builds both browser ZIPs, the component archive and
-installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs. Publishing is
-manual. The install command shown in the extension is pinned to its own version, so a
-release must ship matching assets. `npm run source-bundle` writes the source Firefox Add-ons
+installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs: a local check,
+unsigned. A release is published by `.github/workflows/release.yml`, dispatched by hand from
+its version tag, which runs the CI matrix, builds the same assets, signs each with Sigstore
+(keyless, its certificate naming that workflow at that tag) and attaches them with their
+`.sigstore.json` bundles. `install.sh` and `install.ps1` install a release fetched over
+HTTPS only with that signature (`installer/verify_release.py`, with sigstore-python pinned
+in `installer/sigstore.txt`; `node scripts/sigstoreLock.mjs` after changing
+`installer/sigstore.in` or the script, and a newer sigstore-python whenever Sigstore rotates
+its keys, since installers that cannot reach Sigstore verify against the trust root it
+carries); a release given as a `file://` address is checked by its checksum alone. The
+install command shown in the extension is pinned to its own version, so a release must ship
+matching assets. `npm run source-bundle` writes the source Firefox Add-ons
 asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BUILDING.md).
 
 ## Open work
@@ -259,11 +268,11 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   it means building ONNX Runtime with Emscripten ourselves, shipping a binary that is not the
   pinned npm package's, and keeping the plain one for Safari, which has no relaxed SIMD.
 - Security, still open (review of 2026-10-04):
-  - Releases are verified against the `.sha256` beside them, from the same place: whoever can
-    replace release assets can ship code that every update installs and that receives every
-    scored paragraph. The fix is signing (minisign or Sigstore) with an offline key whose public
-    half `install.sh`, `install.ps1` and `native_registration.py` carry; it needs a key the
-    maintainer keeps, so it waits on that decision.
+  - A first install runs `install.sh` (or `install.ps1`) as the release serves it, before
+    anything is verified: whoever can replace release assets can replace the installer too.
+    Releases are signed now, and updates run the installed installer; the setup page's
+    command could also carry the installer's SHA-256 (the extension is built from the same
+    tree, `lib/ui/installationCommand.ts`).
   - The local engine parses page text (fastText, tokenizers, ONNX Runtime, MLX) in a process with
     the user's privileges; a sandboxed inference child (Seatbelt, seccomp and Landlock) would
     contain a parser bug.

@@ -25,6 +25,8 @@ const SUITES = [
   ["unit (vitest)", "npx vitest run", null],
   ["walker (test/unit.mjs)", "node test/unit.mjs", null],
   ["installer", "sh test/installer.sh", posix ? null : "needs a POSIX shell"],
+  // Needs the network (PyPI and uv's Python builds), and says SKIP without it.
+  ["release signature", "sh test/release-signature.sh", posix ? null : "needs a POSIX shell"],
   ["native setup in the browser", "node test/native-browser.mjs", posix ? null : "its stdio launcher fixture is POSIX"],
   ["pw", `npx playwright test --project chromium --workers=${workers}`, null],
   ["pseudo-locale", "node test/pseudo-locale.mjs", null],

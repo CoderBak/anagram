@@ -53,9 +53,10 @@ mkdir -p "$T/ok1" && echo x > "$T/ok1/.anagram-home"; plant "$T/victim2"; ln -s 
 out="$(ANAGRAM_HOME="$T/ok1" run_install)"; rc=$?
 if [ $rc -ne 0 ] && echo "$out" | grep -q "symbolic link" && intact "$T/victim2"; then ok "symlinked app/ inside the folder is refused"; else bad "inner symlink" "rc=$rc $(echo "$out" | tail -1)"; fi
 
-# 5. a fresh empty folder passes validation and only THEN tries the network
-out="$(ANAGRAM_HOME="$T/fresh" run_install)"; rc=$?
-if [ $rc -ne 0 ] && echo "$out" | grep -q "Downloading the Anagram release" && [ -f "$T/fresh/.anagram-home" ]; then ok "fresh folder: validated, marker written, download attempted"; else bad "fresh folder" "rc=$rc $(echo "$out" | tail -1)"; fi
+# 5. a fresh empty folder passes validation and only THEN tries the network: first for uv,
+# which checks the release's signature (kept offline here by a proxy that refuses).
+out="$(ANAGRAM_HOME="$T/fresh" https_proxy=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 run_install)"; rc=$?
+if [ $rc -ne 0 ] && echo "$out" | grep -q "Downloading uv" && [ -f "$T/fresh/.anagram-home" ]; then ok "fresh folder: validated, marker written, download attempted"; else bad "fresh folder" "rc=$rc $(echo "$out" | tail -1)"; fi
 
 # Fixed leaf paths must not redirect writes, including failure rollback.
 for leaf in .anagram-home VERSION bin/anagram bin/anagram.new bin/uv bin/uv.new .native-host.lock; do
