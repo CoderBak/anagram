@@ -2665,8 +2665,10 @@ const results = await page.evaluate(() => {
     const words = (n, from = 0) => Array.from({ length: n }, (_, i) => WORDS[(i + from) % WORDS.length]).join(" ") + ".";
     const attempt = (f) => { try { return f(); } catch (e) { return String(e); } };
     const out = {};
-    // Nested past what any parser builds: inline elements (a block this deep breaks Chromium's
-    // own layout first), and shadow roots inside shadow roots.
+    // Nested past what any parser builds and past the walk's limit: inline elements (a block
+    // this deep breaks Chromium's own layout first), and shadow roots inside shadow roots. Not
+    // much past it: at 3,000 levels the Windows runner's renderer stopped answering at all, in
+    // Chromium's own code, before any of the walk's.
     const nest = (levels, make) => {
       document.body.innerHTML = `<p id="plain">${words(80)}</p>`;
       let at = document.body;
@@ -2678,7 +2680,7 @@ const results = await page.evaluate(() => {
       ["spans", (at) => at.appendChild(document.createElement("span"))],
       ["shadowRoots", (at) => at.appendChild(document.createElement("span")).attachShadow({ mode: "open" }).appendChild(document.createElement("span"))],
     ]) {
-      const deepest = nest(3000, make);
+      const deepest = nest(PW.MAX_WALK_DEPTH + 64, make);
       const units = attempt(() => PW.collectUnits(document.body));
       const rescan = attempt(() => PW.collectUnits(deepest));
       out[name] = {
@@ -2698,7 +2700,7 @@ const results = await page.evaluate(() => {
   });
   const plain = (units) => Array.isArray(units) && units.length === 1 && units[0].startsWith("the quick");
   results.push({
-    name: `a page nested deeper than ${3000} levels, of elements or of shadow roots, is read down to the depth limit and never throws: its other paragraphs keep their chips`,
+    name: `a page nested ${512 + 64} levels deep, past the walk's limit, of elements or of shadow roots, is read down to the depth limit and never throws: its other paragraphs keep their chips`,
     ok: plain(r.spans.units) && plain(r.shadowRoots.units) && r.spans.rescan === 0 && r.shadowRoots.rescan === 0,
     note: JSON.stringify(r),
   });
@@ -2785,10 +2787,11 @@ const results = await page.evaluate(() => {
       while (drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
       return drains.length > 0;
     };
-    // Shadow roots nested 2,000 deep, there before the observers start, and the deepest
+    // Shadow roots nested past the walk's limit (not much past it: Chromium on the Windows runner
+    // stops answering before 3,000), there before the observers start, and the deepest
     // changed afterwards: it is watched like any other.
     let at = document.body;
-    for (let i = 0; i < 2000; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" });
+    for (let i = 0; i < PW.MAX_WALK_DEPTH + 64; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" });
     const deepest = at.appendChild(document.createElement("span"));
     observers.start();
     await new Promise((done) => setTimeout(done, 300));
@@ -2805,7 +2808,7 @@ const results = await page.evaluate(() => {
     return { deep, storm: { nodes: storm.nodes.map((n) => n.nodeName), removed: storm.removed, quiet: storm.quiet } };
   });
   results.push({
-    name: "shadow roots nested 2,000 deep are all watched; a storm past ten thousand changed nodes is handed over as the whole page, none of them held",
+    name: "shadow roots nested 576 deep are all watched; a storm past ten thousand changed nodes is handed over as the whole page, none of them held",
     ok: r.deep && JSON.stringify(r.storm) === JSON.stringify({ nodes: ["BODY"], removed: 0, quiet: 0 }),
     note: JSON.stringify(r),
   });

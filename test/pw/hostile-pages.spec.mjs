@@ -38,17 +38,18 @@ async function longestTask(page, during) {
   return page.evaluate(() => Math.round(window.__longest));
 }
 
-test("a tree nested thousands of levels deep, of elements and of shadow roots, leaves the page's other paragraphs read", async ({ page, pages }) => {
+test("a tree nested past the walk's depth limit, of elements and of shadow roots, leaves the page's other paragraphs read", async ({ page, pages }) => {
   pages.serve({
     "/deep.html": PAGE("deep", `<main><p id="first">${PARA("DEEP-A")}</p><div id="deep"></div></main>
 <script>
-  // Built by script: no parser nests this deep. Inline boxes, which Chromium lays out at this
-  // depth (blocks this deep break its layout before they could break Anagram).
+  // Built by script: no parser nests past 512. Inline boxes, which Chromium lays out at this
+  // depth (blocks this deep break its layout before they could break Anagram), 600 levels: past
+  // the walk's 512 (lib/dom/walker.ts), and short of where Chromium on Windows stops answering.
   let at = document.getElementById("deep");
-  for (let i = 0; i < 4000; i++) at = at.appendChild(document.createElement("span"));
+  for (let i = 0; i < 600; i++) at = at.appendChild(document.createElement("span"));
   at.append("deep text nobody reads: ${"word ".repeat(80)}");
   at = document.getElementById("deep");
-  for (let i = 0; i < 1500; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
+  for (let i = 0; i < 600; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" }).appendChild(document.createElement("span"));
   at.append("deep text nobody reads either: ${"word ".repeat(80)}");
 </script>`),
   });
