@@ -120,14 +120,6 @@ export function presetConfig(preset: Preset, retention: Retention = DEFAULT_RETE
 export function rank<D extends Dimension>(d: D, layer: Layer<D>): number {
   return (DIMENSIONS[d] as readonly string[]).indexOf(layer);
 }
-/** `layer` is at least as fine as `than`. */
-export function finerOrSame<D extends Dimension>(d: D, layer: Layer<D>, than: Layer<D>): boolean {
-  return rank(d, layer) <= rank(d, than);
-}
-/** The coarser of two layers. */
-export function coarserOf<D extends Dimension>(d: D, a: Layer<D>, b: Layer<D>): Layer<D> {
-  return rank(d, a) >= rank(d, b) ? a : b;
-}
 
 /** Which preset a configuration is, or null for one of the reader's own. */
 export function presetOf(config: RecordingConfig): Preset | null {

@@ -74,8 +74,6 @@ export const RuntimeSchema = v.object({
 });
 
 export type RuntimeSnapshot = v.InferOutput<typeof RuntimeSchema>;
-export type RuntimeCandidate = RuntimeSnapshot["candidates"][number];
-export type RuntimeResult = RuntimeSnapshot["benchmark"]["results"][number];
 export type RuntimeReply =
   | { kind: "ok"; snapshot: RuntimeSnapshot }
   | { kind: "unavailable" | "invalid" | "rejected"; message?: string };

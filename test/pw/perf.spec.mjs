@@ -493,17 +493,25 @@ async function againstNone(context, url, act) {
 
 const settled = async (page) => { await page.waitForSelector(BADGE_SEL, { timeout: 20000 }).catch(() => {}); await page.waitForTimeout(2500); };
 
+/** Budget G's pairs of runs: a plain browser's own time on the feed moves by a third from one
+ *  run to the next (1.2–1.7 s, 2026-10-10), and the share with it by a point. */
+const G_RUNS = Number(process.env.ANAGRAM_G_RUNS ?? 2);
+
 test("G) a Reddit-like feed for 60 s: the main thread's whole time over a plain browser's", async ({ context, pages, budget }) => {
-  test.setTimeout(6 * 60_000);
+  test.setTimeout((1 + 3 * G_RUNS) * 60_000);
   pages.serve({ "/feed.html": REDDIT_FEED });
-  const { ext, ctl } = await againstNone(context, pages.url("/feed.html"), async (page) => {
-    await page.waitForTimeout(2500);
-    await scrollSession(page, 60, { pace: 2 });
-  });
-  const share = (ext.taskMs - ctl.taskMs) / 60_000;
+  const pairs = [];
+  for (let i = 0; i < G_RUNS; i++) {
+    pairs.push(await againstNone(context, pages.url("/feed.html"), async (page) => {
+      await page.waitForTimeout(2500);
+      await scrollSession(page, 60, { pace: 2 });
+    }));
+  }
+  const share = pairs.reduce((sum, { ext, ctl }) => sum + (ext.taskMs - ctl.taskMs), 0) / pairs.length / 60_000;
   // 6.3–7.5% over three runs (2026-10-04, M4); 9–10.7% before the chips stopped fading in and
-  // the marks off the screen left the registry.
-  budget("Reddit-like feed: Anagram adds < 8% to the main thread, the browser's own work included", share < 0.08, `${ext.taskMs - ctl.taskMs}ms in 60 s (${(100 * share).toFixed(1)}%): ${ext.taskMs}ms against ${ctl.taskMs}ms`);
+  // the marks off the screen left the registry. Held to the mean of the pairs.
+  budget("Reddit-like feed: Anagram adds < 8% to the main thread, the browser's own work included", share < 0.08,
+    `${(100 * share).toFixed(1)}% over ${pairs.length} pairs of 60 s: ${pairs.map(({ ext, ctl }) => `${ext.taskMs}ms against ${ctl.taskMs}ms`).join(", ")}`);
 });
 
 test("H) a table of 20,000 rows: no long task of Anagram's past the page's own", async ({ context, pages, budget }) => {

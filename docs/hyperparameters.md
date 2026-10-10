@@ -1,6 +1,6 @@
 # Anagram's hyperparameters
 
-This is an inventory of every value in Anagram that someone chose and that changes what Anagram reads, scores, shows, records or costs: thresholds, limits, timings, cut-offs and defaults. It covers 696 of them. Each row gives the value, where it is set, what it controls, what it rests on, and what moving it would do.
+This is an inventory of every value in Anagram that someone chose and that changes what Anagram reads, scores, shows, records or costs: thresholds, limits, timings, cut-offs and defaults. It covers about 700 of them. Each row gives the value, where it is set, what it controls, what it rests on, and what moving it would do.
 
 **Snapshot:** every row was read from the code on `dev` at a998acc (2026-10-05), checked again on 2026-10-09 against `dev` at f74740a, and the rows changed since were brought up to date on 2026-10-10. The code is the authority, and line numbers will drift.
 
@@ -183,7 +183,7 @@ Only the orchestrator's boot defaults still copy the settings' fallbacks (`DEFAU
 
 ### Same purpose, different value
 
-"Smaller than body" has five thresholds in the PDF reader: 0.75, 0.79, 0.8, 0.92 and 0.95. Each was set for its own decision (a superscript, a display font, a running head, a footnote, a caption) and none was swept.
+"Smaller than body" has five thresholds in the PDF reader: 0.75, 0.79, 0.8, 0.92 and 0.95. Each was set for its own decision (a superscript, a display font, a running head, a footnote, a caption). Swept on the dev split (2026-10-10): `CORNER` (0.79: 0.7, 0.88) and `NOTE_SIZE` (0.95: 0.9, 0.98) change nothing, and `FOOTNOTE_SIZE` (0.92) at 0.85 lets 0.37 points more leak in; 0.97 changes nothing. The chips' 0.75 decides placement, which no benchmark measures.
 
 The two year patterns and the two caption patterns have been renamed after what they find: `CITED_YEAR_RE` (1500–2099, with a letter after it, in the walker), `MOMENT_YEAR_RE` (1900–2099, in a moment's title, in `scope.ts`), `CAPTION_START` (the reflow's aside rule) and `CAPTION_LABEL` (the structured path's skip rule).
 
@@ -201,7 +201,7 @@ Background batches no longer differ: a web page's 6,000-character batches are cu
 **Web-page reader.**
 
 - Most site-specific rules were checked on the web benchmark's held-out split.
-- Four have no such check: `THREAD_LEVELS` (3, the depths of V2EX and HN plus one), `LAYOUT_WRAPPER_HOPS`, `EDGE_CHARS` and `ONE_LINE_BOX_LEVELS`.
+- Four rest on the fixtures alone: `THREAD_LEVELS` (3, the depths of V2EX and HN plus one), `LAYOUT_WRAPPER_HOPS`, `EDGE_CHARS` and `ONE_LINE_BOX_LEVELS`. Moved one step either way on 2026-10-10 (2 and 4 levels or hops, 80 and 160 characters), each leaves every check of the walker's 68 fixtures passing and every figure of the web benchmark's dev and held-out splits where it was; the benchmark measures what is read, and these decide only how it is grouped, which the fixtures check. They are not fitted to the fixtures, but nothing pins them either.
 
 **PDF reader.**
 
@@ -216,8 +216,8 @@ Background batches no longer differ: a web page's 6,000-character batches are cu
 - Some rest on thin evidence:
   - the line-number family: 18 manuscripts, 7 of them tagged;
   - `FOLDED_MIN`: 4 manuscripts;
-  - `HEADLINE_SHARED` and `ORDER_SLACK`: one or two pages;
-  - `STRETCH_BANDS`: one page, kept although olmOCR's test score fell from 441 to 433.
+  - `HEADLINE_SHARED` and `ORDER_SLACK`: one or two pages (moved both ways on the dev split, 2026-10-10: no figure changes, as the benchmark's papers have no such page);
+  - `STRETCH_BANDS`: one page, kept although olmOCR's test score fell from 441 to 433 (2 or 4 on the dev split: within 0.17 points of F1).
 - `HYPHEN_MEASURE` was changed to make a unit test pass.
 
 **Performance.**
@@ -242,7 +242,7 @@ Background batches no longer differ: a web page's 6,000-character batches are cu
    - the symbol share (0.15 to 0.4), the name-list thresholds (caps, commas, tokens, or off), the short-run merge (6 to 10), the line and sentence counts: all within 0.002.
    - `SCRIPT_SHARE` (0.6 to 0.8) changes nothing, because the corpus is Latin script; it needs a corpus in other scripts.
    - The language gate (fastText's top-1 at any confidence) was measured on the same pages: of 23,314 English paragraphs, 0.20% got a non-English guess and none of them was English prose, while a minimum confidence of 0.5 would score 10.7% more of the non-English Latin-script paragraphs. It stays. Batch size against a slow engine is now set by the pace the router measures.
-4. **Still open:** sweep the PDF reflow core on the dev split; label real feeds for the page kinds; a corpus in other scripts for `SCRIPT_SHARE`; the minimum length's false positives at 50 and 75 words.
+4. **Settled on 2026-10-10:** the PDF reflow core and the structured path's single-page rules, swept on the dev split, stay as they are (Area 4). **Still open:** label real feeds for the page kinds; a corpus in other scripts for `SCRIPT_SHARE`; the minimum length's false positives at 50 and 75 words.
 
 ## Performance budgets: headroom on 2026-10-10
 
@@ -269,6 +269,8 @@ Background batches no longer differ: a web page's 6,000-character batches are cu
 | I: chat (message every 300 ms), added share | < 7% | 5.6% | 6.2% | 6.1% | Moderate |
 | I: chat long tasks ≥ 50 ms | 0 | 0 | 0 | 0 | Zero tolerance |
 | J: idle page, script and layouts in 30 s | < 20 ms, 0 | 0 ms, 0 | 8 ms, 0 | 0 ms, 0 | Zero tolerance on layouts |
+
+**After the kept survey and the faster text checks (2026-10-10, same machine, idle, the commit before against the change):** A's first badge 301 → 242 ms; F on the Reddit-like feed, the content script 3,057 → 2,508 ms in 120 s, a drain 28.5 → 21.3 ms (so 81 drains in the last minute rather than 72: new posts are read sooner), the heap kept 2.7 → 3.7 KB a post (the kept answers; the budget is 8); F on the X-like feed unchanged (1.3%); G 6.6% → 6.2% over two pairs each.
 
 **Budget G swings with the plain browser's run.** Its share is the extension's main-thread time less a plain browser's over the same 60 s, and the plain browser's own time moved from 1.2 s to 1.7 s between runs while the extension's stayed near 6.0 s. Read G over several runs.
 
@@ -524,7 +526,8 @@ A `<pre>` is read only if it has no code markup and passes every test below.
 |---|---|---|---|---|---|
 | `KEPT_CHARS` | 524 288 chars (2^19) | `lib/dom/text.ts:289` | Memo of facts about each text (words, shape, script, model form); cleared all at once when full | Judgement | Introduced for a chat that adds a message every 300 ms. Does not change results. |
 | `KEPT_TEXT_CHARS` | 8192 chars (2^13) | `lib/dom/text.ts:290` | Longer texts are never memoised | Judgement | — |
-| `keptUntilChanged` | invalidated by any mutation | `lib/dom/kept.ts:28` | Keeps the scope survey and vendor lists between walks | Measured | Chat re-reading went from 0.49 s to 0.23–0.35 s per 30 s. DEVELOPMENT.md: on feeds it is invalidated every drain. |
+| `keptUntilChanged` | invalidated by any mutation | `lib/dom/kept.ts` | Keeps the consent platforms' vendor lists between walks | Measured | Chat re-reading went from 0.49–0.51 s to 0.23–0.35 s in 30 s (CHANGELOG, with the scope survey it kept then). Any mutation invalidates, including the extension's own chips. |
+| `liveScopeSurvey` / `MAX_KEPT_RECORDS` | forgets what a change can reach; past 2,000 changes between two scans, made anew | `lib/dom/scope.ts` | Keeps the scope survey between walks | Measured | Recognising a Reddit-like feed's posts 331 → 80 ms a minute (2026-10-10). Held to a new survey on every fixture through random changes (test/surveyCheck.ts). Its kept answers cost about 1 KB a post of heap. |
 | `SLICE_MS` | 8 ms | `lib/slices.ts:17` (walks: `lib/capture/orchestrator.ts:747`) | How long a walk runs before yielding to the page | Judgement | The walk yields only between blocks or every 4096 nodes. Owned by the scheduling area. |
 | `listTexts` validity | child count plus first and last child | `lib/dom/scope.ts:831` | Reuses a list's shared texts across scans | Judgement | A card that changes in the middle of the list is not noticed until the count or the ends change. |
 
@@ -589,7 +592,7 @@ The web benchmark (`test/web-bench`, which tunes on dev and reports on test) is 
   - `NOTICES_NAME_RE` (XenForo, vBulletin)
   - PHP diagnostics (phpBB)
   - shortcodes (WPBakery, Divi)
-- **Benchmark-validated:** most of the named-site values above were checked on the web benchmark's held-out split, which lowers the risk. `THREAD_LEVELS`, `LAYOUT_WRAPPER_HOPS`, `EDGE_CHARS` and `ONE_LINE_BOX_LEVELS` show no benchmark run.
+- **Benchmark-validated:** most of the named-site values above were checked on the web benchmark's held-out split, which lowers the risk. `THREAD_LEVELS`, `LAYOUT_WRAPPER_HOPS`, `EDGE_CHARS` and `ONE_LINE_BOX_LEVELS`, moved one step either way on 2026-10-10 (2 and 4 levels or hops, 80 and 160 characters), each leaves every check of the walker's 68 fixtures passing and every figure of the web benchmark's dev and held-out splits where it was; the benchmark measures what is read, and these decide only how it is grouped, which the fixtures check.
 
 #### Comments that no longer match the code
 
@@ -828,10 +831,8 @@ These are the soft assertions in `test/pw/perf.spec.mjs`. `test/perf-kit.mjs` ho
 
 - The background batch is 6000 chars on web pages (`orchestrator.ts:61`) but at most 4000 chars and "one paragraph until measured" by the pacer (`pace.ts:46-47, 123`). Two background-batch policies exist, and web pages use the one that ignores the measured speed; the router then sizes engine batches by a third, its own measured pace (`router.ts:22-24`).
 - The idle-wait literals differ: the prefetch uses 1500/400 ms (`orchestrator.ts:820-821`) and the insertion gate 1200/200 ms (`insertionGate.ts:131-132`).
-- `PLACE_RETRY_MS` 1100 must exceed `PLACE_WAIT_MS` 1000. The two live in different files with no shared constant.
-- Chip width 54 px is held twice: `kindle.ts:20` and `lineLayer.ts:77`.
-- The paste page's 200 000-char cap is a literal copy of `MAX_UNIT_TEXT_CHARS`. It sends 4 blocks per request where pages send 64.
-- Download time-left: the menu uses a 20 s / 3 s window (`popup/main.ts:280-282`), the setup page 8 s / 1.5 s (`inBrowserEngine.ts:59, 64`). The menu's comment says it estimates "as the setup page tells it".
+- The paste page sends 4 blocks per request where pages send 64. (Its 200,000-character cap is `MAX_UNIT_TEXT_CHARS`, the place-retry wait is `PLACE_WAIT_MS + 100`, and the chip width is one `CHIP_PX`, since 2026-10-10.)
+- Download time-left: the menu uses a 20 s / 3 s window (`popup/main.ts:280-282`), the setup page 8 s / 1.5 s (`inBrowserEngine.ts:59, 64`). The menu sees whole percents (about 14 MB each), so it needs the longer window.
 - The idle-unload choices (`IDLE_CHOICES`) and the poll intervals (`POLL_MS`, 1/15/3 s) are shared by both engine cards (2026-10-10).
 - `DEFAULT_SNAPSHOT` (`orchestrator.ts`) copies the fallbacks in `settings.ts`, so that the orchestrator's tests can mock the settings without them. They agree today.
 - Margin units differ: `ROOT_MARGIN` is 1200 px and `NEAR_MARGIN` is one screen. On screens taller than 1200 px, marks are registered beyond the near lane's reach; on shorter ones, chips arrive for paragraphs whose marks are still parked.
@@ -1050,7 +1051,7 @@ This area takes a paragraph's text from the content script and returns the verdi
 #### Judgement values that deserve a measurement
 
 - `ENGINE_BATCH_CHARS` 6000, `MAX_IN_FLIGHT` 4, `MAX_DOCUMENT_IN_FLIGHT` 2 and the priority aging rate of 1 level/s. The first two date from the initial commit and `MAX_DOCUMENT_IN_FLIGHT` from 0.5.0. Since 2026-10-09 a request is timed from its turn and a slow engine's batches are sized by its pace, so these decide latency, no longer failures. Measure time-to-first-chip and time to verdict on CPU paths (ONNX CPU, single-thread WASM in Firefox, whose manifest sets no cross-origin isolation; wxt.config.ts:332 is Chrome-only) against batch count.
-- The language-gate confidence threshold (now 0). Measure the misgating rate on short, quoted or code-mixed English paragraphs.
+- The language-gate confidence threshold (0) was measured on 2026-10-09 (the row above): no English prose refused, and any threshold scores more non-English text. Short, quoted or code-mixed English paragraphs were not a separate sample.
 - Cache sizes: `MEMORY_MAX_ENTRIES` 5000, `MAX_ENTRIES` 20,000 / `PRUNE_TO` 15,000, `MAX_COUNTS` 50,000. Also the 30-day retention against the hit rate. No hit-rate figure exists.
 - FP16 `minMemoryGb` 4: the measured 1.6 GB peak suggests 2 GB devices might work. `DISK_MARGIN` 200 MB is also unmeasured.
 - The 30 s request timeout, `RECONNECT_MS` 1500, `CRASH_LIMIT` 4/120 s, `STARTUP_CRASH_LIMIT` 2, `RESTART_WAIT_MS` 60 s and the 25 s native wake wait. Native cold-load times on CUDA, MPS and ONNX CPU are not recorded anywhere I found.
@@ -1119,7 +1120,7 @@ Some neighbouring values belong to other sections:
 | Parameter | Value | Where | Controls | Basis | Notes |
 |---|---|---|---|---|---|
 | `MOST_TILT_DEGREES` | 5°, the angle of the run's baseline | `lib/pdf/reflow.ts:53` (`isRotated`, :59; `lib/pdf/extract.ts:19`) | Runs treated as rotated, dropped by the reflow and the run index | Judgement | A scan's text layer skewed by a degree or two and a slanted (synthetic italic) font are read; arXiv's 90° identifier, 45° watermarks and upside-down text are not. |
-| `BASELINE_TOL` | 0.55 × taller run | `lib/pdf/reflow.ts:149` | Runs that share a line | Judgement | Higher: tight lines merge; lower: scripts open lines. Also drives the line-number and drop-cap tests. Never swept on the benchmark. |
+| `BASELINE_TOL` | 0.7 × taller run | `lib/pdf/reflow.ts` | Runs that share a line | Measured | Swept from 0.4 to 1.0 on the dev split (2026-10-10): boundary F1 rises from 90.75% at 0.55 to 92.19% at 0.7 (a third fewer paragraphs split mid-column), coverage and leakage flat; past 0.8 more paragraphs run together and leakage rises. Held out: 91.12 → 92.03%. olmOCR-Bench: as many tests pass. The structured path does not use it. Also drives the line-number and drop-cap tests. |
 | Dominant run | widest run of the line | `lib/pdf/reflow.ts:555` | A line's baseline, size and font | Judgement | Stops a superscript setting the size. A wide formula run can make a math face the line's font. |
 | `SPACE_GAP` | 0.2 × size | `lib/pdf/reflow.ts`, used by `lib/pdf/reading.ts` | Gap read as a word space | Convention | Lower: spaces inside kerned words; higher: words run together. Both change tokens the model reads. |
 | `CJK_SPACE_GAP` | 1 em | `lib/pdf/reflow.ts:289` | Gap between ideographs kept as a space | Convention | A CJK space is a full ideograph wide. Anagram scores English only. |
@@ -1332,7 +1333,7 @@ Some neighbouring values belong to other sections:
    - Firefox and Safari always get 300.
    - The 4 GB and 8 GB rules were never measured on such machines.
 2. **The structure deadline.** `TIMEOUT_BASE_MS` + `TIMEOUT_PER_PAGE_MS` (20 s + 250 ms per page) was set from one M4. A slower machine loses the structure silently, and with it whole-document reading.
-3. **Paragraph segmentation.** `PARA_GAP` (1.45), `INDENT` (0.5) and `SHORT_LINE` (2) set every unit boundary of the fallback and of numbered manuscripts. They were set on synthetic pages and never swept.
+3. **Paragraph segmentation.** `PARA_GAP` (1.45), `INDENT` (0.5) and `SHORT_LINE` (2) set every unit boundary of the fallback and of numbered manuscripts. They were set on synthetic pages. Swept on the dev split on 2026-10-10 (137 papers, `bench.mjs run`, boundary F1 90.75% for the reflow): `PARA_GAP` 1.3 cost 0.84 points of F1 and 1.6 cost 0.19, so 1.45 stands at the top; `INDENT` 0.35 and 0.7, `SHORT_LINE` 1.5 and 3 and `FOOTNOTE_SIZE` 0.85 and 0.97 moved it by 0.10 points or less. On the structured path, which uses them for numbered manuscripts only, no figure moved.
 4. **Gutter detection.** `GUTTER_MIN_EMS`, `GUTTER_BAND_SHARE`, `STRETCH_BANDS` and `STRETCH_LINES` decide whether columns are interleaved. One change moved out-of-order paragraphs on test from 146 to 27.
 5. **Formula removal.** `MATH_FONT`, `SCRIPT_SIZE`, `CORNER` and `PROSE_WORDS` decide which tokens the model sees. Single changes moved leakage by more than a point.
 6. **Structured skip rules.** `CAPTION_LABEL`, `CODE_SHARE`/`CODE_CHARS`, the contents rules, the bibliography shares and `AUTHOR_MARKS` decide which words are never scored or counted, and all of them were fitted on dev only. The code rule also drops quoted AI prompts, which matters for an AI-text detector.
@@ -1362,7 +1363,7 @@ Some neighbouring values belong to other sections:
   - `TIMEOUT_PER_PAGE_MS` on a slow CPU;
   - `RANGE_PAGES` at exactly 1,000 pages;
   - `MAX_BYTES` and the 50 MiB web caps against real document sizes.
-- **The reflow core, set on synthetic pages:** `BASELINE_TOL`, `PARA_GAP`, `INDENT`, `SHORT_LINE`, `SIZE_CHANGE`, `HEADING_SIZE`, `HEADING_MAX_WORDS`, `DISPLAY_FONT_SHARE`, `FOOTNOTE_SIZE`, `CAPTION_MAX_WORDS`, the margin bands and the 14-word running-head cap. A dev-split sweep with the existing `bench.mjs run` would cover them.
+- **The reflow core, set on synthetic pages:** `BASELINE_TOL`, `PARA_GAP`, `INDENT`, `SHORT_LINE`, `SIZE_CHANGE`, `HEADING_SIZE`, `HEADING_MAX_WORDS`, `DISPLAY_FONT_SHARE`, `FOOTNOTE_SIZE`, `CAPTION_MAX_WORDS`, the margin bands and the 14-word running-head cap. `BASELINE_TOL` moved to 0.7 on 2026-10-10 (its row); `SIZE_CHANGE` (0.1, 0.2), `HEADING_SIZE` (1.06, 1.2), `DISPLAY_FONT_SHARE` (0.03, 0.1), `CAPTION_MAX_WORDS` (40, 90) and the margin bands (0.06/0.92, 0.12/0.84) move F1 by 0.5 points at most and stay. Swept on the dev split on 2026-10-10 (137 papers, `bench.mjs run`, boundary F1 90.75% for the reflow): `PARA_GAP` 1.3 cost 0.84 points of F1 and 1.6 cost 0.19, so 1.45 stands at the top; `INDENT` 0.35 and 0.7, `SHORT_LINE` 1.5 and 3 and `FOOTNOTE_SIZE` 0.85 and 0.97 moved it by 0.10 points or less.
 - **Glyph location:** `BOX_SLACK`, `DRIFT` and `RUN_REACH`, measured as the rate of glyphs left without a run.
 - **`SEARCHES_PER_CHAR`:** confirm that no benchmark page exhausts it.
 - **Viewer and read-ahead:** `maxCanvasPixels`, `SLOW_SCOPE`, `PAGE_CHUNK` and `PAGES_AHEAD`.
@@ -1390,8 +1391,8 @@ Some neighbouring values belong to other sections:
 - **Thin evidence, high overfitting risk:**
   - The line-number family rests on 18 manuscripts, only 7 of them with tagged truth. `FOLDED_MIN` rests on four.
   - `FLUSH_SHARE`'s test result was "unchanged", probably because the test split has no ragged manuscript.
-  - `HEADLINE_SHARED` and `ORDER_SLACK` rest on one or two magazine pages.
-  - `STRETCH_BANDS` was tuned for one olmOCR page. It was kept although olmOCR's test score fell from 441 to 433.
+  - `HEADLINE_SHARED` and `ORDER_SLACK` rest on one or two magazine pages; the benchmark's papers have none, and moving either changes no figure.
+  - `STRETCH_BANDS` was tuned for one olmOCR page. It was kept although olmOCR's test score fell from 441 to 433; at 2 or 4 the dev split moves by 0.17 points of F1 at most.
 - **Not held out:** the page-turn rule (353e6c7) was measured over all 207 papers.
 - **Fitted to a unit test:** `HYPHEN_MEASURE` was changed to pass `test/scenarios.mjs`.
 

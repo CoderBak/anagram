@@ -9,8 +9,6 @@ import { addTally, datesBetween, emptyTally, PAGE_KINDS, viewedWords, type PageK
 import { isDefaultLens, tallyUnder, type Lens } from "./lens";
 import type { LogRange } from "./store";
 
-export type GroupBy = "kind" | "site" | "page" | "visit";
-
 export interface Row { key: string; tally: Tally; title?: string; start?: string; dwell?: number; kind?: PageKind; url?: string; visit?: VisitRow }
 
 /** Whether `lens` can be applied to what `range` holds: any lens to paragraphs, the default to

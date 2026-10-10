@@ -9,7 +9,7 @@ import "../../lib/ui/rows.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
-import { t, type MessageKey } from "../../lib/i18n";
+import { t } from "../../lib/i18n";
 import {
   settings,
   cacheModeStorage,

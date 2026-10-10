@@ -17,7 +17,6 @@
 // which no page has. The totals by day, kind, site and page are the default lens's, added as
 // paragraphs are counted.
 import type { ModelInfo } from "../contract";
-import { normalizeRuleHost } from "../settings/settings";
 import { safePdfSource } from "../pdf/source";
 import { MODEL_MIN_WORDS } from "../dom/text";
 import { HASHABLE, rank, type Hashable, type Layer, type RecordingConfig } from "./config";

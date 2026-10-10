@@ -2940,6 +2940,12 @@ for (const file of fixtureFiles) {
     results.push({ name: `fixture ${name}: covered exactly where expected (${r.annotated} annotated blocks)`, ok: r.annotated > 0 && r.wrong.length === 0, note: r.wrong.join(" | ") });
     results.push({ name: `fixture ${name}: ${wantUnits} units, ${wantMerged} of them multi-part`, ok: r.units === wantUnits && r.merged === wantMerged, note: `${r.units} units, ${r.merged} multi-part` });
   }
+  // The scopes' survey kept across changes (lib/dom/scope.ts, liveScopeSurvey) answers as one
+  // made anew, through random changes, every element asked after each (test/surveyCheck.ts).
+  // Last, as it changes the page.
+  const seed = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const held = await fx.evaluate(({ seed }) => PW.surveyHoldsUnderChange(seed, 40), { seed });
+  results.push({ name: `fixture ${name}: the kept scope survey answers as a new one through 40 random changes`, ok: held.mismatches === 0, note: held.note });
   await fx.close();
 }
 

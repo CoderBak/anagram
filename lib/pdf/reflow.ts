@@ -145,8 +145,13 @@ export interface ReflowBlock {
 // size, its own line pitch, its own width), never an absolute point value: the same
 // rules have to hold for a 6-point footnote and a 40-point slide.
 
-/** Two runs share a line while their baselines are within this much of the larger size. */
-const BASELINE_TOL = 0.55;
+/** Two runs share a line while their baselines are within this much of the larger size.
+ *  Swept on the PDF benchmark's dev split (2026-10-10): 0.55 split a paragraph's lines where a
+ *  formula or a reference mark set them a little apart, and at 0.7 the boundaries of the dev
+ *  papers read at 92.2% F1 rather than 90.8%, of the held-out ones at 92.0% rather than 91.1%,
+ *  coverage and leakage unchanged; olmOCR-Bench's pages pass as many tests. Past it, lines
+ *  set close merge (0.8: more paragraphs run together, more leakage). */
+const BASELINE_TOL = 0.7;
 /** A single letter set this much larger than the body is a drop cap, not a word. */
 const DROP_CAP_SIZE = 1.8;
 /** The text beside a drop cap begins within this many ems of its right-hand edge. */

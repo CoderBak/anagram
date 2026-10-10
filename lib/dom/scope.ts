@@ -852,37 +852,172 @@ function countSharedIn(list: Element, shape: string): Set<string> {
 
 /**
  * What the scopes know of a page that its LIGHT DOM alone decides: the bylines, the posts and
- * threads recognised, the quoted mail, the reviews. None of it reaches into a shadow root (the
- * surveys are the document's own querySelectorAll, and an element in a shadow tree has no
- * byline in them), so it holds for as long as the document's light DOM does not change, and
- * a walker may keep it from one scan to the next until it does (lib/dom/walker.ts). Every
- * answer is surveyed or worked out on first use.
+ * threads recognised, the quoted mail, the reviews. None of it reaches into a shadow root (an
+ * element in a shadow tree has no byline here), so it holds for as long as the document's
+ * light DOM does not change. Every answer is worked out on first use, element by element.
+ *
+ * KEPT ACROSS CHANGES (liveScopeSurvey). A feed changes between any two of its drains — a
+ * class on the post entering view, a counter, a "3 min. ago" — and a survey made again at each
+ * one recognised every post of the page again: on a feed of 650 posts, a third of what the
+ * extension's code cost. Told what changed (`changed`), a survey forgets the answers those
+ * changes can reach and keeps the rest, which are the answers a new survey would give:
+ *   - an answer about an element reads the element's own subtree, its ancestors' tags and
+ *     attributes (a rating control around a label), the text beside it and beside the wrappers
+ *     that hold it alone (inRunningText), and, for "one of several like it", its parent's
+ *     children; so a change forgets everything inside an element whose attributes changed or
+ *     whose neighbours did, the answers of every element above a change, and "one of several"
+ *     for the children of those;
+ *   - which posts are recognised is asked anew each time, from what is kept: a post is told
+ *     by what is around and above it as far as eight levels up (likeAPostAround);
+ *   - the places a picture links to are the page's (picturedPlaces): where they change, and
+ *     where the document element itself changes, nothing is kept;
+ *   - the quoted mail and the reviews are surveyed again after any change.
+ * test/unit.mjs holds the kept survey to a new one on every fixture after random changes.
  */
 export interface ScopeSurvey {
   /** `el` is a post recognised by its structure (see RECOGNISED). */
   isPost(el: Element): boolean;
   /** The quoted history `el` stands in at its own level, or null. */
   historyAt(el: Element): Element | null;
-  /** Every element with byline evidence below it → the first such evidence. */
-  bylines(): Map<Element, Element>;
+  /** `el`, or something below it, is byline evidence. */
+  hasByline(el: Element): boolean;
   mail(): MailHistory;
   reviews(): Reviews;
 }
 
+interface KeptSurvey extends ScopeSurvey {
+  /** The page changed as `records` say; false when nothing could be kept. */
+  changed(records: MutationRecord[]): boolean;
+}
+
 export function surveyScopes(doc: Document = document): ScopeSurvey {
-  /** Every element with byline evidence below it (light DOM) → the FIRST such evidence. */
-  let bylines: Map<Element, Element> | null = null;
-  const shapes = new Map<Element, string>();
+  return createSurvey(doc);
+}
+
+/** At most this many changes are told to a kept survey between two scans: past it, a survey
+ *  made anew costs less than the forgetting would. */
+const MAX_KEPT_RECORDS = 2000;
+
+/** A survey of the document kept from one scan to the next, and told what changed in
+ *  between. Nothing is looked at, nor any observer made, before the first scan asks. */
+export function liveScopeSurvey(docOf: () => Document = () => document): () => ScopeSurvey {
+  let survey: KeptSurvey | null = null;
+  let pending: MutationRecord[] = [];
+  let flooded = false;
+  let watch: MutationObserver | null = null;
+  return () => {
+    const doc = docOf();
+    watch ??= new MutationObserver((records) => {
+      if (flooded) return;
+      for (const r of records) pending.push(r);
+      if (pending.length > MAX_KEPT_RECORDS) {
+        flooded = true;
+        pending = [];
+        watch!.disconnect();
+      }
+    });
+    for (const r of watch.takeRecords()) pending.push(r);
+    if (survey && !flooded && (pending.length === 0 || survey.changed(pending))) {
+      pending = [];
+      return survey;
+    }
+    pending = [];
+    flooded = false;
+    watch.disconnect();
+    survey = createSurvey(doc);
+    watch.observe(doc, { subtree: true, childList: true, characterData: true, attributes: true });
+    return survey;
+  };
+}
+
+function createSurvey(doc: Document): KeptSurvey {
+  /** An element's FIRST byline evidence in document order, itself included, or null. */
+  let firstEvidence = new WeakMap<Element, Element | null>();
+  let shapes = new WeakMap<Element, string>();
   /** Per parent: how many of its children have each shape. */
-  const census = new Map<Element, Map<string, number>>();
-  const own = new Map<Element, boolean>();
-  let holders: Set<Element> | null = null;
+  let census = new WeakMap<Element, Map<string, number>>();
+  let own = new WeakMap<Element, boolean>();
+  let several = new WeakMap<Element, boolean>();
+  /** An element holds a thread (THREAD_LEVELS). */
+  let holds = new WeakMap<Element, boolean>();
   /** Per parent: its children that have a thread-holding sibling after them. */
-  const followed = new Map<Element, Set<Element>>();
-  const several = new Map<Element, boolean>();
-  const posts = new Map<Element, boolean>();
+  let followed = new WeakMap<Element, Set<Element>>();
+  let posts = new WeakMap<Element, boolean>();
+  let pictured: Set<string> | null = null;
   let mail: MailHistory | null = null;
   let reviews: Reviews | null = null;
+
+  function forgetAll(): void {
+    firstEvidence = new WeakMap();
+    shapes = new WeakMap();
+    census = new WeakMap();
+    own = new WeakMap();
+    several = new WeakMap();
+    holds = new WeakMap();
+    followed = new WeakMap();
+    posts = new WeakMap();
+    pictured = null;
+    mail = null;
+    reviews = null;
+  }
+
+  function forget(el: Element): void {
+    firstEvidence.delete(el);
+    shapes.delete(el);
+    census.delete(el);
+    own.delete(el);
+    several.delete(el);
+    holds.delete(el);
+    followed.delete(el);
+  }
+
+  const picturedNow = (): Set<string> => (pictured ??= picturedPlaces(doc));
+
+  function isCandidate(el: Element): boolean {
+    return el.matches(EVIDENCE_CANDIDATES) && isEvidence(el, picturedNow());
+  }
+
+  /** The first evidence at or below `el`, in document order; null where there is none, and for
+   *  an element outside the document's light tree. Found by walking down from `el` a node at a
+   *  time, the subtrees already known passed over, and kept for every element it finished. */
+  function bylineOf(el: Element): Element | null {
+    const known = firstEvidence.get(el);
+    if (known !== undefined) return known;
+    if (el.getRootNode() !== doc) {
+      firstEvidence.set(el, null);
+      return null;
+    }
+    const open: Element[] = [];
+    let node: Element = el;
+    let found: Element | null = null;
+    search: for (;;) {
+      const kept = node === el ? undefined : firstEvidence.get(node);
+      if (kept) { found = kept; break; }
+      if (kept === undefined) {
+        if (isCandidate(node)) {
+          firstEvidence.set(node, node);
+          found = node;
+          break;
+        }
+        open.push(node);
+        const child = node.firstElementChild;
+        if (child) { node = child; continue; }
+      }
+      // Nothing at or below `node`: on to the next element after it, closing what is done.
+      for (;;) {
+        if (open[open.length - 1] === node) {
+          open.pop();
+          firstEvidence.set(node, null);
+        }
+        if (node === el) break search;
+        const next = node.nextElementSibling;
+        if (next) { node = next; continue search; }
+        node = node.parentElement!;
+      }
+    }
+    for (const at of open) firstEvidence.set(at, found);
+    return found;
+  }
 
   /** The quoted history `el` stands in at its own level: the last marker among its siblings
    *  at or before it. */
@@ -894,17 +1029,6 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
     for (const start of starts) {
       if (start !== el && !(start.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) break;
       found = start;
-    }
-    return found;
-  }
-
-  /** Document order, so the first evidence to reach an ancestor is the first inside it. */
-  function survey(): Map<Element, Element> {
-    const found = new Map<Element, Element>();
-    const pictured = picturedPlaces(doc);
-    for (const el of doc.querySelectorAll(EVIDENCE_CANDIDATES)) {
-      if (!isEvidence(el, pictured)) continue;
-      for (let cur: Element | null = el; cur && !found.has(cur); cur = cur.parentElement) found.set(cur, el);
     }
     return found;
   }
@@ -928,12 +1052,12 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
    * timeline items in <section>s: containers that repeat, each "with a byline" — the one of
    * the first post inside it.
    */
-  function ownByline(el: Element, byline: Element, all: Map<Element, Element>): boolean {
+  function ownByline(el: Element, byline: Element): boolean {
     let known = own.get(el);
     if (known === undefined) {
       known = true;
       // (A piece of evidence is its own first byline: nothing lies between it and itself.)
-      for (let cur = byline === el ? null : byline.parentElement; known && cur && cur !== el; cur = cur.parentElement) known = !severalAlike(cur, all);
+      for (let cur = byline === el ? null : byline.parentElement; known && cur && cur !== el; cur = cur.parentElement) known = !severalAlike(cur);
       own.set(el, known);
     }
     return known;
@@ -941,13 +1065,13 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
 
   /** How many children of `parent` have this shape — bylined ones whose byline is their own:
    *  the box of replies under a topic is shaped like the topic box, and is no post. */
-  function alike(shape: string, parent: Element, all: Map<Element, Element>): number {
+  function alike(shape: string, parent: Element): number {
     let counts = census.get(parent);
     if (!counts) {
       counts = new Map();
       for (const child of parent.children) {
-        const byline = all.get(child);
-        if (!byline || !ownByline(child, byline, all)) continue;
+        const byline = bylineOf(child);
+        if (!byline || !ownByline(child, byline)) continue;
         const theirs = shapeOf(child, byline);
         counts.set(theirs, (counts.get(theirs) ?? 0) + 1);
       }
@@ -957,36 +1081,40 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
   }
 
   /**
-   * The elements that HOLD A THREAD: some element up to THREAD_LEVELS below them is one of
-   * several like it. Threads are rare — one on most pages — so they are found once, from the
-   * posts upwards; looking three levels down from every child of every parent that was asked
-   * cost more than everything else together (10 ms on a Hacker News page of 142 comments).
+   * An element HOLDS A THREAD when some element up to THREAD_LEVELS below it, with no
+   * furniture between, is one of several like it. Asked of an element's siblings only, and
+   * kept: threads are rare — one on most pages — and a long thread asks it of every wrapper
+   * inside every comment.
    */
-  function threadHolders(all: Map<Element, Element>): Set<Element> {
-    if (!holders) {
-      holders = new Set();
-      for (const el of all.keys()) {
-        if (!severalAlike(el, all)) continue;
-        let above = el.parentElement;
-        for (let level = 0; above && level < THREAD_LEVELS && !isFurniture(above); level++, above = above.parentElement) holders.add(above);
-      }
+  function holdsThread(el: Element): boolean {
+    let known = holds.get(el);
+    if (known === undefined) {
+      known = !isFurniture(el) && severalBelow(el, THREAD_LEVELS);
+      holds.set(el, known);
     }
-    return holders;
+    return known;
+  }
+
+  function severalBelow(el: Element, levels: number): boolean {
+    for (const child of el.children) {
+      if (severalAlike(child)) return true;
+      if (levels > 1 && !isFurniture(child) && severalBelow(child, levels - 1)) return true;
+    }
+    return false;
   }
 
   /** A thread FOLLOWS `el` among its siblings. Asked by every wrapper inside every comment of
    *  a long thread, so it is answered once per parent, from the last child backwards. */
-  function threadFollows(el: Element, all: Map<Element, Element>): boolean {
+  function threadFollows(el: Element): boolean {
     const parent = el.parentElement;
     if (!parent) return false;
     let before = followed.get(parent);
     if (!before) {
       before = new Set();
-      const holding = threadHolders(all);
       let seen = false;
       for (let child = parent.lastElementChild; child; child = child.previousElementSibling) {
         if (seen) before.add(child);
-        else seen = holding.has(child);
+        else seen = holdsThread(child);
       }
       followed.set(parent, before);
     }
@@ -1002,17 +1130,16 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
    * for an element does not depend on which run asked first, and a partial re-scan finds
    * what the full scan found.
    */
-  function severalAlike(el: Element, all: Map<Element, Element>): boolean {
+  function severalAlike(el: Element): boolean {
     let known = several.get(el);
     if (known === undefined) {
-      const byline = all.get(el);
       const parent = el.parentElement;
+      // The page itself first: it is never one of several, and its byline is a search of the whole page.
+      const byline = parent && !isPageLevel(el) ? bylineOf(el) : null;
       known =
         !!byline &&
-        !!parent &&
-        !isPageLevel(el) &&
-        ownByline(el, byline, all) &&
-        alike(shapeOf(el, byline), parent, all) >= 2 &&
+        ownByline(el, byline) &&
+        alike(shapeOf(el, byline), parent!) >= 2 &&
         textBeside(byline, el, "previousSibling") + textBeside(byline, el, "nextSibling") > 0;
       several.set(el, known);
     }
@@ -1029,17 +1156,17 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
   }
 
   function decide(el: Element): boolean {
-    const all = (bylines ??= survey());
-    const byline = all.get(el);
     const parent = el.parentElement;
-    if (!byline || !parent || isPageLevel(el) || !ownByline(el, byline, all)) return false;
+    if (!parent || isPageLevel(el)) return false;
+    const byline = bylineOf(el);
+    if (!byline || !ownByline(el, byline)) return false;
     // Structure first: it is a few look-ups, and it rules out nearly everything — each of the
     // eight wrappers between a Hacker News row and its text "has a byline". What the text
     // around the byline looks like is read for the few elements that could be posts.
     let opening = false;
-    if (!severalAlike(el, all) && !likeAPostAround(el, byline, all)) {
+    if (!severalAlike(el) && !likeAPostAround(el, byline)) {
       // The opening post, by the company it keeps: the thread that answers it follows it.
-      opening = threadFollows(el, all) || (!isPageLevel(parent) && threadFollows(parent, all));
+      opening = threadFollows(el) || (!isPageLevel(parent) && threadFollows(parent));
       if (!opening) return false;
     }
     // A byline heads a post or signs it (Steam sets the reviewer UNDER the review). The
@@ -1055,23 +1182,87 @@ export function surveyScopes(doc: Document = document): ScopeSurvey {
   }
 
   /** A lone reply: shaped like an element around it that is one of several like it. */
-  function likeAPostAround(el: Element, byline: Element, all: Map<Element, Element>): boolean {
+  function likeAPostAround(el: Element, byline: Element): boolean {
     const shape = shapeOf(el, byline);
     let above = el.parentElement;
     for (let hops = 0; above && hops < MAX_NEST_HOPS && !isPageLevel(above); hops++, above = above.parentElement) {
       if (above.localName !== el.localName) continue; // the tag leads every shape: a <td> is never shaped like a <tr>
-      const theirs = all.get(above);
-      if (theirs && shapeOf(above, theirs) === shape && severalAlike(above, all)) return true;
+      const theirs = bylineOf(above);
+      if (theirs && shapeOf(above, theirs) === shape && severalAlike(above)) return true;
     }
     return false;
+  }
+
+  /** Forget what `records` can have changed (KEPT ACROSS CHANGES). */
+  function changed(records: MutationRecord[]): boolean {
+    /** Elements everything at or below which is forgotten. */
+    const whole = new Set<Element>();
+    /** Elements a change happened in: they and everything above them are forgotten. */
+    const within = new Set<Element>();
+    const neighbour = (n: Node | null): void => {
+      if (n && n.nodeType === Node.ELEMENT_NODE) whole.add(n as Element);
+    };
+    for (const r of records) {
+      const target = r.target;
+      if (r.type === "attributes") {
+        whole.add(target as Element);
+      } else if (r.type === "characterData") {
+        const parent = target.parentElement;
+        if (!parent) continue;
+        within.add(parent);
+        neighbour(target.previousSibling);
+        neighbour(target.nextSibling);
+        // The text beside a wrapper that holds one element alone is read (inRunningText).
+        if (parent.childElementCount === 1) whole.add(parent);
+      } else {
+        if (target.nodeType !== Node.ELEMENT_NODE) return false; // the document's own children
+        const parent = target as Element;
+        within.add(parent);
+        neighbour(r.previousSibling);
+        neighbour(r.nextSibling);
+        let added = 0;
+        let removed = 0;
+        for (const n of r.addedNodes) if (n.nodeType === Node.ELEMENT_NODE) { added++; whole.add(n as Element); }
+        for (const n of r.removedNodes) if (n.nodeType === Node.ELEMENT_NODE) removed++;
+        const after = parent.childElementCount;
+        if (after === 1 || after - added + removed === 1) whole.add(parent);
+      }
+    }
+    // A picture's place makes evidence of every link to it, anywhere on the page.
+    if (pictured) {
+      const now = picturedPlaces(doc);
+      if (now.size !== pictured.size || [...now].some((p) => !pictured!.has(p))) {
+        forgetAll();
+        return true;
+      }
+    }
+    for (const el of whole) {
+      within.add(el);
+      forget(el);
+      for (const below of el.querySelectorAll("*")) forget(below);
+    }
+    const done = new Set<Element>();
+    for (const el of within) {
+      for (let at: Element | null = el; at && !done.has(at); at = at.parentElement) {
+        done.add(at);
+        forget(at);
+        // Its census may have changed, and with it which of its children are one of several.
+        for (const child of at.children) several.delete(child);
+      }
+    }
+    posts = new WeakMap();
+    mail = null;
+    reviews = null;
+    return true;
   }
 
   return {
     isPost,
     historyAt,
-    bylines: () => (bylines ??= survey()),
+    hasByline: (el) => bylineOf(el) !== null,
     mail: () => (mail ??= surveyMail(doc)),
     reviews: () => (reviews ??= surveyReviews(doc)),
+    changed,
   };
 }
 
@@ -1142,7 +1333,7 @@ export function createScopes(doc: Document = document, page: ScopeSurvey = surve
       }
       if (!body || body === scope) return false; // they meet at the post itself, where its byline is
       for (let cur = composedParent(a); cur && cur !== body; cur = composedParent(cur)) if (!TEXT_MARKUP.has(tagOf(cur))) return false;
-      return !page.bylines().has(body);
+      return !page.hasByline(body);
     },
 
     holds(outer: Element, inner: Element): boolean {

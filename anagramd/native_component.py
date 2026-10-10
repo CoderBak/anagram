@@ -22,7 +22,7 @@ import tomllib
 
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
                                install_streaming, load_pin, plain_tree, selected_entries)
-from runtime_controller import IDLE_RULE, RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes, valid_idle
+from runtime_controller import IDLE_RULE, error_text, forget_crashes, valid_idle
 from safe_files import atomic_json, is_link, private_tree, read_json, regular_stat, remember
 
 HOST_NAME = "dev.coderbak.anagram"

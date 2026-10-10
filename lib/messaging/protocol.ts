@@ -238,12 +238,6 @@ export interface TeardownMessage {
   action: typeof ACTIONS.TEARDOWN;
 }
 
-/** content (top frame) → SW: per-tab flagged count for the toolbar badge. */
-export interface UpdateBadgeMessage {
-  action: typeof ACTIONS.UPDATE_BADGE;
-  flagged: number;
-}
-
 /** SW → content: toggle overlay visibility (keyboard command). */
 export interface ToggleOverlayMessage {
   action: typeof ACTIONS.TOGGLE_OVERLAY;

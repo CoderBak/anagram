@@ -304,10 +304,14 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
     within a screen of it saved some 50 and 100 ms and would draw marks a frame late on a fast
     scroll. Chips are not it: 400 chips with their paint layers (`position: relative`,
     `contain: layout`) or without, ten inserted or removed a second, cost the same frames.
-  - A feed's walks: what the page's light DOM decides is kept between walks
-    (`lib/dom/kept.ts`), but a feed changes it between any two drains (a class on the post
-    entering view, a counter), so recognising its posts (`lib/dom/scope.ts`) is made again
-    each time: half of what a drain costs there.
+  - A feed's walks: the scopes' survey is kept across changes, and a change forgets only the
+    answers it can reach (`lib/dom/scope.ts`, liveScopeSurvey; test/surveyCheck.ts holds it to a
+    new survey on every fixture). On the Reddit-like feed, recognising posts fell from 331 to 80
+    ms a minute (2026-10-10). What is left of a drain there is the walk itself, the quoted-mail
+    and review surveys (some 30 ms a minute each, made again after any change: every <b> and
+    <strong> is a mail candidate, so no change can be ruled out cheaply), the consent-banner
+    lookup (about 0.13 ms a walk) and placing chips, whose computed-style reads force a style
+    recalculation the next frame would make anyway.
   - The content script is 242 KB, parsed and compiled at every load of a granted page's top
     frame: ~11.5 ms (V8's preparse 6 ms; content scripts get no code cache), ~17 ms over a plain
     browser on a page with nothing to read. V8's explicit compile hint

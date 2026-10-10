@@ -24,7 +24,7 @@ Update this file, or delete an item, when it is done.
   - the cache's precision, the PDF rotation test, the words past the text cap, the statistics wording, single-page-site attribution;
   - coupled values put in one place, look-alike constants renamed, stale comments corrected.
 - **Verified on 2026-10-10** on an Apple Silicon Mac, by `npm run check` with `ANAGRAMD_PYTHON` and `ANAGRAM_FIREFOX` set (Firefox ESR 153.3), and the three suites it failed run again after their fixes:
-  - typecheck and build; vitest 1,213; walker 1,086; Python 40 and 152 more; installer 75; release signature 11; native setup in the browser 6; Playwright 276; pseudo-locale 201;
+  - typecheck and build; vitest 1,213; walker 1,154 (68 of them the kept scope survey held to a new one); Python 40 and 152 more; installer 75; release signature 11; native setup in the browser 6; Playwright 276; pseudo-locale 201;
   - Firefox: the viewer, as shipped 5, `firefox.mjs` 49, diagnostics 6;
   - performance budgets A–J, with the reading log off and on (hyperparameters.md, Performance budgets).
 - **Not verified:**
@@ -47,9 +47,10 @@ The tools exist; see DEVELOPMENT.md, Checks.
 - [ ] **Feeds.** The page-kind rules were checked on the web benchmark's labelled articles, forums and other pages (0.80 held out, from 0.65). The benchmark has no real feeds; label a sample of feed pages before comparing feeds with the rest.
 - [ ] **`SCRIPT_SHARE`.** Sweeping it changes nothing on the web benchmark, because its pages are in Latin script. It needs pages in other scripts, and mixed ones.
 - [ ] **The minimum length on web text.** On EditLens human prefixes, 5.1% are flagged at 50 words against 2.2% at 75 (hyperparameters.md, Recommendations, 2); 50 stays by the maintainer's decision. A labelled set of human web paragraphs would measure it where Anagram reads.
-- [ ] **The PDF reflow core** (`PARA_GAP`, `INDENT`, `SHORT_LINE` and the rest, set on synthetic pages): sweep it on the dev split with `bench.mjs run`.
+- [ ] **Scheduling with a real engine:** `ROOT_MARGIN`, the lanes' batch sizes, `PAGE_IN_FLIGHT`, the background pace (`DUTY`, `SESSION_MS`), `HYDRATION_MAX_MS`, and the drain pacing (`DRAIN_COST_SPACING`, `MAX_SCAN_ROOTS`) against how late a new post is read. These need the 1.4 GB model in a temporary profile and a measure of time to a chip, which the budgets do not take (they score with a stand-in engine).
+- [ ] **Cache sizes against their hit rate**, which needs real browsing; **the engines on NVIDIA and plain processors**, and **FP16 on 2 GB devices**, which need that hardware.
 
-The web reader's thresholds were swept on 2026-10-09 (hyperparameters.md, Recommendations); only the link share moved, to 0.7. The language gate was measured and stays. The PDF reader's dev-fitted rules were reported on the held-out split on 2026-10-10: coverage 95.7% against 96.2% on dev, leakage 4.6% against 3.3%, spread over kinds with no one rule failing. That split is now spent for them.
+The web reader's thresholds were swept on 2026-10-09 (hyperparameters.md, Recommendations); only the link share moved, to 0.7. The language gate was measured and stays. The PDF reader's dev-fitted rules were reported on the held-out split on 2026-10-10: coverage 95.7% against 96.2% on dev, leakage 4.6% against 3.3%, spread over kinds with no one rule failing. That split is now spent for them. The reflow's core was swept on the dev split on 2026-10-10: only `BASELINE_TOL` moved (0.55 → 0.7, confirmed held out and on olmOCR-Bench); the structured path's single-page rules and the four rules that group a page's voices (`THREAD_LEVELS`, `LAYOUT_WRAPPER_HOPS`, `EDGE_CHARS`, `ONE_LINE_BOX_LEVELS`) change nothing when moved a step either way.
 
 ### 2. Security, still open
 
@@ -63,7 +64,7 @@ DEVELOPMENT.md, Security, still open, has the detail:
 
 ### 3. Performance, still open
 
-DEVELOPMENT.md, Performance, still open, has the traces. The budgets all pass with room (hyperparameters.md, Performance budgets); what is left is Chromium's own work on marked text at every DOM change, and a feed's posts recognised again at each drain.
+DEVELOPMENT.md, Performance, still open, has the traces. The budgets all pass (hyperparameters.md, Performance budgets). A feed's posts are no longer recognised again at each change (2026-10-10). What is left is Chromium's own work on marked text at every DOM change, the quoted-mail and review surveys made again after any change (about 60 ms a minute on a busy feed), and the reading log's intersection observers when it is on.
 
 ## Working here
 
@@ -71,6 +72,7 @@ Follow [AGENTS.md](../AGENTS.md) and the guidance below.
 
 - **Commits:** routine commits on `dev` end their subject with `[skip ci]`. Never push a tag.
 - **Measuring timings:** measure on an idle machine. Agents' parallel test runs made the same build vary by 2–5×.
+- **Profiling the content script:** take a CPU profile (CDP `Profiler`, sampling), not a timeline trace: a trace records every call from the browser into JavaScript, and made a 1 ms walk over a page's elements with a `NodeFilter` look like 115 ms (2026-10-10). Time what a trace shows with `performance.now()` before acting on it. Budget G is held to the mean of two pairs of runs (`ANAGRAM_G_RUNS`).
 - **Comparing runs:**
   - for live pages, compare each drain's own cost (the orchestrator's debug lines) or Chrome traces, not whole-thread shares;
   - for the PDF reader, compare benchmark runs against `pdf-v5` on both splits;

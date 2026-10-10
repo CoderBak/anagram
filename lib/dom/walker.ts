@@ -83,8 +83,7 @@ import {
   unitTextOf,
   writingSystem,
 } from "./text";
-import { type Scopes, createScopes, surveyScopes } from "./scope";
-import { keptUntilChanged } from "./kept";
+import { type Scopes, createScopes, liveScopeSurvey } from "./scope";
 import { isTranslatedInPlace } from "./translation";
 import { WINDOW_CHARS } from "../capture/windows";
 // The arithmetic of grouping — the floor, the window, the even division, the orphan rule
@@ -1441,13 +1440,14 @@ function outsideLists(el: Element): Element {
  * and a scan asks twice: `wholePost` before the walk, the walk and its assembler during it.
  * The first to ask creates the scopes of the scan and the walk takes them over, so the page
  * is surveyed for bylines and mail quotations once. What the page's light DOM alone decides
- * (scope.ts, ScopeSurvey) is kept from one scan to the next until the page changes
- * (lib/dom/kept.ts): a chat's drain walks the stretch a new message joined and then, one at a
- * time, the messages the groups it re-divided had held — 24 walks a drain on a chat adding a
- * message every 300 ms — and every one of them surveyed the whole page again.
+ * (scope.ts, ScopeSurvey) is kept from one scan to the next, and only what a change can reach
+ * is forgotten (liveScopeSurvey): a chat's drain walks the stretch a new message joined and
+ * then, one at a time, the messages the groups it re-divided had held — 24 walks a drain on a
+ * chat adding a message every 300 ms — and every one of them surveyed the whole page again;
+ * a feed's posts were recognised again at every drain.
  */
 let scanScopes: Scopes | null = null;
-const keptSurvey = keptUntilChanged(() => surveyScopes(document));
+const keptSurvey = liveScopeSurvey();
 
 function scopesOfScan(): Scopes {
   return (scanScopes ??= createScopes(document, keptSurvey()));

@@ -352,15 +352,22 @@ function sentenceSegmenter(): Seg {
 /** Word count via Intl.Segmenter (CJK counts correctly). */
 export function countWords(text: string): number {
   const f = foundOf(text);
-  return (f.words ??= wordsIn(text));
+  if (f.words === undefined) segmentWords(text, f);
+  return f.words!;
 }
 
-function wordsIn(text: string): number {
-  const t = text.trim();
-  if (!t) return 0;
-  let n = 0;
-  for (const s of wordSegmenter().segment(t)) if (s.isWordLike) n++;
-  return n;
+/** One pass of the word segmenter for the count and the repetition test (isRepetitive) both:
+ *  segmenting is most of what either costs, and the walk asks both of every run. */
+function segmentWords(text: string, f: Found): void {
+  const seen = new Set<string>();
+  let words = 0;
+  for (const s of wordSegmenter().segment(text)) {
+    if (!s.isWordLike) continue;
+    words++;
+    if (seen.size <= MAX_REPEATED_WORDS) seen.add(s.segment.toLowerCase());
+  }
+  f.words = words;
+  f.repetitive = words >= REPEAT_MIN_WORDS && seen.size <= MAX_REPEATED_WORDS;
 }
 
 // ---- where a sentence starts ---------------------------------------------------------------
@@ -589,15 +596,16 @@ export function symbolNoiseRatio(text: string): number {
   return (f.noise ??= symbolShare(text));
 }
 
+/** The same symbols as one character class, and a surrogate pair: characters are counted as
+ *  code points, by the engine's own regexes rather than a test per character. */
+const STRUCTURAL_SYMBOL_RE = new RegExp(`[${[...STRUCTURAL_SYMBOLS].map((c) => c.replace(/[\\\]^-]/g, "\\$&")).join("")}]`, "g");
+const SURROGATE_PAIR_RE = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
+
 function symbolShare(text: string): number {
-  let sym = 0;
-  let total = 0;
-  for (const ch of text) {
-    if (/\s/.test(ch)) continue;
-    total++;
-    if (STRUCTURAL_SYMBOLS.has(ch)) sym++;
-  }
-  return total > 0 ? sym / total : 0;
+  const solid = text.replace(/\s+/g, "");
+  if (solid === "") return 0;
+  const total = solid.length - (solid.match(SURROGATE_PAIR_RE)?.length ?? 0);
+  return (solid.match(STRUCTURAL_SYMBOL_RE)?.length ?? 0) / total;
 }
 
 /**
@@ -624,12 +632,15 @@ export function looksLikeNameList(text: string): boolean {
 }
 
 function listsNames(text: string): boolean {
+  // Twelve tokens and a comma for every eight of them: two commas at the least. Counted first,
+  // as they cost least; prose seldom has a comma every eight words.
+  const commas = (text.match(/,/g) ?? []).length;
+  if (commas < 2) return false;
   const tokens = text.split(/\s+/).filter((t) => /\p{L}/u.test(t));
-  if (tokens.length < 12) return false;
+  if (tokens.length < 12 || commas < tokens.length / 8) return false;
   let capitalised = 0;
   for (const t of tokens) if (/^[("]?\p{Lu}[\p{L}'’\-.]*[,;.)]?$/u.test(t)) capitalised++;
-  const commas = (text.match(/,/g) ?? []).length;
-  return capitalised / tokens.length >= 0.6 && commas >= tokens.length / 8;
+  return capitalised / tokens.length >= 0.6;
 }
 
 // ---- repetition ------------------------------------------------------------------------
@@ -646,18 +657,8 @@ const MAX_REPEATED_WORDS = 8;
  */
 export function isRepetitive(text: string): boolean {
   const f = foundOf(text);
-  return (f.repetitive ??= repeatsItself(text));
-}
-
-function repeatsItself(text: string): boolean {
-  const seen = new Set<string>();
-  let words = 0;
-  for (const s of wordSegmenter().segment(text)) {
-    if (!s.isWordLike) continue;
-    words++;
-    if (seen.size <= MAX_REPEATED_WORDS) seen.add(s.segment.toLowerCase());
-  }
-  return words >= REPEAT_MIN_WORDS && seen.size <= MAX_REPEATED_WORDS;
+  if (f.repetitive === undefined) segmentWords(text, f);
+  return f.repetitive!;
 }
 
 // ---- server diagnostics ------------------------------------------------------------------

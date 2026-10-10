@@ -305,7 +305,7 @@ describe("structured reading of a hostile structure", () => {
     const blocks = readReflowed([{ page: 1, width: 612, height: HEIGHT, items }]);
     expect(blocks.length).toBeGreaterThan(0);
     expect(performance.now() - began).toBeLessThan(10_000);
-  });
+  }, 15_000); // past its own bound: vitest's 5 s would fail it first on a busy machine
 
   it("made in slices, reads as made at once", async () => {
     await fc.assert(fc.asyncProperty(structure, pages, async (s, given) => {

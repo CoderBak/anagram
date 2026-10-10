@@ -1,15 +1,14 @@
 // lib/dom/kept.ts — an answer about the whole page, kept until the page changes.
 //
-// A walk asks some questions of the whole page before it reads a line of it: where the bylines
-// are, which boxes are posts, where a quoted mail history starts (lib/dom/scope.ts). A page that
-// keeps changing is walked again and again, and a drain often walks several roots in a row with
-// nothing changed in between — on a chat adding a message every 300 ms, the group of short
-// messages the new one joins is read anew, and every message the old group held is walked again
-// on its own afterwards: up to thirty walks a drain, each surveying the whole page. An answer
-// that is a function of the document's tree is the same answer while the tree is the same, so
-// it is kept, and made again only after the page has changed in any way at all: a node added,
+// A walk asks some questions of the whole page before it reads a line of it: where a consent
+// platform lists its vendors (lib/dom/boilerplate.ts). A page that keeps changing is walked
+// again and again, and a drain often walks several roots in a row with nothing changed in
+// between — on a chat adding a message every 300 ms, up to thirty walks a drain. An answer that
+// is a function of the document's tree is the same answer while the tree is the same, so it is
+// kept, and made again only after the page has changed in any way at all: a node added,
 // removed or moved, a text, an attribute. A MutationObserver says so; it watches only while an
-// answer is kept, and lets go at the first change it reports.
+// answer is kept, and lets go at the first change it reports. (The scopes' survey keeps more,
+// and forgets only what a change can reach: lib/dom/scope.ts, liveScopeSurvey.)
 
 /** `make`'s answer about `doc`'s light DOM, made again only once that has changed. */
 export function keptUntilChanged<T>(make: () => T, doc?: Document): () => T {

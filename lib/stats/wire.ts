@@ -9,7 +9,7 @@
 import * as v from "valibot";
 import { MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import {
-  ARRIVALS, INPUT_KINDS, LEFT_OUT, PAGE_KINDS, SKIP_REASONS, STATE_KINDS, SURFACES, UI_EVENTS, UNIT_KINDS, UNIT_STATUSES,
+  LEFT_OUT, PAGE_KINDS, SKIP_REASONS, SURFACES, UI_EVENTS, UNIT_KINDS, UNIT_STATUSES,
   type EventStreams, type Exposure, type KindSignals, type LeftOut, type PageKind, type SkipReason, type Surface, type UiEvent,
   type UnitKind, type UnitStatus,
 } from "./model";
@@ -184,6 +184,4 @@ export const StatsWireSchema = v.pipe(
   v.check((m) => (m.units ?? []).reduce((n, u) => n + (u.text?.length ?? 0), 0) <= STATS_LIMITS.messageText, "too much text"),
 );
 
-/** Kinds' names, for whoever reads a stream's numbers. */
-export const STREAM_NAMES = { input: INPUT_KINDS, state: STATE_KINDS, ui: UI_EVENTS, arrival: ARRIVALS } as const;
 export type { EventStreams };

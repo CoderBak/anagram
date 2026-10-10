@@ -3,8 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { engineSetup, percentOf, setupStage } from "../../lib/backend/engineSetup";
 import type { ComponentSnapshot } from "../../lib/backend/nativeClient";
-import { parseWorkerMessage, permitsMessage, type AccessSender } from "../../lib/access/messages";
-import { ACTIONS } from "../../lib/messaging/protocol";
+import { parseWorkerMessage } from "../../lib/access/messages";
 
 const TOTAL = 1_426_397_568;
 const runtime = (active: string | null, selected = "webgpu:fp32") => ({

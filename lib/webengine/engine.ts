@@ -6,7 +6,7 @@
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
 import { IDLE_UNLOAD_RULE, validIdleUnload, type ScoreResult } from "../contract";
-import { downloadFile, DownloadFailed, DownloadPaused, mirrorOf, noRoomFor, outOfSpace, readPackaged, verifyFile } from "./download";
+import { downloadFile, DownloadFailed, DownloadPaused, mirrorOf, noRoomFor, outOfSpace, readPackaged } from "./download";
 import { FastText } from "./fasttext";
 import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES, modelFileName, type ModelTier, type Pin, type PinnedFile } from "./pin";
 import { CONTRACT_VERSION, EngineError, checkPayloadKeys, parseScorePayload, parseTokensPayload, type EngineOperation } from "./protocol";

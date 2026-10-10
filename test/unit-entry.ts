@@ -15,6 +15,7 @@ export const FLOORS = [25, 50, 75, 100, 150];
 export { inPageOrder, collectUnitsInSlices, MAX_WALK_DEPTH } from "../lib/dom/walker";
 export { noteShadowHost } from "../lib/dom/shadow";
 export { createScopes } from "../lib/dom/scope";
+export { surveyHoldsUnderChange } from "./surveyCheck";
 export {
   countWords,
   sentenceStarts,

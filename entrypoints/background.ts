@@ -32,7 +32,6 @@ import { applyCacheMode, invalidateAndNotify } from "../lib/access/cacheControls
 import { callerRole, parseWorkerMessage, permitsMessage, type AccessSender } from "../lib/access/messages";
 import { sendTabControl } from "../lib/messaging/tabControl";
 import type { ControlMessage } from "../lib/messaging/protocol";
-import { commentHost } from "../lib/access/commentFrames";
 import { READER_PAGE, readerQuery, safePdfSource } from "../lib/pdf/source";
 import { createPdfNavigation } from "../lib/pdf/navigation";
 import { createPdfHandoff } from "../lib/pdf/handoff";

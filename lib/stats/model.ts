@@ -223,7 +223,6 @@ export interface VisitRow {
 
 /** [all, focused, flung, focused and flung] milliseconds. */
 export type Exposure = [number, number, number, number];
-export const NO_EXPOSURE: Exposure = [0, 0, 0, 0];
 
 export const UNIT_KINDS = ["paragraph", "post", "joined", "pdf", "docs", "surface"] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];

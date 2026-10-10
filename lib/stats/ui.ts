@@ -4,7 +4,7 @@
 import { t, type MessageKey } from "../i18n";
 import { DIMENSION_KEYS, LAYER_KEYS, PRESET_KEYS } from "./labels";
 import {
-  DIMENSION_IDS, DIMENSIONS, HASHABLE, normalize, PRESET_IDS, presetOf, rank,
+  DIMENSION_IDS, DIMENSIONS, HASHABLE, normalize, PRESET_IDS, rank,
   type Dimension, type Hashable, type Layers, type Preset, type RecordingConfig,
 } from "./config";
 
@@ -26,12 +26,6 @@ export function warningsOf(config: RecordingConfig): MessageKey[] {
   if (!config.hashed.includes("place") && rank("place", L.place) <= rank("place", "pattern") && rank("rows", L.rows) <= rank("rows", "page")) out.push("statsPagesWarning");
   if (L.input === "pointer") out.push("statsWarnPointer");
   return out;
-}
-
-/** What a preset (or the reader's own configuration) is called. */
-export function configName(config: RecordingConfig): string {
-  if (!config.on) return presetLabel("off");
-  return presetLabel(presetOf(config) ?? "custom");
 }
 
 export interface LayerTable {

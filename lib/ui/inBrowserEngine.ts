@@ -12,7 +12,7 @@
 // The setup page keeps it to a status line and the bar; Settings' row (`settings`) says the
 // status in words and puts Delete model files and the idle unload beside the engine switch.
 import { browser } from "#imports";
-import { t, tn, type MessageKey } from "../i18n";
+import { t, type MessageKey } from "../i18n";
 import { formatSize, timeLeft } from "./size";
 import { progressBar } from "./progressBar";
 import { IDLE_CHOICES, POLL_MS, idleUnloadLabel } from "./componentSettings";
