@@ -45,8 +45,8 @@ export function vendorPdfViewer(root) {
   replace('<script src="../build/pdf.mjs" type="module"></script>', '<!-- Engine and viewer initialization are owned by main.ts. -->');
   replace('<script src="viewer.mjs" type="module"></script>', '<script src="./main.ts" type="module"></script>');
   // WXT normalizes interactive input children out of buttons; retain their upstream hidden intent.
-  replace('<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf" />',
-    '<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf" hidden />');
+  replace('<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf,image/*" multiple />',
+    '<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf,image/*" multiple hidden />');
   replace('<div id="toolbarViewerRight" class="toolbarHorizontalGroup">', `<div id="toolbarViewerRight" class="toolbarHorizontalGroup">
                 <button id="anagramAnalyze" class="toolbarButton labeled" type="button" data-anagram="host"><img class="logo logo-light" src="/icons/icon-light-48.png" alt="" /><img class="logo logo-dark" src="/icons/icon-48.png" alt="" /><span>Anagram</span></button>
                 <button id="original" class="toolbarButton labeled" type="button" data-anagram="host" hidden><span></span></button>`);

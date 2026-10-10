@@ -57,6 +57,8 @@ async function bundle() {
 export function documentOptions(data) {
   return {
     data, verbosity: 0, isEvalSupported: false, useWorkerFetch: false, enableXfa: false,
+    // The fonts' PDF names, as the reader asks for them (entrypoints/reader/viewer.ts).
+    fontExtraProperties: true,
     cMapUrl: `${join(VENDOR, "cmaps")}/`, cMapPacked: true,
     standardFontDataUrl: `${join(VENDOR, "standard_fonts")}/`,
     wasmUrl: `${join(VENDOR, "wasm")}/`, iccUrl: `${join(VENDOR, "iccs")}/`,
@@ -71,7 +73,9 @@ export function documentOptions(data) {
  */
 export async function readPages({ pipeline, pdfjs }, file, { fonts = false } = {}) {
   const data = new Uint8Array(readFileSync(file));
-  const doc = await pdfjs.getDocument(documentOptions(data)).promise;
+  // The loading task is what is destroyed: PDF.js 6 has no PDFDocumentProxy.destroy().
+  const task = pdfjs.getDocument(documentOptions(data));
+  const doc = await task.promise;
   const meta = await doc.getMetadata().catch(() => null);
   const numPages = doc.numPages;
   const count = Math.min(numPages, MAX_ANALYSIS_PAGES);
@@ -85,7 +89,7 @@ export async function readPages({ pipeline, pdfjs }, file, { fonts = false } = {
     extractMs.push(performance.now() - began);
     page.cleanup();
   }
-  await doc.destroy();
+  await task.destroy();
   return { numPages, producer: meta?.info?.Producer ?? "", creator: meta?.info?.Creator ?? "", pages, extractMs };
 }
 

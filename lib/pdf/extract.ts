@@ -39,6 +39,8 @@ export function nameFonts(page: PDFPageProxy, text: PdfPageText): boolean {
   return all;
 }
 
+/** A font's PDF name, which PDF.js 6 sends only when the document was opened with
+ *  `fontExtraProperties` (entrypoints/reader/viewer.ts VIEWER_OPTIONS). */
 function fontNameOf(page: PDFPageProxy, loadedName: string): string {
   try {
     const objs = page.commonObjs as { has(id: string): boolean; get(id: string): unknown };

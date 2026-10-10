@@ -21,8 +21,7 @@
   },
   "shared": {
     "cmaps": "5237c4107eaddda3371908f52e4dfa6d1620b6c12aaaa40e8de91c4232a4b68f",
-    "standard_fonts": "dd8dcf6af737401b48fbe4907ad33a167695ee9715a3e5c1be8c77bab781cd4a",
-    "wasm": "9cd32d6c496011c99508fa07e9a68f4754a27506b9bdf4d0b34d4eb9c77b8cff"
+    "standard_fonts": "dd8dcf6af737401b48fbe4907ad33a167695ee9715a3e5c1be8c77bab781cd4a"
   },
   "files": {
     "LICENSE.document-worker": "0bc6acc735089ddddd0f5ec30d2c472c9387d1c004871ee1bddf4d782ccfbeb4",
@@ -33,6 +32,12 @@
     "block-seg/clusterer/model.onnx": "5cb6f8645a0f4c8f4396d5e8b1da70d9c8d8fff8c98f324889b8c6e271575350",
     "block-seg/clusterer/repair.onnx": "7fd29831c26f09cefa5a4f92c797e559bda5f513f6691d339d6c323bd563a789",
     "block-seg/clusterer/runtime.bin": "a0d71f9be6c63404393457ec31875ae799b5f4ba48dc17736112446a4f82ca26",
+    "wasm/LICENSE_JBIG2": "9e66b7f1b934a28b37f3bc4dac97915de1674271e79a0a88182a18ed9731b4d1",
+    "wasm/LICENSE_OPENJPEG": "a6af136f3e15038a666b61f376612a07d9a4e48cb7c01adbf3e33b3f14ab49b6",
+    "wasm/LICENSE_PDFJS_JBIG2": "aad3cce09842e00e9e11ad5e8fef8cc02fbc3a3768fe2f007443b9cee37aaee5",
+    "wasm/LICENSE_PDFJS_OPENJPEG": "717fc62da03292dbb4dd0c8280bd4ce7bb8550dcf31d772bc93455fb50313425",
+    "wasm/jbig2.wasm": "e6bee67724a7b5436fe8162638e3708cfc8d52b6342db69a49715e30ff27cfdc",
+    "wasm/openjpeg.wasm": "004a0e62db930ba9ff2a22212f4554d0bb57a0635a8287caf70f98117cee14ba",
     "worker.js": "a5dc8c761d61ef8da516a0abc246a5e47b93e1ff8c396c2e6969498c70577b87"
   }
 }

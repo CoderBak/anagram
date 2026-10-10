@@ -315,7 +315,7 @@ test.describe("E) the PDF reader", () => {
 
   test("a thirty-page two-column paper: first page, first text, long tasks, reflow, retained canvases", async ({ page, pages, budget }) => {
     const PDF_PAGES = 30;
-    // PDF.js 5.7.284 keeps max(10, 2 * visiblePages + 1) page views. At this fixed viewport
+    // PDF.js 6.4.299 keeps max(10, 2 * visiblePages + 1) page views. At this fixed viewport
     // fewer than five pages are visible, so its ten-view cache is the relevant bound.
     const MAX_LIVE_CANVASES = 10;
     pages.serve({ "/paper.pdf": buildTwoColumnPdf(PDF_PAGES) });

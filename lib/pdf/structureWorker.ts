@@ -98,7 +98,7 @@ function readOne(bytes: Uint8Array, pages: number, range: [number, number] | nul
     worker.postMessage({
       id: 1, buf, password: "", sourceHash: "0".repeat(32), ...(range ? { range, contentBase } : {}),
       roots: {
-        cmaps: asset("cmaps/"), standard_fonts: asset("standard_fonts/"), wasm: asset("wasm/"),
+        cmaps: asset("cmaps/"), standard_fonts: asset("standard_fonts/"), wasm: asset("document-worker/wasm/"),
         onnx: asset("engine/"), "block-seg": asset("document-worker/block-seg/"),
       },
     }, [buf]);

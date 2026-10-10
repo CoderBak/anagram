@@ -33,7 +33,11 @@ export const VIEWER_OPTIONS = {
   defaultUrl: "", disablePreferences: true, disableHistory: true,
   enableScripting: false, pdfBugEnabled: false, pdfBug: false,
   enableAltText: false, enableAltTextModelDownload: false, enableGuessAltText: false,
-  enableNewAltTextWhenAddingImage: false, enableFakeMLManager: false,
+  enableNewAltTextWhenAddingImage: false,
+  // PDF.js 6 sends a font's PDF name to the page only with these: what tells a formula's glyphs
+  // (lib/pdf/extract.ts fontNameOf, reading.ts isMathFont). It keeps loaded fonts through the
+  // viewer's idle cleanup too, so a page read later still names them.
+  fontExtraProperties: true,
   enableXfa: false, annotationEditorMode: -1, enableSignatureEditor: false,
   enableComment: false, enableMerge: false, enableSplitMerge: false,
   externalLinkTarget: 2, externalLinkRel: "noopener noreferrer",

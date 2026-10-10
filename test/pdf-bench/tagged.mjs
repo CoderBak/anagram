@@ -53,10 +53,12 @@ function markedText(content) {
 
 /** {tokens, paras} as truthOf builds them, or null when the PDF carries no tags. */
 export async function taggedTruthOf(pdfjs, options, maxPages) {
-  const doc = await pdfjs.getDocument(options).promise;
+  const task = pdfjs.getDocument(options);
+  const doc = await task.promise;
   try {
     const mark = await doc.getMarkInfo().catch(() => null);
-    if (!mark?.Marked) return null;
+    // A Map from PDF.js 6 on, a plain object before.
+    if (!(mark instanceof Map ? mark.get("Marked") : mark?.Marked)) return null;
     const runs = [];
     const paras = [];
     let open = null;
@@ -130,6 +132,6 @@ export async function taggedTruthOf(pdfjs, options, maxPages) {
     }
     return { tokens, paras: paras.map((p, i) => ({ ...p, ...bounds[i] })) };
   } finally {
-    await doc.destroy();
+    await task.destroy();
   }
 }

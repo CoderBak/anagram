@@ -1,7 +1,7 @@
 # Pinned complete PDF.js viewer
 
-`upstream.json` records the official Mozilla v5.7.284 generic distribution URL, archive
-SHA-256 and checksums for every retained upstream asset. `5.7.284/` contains unchanged
+`upstream.json` records the official Mozilla v6.4.299 generic distribution URL, archive
+SHA-256 and checksums for every retained upstream asset. `6.4.299/` contains unchanged
 viewer HTML, JavaScript, CSS, images, Fluent translations and Apache-2.0 license.
 
 `scripts/pdfjsViewer.mjs` verifies those checksums and the installed engine version before

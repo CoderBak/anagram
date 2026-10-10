@@ -343,7 +343,8 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   Web's embind glue, which never sees the PDF and which the extension's CSP refuses like any
   eval (the worker is an extension resource, under that CSP). The rest are in tools that never
   ship (postcss and nanoid under Vite, node-forge under web-ext, vitest, esbuild's dev server on
-  Windows). Nothing was upgraded: pdf.js 6 means moving the hash-pinned viewer and engine
-  together, and DOMPurify 3.4.16 can wait for the next dependency refresh. Run the same checks
-  before a release that moves a lock.
+  Windows). Both are upgraded since (2026-10-10): pdf.js to 6.4.299, its hash-pinned viewer
+  and engine together (the document-worker keeps its fork's own image decoders, and the reader
+  asks for `fontExtraProperties`, without which PDF.js 6 names no font), and DOMPurify to
+  3.4.16. Run the same checks before a release that moves a lock.
 - Windows and Linux have not been exercised on real machines.

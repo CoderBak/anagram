@@ -18,7 +18,9 @@ whole document — by the worker's own webpack build, then minified. `scripts/do
 everything from the pinned sources and rewrites the hashes; `scripts/vendor.mjs` verifies
 them on every build and copies what the reader loads into `public/vendor/document-worker/`.
 The reader loads it lazily, in the reader page only, and the worker fetches its data from
-the extension's own URLs. Nothing is downloaded at build time or at run time.
+the extension's own URLs: the reader's CMaps and fonts, which the pin holds identical to the
+fork's, and its own image decoders (`wasm/`, the fork's build of them, of an older PDF.js than
+the reader's). Nothing is downloaded at build time or at run time.
 
 To upgrade, change the commits in `upstream.json`, run `node scripts/documentWorker.mjs`,
 run the PDF benchmark (`test/pdf-bench`) and the reader suites, and commit the result.

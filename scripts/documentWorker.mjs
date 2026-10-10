@@ -58,6 +58,12 @@ const LICENCES = {
   "LICENSE.pdfjs": "pdf.js/LICENSE",
 };
 const ORT_FILES = ["LICENSE.onnxruntime-web"];
+/** The fork's image decoders, which the worker reads from a folder of its own (roots.wasm,
+ *  lib/pdf/structureWorker.ts): the reader's pdf.js ships its own, of another version. The
+ *  binaries come from the fork's tree (by basename, wherever it keeps them); their licences
+ *  are those pdf.js publishes beside the same builds, kept with them. */
+const DECODERS = { from: "pdf.js/external", keep: (n) => /^(openjpeg\/)?openjpeg\.wasm$|^(jbig2\/)?jbig2\.wasm$/.test(n) };
+const DECODER_LICENCES = ["wasm/LICENSE_JBIG2", "wasm/LICENSE_OPENJPEG", "wasm/LICENSE_PDFJS_JBIG2", "wasm/LICENSE_PDFJS_OPENJPEG"];
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
@@ -86,8 +92,6 @@ function treeDigest(dir, keep = () => true) {
 const SHARED = {
   cmaps: { fork: "pdf.js/external/bcmaps", keep: (n) => n.endsWith(".bcmap") },
   standard_fonts: { fork: "pdf.js/external/standard_fonts", keep: (n) => !/^(README|LICENSE)/.test(n) },
-  // The decoders live in two folders in the fork and one in the distribution: hashed by basename.
-  wasm: { fork: "pdf.js/external", keep: (n) => /^(openjpeg\/)?openjpeg\.wasm$|^(jbig2\/)?jbig2\.wasm$/.test(n) },
 };
 function sharedDigest(dir, keep) {
   const hash = createHash("sha256");
@@ -179,7 +183,7 @@ async function rebuild(cache) {
   // Minified here: the worker's bundle is unminified by design (Zotero reads it in its
   // own tree), and a third of the size is a third of the extension's parse time.
   const { build } = await import("esbuild");
-  for (const name of Object.keys(pin.files)) if (!ORT_FILES.includes(name)) rmSync(join(VENDOR, name), { force: true });
+  for (const name of Object.keys(pin.files)) if (!ORT_FILES.includes(name) && !DECODER_LICENCES.includes(name)) rmSync(join(VENDOR, name), { force: true });
   await build({
     entryPoints: [join(checkout, "build", "anagram-worker.js")],
     minify: true, bundle: false, outfile: join(VENDOR, "worker.js"), logLevel: "error",
@@ -192,9 +196,13 @@ async function rebuild(cache) {
     cpSync(join(checkout, "src/pdf/structure/model", name), join(VENDOR, name));
   }
   for (const [name, from] of Object.entries(LICENCES)) cpSync(join(checkout, from), join(VENDOR, name));
+  const decoders = list(join(checkout, DECODERS.from)).filter(DECODERS.keep);
+  mkdirSync(join(VENDOR, "wasm"), { recursive: true });
+  for (const name of decoders) cpSync(join(checkout, DECODERS.from, name), join(VENDOR, "wasm", name.slice(name.lastIndexOf("/") + 1)));
+  const decoderFiles = decoders.map((name) => `wasm/${name.slice(name.lastIndexOf("/") + 1)}`);
 
   pin.files = {};
-  for (const name of ["worker.js", ...MODELS, ...Object.keys(LICENCES), ...ORT_FILES].sort()) pin.files[name] = sha256(join(VENDOR, name));
+  for (const name of ["worker.js", ...MODELS, ...Object.keys(LICENCES), ...ORT_FILES, ...decoderFiles, ...DECODER_LICENCES].sort()) pin.files[name] = sha256(join(VENDOR, name));
   pin.shared = {};
   for (const [name, { fork, keep }] of Object.entries(SHARED)) pin.shared[name] = sharedDigest(join(checkout, fork), keep);
   if (installedOrt() !== pin.onnxruntime_web.version) throw new Error(`the checkout has onnxruntime-web ${installedOrt()}; pin ${pin.onnxruntime_web.version} in upstream.json and package.json`);
