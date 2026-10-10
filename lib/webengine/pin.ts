@@ -10,7 +10,7 @@
 // package (scripts/webengine.mjs puts it there, checked against the same size and hash) and
 // is read from it, and checked again, whenever the model loads.
 import modelkit from "../../anagramd/modelkit.json";
-import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES } from "../contract";
+import { BUCKET_LABELS, CALIBRATION, LANGUAGE_ID, SUPPORTED_LANGUAGES } from "../contract";
 
 export interface PinnedFile {
   /** The file's name in the engine's storage. */
@@ -48,8 +48,8 @@ const MODEL_PATHS: Record<ModelTier, { path: string; name: string }> = {
   fp16: { path: "onnx/model_fp16.onnx", name: "model_fp16.onnx" },
 };
 export const modelFileName = (tier: ModelTier = "fp32"): string => MODEL_PATHS[tier].name;
-/** download_modelkit.LID_ENTRY, where the package carries it (scripts/webengine.mjs LID). */
-export const LID = { name: "lid.176.ftz", size_bytes: 938013, sha256: "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83" };
+/** The contract's language identifier, where the package carries it (scripts/webengine.mjs). */
+export const LID = { name: LANGUAGE_ID.path, size_bytes: LANGUAGE_ID.size_bytes, sha256: LANGUAGE_ID.sha256 };
 export const LID_PATH = "/vendor/engine/lid.176.ftz";
 
 /** The files setup downloads for `tier`, with their addresses. */

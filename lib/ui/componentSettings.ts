@@ -36,6 +36,12 @@ export function componentConnectionLabel(reply: ComponentReply): string {
 }
 
 /** An idle-unload option: "Never", or how many minutes the model stays loaded unused. */
+/** What either engine's card offers for unloading an idle model, the default first. */
+export const IDLE_CHOICES = [300, 60, 900, 0] as const;
+/** How often either engine's card asks after its engine: while it works, once it is ready, and
+ *  otherwise. */
+export const POLL_MS = { busy: 1_000, ready: 15_000, other: 3_000 } as const;
+
 export function idleUnloadLabel(seconds: number): string {
   return seconds ? tn("componentIdleMinutes", seconds / 60) : t("componentIdleNever");
 }
@@ -117,7 +123,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const uninstall = makeButton("componentUninstall", () => confirm("component.uninstall"));
   const idleLabel = element("label", t("componentIdleSetting")); idleLabel.htmlFor = "idleUnload";
   const idleSelect = element("select", undefined, "select"); idleSelect.id = "idleUnload";
-  for (const seconds of [300, 60, 900, 0]) {
+  for (const seconds of IDLE_CHOICES) {
     const option = element("option", idleUnloadLabel(seconds));
     option.value = String(seconds); idleSelect.append(option);
   }
@@ -289,7 +295,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   function schedule(): void {
     if (timer !== undefined) clearTimeout(timer);
     if (!destroyed && document.visibilityState === "visible" && !completedUninstallReceipt) {
-      const ms = snapshot && componentBusy(snapshot) ? 1_000 : snapshot && componentReady(snapshot) ? 15_000 : 3_000;
+      const ms = snapshot && componentBusy(snapshot) ? POLL_MS.busy : snapshot && componentReady(snapshot) ? POLL_MS.ready : POLL_MS.other;
       timer = setTimeout(() => void poll(), ms);
     }
   }

@@ -1,7 +1,7 @@
 import { documentSessionId, sendDocumentMessage } from "../access/session";
 // lib/messaging/client.ts — content→SW client.
 import { browser } from "#imports";
-import type { ModelInfo, ScoreBatchRequest, ScoreResult, TokenCounts } from "../contract";
+import { CONTRACT_LIMITS, type ModelInfo, type ScoreBatchRequest, type ScoreResult, type TokenCounts } from "../contract";
 import { ACTIONS } from "./protocol";
 import type { CountTokensMessage, CountTokensReply, ScoreBatchMessage, ScoreBatchReply } from "./protocol";
 
@@ -79,8 +79,7 @@ export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply>
 }
 
 /** Most texts and characters one count request carries: what the worker takes. */
-const COUNT_TEXTS = 512;
-const COUNT_CHARS = 200_000;
+const { token_texts: COUNT_TEXTS, token_chars: COUNT_CHARS } = CONTRACT_LIMITS;
 
 /** Counts for every text, or null, and what the answer says about the engine — in the
  *  terms of a score reply, so a page meets a stopped engine the same way either way. */

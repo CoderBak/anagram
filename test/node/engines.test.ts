@@ -146,10 +146,12 @@ describe("the language identifier the package carries", () => {
     const { url, ...pinned } = PACKAGED_LID;
     expect(pinned).toEqual(LID);
     expect(url).toBe("https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz");
+    // One pin, in the engine contract, which the native installer reads as well.
+    const contract = JSON.parse(read("anagramd/contract.json")).language_id;
+    expect(contract).toEqual({ path: LID.name, url, size_bytes: LID.size_bytes, sha256: LID.sha256 });
     const native = read("anagramd/download_modelkit.py");
-    expect(native).toContain(`LID_URL = "${url}"`);
-    expect(native).toContain(`"size_bytes": ${LID.size_bytes}`);
-    expect(native).toContain(`"sha256": "${LID.sha256}"`);
+    expect(native).toContain('LID_URL = CONTRACT["language_id"]["url"]');
+    expect(native).toContain('LID_ENTRY = {key: CONTRACT["language_id"][key] for key in ("path", "size_bytes", "sha256")}');
     expect(LID_PATH).toBe(`/vendor/engine/${LID.name}`);
   });
 });

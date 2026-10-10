@@ -48,7 +48,7 @@ vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send:
   calls.sends.push(options.send); calls.renders.push(options.render); calls.budgets.push(options.batchCharBudget); calls.delays.push(options.backgroundDelay);
   return {enqueue: (unit: Unit, lane: Lane) => calls.enqueued.push([unit.id, lane]), requeue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => calls.pending};
 }}));
-vi.mock("../../lib/capture/observers", () => ({createObservers: (options: {onPlaced?: () => void}) => (calls.observerOptions = options, {
+vi.mock("../../lib/capture/observers", () => ({PLACE_WAIT_MS: 1000, createObservers: (options: {onPlaced?: () => void}) => (calls.observerOptions = options, {
   start() {}, stop() {}, observeUnit() {}, observeRoot() {}, dropUnit() {}, reobserve() {}, placed: (unit: Unit) => calls.placed(unit),
 })}));
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({

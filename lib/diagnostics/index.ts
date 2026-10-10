@@ -94,8 +94,8 @@ export async function copyPageDiagnostics(facts: DiagnosticsFacts): Promise<Copy
     loadDiagnostics(),
     daemonFacts(),
     effectiveRule(facts.host).catch(() => null),
-    settings.enabled.getValue().catch(() => true),
-    settings.displayMode.getValue().catch(() => "all"),
+    settings.enabled.getValue().catch(() => settings.enabled.fallback),
+    settings.displayMode.getValue().catch(() => settings.displayMode.fallback),
   ]);
   const text = await chunk.buildDiagnostics({
     ...facts,

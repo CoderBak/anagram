@@ -638,7 +638,7 @@ class LifecycleTests(unittest.TestCase):
         (self.home / ".anagram-home").write_text("owned")
         app = self.home / "app"
         app.mkdir()
-        for name in ("native_component.py", "runtime_controller.py", "download_modelkit.py", "model_plan.py", "safe_files.py", "modelkit.json"):
+        for name in ("native_component.py", "runtime_controller.py", "download_modelkit.py", "model_plan.py", "safe_files.py", "modelkit.json", "contract.json"):
             shutil.copyfile(DAEMON / name, app / name)
         (app / "native_registration.py").write_text(
             "import pathlib,sys\npathlib.Path(sys.argv[-1], 'helper-called').write_text(sys.argv[1])\n")

@@ -15,9 +15,9 @@
 // photographs the page and sends it to an OCR service, which Anagram does not do.
 import { MARK_ATTR, type Unit } from "../types";
 import type { Surface } from "./types";
+import { CHIP_PX } from "./lineLayer";
 
 const CHIP_GAP = 4;
-const CHIP_PX = 54;
 
 /** The outermost accessibility region an element sits in: the page. */
 function pageOf(el: Element | null): HTMLElement | null {

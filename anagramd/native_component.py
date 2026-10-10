@@ -22,7 +22,7 @@ import tomllib
 
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
                                install_streaming, load_pin, plain_tree, selected_entries)
-from runtime_controller import RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes
+from runtime_controller import IDLE_RULE, RuntimeBusy, RuntimeUnavailable, error_text, forget_crashes, valid_idle
 from safe_files import atomic_json, is_link, private_tree, read_json, regular_stat, remember
 
 HOST_NAME = "dev.coderbak.anagram"
@@ -219,8 +219,7 @@ class NativeComponent:
                 saved["model_profile"] = STATE_DEFAULT["model_profile"]
             if (not isinstance(saved, dict) or set(saved) != set(STATE_DEFAULT)
                     or type(saved["schema_version"]) is not int or saved["schema_version"] != 1
-                    or type(saved["idle_unload_s"]) is not int
-                    or (saved["idle_unload_s"] != 0 and not 60 <= saved["idle_unload_s"] <= 86400)
+                    or not valid_idle(saved["idle_unload_s"])
                     or saved["model_profile"] not in ("recommended", "expanded")
                     or any(type(saved[key]) is not bool for key in STATE_DEFAULT
                            if key not in ("schema_version", "idle_unload_s", "model_profile"))):
@@ -607,8 +606,8 @@ class NativeComponent:
         if op == "engine.settings":
             self._payload(payload, ("idle_unload_s",), ("idle_unload_s",))
             seconds = payload["idle_unload_s"]
-            if type(seconds) is not int or (seconds != 0 and not 60 <= seconds <= 86400):
-                raise ComponentError("invalid_request", "idle_unload_s must be 0 or an integer from 60 to 86400", 422)
+            if not valid_idle(seconds):
+                raise ComponentError("invalid_request", IDLE_RULE, 422)
             with self.lock:
                 self._ensure_idle()
                 previous = self.settings["idle_unload_s"]

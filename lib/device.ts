@@ -17,6 +17,7 @@
 //
 // and the in-browser engine only where the device can afford it (affordable() below). The
 // function is pure; lib/ui/deviceInputs.ts reads its inputs in a page.
+import { pinnedFiles, type ModelTier } from "./webengine/pin";
 
 /** What a page can learn about the device without asking the person. */
 export interface DeviceInputs {
@@ -78,6 +79,13 @@ export interface Decision {
   fallback: { tight: boolean } | null;
 }
 
+/** The word-embedding matrix in FP32, the largest single tensor the GPU binds. */
+export const EMBEDDING_BYTES = 50265 * 1024 * 4;
+/** What a tier downloads, from the pin (anagramd/modelkit.json). */
+function downloadBytes(tier: ModelTier): number {
+  return pinnedFiles(tier).reduce((n, f) => n + f.size_bytes, 0);
+}
+
 /**
  * The in-browser model tiers, largest first, with what each takes: its download, the least
  * memory (Chrome's deviceMemory, a power of two) it runs in, and its largest single tensor (the
@@ -91,8 +99,8 @@ export interface Decision {
  * EditLens test split. INT8 is never picked, and nothing here quantizes anything.
  */
 export const TIERS = [
-  { id: "fp32", bytes: 1_425_459_555, minMemoryGb: 4, maxTensorBytes: 50265 * 1024 * 4 },
-  { id: "fp16", bytes: 714_899_390, minMemoryGb: 4, maxTensorBytes: 50265 * 1024 * 2 },
+  { id: "fp32", bytes: downloadBytes("fp32"), minMemoryGb: 4, maxTensorBytes: EMBEDDING_BYTES },
+  { id: "fp16", bytes: downloadBytes("fp16"), minMemoryGb: 4, maxTensorBytes: EMBEDDING_BYTES / 2 },
 ] as const;
 export type Tier = typeof TIERS[number];
 

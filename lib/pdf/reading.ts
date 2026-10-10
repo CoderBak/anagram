@@ -7,7 +7,7 @@
 // where the document spells the word with it, and what is no one's prose left out — the
 // glyphs of a formula, a citation mark, an accent set apart from its letter.
 import { skipGap } from "../dom/text";
-import { SENTENCE_END, bracketCitations, dehyphenates, lastToken, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
+import { SENTENCE_END, SPACE_GAP, bracketCitations, dehyphenates, lastToken, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
 import { append, most } from "./arrays";
 
 /** One glyph: its rect on a 0-based page, in the space its reader measures in (Zotero's
@@ -21,9 +21,6 @@ export interface Glyph {
   /** The first glyph of a run of Zotero's glyph map: another run of the page begins here. */
   start?: true;
 }
-
-/** A gap wider than this share of the glyph height is a word space (lib/pdf/reflow.ts). */
-const SPACE_GAP = 0.2;
 
 // ---- fonts ------------------------------------------------------------------------------
 

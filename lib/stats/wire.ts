@@ -7,6 +7,7 @@
 // only where its origin is that tab's own: a page that claimed another site's address could
 // not put its reading there.
 import * as v from "valibot";
+import { MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import {
   ARRIVALS, INPUT_KINDS, LEFT_OUT, PAGE_KINDS, SKIP_REASONS, STATE_KINDS, SURFACES, UI_EVENTS, UNIT_KINDS, UNIT_STATUSES,
   type EventStreams, type Exposure, type KindSignals, type LeftOut, type PageKind, type SkipReason, type Surface, type UiEvent,
@@ -80,7 +81,7 @@ export interface StatsWire {
 // ---- the schema ------------------------------------------------------------------------------
 
 export const STATS_LIMITS = Object.freeze({
-  units: 256, reads: 2048, events: 4096, textChars: 200_000, messageText: 600_000, words: 100_000, ms: 31 * 24 * 3600_000,
+  units: 256, reads: 2048, events: 4096, textChars: MAX_UNIT_TEXT_CHARS, messageText: 600_000, words: 100_000, ms: 31 * 24 * 3600_000,
   idle: 512, minutes: 24 * 60, string: 64, href: 8192,
 });
 

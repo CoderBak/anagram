@@ -51,13 +51,10 @@ export const ORT_FILES = ["ort.jspi.min.mjs", "ort-wasm-simd-threaded.jspi.mjs",
 /** Where the files go, under the root. */
 export const ENGINE_DIR = join("public", "vendor", "engine");
 
-/** The language identifier the package carries: download_modelkit.py's LID_URL and LID_ENTRY. */
-export const LID = {
-  name: "lid.176.ftz",
-  url: "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
-  size_bytes: 938013,
-  sha256: "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83",
-};
+/** The language identifier the package carries, as the engine contract pins it. */
+const { path: lidName, url: lidUrl, size_bytes: lidSize, sha256: lidSha } =
+  JSON.parse(readFileSync(new URL("../anagramd/contract.json", import.meta.url), "utf8")).language_id;
+export const LID = { name: lidName, url: lidUrl, size_bytes: lidSize, sha256: lidSha };
 const LID_CACHE = join(".cache", "fasttext", LID.name);
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const pinned = (bytes) => bytes.length === LID.size_bytes && sha256(bytes) === LID.sha256;

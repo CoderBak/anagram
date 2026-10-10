@@ -34,6 +34,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from safe_files import atomic_json, read_json
 
+CONTRACT = json.loads((Path(__file__).resolve().parent / "contract.json").read_text(encoding="utf-8"))
+# How long an engine left idle keeps its model, in seconds: 0 for always, or within this range.
+# Both engines and both settings pages take it from the engine contract.
+IDLE_LEAST, IDLE_MOST = CONTRACT["idle_unload_s"]
+IDLE_RULE = f"idle_unload_s must be 0 or an integer from {IDLE_LEAST} to {IDLE_MOST}"
+
+
+def valid_idle(seconds) -> bool:
+    return type(seconds) is int and (seconds == 0 or IDLE_LEAST <= seconds <= IDLE_MOST)
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -283,8 +293,8 @@ class RuntimeController:
             self.idle_thread.start()
 
     def set_idle_unload(self, seconds):
-        if type(seconds) is not int or (seconds != 0 and not 60 <= seconds <= 86400):
-            raise ValueError("idle_unload_s must be 0 or an integer from 60 to 86400")
+        if not valid_idle(seconds):
+            raise ValueError(IDLE_RULE)
         with self.lock:
             self.idle_unload_s = seconds
 

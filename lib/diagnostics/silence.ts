@@ -15,7 +15,7 @@
 // answer for the barriers, and the floors are the constants the assembler uses. A copy of
 // a rule here would drift from the rule in lib/dom/ within a release, and the report would
 // then explain a page the product no longer reads that way.
-import { MAX_LINK_RATIO, MAX_SHORTCODE_SHARE, MAX_WALK_DEPTH, collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
+import { MAX_LINK_RATIO, MAX_SHORTCODE_SHARE, MAX_WALK_DEPTH, SMALL_OUT_OF_FLOW_CHARS, collectUnits, isExcludedByAncestry, isExpandLabel, isProsePre } from "../dom/walker";
 import { asideApart, chromeNames, findConsentBanners, isBoilerplate, isConsentBanner, isNoTranslate, mediaWikiFurniture, referenceList, siteNotices } from "../dom/boilerplate";
 import { NO_SCORE_TAGS, isHeading, isHeadingLabel, tagOf } from "../dom/tags";
 import { isTranslatedInPlace } from "../dom/translation";
@@ -61,9 +61,6 @@ const CHROME_SEL =
  *  a reader reads (the same set the walk refuses, plus the tags it never reaches). */
 const NO_TEXT_TAGS = new Set([...NO_SCORE_TAGS, "IFRAME", "FRAME", "HEAD"]);
 
-/** An out-of-flow box with at most this much text is a marker, not content — the walk's
- *  own SMALL_OUT_OF_FLOW_CHARS, which is private to it. */
-const MARKER_CHARS = 40;
 /** A stretch smaller than this is a label, a button or a date — never the text somebody
  *  came to read, and fifteen of them would bury the finding that matters. */
 const MIN_STRETCH_WORDS = MIN_MERGE_WORDS;
@@ -369,8 +366,8 @@ function hiddenReason(el: Element, cs: Styler): string | null {
     if (cutToOneLine(cur, { get: cs })) {
       return `cut to one line with an ellipsis on ${nameOf(cur)} — a preview of a text shown in full elsewhere`;
     }
-    if (isOutOfFlow(style) && (cur.textContent ?? "").trim().length <= MARKER_CHARS) {
-      return `out of flow (position:${style.position}) with under ${MARKER_CHARS} characters — read as a marker, not prose`;
+    if (isOutOfFlow(style) && (cur.textContent ?? "").trim().length <= SMALL_OUT_OF_FLOW_CHARS) {
+      return `out of flow (position:${style.position}) with under ${SMALL_OUT_OF_FLOW_CHARS} characters — read as a marker, not prose`;
     }
   }
   const box = el.getBoundingClientRect();

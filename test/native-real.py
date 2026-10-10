@@ -107,7 +107,7 @@ def main():
         (home / ".native-component.json").write_text(json.dumps(
             {"schema_version": 1, "host": "dev.coderbak.anagram", "home": str(home)}))
         for name in ("native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
-                     "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py", "safe_files.py", "pyproject.toml"):
+                     "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py", "safe_files.py", "pyproject.toml", "contract.json"):
             shutil.copyfile(DAEMON / name, home / "app" / name)
         for entry in pin["files"]:
             if entry["path"] not in expected_plan["selected_paths"]:

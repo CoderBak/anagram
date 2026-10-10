@@ -14,13 +14,13 @@
 //              /thread/…, /t/…, /forum/…, viewtopic.php, ?topic=, Hacker News' item?id=).
 //   feed     — posts by many voices, one after another: a page of a well-known feed (the
 //              short list below), a page that says it is one (role="feed"), or one where
-//              the paragraphs read stand in five or more separate posts, most of the
-//              paragraphs in one and none of the posts holding two-fifths of the words.
+//              the first paragraphs found stand in five or more separate posts, most of
+//              them in a post and none of the posts holding two-fifths of the words.
 //   article  — one author's text: the page declares it (a schema.org Article, NewsArticle,
-//              BlogPosting, Report or ScholarlyArticle; og:type article, with a body of text
-//              of 150 words), or most of what is read stands in one <article>, or in <main>
-//              with a body of text, or there is such a body at all: 300 words one element
-//              holds. Comments under an article leave it an article; a product page is none.
+//              BlogPosting, Report, ScholarlyArticle or TechArticle; og:type article, with a
+//              body of text of 150 words), or most of what is found stands in one
+//              <article>, or in <main> with a body of text, or there is such a body at all:
+//              300 words one element holds. Comments under an article leave it an article; a product page is none.
 //   other    — anything else: a shop, a search page, a mail client, a dashboard.
 //
 // Its numbers were checked on the web benchmark's pages labelled article, forum and other
@@ -28,7 +28,7 @@
 // checked on.
 //
 // The rule is asked again with each message, and costs a few selector queries and a look at
-// the first paragraphs read. What it looked at is kept with the visit (KindSignals), so the
+// the first paragraphs found. What it looked at is kept with the visit (KindSignals), so the
 // rule can be checked on a labelled sample, or another tried, afterwards (kindFrom).
 import type { Unit } from "../types";
 import type { KindSignals, PageKind } from "./model";
@@ -52,8 +52,8 @@ const ARTICLE_TYPES = /"@type"\s*:\s*\[?\s*"(?:Article|NewsArticle|BlogPosting|R
 /** A post of a feed or a thread, where the markup marks one (lib/dom/scope.ts, DECLARED); the
  *  recorder files paragraphs by it too (lib/stats/recorder.ts). */
 export const POST = 'article, [role="article"], [aria-posinset], [role="listitem"]:not(li)';
-/** How many of the paragraphs read are looked at: the first ones are the page's. */
-const SAMPLE = 64;
+/** How many paragraphs are looked at: the first found, in the walk's order, are the page's own. */
+export const KIND_SAMPLE = 64;
 /** How much of the page's JSON-LD is looked at, at most. */
 const LD_CHARS = 20_000;
 
@@ -83,7 +83,7 @@ export function kindSignals(doc: Document, address: { hostname: string; pathname
   const articleTyped = declares(doc, ARTICLE_TYPES, /schema\.org\/(?:Article|NewsArticle|BlogPosting|Report|ScholarlyArticle|TechArticle)\b/);
   const articleDeclared = og === "article" || articleTyped;
   const generator = doc.querySelector('meta[name="generator" i]')?.getAttribute("content") ?? "";
-  const sample = units.slice(0, SAMPLE);
+  const sample = units.slice(0, KIND_SAMPLE);
   const posts = new Map<Element, number>();
   let inPosts = 0;
   for (const unit of sample) {

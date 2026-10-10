@@ -24,7 +24,7 @@ import { collectUnitsInSlices, inPageOrder, type CollectOptions } from "../dom/w
 import { SLICE_MS, finishInSlices } from "../slices";
 import { restoreSplits } from "../dom/splits";
 import { partTextOf, isShortText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
-import { createObservers, type Observers } from "./observers";
+import { createObservers, PLACE_WAIT_MS, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
 import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict, type WindowVerdict } from "./windows";
@@ -50,7 +50,7 @@ import { createFling } from "./fling";
 import { createBackendWatch } from "./backendWatch";
 import { createKeptLedger, type KeptVerdict } from "./keptLedger";
 import { createReadingMeter, inPrivateWindow, type RecorderModule } from "../stats/meter";
-import { kindFrom, kindSignals } from "../stats/pageKind";
+import { KIND_SAMPLE, kindFrom, kindSignals } from "../stats/pageKind";
 import { configOf } from "../stats/config";
 import type { PageKind, Surface, VisitRow } from "../stats/model";
 
@@ -68,8 +68,8 @@ function laneBudgets(one: () => boolean): Record<Lane, () => number> {
   return { viewport: () => 1, near: of("near"), background: of("background") };
 }
 /** How soon the idle prefetch looks again for units the observers have still not placed (the
- *  observers ask as they place them; Observers.placed gives up waiting after a second). */
-const PLACE_RETRY_MS = 1100;
+ *  observers ask as they place them; Observers.placed gives up waiting after PLACE_WAIT_MS). */
+const PLACE_RETRY_MS = PLACE_WAIT_MS + 100;
 /** Background prefetch may hold at most this many of the in-flight slots (PAGE_IN_FLIGHT). */
 const MAX_BACKGROUND_IN_FLIGHT = 1;
 /** Units enqueued per idle prefetch pass (huge pages drain in successive passes). */
@@ -184,7 +184,8 @@ interface SettingsSnapshot {
   flagFrom: FlagFrom;
 }
 
-/** Storage answered nothing (dead extension context) — boot with the shipped defaults. */
+/** Storage answered nothing (dead extension context) — boot with the shipped defaults (the
+ *  settings' fallbacks, lib/settings/settings.ts). */
 const DEFAULT_SNAPSHOT: SettingsSnapshot = {
   showHighlights: true,
   underlineScope: "flagged",
@@ -334,7 +335,7 @@ export function createOrchestrator(
     kind: () => {
       const said = opts.pageKind?.();
       if (said) return { kind: said, signals: null };
-      const signals = kindSignals(document, location, firstUnits(64));
+      const signals = kindSignals(document, location, firstUnits(KIND_SAMPLE));
       return { kind: kindFrom(signals), signals };
     },
     display: () => ({ chips: displayMode, underlines: highlightsEnabled ? underlineScope : "off", flagFrom }),

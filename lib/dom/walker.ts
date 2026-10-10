@@ -140,7 +140,7 @@ const MARK_NUMBER = String.raw`\d{1,4}[a-z]?`;
 /** "7", "12, 13", "4, 7–9", "(48)", "[3]". */
 const MARK_NUMBERS_RE = new RegExp(String.raw`^[[(]?${MARK_NUMBER}(?:\s*[,;–—-]\s*${MARK_NUMBER})*[\])]?$`);
 /** A year as a word of its own ("2020", "2026a"), not the digits of a key ("warren2012"). */
-const YEAR_RE = /(?<![\p{L}\p{N}])(?:1[5-9]|20)\d\d[a-z]?(?![\p{L}\p{N}])/u;
+const CITED_YEAR_RE = /(?<![\p{L}\p{N}])(?:1[5-9]|20)\d\d[a-z]?(?![\p{L}\p{N}])/u;
 
 function isCitationMarker(el: Element, tag: string): boolean {
   if (tag !== "SUP" && tag !== "CITE") return false;
@@ -149,7 +149,7 @@ function isCitationMarker(el: Element, tag: string): boolean {
   const numbers = MARK_NUMBERS_RE.test(text);
   if (numbers && text.startsWith("[")) return true;
   // A year with a name, or in parentheses: an author–year citation.
-  if (YEAR_RE.test(text) && (/\p{L}{2}/u.test(text) || text.startsWith("("))) return false;
+  if (CITED_YEAR_RE.test(text) && (/\p{L}{2}/u.test(text) || text.startsWith("("))) return false;
   const cls = el.getAttribute("class") ?? "";
   if (MARK_CLASS_RE.test(cls)) return true;
   if (numbers) return CITE_CLASS_RE.test(cls) || (tag === "SUP" && (isLinkMark(el, text) || followsWord(el)));
@@ -306,7 +306,7 @@ function inCardLink(r: Run): boolean {
 }
 /** An out-of-flow element with at most this much text is a marker (page number,
  *  badge, anchor label), not content — skipped without breaking the sentence. */
-const SMALL_OUT_OF_FLOW_CHARS = 40;
+export const SMALL_OUT_OF_FLOW_CHARS = 40;
 
 /**
  * How deep in the composed tree, shadow trees included, the walk goes. The walk is a

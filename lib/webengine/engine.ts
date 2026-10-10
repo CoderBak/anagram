@@ -5,7 +5,7 @@
 // model on the runtime lib/webengine/session.ts picks, answers the contract's operations
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
-import type { ScoreResult } from "../contract";
+import { IDLE_UNLOAD_RULE, validIdleUnload, type ScoreResult } from "../contract";
 import { downloadFile, DownloadFailed, DownloadPaused, mirrorOf, noRoomFor, outOfSpace, readPackaged, verifyFile } from "./download";
 import { FastText } from "./fasttext";
 import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES, modelFileName, type ModelTier, type Pin, type PinnedFile } from "./pin";
@@ -208,7 +208,7 @@ export class Engine {
       const saved = JSON.parse(new TextDecoder().decode(await this.store.read(STATE_FILE))) as Partial<Settings>;
       const seconds = saved.idle_unload_s ?? STATE_DEFAULT.idle_unload_s;
       const flags = ["initialized", "download_pending", "download_paused", "download_failed", "engine_stopped", "models_deleted"] as const;
-      if (saved.schema_version !== 1 || !Number.isInteger(seconds) || (seconds !== 0 && (seconds < 60 || seconds > 86400)) ||
+      if (saved.schema_version !== 1 || !validIdleUnload(seconds) ||
           flags.some((key) => typeof saved[key] !== "boolean") || (saved.verified !== undefined && (typeof saved.verified !== "object" || saved.verified === null))) {
         throw new Error("damaged");
       }
@@ -670,10 +670,8 @@ export class Engine {
       case "engine.settings": {
         checkPayloadKeys(payload, ["idle_unload_s"], ["idle_unload_s"]);
         const seconds = payload.idle_unload_s;
-        if (!Number.isInteger(seconds) || (seconds !== 0 && ((seconds as number) < 60 || (seconds as number) > 86400))) {
-          throw new EngineError("invalid_request", "idle_unload_s must be 0 or an integer from 60 to 86400", 422);
-        }
-        this.settings.idle_unload_s = seconds as number;
+        if (!validIdleUnload(seconds)) throw new EngineError("invalid_request", IDLE_UNLOAD_RULE, 422);
+        this.settings.idle_unload_s = seconds;
         await this.writeSettings();
         return { status: 200, data: this.status() };
       }

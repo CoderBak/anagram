@@ -1,4 +1,5 @@
 // Shared wire contract. No code in this file opens a native connection.
+import { validIdleUnload } from "../contract";
 export const NATIVE_HOST = "dev.coderbak.anagram";
 export const NATIVE_MESSAGE = "anagram.nativeRequest";
 export const NATIVE_UNINSTALL = "anagram.finishUninstall";
@@ -59,7 +60,6 @@ export function validPageRequest(op: unknown, payload: unknown): op is Component
     (keys.length === 1 && typeof payload.version === "string" && RELEASE_VERSION.test(payload.version));
   if (op === "runtime.config") return keys.length === 1 && typeof payload.id === "string" && payload.id.length > 0 && payload.id.length <= 120;
   if (op === "runtime.benchmark") return keys.length === 1 && Number.isInteger(payload.budget_s) && (payload.budget_s as number) >= 10 && (payload.budget_s as number) <= 30;
-  if (op === "engine.settings") return keys.length === 1 && Number.isInteger(payload.idle_unload_s) &&
-    (payload.idle_unload_s === 0 || (Number(payload.idle_unload_s) >= 60 && Number(payload.idle_unload_s) <= 86400));
+  if (op === "engine.settings") return keys.length === 1 && validIdleUnload(payload.idle_unload_s);
   return keys.length === 0;
 }

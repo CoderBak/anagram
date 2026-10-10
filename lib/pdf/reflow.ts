@@ -11,11 +11,11 @@
 // and y growing DOWNWARD (lib/pdf/extract.ts flips pdf.js's bottom-up space), so
 // "the top margin" is simply a small y and lines sort by y ascending.
 //
-// WHAT IT DOES NOT DO. Footnotes, reference lists, tables and formula fragments
-// are left as the paragraphs and lines they look like. Being clever there means
-// guessing, and the walker's own filters (name lists, symbol noise, link density,
-// the 50-word floor) already skip most of it — a table row never reaches the
-// daemon anyway. Ligatures are kept exactly as the PDF gives them; the model form
+// WHAT IT DOES NOT DO. Reference lists, tables and formula fragments are left as
+// the paragraphs and lines they look like, and so are footnotes and captions, though
+// a paragraph is joined across them (markAsides). Being clever there means guessing,
+// and the walker's own filters (name lists, symbol noise, link density, the 50-word
+// floor) already skip most of it — a table row never reaches the engine anyway. Ligatures are kept exactly as the PDF gives them; the model form
 // (modelText) spells ﬁ/ﬂ out itself.
 import { skipGap } from "../dom/text";
 import { BARE_NUMBER, lineNumberMarks, type NumberMark, type PageContent } from "./lineNumbers";
@@ -156,7 +156,7 @@ const DROP_CAP_ALIGN = 0.7;
 /** …and is sunk at least this many lines deep, which is what makes it a drop cap. */
 const DROP_CAP_LINES = 2;
 /** A gap wider than this share of the font size is a word space, not kerning. */
-const SPACE_GAP = 0.2;
+export const SPACE_GAP = 0.2;
 /** Below this many lines a page is a title page — not enough of a layout to read. */
 const MIN_LINES_FOR_COLUMNS = 6;
 /**
@@ -212,11 +212,16 @@ const RUNNING_MIN_PAGES = 2;
  */
 const RUNNING_MIN_PARITY_PAGES = 3;
 /** A vertical gap wider than this many line pitches starts a new paragraph. */
-const PARA_GAP = 1.45;
+export const PARA_GAP = 1.45;
 /** A first-line indent of at least this much of the font size starts a paragraph. */
-const INDENT = 0.5;
+export const INDENT = 0.5;
 /** A line ending this far short of the column's right edge is a last line. */
-const SHORT_LINE = 2;
+export const SHORT_LINE = 2;
+/** A column's edges are where this share of its lines start left of, and the same share end
+ *  right of, so an indent or a short last line does not move them. */
+export const EDGE_PERCENTILE = 0.15;
+/** The line pitch where no step between lines gives it: this many times the type size. */
+export const PITCH_OF_SIZE = 1.2;
 /**
  * Type differing by this much is a different kind of text: a new block within a column,
  * and, across a column or a page break, a block that is not the continuation of the one
@@ -236,7 +241,7 @@ const FOOTNOTE_SIZE = 0.92;
  * is not a dictionary but a typographic convention, and where it does not fire — a German
  * "Abbildung 3", a Chinese caption — the text simply keeps the reading it has today.
  */
-const CAPTION_LABEL = /^(?:fig(?:ure|s?\.)?|table|tab\.|chart|listing|algorithm|scheme)\s*\d/i;
+const CAPTION_START = /^(?:fig(?:ure|s?\.)?|table|tab\.|chart|listing|algorithm|scheme)\s*\d/i;
 /** A caption is a legend, not an argument; past this length it is prose about a figure. */
 const CAPTION_MAX_WORDS = 60;
 /** At most this many footnotes and captions may stand between a paragraph and its rest. */
@@ -1418,7 +1423,7 @@ interface Draft {
  */
 function markAsides(drafts: Draft[], bodySize: number): void {
   for (const d of drafts) {
-    if (d.front || !CAPTION_LABEL.test(d.text)) continue;
+    if (d.front || !CAPTION_START.test(d.text)) continue;
     // A paragraph that opens "Figure 3 shows that…" and then argues for a page is prose
     // about a figure, not the figure's legend.
     if (d.size < bodySize || d.text.split(/\s+/).length <= CAPTION_MAX_WORDS) d.aside = true;
@@ -1477,7 +1482,7 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     const d = lines[i]!.y - lines[i - 1]!.y;
     if (d > 0) pitches.push(d);
   }
-  const pitch = median(pitches) || median(lines.map((l) => l.size)) * 1.2 || 1;
+  const pitch = median(pitches) || median(lines.map((l) => l.size)) * PITCH_OF_SIZE || 1;
   // The measure is that of the stretch a line is set in, between two vertical gaps, not of
   // the whole column: a one-column paper sets its abstract inset on both sides above a
   // full-width body, and measured against the body every abstract line "stops short".
@@ -1488,8 +1493,8 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
     stretch[stretch.length - 1]!.push(lines[i]!);
   }
   const edgesOf = (of: Line[]) => {
-    const leftEdge = percentile(of.map((l) => l.x0), 0.15);
-    const rightEdge = percentile(of.map((l) => l.x1), 0.85);
+    const leftEdge = percentile(of.map((l) => l.x0), EDGE_PERCENTILE);
+    const rightEdge = percentile(of.map((l) => l.x1), 1 - EDGE_PERCENTILE);
     return { leftEdge, rightEdge, measure: Math.max(rightEdge - leftEdge, 1) };
   };
   const column = edgesOf(lines);
@@ -1589,8 +1594,8 @@ function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[]
  */
 function setOnItsOwnMeasure(s: Line[]): boolean {
   if (s.length < FLUSH_RUN) return false;
-  const left = percentile(s.map((l) => l.x0), 0.15);
-  const right = percentile(s.map((l) => l.x1), 0.85);
+  const left = percentile(s.map((l) => l.x0), EDGE_PERCENTILE);
+  const right = percentile(s.map((l) => l.x1), 1 - EDGE_PERCENTILE);
   let flush = 0;
   for (const l of s) {
     for (let k = 1; k < l.items.length; k++) {

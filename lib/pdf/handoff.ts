@@ -1,7 +1,7 @@
 // Chromium reads its current PDF tab; Firefox and local files use a private, ticketed loader.
 import { browser } from "#imports";
 import * as v from "valibot";
-import { claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult, type PdfReopenResult } from "./sourceTransfer";
+import { SOURCE_CAP, claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult, type PdfReopenResult } from "./sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../surface";
 import { matchesAny } from "../access/patterns";
 import { dispositionName } from "./source";
@@ -14,8 +14,9 @@ export const PDF_CLAIM_PORT = "anagram-pdf-claim";
 /** Raw bytes per acknowledged chunk; only one chunk may be in flight per transfer. */
 export const CHUNK_BYTES = 256 * 1024;
 
-/** Per-document relay cap, below the reader's 100 MiB direct-file limit. */
-export const MAX_HANDOFF_BYTES = 50 * 1024 * 1024;
+/** Per-document relay cap, below the reader's 100 MiB direct-file limit: the same as what
+ *  the private loader fetches, so a web PDF is one size whichever way it comes. */
+export const MAX_HANDOFF_BYTES = SOURCE_CAP;
 
 /** How long held bytes wait for their reader before they are dropped. */
 export const TICKET_TTL_MS = 30_000;

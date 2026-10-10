@@ -8,8 +8,8 @@
 // marked content each element owns, joined the way the page sets it.
 //
 // Word tags a caption and a reference-list entry as P like any paragraph, so two things
-// are read off the text instead: the paragraphs after a "References" heading are
-// references, and a paragraph opening "Figure 3:" or "Table 2." is a caption. A heading
+// are read off the text instead: the paragraphs after a "References" heading (or a
+// paragraph saying only that, outside a table) are references, and a paragraph opening "Figure 3:" or "Table 2." is a caption. A heading
 // longer than any heading is body text in a heading style. A paragraph Word breaks
 // across a page is two elements in pdf.js's per-page trees; the second is folded back
 // into the first when the first ends without a sentence end and was the last thing on
@@ -82,7 +82,8 @@ export async function taggedTruthOf(pdfjs, options, maxPages) {
         // A "heading" of a paragraph's length is body text in a heading style.
         const role = HEADING.test(node.role ?? "") && words(node) > HEADING_MAX_WORDS ? "P" : node.role ?? "";
         let next = ctx;
-        if (HEADING.test(role) || (PARAGRAPH.has(role) && REFERENCES.test(textOf(node)))) {
+        // A table's "References" column header (TH > P) opens no reference list.
+        if (HEADING.test(role) || (PARAGRAPH.has(role) && !ctx.inside && REFERENCES.test(textOf(node)))) {
           inReferences = REFERENCES.test(textOf(node));
           next = { cat: "heading", para: -1, inside: true };
         }

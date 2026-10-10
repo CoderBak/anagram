@@ -53,9 +53,10 @@ export interface Observers {
 
 const DRAIN_DEBOUNCE_MS = 250;
 /** How long the idle prefetch waits for the observers to place a unit (Observers.placed). */
-const PLACE_WAIT_MS = 1000;
+export const PLACE_WAIT_MS = 1000;
 /** A trailing debounce alone never fires on a page that mutates continuously (live
- *  tickers, streaming chat): the drain is forced once dirt has waited this long. */
+ *  tickers, streaming chat): the drain is forced once dirt has waited this long, or the
+ *  spacing below where that is longer (up to DRAIN_MAX_SPACING_MS). */
 const DRAIN_MAX_WAIT_MS = 1000;
 /**
  * A drain waits this many times as long as the last ones took, so draining takes at most

@@ -1235,7 +1235,7 @@
     "message": "这段时间读到的内容都无法评分。"
   },
   "statsCompare30": {
-    "message": "你最近 30 天的平均值：$1。"
+    "message": "最近 30 天（含今天）：$1。"
   },
   "statsColWords": {
     "message": "读到的词"

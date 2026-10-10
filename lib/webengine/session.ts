@@ -29,6 +29,7 @@
 import { weightlessGraph } from "./onnx";
 import type { Backend } from "./scoring";
 import type { ModelTier } from "./pin";
+import { EMBEDDING_BYTES } from "../device";
 
 /** The runtime's files by URL, as scripts/webengine.mjs copies them: the library, its loader and its WebAssembly. */
 export interface RuntimeAssets { ort: string; mjs: string; wasm: string }
@@ -50,8 +51,6 @@ export interface Candidate {
   reason?: string | null;
 }
 
-/** The word-embedding matrix, the largest single tensor the GPU binds. */
-export const EMBEDDING_BYTES = 50265 * 1024 * 4;
 /**
  * Texts per forward pass, by provider. The GPU provider keeps the activation buffers of
  * the passes it has run in its size buckets, to reuse them (its other cache modes either

@@ -77,17 +77,17 @@ export function preservesNewlines(cs: CSSStyleDeclaration | null): boolean {
  * here too: closed, it hides its content by other means (content-visibility), and open,
  * it is read like any other block.
  */
-const NEVER_CLIPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
+export const NEVER_CLIPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
 
 /** Content must be at least this much taller than its box before the box counts as
  *  clipped: more of the text is out of sight than in it. */
 const CLIP_CONTENT_RATIO = 2;
 /** …and at least this many pixels of it must be hidden, so a few pixels of decorative
  *  overflow (a shadow, a descender, a sticky row) never blanks a paragraph. */
-const CLIP_MIN_HIDDEN_PX = 32;
+export const CLIP_MIN_HIDDEN_PX = 32;
 /** A box as tall as the screen is the page's own scrolling box or a full-height panel,
  *  not a three-line preview of a post. */
-const CLIP_MAX_VIEWPORT_SHARE = 0.9;
+export const CLIP_MAX_VIEWPORT_SHARE = 0.9;
 
 /**
  * Does this box CLIP ITS OWN TEXT vertically — text that is in the DOM but that the

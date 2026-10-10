@@ -74,7 +74,7 @@ const GLYPH = 0.75;
 /** A chip is this far from the end of the line it closes, in shares of the page width. */
 const CHIP_GAP = 0.006;
 /** Chip widths the badge reserves before its label is in: one paragraph, several. */
-const CHIP_PX = 54;
+export const CHIP_PX = 54;
 const CHIP_GROUP_PX = 80;
 const CHIP_HEIGHT_PX = 22;
 const MARK_PX = 2;

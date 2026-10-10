@@ -195,12 +195,12 @@ function saysRating(label: string | null): boolean {
  *  is digits and dashes too, and a chapter-and-verse "3:16" is no moment. */
 const ISO_DATE_RE = /(?<![\d-])(?:19|20)\d{2}-\d{1,2}-\d{1,2}(?![\d-])/;
 const CLOCK_RE = /(?<![\d:])\d{1,2}:\d{2}(?![\d])/;
-const YEAR_RE = /(?<!\d)(?:19|20)\d{2}(?!\d)/;
+const MOMENT_YEAR_RE = /(?<!\d)(?:19|20)\d{2}(?!\d)/;
 const MAX_MOMENT_TITLE_CHARS = 40;
 
 function spellsOutMoment(title: string): boolean {
   if (title.length > MAX_MOMENT_TITLE_CHARS || !/\d[:-]\d/.test(title)) return false;
-  return ISO_DATE_RE.test(title) || (CLOCK_RE.test(title) && YEAR_RE.test(title));
+  return ISO_DATE_RE.test(title) || (CLOCK_RE.test(title) && MOMENT_YEAR_RE.test(title));
 }
 
 /**
@@ -726,11 +726,6 @@ function wordCount(s: string): number {
   return s.match(/\S+/g)?.length ?? 0;
 }
 
-function isPageLevelBox(el: Element): boolean {
-  const tag = tagOf(el);
-  return tag === "HTML" || tag === "BODY" || tag === "MAIN" || el.getAttribute("role") === "main";
-}
-
 /** The reviews whose text the page declares, and what of their cards is not that text. */
 function surveyReviews(doc: Document): Reviews {
   const bodies = new Set<Element>(doc.querySelectorAll(REVIEW_BODY_SELECTOR));
@@ -757,11 +752,11 @@ function surveyReviews(doc: Document): Reviews {
       let box = body;
       while (
         box.parentElement &&
-        !isPageLevelBox(box.parentElement) &&
+        !isPageLevel(box.parentElement) &&
         !holdsAnother(box.parentElement, body) &&
         wordCount(box.parentElement.textContent ?? "") - own <= CARD_EXTRA_WORDS
       ) box = box.parentElement;
-      if (box === body || isPageLevelBox(box)) continue;
+      if (box === body || isPageLevel(box)) continue;
       card = box;
       reviews.cards.add(card);
     }
@@ -807,7 +802,7 @@ function listOf(post: Element): { list: Element; card: Element } | null {
   let card = post;
   for (let up = 0; up < LIST_LEVELS; up++) {
     const parent = card.parentElement;
-    if (!parent || isPageLevelBox(parent)) return null;
+    if (!parent || isPageLevel(parent)) return null;
     if (parent.childElementCount >= SHARED_MIN) {
       const shape = cardShape(card);
       let alike = 0;

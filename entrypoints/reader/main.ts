@@ -12,6 +12,7 @@ import { createStructuredReaderInSlices, type StructuredBlock, type StructuredRe
 import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, documentParagraphs, planInSlices, type DocumentParagraph, type PdfUnitSource } from "../../lib/pdf/units";
 import { createPacer, inScope, readingDistance, seedFor, takeBatch, type Pacer } from "../../lib/pdf/readAhead";
+import { LOW_BATTERY, READER_INPUT } from "../../lib/capture/pace";
 import { MIN_WORDS } from "../../lib/dom/text";
 import { pdfFileName, pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
 import { claimPdfBytes } from "../../lib/pdf/handoff";
@@ -665,14 +666,14 @@ async function main(): Promise<void> {
     else readHere();
   });
   // The read-ahead waits for the reader to leave the page alone (lib/pdf/readAhead.ts).
-  for (const type of ["wheel", "scroll", "keydown", "pointerdown", "touchstart"]) {
+  for (const type of READER_INPUT) {
     document.addEventListener(type, () => { lastInput = performance.now(); }, {capture: true, passive: true});
   }
-  // On battery the read-ahead takes half its share; at 20% and falling it stops (where
-  // Chrome's Energy Saver starts holding pages back too).
+  // On battery the read-ahead takes half its share; at LOW_BATTERY and falling it stops, as a
+  // web page's background reading does (lib/capture/pace.ts).
   void (navigator as {getBattery?: () => Promise<{charging: boolean; level: number; addEventListener(type: string, listener: () => void): void}>})
     .getBattery?.().then((battery) => {
-      const read = (): void => { onBattery = !battery.charging; lowBattery = !battery.charging && battery.level <= 0.2; };
+      const read = (): void => { onBattery = !battery.charging; lowBattery = !battery.charging && battery.level <= LOW_BATTERY; };
       read();
       battery.addEventListener("chargingchange", read);
       battery.addEventListener("levelchange", read);

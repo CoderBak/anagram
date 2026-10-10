@@ -128,10 +128,10 @@ export function createPacer(seedMsPerK = SEED_MS_PER_K): Pacer {
 }
 
 /** What the reader does that says the page is being read now: the background waits. */
-const READER_INPUT = ["wheel", "scroll", "keydown", "pointerdown", "touchstart"] as const;
+export const READER_INPUT = ["wheel", "scroll", "keydown", "pointerdown", "touchstart"] as const;
 /** At this charge and falling, the background stops (where Chrome's Energy Saver starts
  *  holding pages back too). */
-const LOW_BATTERY = 0.2;
+export const LOW_BATTERY = 0.2;
 
 /**
  * A web page's background lane, at the pace (lib/capture/orchestrator.ts). The idle prefetch

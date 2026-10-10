@@ -34,7 +34,7 @@ vi.mock("../../lib/capture/scheduler", () => ({createScheduler: (options: {send:
   calls.sends.push(options.send);
   return {enqueue() {}, bumpEpoch() {}, stop() {}, pause() {}, resume() {}, pendingCount: () => 0};
 }}));
-vi.mock("../../lib/capture/observers", () => ({createObservers: () => ({
+vi.mock("../../lib/capture/observers", () => ({PLACE_WAIT_MS: 1000, createObservers: () => ({
   start() {}, stop() {}, observeUnit() {}, observeRoot() {}, dropUnit() {}, reobserve: calls.reobserve, placed: () => true,
 })}));
 vi.mock("../../lib/render/badge", () => ({createBadgeLayer: () => ({

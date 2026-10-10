@@ -1612,8 +1612,8 @@
     "description": "Statistics page: under the headline when words were read but none could be scored."
   },
   "statsCompare30": {
-    "message": "Your average over the last 30 days: $1.",
-    "description": "Statistics page: the AI-generated share over the last thirty days, for comparison. $1 is a percentage."
+    "message": "Over the last 30 days, today included: $1.",
+    "description": "Statistics page: the headline share over all the words of the last thirty days, today included, for comparison. $1 is a percentage."
   },
   "statsColWords": {
     "message": "Words read",

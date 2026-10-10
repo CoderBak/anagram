@@ -29,7 +29,8 @@
 // https://github.com/zotero/structured-document-text (AGPL-3.0).
 import { ACCENT, MARK_NUMBERS, assemble, indexPage, isSpace, mathPagesOf, sameLine, type Box, type Glyph, type Located, type PageIndex, type Piece, type Source } from "./reading";
 import { BARE_NUMBER, lineNumberMarks, mayHoldColumn, type NumberMark, type PageContent } from "./lineNumbers";
-import { SENTENCE_END, vocabularyInSlices, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
+// A paragraph starts as in the reflow: PARA_GAP, INDENT and SHORT_LINE.
+import { EDGE_PERCENTILE, INDENT, PARA_GAP, PITCH_OF_SIZE, SENTENCE_END, SHORT_LINE, vocabularyInSlices, vocabularyOf, type PdfPageText, type ReflowBlock } from "./reflow";
 import { finish, finishInSlices } from "../slices";
 import { append, least, most } from "./arrays";
 
@@ -996,11 +997,6 @@ const DIGIT = /^\p{Nd}$/u;
 const HYPHEN_PIECE = /^[-‐]$/u;
 /** Two glyphs closer than this share of their height are set against each other: no space. */
 const GLYPH_TOUCH = 0.15;
-/** As lib/pdf/reflow.ts: a gap of this many line pitches, an indent of this share of the
- *  size, and a last line this many sizes short of the measure start a paragraph. */
-const PARA_GAP = 1.45;
-const INDENT = 0.5;
-const SHORT_LINE = 2;
 /** A manuscript whose numbered lines end flush right fewer than this share of the time is
  *  set ragged, and there only a line that ends before this share of the measure stopped
  *  short. */
@@ -1385,8 +1381,8 @@ function numberedReadings(readings: (Reading | Marker)[], textAt: (k: number) =>
   const pages = new Map<number, Margins>();
   let flush = 0, all = 0;
   for (const [n, { rows, steps }] of byPage) {
-    const right = percentile(rows.map((r) => r.x1), 0.85);
-    pages.set(n, { left: percentile(rows.map((r) => r.x0), 0.15), right, pitch: steps.length ? percentile(steps, 0.5) : rows[0]!.h * 1.2 });
+    const right = percentile(rows.map((r) => r.x1), 1 - EDGE_PERCENTILE);
+    pages.set(n, { left: percentile(rows.map((r) => r.x0), EDGE_PERCENTILE), right, pitch: steps.length ? percentile(steps, 0.5) : rows[0]!.h * PITCH_OF_SIZE });
     flush += rows.filter((r) => r.x1 >= right - r.h).length;
     all += rows.length;
   }

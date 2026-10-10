@@ -4,7 +4,7 @@ import { localizePage } from "../../lib/ui/localize";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { t, tn } from "../../lib/i18n";
 import { CONTRACT_VERSION, modelDim, type ModelInfo, type ScoreResult } from "../../lib/contract";
-import { countWords, MIN_WORDS } from "../../lib/dom/text";
+import { countWords, MAX_UNIT_TEXT_CHARS, MIN_WORDS } from "../../lib/dom/text";
 import { settings } from "../../lib/settings/settings";
 import { shortTextNote } from "../../lib/render/coverage";
 import { hasLookalikes } from "../../lib/dom/lookalikes";
@@ -22,6 +22,7 @@ const bandRules = document.createElement("style");
 bandRules.textContent = bandColorRules("", "html.dark");
 document.head.append(bandRules);
 const input = document.getElementById("text") as HTMLTextAreaElement;
+input.maxLength = MAX_UNIT_TEXT_CHARS;
 const fileInput = document.getElementById("file") as HTMLInputElement;
 const analyze = document.getElementById("analyze") as HTMLButtonElement;
 const status = document.getElementById("status")!;
@@ -66,7 +67,7 @@ fileInput.addEventListener("change", async () => {
   try {
     const text = new TextDecoder("utf-8", {fatal: true}).decode(await file.arrayBuffer());
     if (seq !== generation) return;
-    if (text.length > 200_000) { status.textContent = t("pasteTooLarge"); return; }
+    if (text.length > MAX_UNIT_TEXT_CHARS) { status.textContent = t("pasteTooLarge"); return; }
     input.value = text; status.textContent = ""; countShown();
   } catch { if (seq === generation) status.textContent = t("pasteFileFailed"); }
 });
@@ -74,7 +75,7 @@ fileInput.addEventListener("change", async () => {
 analyze.addEventListener("click", async () => {
   const text = input.value.trim();
   const seq = ++generation; clearResult();
-  if (text.length > 200_000) { status.textContent = t("pasteTooLarge"); return; }
+  if (text.length > MAX_UNIT_TEXT_CHARS) { status.textContent = t("pasteTooLarge"); return; }
   const words = countWords(text);
   const floor = MIN_WORDS;
   if (words < floor) { status.textContent = t("pasteShort", floor); return; }

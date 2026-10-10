@@ -3,5 +3,12 @@
   "calibration": "editlens-4bucket-cosine(0.03,0.15)",
   "buckets": ["human", "lightly-edited", "heavily-edited", "ai-generated"],
   "languages": ["en"],
-  "limits": { "blocks": 256, "text_chars": 16000, "token_texts": 512, "token_chars": 256000, "id_chars": 64 }
+  "limits": { "blocks": 256, "text_chars": 16000, "token_texts": 512, "token_chars": 256000, "id_chars": 64 },
+  "idle_unload_s": [60, 86400],
+  "language_id": {
+    "path": "lid.176.ftz",
+    "url": "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
+    "size_bytes": 938013,
+    "sha256": "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83"
+  }
 }

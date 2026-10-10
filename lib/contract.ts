@@ -18,6 +18,15 @@ export const CALIBRATION = CONTRACT.calibration;
 export const BUCKET_LABELS: readonly string[] = CONTRACT.buckets;
 export const SUPPORTED_LANGUAGES: readonly string[] = CONTRACT.languages;
 export const CONTRACT_LIMITS = CONTRACT.limits;
+/** fastText's language identifier both engines gate on: where it comes from, its size and hash. */
+export const LANGUAGE_ID = CONTRACT.language_id;
+/** How long an engine left idle keeps its model, in seconds: 0 for always, or from the first
+ *  of these to the second. Both engines and both settings pages take it from here. */
+export const IDLE_UNLOAD_RANGE = CONTRACT.idle_unload_s as [number, number];
+export const IDLE_UNLOAD_RULE = `idle_unload_s must be 0 or an integer from ${IDLE_UNLOAD_RANGE[0]} to ${IDLE_UNLOAD_RANGE[1]}`;
+export function validIdleUnload(seconds: unknown): seconds is number {
+  return Number.isInteger(seconds) && (seconds === 0 || ((seconds as number) >= IDLE_UNLOAD_RANGE[0] && (seconds as number) <= IDLE_UNLOAD_RANGE[1]));
+}
 
 /** A text's tokens counted word by word, in order: each word `alone`, as a pass starts
  *  on it, and `following` a space, as it reads inside a pass (the `tokens` operation). */

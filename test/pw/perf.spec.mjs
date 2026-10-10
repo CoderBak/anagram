@@ -59,6 +59,7 @@ import { test as base, expect } from "./fixtures.mjs";
 import { launchPlain, BADGE_SEL } from "../harness.mjs";
 import { buildTwoColumnPdf, handOverPdf, pdfTabChip } from "../pdf-fixture.mjs";
 import { X_FEED, REDDIT_FEED, scrollSession } from "../perf-feeds.mjs";
+import { presetConfig } from "../stats-fixture.mjs";
 
 const test = base.extend({
   /** A budget: printed with what was measured, and failed softly when it is exceeded. */
@@ -70,8 +71,12 @@ const test = base.extend({
   },
 });
 // No trace: it records the page as it goes, in the page's own time and memory.
-// ANAGRAM_PERF_BUILD=<unpacked build> measures another build against the same budgets.
+// ANAGRAM_PERF_BUILD=<unpacked build> measures another build against the same budgets, and
+// ANAGRAM_PERF_STATS=<preset> (lib/stats/config.ts, "full" the heaviest) with the reading log on.
 test.use({ launch: { viewport: { width: 1100, height: 850 } }, tracing: false, build: process.env.ANAGRAM_PERF_BUILD ?? "test" });
+if (process.env.ANAGRAM_PERF_STATS) {
+  test.beforeEach(async ({ storage }) => { await storage.set({ statsConfig: await presetConfig(process.env.ANAGRAM_PERF_STATS) }); });
+}
 
 /** Collect the main thread's long tasks from before the page's own scripts run. */
 const watchLongTasks = (page) =>

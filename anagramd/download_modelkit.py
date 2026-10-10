@@ -16,11 +16,13 @@ import subprocess
 import threading
 import queue
 from safe_files import is_link, regular_stat, sha256_file
+from runtime_controller import CONTRACT, valid_idle
 
 PIN = Path(__file__).with_name("modelkit.json")
-LID_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
-LID_ENTRY = {"path": "lid.176.ftz", "size_bytes": 938013,
-             "sha256": "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83"}
+# fastText's language identifier, pinned in the engine contract: the browser package carries the
+# same bytes (scripts/webengine.mjs).
+LID_URL = CONTRACT["language_id"]["url"]
+LID_ENTRY = {key: CONTRACT["language_id"][key] for key in ("path", "size_bytes", "sha256")}
 
 
 # Where Hugging Face cannot be reached (mainland China, for one) hf-mirror.com serves the same
@@ -401,8 +403,7 @@ def installed_profile(model_dir: Path) -> str:
     if (not isinstance(saved, dict) or set(saved) != flags | {"schema_version", "idle_unload_s", "model_profile"}
             or type(saved["schema_version"]) is not int or saved["schema_version"] != 1
             or any(type(saved[key]) is not bool for key in flags)
-            or type(saved["idle_unload_s"]) is not int
-            or (saved["idle_unload_s"] != 0 and not 60 <= saved["idle_unload_s"] <= 86400)
+            or not valid_idle(saved["idle_unload_s"])
             or saved["model_profile"] not in ("recommended", "expanded")):
         raise ValueError("Invalid component preferences; reconnect Anagram and choose the model profile explicitly")
     return saved["model_profile"]

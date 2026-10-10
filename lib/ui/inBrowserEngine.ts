@@ -15,6 +15,7 @@ import { browser } from "#imports";
 import { t, tn, type MessageKey } from "../i18n";
 import { formatSize, timeLeft } from "./size";
 import { progressBar } from "./progressBar";
+import { IDLE_CHOICES, POLL_MS, idleUnloadLabel } from "./componentSettings";
 import { requestComponent, type ComponentReply, type ComponentSnapshot } from "../backend/nativeClient";
 import { percentOf, roomShort, setupStage, type SetupStage } from "../backend/engineSetup";
 import { pinnedFiles } from "../webengine/pin";
@@ -108,8 +109,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const controls = element("div", undefined, "component-inline"); controls.hidden = true;
   const idleLabel = element("label", t("componentIdleSetting")); idleLabel.htmlFor = "idleUnload";
   const idleSelect = element("select", undefined, "select"); idleSelect.id = "idleUnload";
-  for (const seconds of [300, 60, 900, 0]) {
-    const option = element("option", seconds ? tn("componentIdleMinutes", seconds / 60) : t("componentIdleNever"));
+  for (const seconds of IDLE_CHOICES) {
+    const option = element("option", idleUnloadLabel(seconds));
     option.value = String(seconds); idleSelect.append(option);
   }
   idleSelect.addEventListener("change", () => run("engine.settings"));
@@ -310,7 +311,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.settings) {
       const value = String(s.settings.idle_unload_s);
       if (![...idleSelect.options].some((o) => o.value === value)) {
-        const option = element("option", s.settings.idle_unload_s ? tn("componentIdleMinutes", s.settings.idle_unload_s / 60) : t("componentIdleNever"));
+        const option = element("option", idleUnloadLabel(s.settings.idle_unload_s));
         option.value = value; idleSelect.append(option);
       }
       idleSelect.value = value;
@@ -322,7 +323,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (timer !== undefined) clearTimeout(timer);
     if (destroyed || document.visibilityState !== "visible") return;
     const busy = stage?.stage === "downloading" || stage?.stage === "loading";
-    timer = setTimeout(() => void poll(), busy ? 1_000 : stage?.stage === "ready" ? 15_000 : 3_000);
+    timer = setTimeout(() => void poll(), busy ? POLL_MS.busy : stage?.stage === "ready" ? POLL_MS.ready : POLL_MS.other);
   }
 
   async function poll(op?: Operation): Promise<void> {

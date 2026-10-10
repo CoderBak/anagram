@@ -271,7 +271,7 @@ test("the statistics page shows what was kept: the share, the four verdicts, kin
   await expect(page.locator("#heroShare")).toHaveText("14%");
   await expect(page.locator("#heroLine")).toHaveText("expected to be AI-generated, of 8,400 words read and scored");
   await expect(page.locator("#heroLegend li")).toHaveText(["Human60%", "Lightly edited18%", "Heavily edited9%", "AI-generated14%"]);
-  await expect(page.locator("#heroCompare")).toHaveText("Your average over the last 30 days: 14%.");
+  await expect(page.locator("#heroCompare")).toHaveText("Over the last 30 days, today included: 14%.");
   await expect(page.locator("#trendCard")).toBeHidden();
   const rows = (id) => page.locator(`#${id} tbody tr`).evaluateAll((trs) => trs.map((tr) => [...tr.cells].slice(0, 3).map((c) => c.textContent)));
   expect(await rows("kindTable")).toEqual([["Feeds", "4,200", "22%"], ["Articles", "6,000", "10%"]]);

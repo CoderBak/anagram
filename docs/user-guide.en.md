@@ -216,7 +216,7 @@ day or once ever, by the chip's word or the most likely verdict, by paragraphs o
 
 When statistics are on, the toolbar menu says how today's reading reads ("Today: 14%
 AI-generated, of 8,400 words scored.") and links to the statistics page: the share and the four
-verdicts for Today, the last 7 or 30 days, a month or any range, against your 30-day average;
+verdicts for Today, the last 7 or 30 days, a month or any range, against the last 30 days;
 the trend day by day; by kind of page, feeds against the rest, by site, by page and by visit,
 where every step was kept with a replay of when each paragraph was on screen; and how much of
 what you read could be scored. **Export…** saves a file of the period, never finer than what

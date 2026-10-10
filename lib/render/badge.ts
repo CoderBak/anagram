@@ -38,6 +38,7 @@ import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
+import { CLIP_MAX_VIEWPORT_SHARE, CLIP_MIN_HIDDEN_PX, NEVER_CLIPPED_TAGS } from "../dom/style";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
 import { distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
 import { levelOf } from "./scale";
@@ -870,14 +871,9 @@ function clippingBoxOf(at: ChildNode): ClipAnchor | null {
   return { box, clipping, hidden: anchor.top >= box.getBoundingClientRect().bottom - 1 };
 }
 
-/** Page-level boxes, the ones lib/dom/style.ts also refuses to call clipped: `body` under
- *  an open modal, an app's own scrolling region, a `<details>` that hides its content by
- *  other means. Hidden text in one of those is layout, never a post behind "see more". */
-const NEVER_CLIPPED_TAGS = new Set(["HTML", "BODY", "MAIN", "DETAILS"]);
-/** A box as tall as the screen is the page's own scrolling region, not a preview of a post. */
-const CLIP_MAX_VIEWPORT_SHARE = 0.9;
-/** Less hidden than this is a shadow, a descender or a sticky row — not a line of text. */
-const CLIP_MIN_HIDDEN_PX = 32;
+// Page-level boxes, boxes as tall as the screen and a few pixels of overflow are never a
+// post's hidden text, here as in lib/dom/style.ts (NEVER_CLIPPED_TAGS, CLIP_MAX_VIEWPORT_SHARE,
+// CLIP_MIN_HIDDEN_PX).
 
 /**
  * Does this box keep text of its own below its bottom edge, where the reader cannot get at
