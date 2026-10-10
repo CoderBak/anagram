@@ -32,6 +32,8 @@ const browser = await launchPlain({ headless: true });
 // page as it opens, since a page already looping answers no new one; a pause interrupts it.
 const HANG_MS = Number(process.env.ANAGRAM_UNIT_HANG_MS ?? 5 * 60_000);
 const debuggers = new Map();
+/** What a section that runs in steps is doing now, for the watchdog. */
+let step = "";
 const openPage = browser.newPage.bind(browser);
 browser.newPage = async (...args) => {
   const opened = (new Error().stack ?? "").split("\n").slice(2).find((l) => /test[\\/]unit/.test(l))?.trim() ?? "?";
@@ -47,7 +49,7 @@ setTimeout(async () => {
   const within = (promise, ms) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(undefined), ms))]);
   let last = "no result yet";
   try { last = `${results.length} results, the last "${results.at(-1)?.name}"`; } catch { /* before the first */ }
-  console.error(`test/unit.mjs: still running after ${Math.round(HANG_MS / 1000)} s; ${last}. Each open page:`);
+  console.error(`test/unit.mjs: still running after ${Math.round(HANG_MS / 1000)} s; ${last}${step ? `; at "${step}"` : ""}. Each open page:`);
   const reports = await Promise.all([...debuggers].filter(([p]) => !p.isClosed()).map(async ([p, { cdp, scripts, opened }]) => {
     const lines = [`  ${p.url().slice(0, 100)}, opened at ${opened.split(/[\\/]/).pop()}`];
     const state = await within(cdp.send("Runtime.evaluate", { returnByValue: true, expression: "({ visibility: document.visibilityState, focus: document.hasFocus() })" }), 5000);
@@ -2775,42 +2777,74 @@ const results = await page.evaluate(() => {
   });
   await hp.close();
 }
+// Two pages, a step an evaluate each: on the Windows runner one of them stopped answering at
+// all, and the watchdog says which step (`step`).
 {
   const hp = await browser.newPage();
   await hp.setContent("<!doctype html><html><body><p id='p'>a paragraph</p></body></html>");
   await hp.addScriptTag({ path: BUNDLE });
-  const r = await hp.evaluate(async () => {
-    const drains = [];
-    const observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes, removed, quiet) => { drains.push({ nodes, removed: removed.length, quiet: quiet.size }); } });
-    const drained = async () => {
-      const t0 = performance.now();
-      while (drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
-      return drains.length > 0;
-    };
-    // Shadow roots nested past the walk's limit (not much past it: Chromium on the Windows runner
-    // stops answering before 3,000), there before the observers start, and the deepest
-    // changed afterwards: it is watched like any other.
-    let at = document.body;
-    for (let i = 0; i < PW.MAX_WALK_DEPTH + 64; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" });
-    const deepest = at.appendChild(document.createElement("span"));
-    observers.start();
-    await new Promise((done) => setTimeout(done, 300));
-    deepest.textContent = "changed in the deepest shadow root";
-    if (!(await drained())) { observers.stop(); return { deep: false, storm: null, stalled: "no drain in 10 s after the deepest root changed" }; }
-    const deep = drains.splice(0).some((d) => d.nodes.some((n) => deepest.contains(n) || n === deepest));
-    // A storm: thirty thousand nodes added one by one, then thrown away, between two drains.
-    // The observers hold none of them: the drain reads the page again instead.
-    for (let i = 0; i < 30000; i++) document.body.appendChild(document.createElement("i")).textContent = String(i);
-    for (const el of [...document.body.querySelectorAll("i")]) el.remove();
-    if (!(await drained())) { observers.stop(); return { deep, storm: null, stalled: "no drain in 10 s after the storm" }; }
-    observers.stop();
-    const storm = drains[0];
-    return { deep, storm: { nodes: storm.nodes.map((n) => n.nodeName), removed: storm.removed, quiet: storm.quiet } };
+  const watch = () => hp.evaluate(() => {
+    window.drains = [];
+    window.observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes, removed, quiet) => { window.drains.push({ nodes, removed: removed.length, quiet: quiet.size }); } });
   });
+  const drained = () => hp.evaluate(async () => {
+    const t0 = performance.now();
+    while (window.drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
+    return window.drains.length > 0;
+  });
+  step = "nested shadow roots: built, and the observers started";
+  await watch();
+  // Shadow roots nested past the walk's limit (not much past it: Chromium on the Windows runner
+  // stops answering before 3,000), there before the observers start, and the deepest
+  // changed afterwards: it is watched like any other.
+  await hp.evaluate(async (levels) => {
+    let at = document.body;
+    for (let i = 0; i < levels; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" });
+    window.deepest = at.appendChild(document.createElement("span"));
+    window.observers.start();
+    await new Promise((done) => setTimeout(done, 300));
+  }, 512 + 64);
+  step = "nested shadow roots: the deepest changed";
+  await hp.evaluate(() => { window.deepest.textContent = "changed in the deepest shadow root"; });
+  step = "nested shadow roots: waiting for the drain";
+  const reached = await drained();
+  const deep = reached && await hp.evaluate(() => window.drains.some((d) => d.nodes.some((n) => window.deepest.contains(n) || n === window.deepest)));
+  await hp.evaluate(() => window.observers.stop());
   results.push({
-    name: "shadow roots nested 576 deep are all watched; a storm past ten thousand changed nodes is handed over as the whole page, none of them held",
-    ok: r.deep && JSON.stringify(r.storm) === JSON.stringify({ nodes: ["BODY"], removed: 0, quiet: 0 }),
-    note: JSON.stringify(r),
+    name: "shadow roots nested 576 deep are all watched",
+    ok: deep,
+    note: reached ? "" : "no drain in 10 s after the deepest root changed",
+  });
+  await hp.close();
+}
+{
+  const hp = await browser.newPage();
+  await hp.setContent("<!doctype html><html><body><p id='p'>a paragraph</p></body></html>");
+  await hp.addScriptTag({ path: BUNDLE });
+  await hp.evaluate(() => {
+    window.drains = [];
+    window.observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes, removed, quiet) => { window.drains.push({ nodes, removed: removed.length, quiet: quiet.size }); } });
+    window.observers.start();
+  });
+  // A storm: thirty thousand nodes added one by one, then thrown away, between two drains.
+  // The observers hold none of them: the drain reads the page again instead.
+  step = "a storm: thirty thousand nodes added";
+  await hp.evaluate(() => { for (let i = 0; i < 30000; i++) document.body.appendChild(document.createElement("i")).textContent = String(i); });
+  step = "a storm: thirty thousand nodes removed";
+  await hp.evaluate(() => { for (const el of [...document.body.querySelectorAll("i")]) el.remove(); });
+  step = "a storm: waiting for the drain";
+  const storm = await hp.evaluate(async () => {
+    const t0 = performance.now();
+    while (window.drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
+    window.observers.stop();
+    const first = window.drains[0];
+    return first ? { nodes: first.nodes.map((n) => n.nodeName), removed: first.removed, quiet: first.quiet } : null;
+  });
+  step = "";
+  results.push({
+    name: "a storm past ten thousand changed nodes is handed over as the whole page, none of them held",
+    ok: JSON.stringify(storm) === JSON.stringify({ nodes: ["BODY"], removed: 0, quiet: 0 }),
+    note: storm ? JSON.stringify(storm) : "no drain in 10 s after the storm",
   });
   await hp.close();
 }
