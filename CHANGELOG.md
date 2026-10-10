@@ -5,7 +5,9 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.9.0] — 2026-10-10
+
+The first signed release: reading statistics kept on this computer only, releases signed with Sigstore and installed only with their signature, PDF.js 6, and less of a busy page's time.
 
 ### Added
 
