@@ -31,11 +31,20 @@ const NOTE = /so far|read as you scroll/;
 
 /** The menu's report, its note on how much of the document is read, and its page action. */
 async function menuState(menu) {
-  const shown = await menuReport(menu).catch(() => null);
-  const action = await menu.evaluate(() => {
+  const actionOf = () => menu.evaluate(() => {
     const button = document.getElementById("pageAction");
     return button && !button.hidden ? button.textContent : null;
   }).catch(() => null);
+  // The note and the button are read one after the other, and the menu can be redrawn between
+  // the two (it draws both from one report): a reading counts when the button read before the
+  // note is the one read after it.
+  let shown, action;
+  for (let tries = 0; tries < 10; tries++) {
+    const before = await actionOf();
+    shown = await menuReport(menu).catch(() => null);
+    action = await actionOf();
+    if (action === before) break;
+  }
   return {
     read: shown?.bands.reduce((a, b) => a + b, 0) ?? 0,
     scope: shown?.notes.find((n) => NOTE.test(n)) ?? null,
