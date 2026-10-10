@@ -279,8 +279,10 @@ describe("structured reading of a hostile structure", () => {
     const began = performance.now();
     const blocks = createStructuredReader(s).blocks([{ page: 1, width: 612, height: HEIGHT, items }]);
     expect(blocks).toHaveLength(1);
-    expect(performance.now() - began).toBeLessThan(5000);
-  });
+    // 0.4 s alone, 1.9 s on a CI runner: the bound is for a reading that grows with the square
+    // of the runs, minutes here.
+    expect(performance.now() - began).toBeLessThan(15_000);
+  }, 30_000);
 
   it("a paragraph of 300,000 characters, carried on from the one before, and blocks nested 100,000 deep are read", () => {
     let deep: SdtBlock = { type: "paragraph", content: [{ text: "the deepest text" }] };
@@ -304,8 +306,10 @@ describe("structured reading of a hostile structure", () => {
     const began = performance.now();
     const blocks = readReflowed([{ page: 1, width: 612, height: HEIGHT, items }]);
     expect(blocks.length).toBeGreaterThan(0);
-    expect(performance.now() - began).toBeLessThan(10_000);
-  }, 15_000); // past its own bound: vitest's 5 s would fail it first on a busy machine
+    // 2 s alone on a laptop, 10 s on a CI runner beside the other files: the bound is for a reflow
+    // that grows with the square of the runs, which would take hours here.
+    expect(performance.now() - began).toBeLessThan(30_000);
+  }, 45_000);
 
   it("made in slices, reads as made at once", async () => {
     await fc.assert(fc.asyncProperty(structure, pages, async (s, given) => {

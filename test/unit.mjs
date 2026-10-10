@@ -34,25 +34,35 @@ const HANG_MS = Number(process.env.ANAGRAM_UNIT_HANG_MS ?? 5 * 60_000);
 const debuggers = new Map();
 const openPage = browser.newPage.bind(browser);
 browser.newPage = async (...args) => {
+  const opened = (new Error().stack ?? "").split("\n").slice(2).find((l) => /test[\\/]unit/.test(l))?.trim() ?? "?";
   const p = await openPage(...args);
   const cdp = await p.context().newCDPSession(p);
   const scripts = new Map();
   cdp.on("Debugger.scriptParsed", (e) => scripts.set(e.scriptId, e.url));
   await cdp.send("Debugger.enable");
-  debuggers.set(p, { cdp, scripts });
+  debuggers.set(p, { cdp, scripts, opened });
   return p;
 };
 setTimeout(async () => {
-  console.error(`test/unit.mjs: still running after ${Math.round(HANG_MS / 1000)} s. Where each page's script is:`);
-  for (const [p, { cdp, scripts }] of debuggers) {
-    if (p.isClosed()) continue;
+  const within = (promise, ms) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(undefined), ms))]);
+  let last = "no result yet";
+  try { last = `${results.length} results, the last "${results.at(-1)?.name}"`; } catch { /* before the first */ }
+  console.error(`test/unit.mjs: still running after ${Math.round(HANG_MS / 1000)} s; ${last}. Each open page:`);
+  const reports = await Promise.all([...debuggers].filter(([p]) => !p.isClosed()).map(async ([p, { cdp, scripts, opened }]) => {
+    const lines = [`  ${p.url().slice(0, 100)}, opened at ${opened.split(/[\\/]/).pop()}`];
+    const state = await within(cdp.send("Runtime.evaluate", { returnByValue: true, expression: "({ visibility: document.visibilityState, focus: document.hasFocus() })" }), 5000);
+    const timer = await within(cdp.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: "new Promise((r) => setTimeout(() => r(true), 10))" }), 5000);
+    const frame = await within(cdp.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: "new Promise((r) => requestAnimationFrame(() => r(true)))" }), 5000);
+    lines.push(`    ${JSON.stringify(state?.result?.value ?? "no answer")}; a 10 ms timer ${timer ? "fires" : "does not fire in 5 s"}; an animation frame ${frame ? "comes" : "does not come in 5 s"}`);
     const paused = new Promise((resolve) => cdp.once("Debugger.paused", resolve));
-    cdp.send("Debugger.pause").catch(() => undefined);
-    const stop = await Promise.race([paused, new Promise((resolve) => setTimeout(resolve, 3000))]);
-    console.error(`  ${p.url().slice(0, 100)}${stop ? "" : ": running no script"}`);
+    cdp.send("Debugger.pause").catch((e) => lines.push(`    pause: ${e.message}`));
+    const stop = await within(paused, 65_000); // past a hidden page's one wake-up a minute
+    if (!stop) lines.push("    no script ran in 65 s");
     for (const f of stop?.callFrames.slice(0, 15) ?? [])
-      console.error(`    ${f.functionName || "(anonymous)"}  ${(scripts.get(f.location.scriptId) ?? "").split(/[\\/]/).pop()}:${f.location.lineNumber + 1}`);
-  }
+      lines.push(`    ${f.functionName || "(anonymous)"}  ${(scripts.get(f.location.scriptId) ?? "").split(/[\\/]/).pop()}:${f.location.lineNumber + 1}`);
+    return lines.join("\n");
+  }));
+  console.error(reports.join("\n"));
   process.exit(1);
 }, HANG_MS).unref();
 const page = await browser.newPage();
@@ -2625,7 +2635,9 @@ const results = await page.evaluate(() => {
     });
     observers.start();
     document.body.append(document.createElement("p"));
-    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    const t0 = performance.now();
+    while (drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
+    if (drains.length === 0) { observers.stop(); return { waited: null, stalled: "no drain in 10 s after a paragraph was added" }; }
     document.body.append(document.createElement("p"));
     while (drains.length === 1 && performance.now() - drains[0] < 8000) await new Promise((done) => setTimeout(done, 50));
     observers.stop();
@@ -2768,6 +2780,11 @@ const results = await page.evaluate(() => {
   const r = await hp.evaluate(async () => {
     const drains = [];
     const observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes, removed, quiet) => { drains.push({ nodes, removed: removed.length, quiet: quiet.size }); } });
+    const drained = async () => {
+      const t0 = performance.now();
+      while (drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
+      return drains.length > 0;
+    };
     // Shadow roots nested 2,000 deep, there before the observers start, and the deepest
     // changed afterwards: it is watched like any other.
     let at = document.body;
@@ -2776,13 +2793,13 @@ const results = await page.evaluate(() => {
     observers.start();
     await new Promise((done) => setTimeout(done, 300));
     deepest.textContent = "changed in the deepest shadow root";
-    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    if (!(await drained())) { observers.stop(); return { deep: false, storm: null, stalled: "no drain in 10 s after the deepest root changed" }; }
     const deep = drains.splice(0).some((d) => d.nodes.some((n) => deepest.contains(n) || n === deepest));
     // A storm: thirty thousand nodes added one by one, then thrown away, between two drains.
     // The observers hold none of them: the drain reads the page again instead.
     for (let i = 0; i < 30000; i++) document.body.appendChild(document.createElement("i")).textContent = String(i);
     for (const el of [...document.body.querySelectorAll("i")]) el.remove();
-    while (drains.length === 0) await new Promise((done) => setTimeout(done, 50));
+    if (!(await drained())) { observers.stop(); return { deep, storm: null, stalled: "no drain in 10 s after the storm" }; }
     observers.stop();
     const storm = drains[0];
     return { deep, storm: { nodes: storm.nodes.map((n) => n.nodeName), removed: storm.removed, quiet: storm.quiet } };
