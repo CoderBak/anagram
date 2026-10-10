@@ -38,6 +38,10 @@ export const VIEWER_OPTIONS = {
   // (lib/pdf/extract.ts fontNameOf, reading.ts isMathFont). It keeps loaded fonts through the
   // viewer's idle cleanup too, so a page read later still names them.
   fontExtraProperties: true,
+  // PDF.js 6 asks for a WebGPU device with every document, for the rare mesh-shaded fill it can
+  // draw faster on one; the canvas draws it the same. A reader needs no GPU device a tab (and a
+  // machine without a GPU logs "No available adapters." for each).
+  enableWebGPU: false,
   enableXfa: false, annotationEditorMode: -1, enableSignatureEditor: false,
   enableComment: false, enableMerge: false, enableSplitMerge: false,
   externalLinkTarget: 2, externalLinkRel: "noopener noreferrer",

@@ -53,6 +53,7 @@ The first signed release: reading statistics kept on this computer only, release
 - On a feed, the posts are no longer recognised all over again at each change of the page — a class on the post entering view, a counter, a "3 hr. ago": what a change can reach is worked out anew and the rest is kept, and the answers are those a reading of the whole page gives. On a Reddit-like feed of 650 posts, recognising posts took 80 ms a minute rather than 331, the content script 18% less of the page's time, and each reading after a change 21 ms rather than 28.5, so new posts are read sooner.
 - Each paragraph is read for less: its words are counted and the test for a phrase said over and over made in one pass, and the tests for machine symbols and for lists of names cost less. A page of 3,000 paragraphs is first read in about half the time (75 ms rather than 160 on an M4); what is read is the same.
 - The PDF reader's own reading, used where Zotero's structure is not (past 2,500 pages, or with it switched off), keeps the lines of a paragraph together where a formula or a reference mark sets them a little apart: two runs share a line within 0.7 of their size, not 0.55. On the PDF benchmark it splits a third fewer paragraphs in the middle (paragraph boundaries 90.8 → 92.2% F1 on the papers it was tuned on, 91.1 → 92.0% on those held out), and reads as much.
+- The PDF reader no longer asks the browser for a WebGPU device with every document it opens: PDF.js 6 wanted one for the rare mesh-shaded fill, which the canvas draws the same.
 
 ### Security
 
@@ -73,6 +74,7 @@ The first signed release: reading statistics kept on this computer only, release
 
 ### Fixed
 
+- The setup page's and Settings' engine buttons no longer fade out and back once a second while a download runs: each status check disabled them, as only something the reader asked for should. What is clicked during a check runs when it is back.
 - On a slow processor, a long paragraph no longer comes back Unavailable for taking too long: the engine is given a long paragraph's windows a few at a time where it is slow, each batch about ten seconds of its time at its measured pace, rather than as much as 6,000 characters at once, which on a computer five times slower than an M4's processor took the whole 30 seconds a request has.
 - On a single-page site, moving to another route cut off what the page had in flight: Chrome reports a route change (`history.pushState`) as the tab loading, and the worker ended the page's session then, refusing a batch already sent. A tab's sessions now end when a new document commits, a moment after it.
 - On an engine that scores slowly (a processor), a paragraph could come back Unavailable although the engine was working: the 30 s an engine is given to answer was counted from the moment a batch was sent, and a batch waits behind the others the engine has, which it scores one at a time; four batches of ten seconds each failed the fourth. A batch's time now starts at its turn. The local engine no longer drops a batch that waited more than 30 s for its turn either.
