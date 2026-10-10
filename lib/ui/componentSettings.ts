@@ -139,7 +139,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const cancelConfirm = makeButton("buttonCancel", () => dialog.close());
   const acceptConfirm = makeButton("buttonCancel", () => {
     const op = confirming; dialog.close();
-    if (op && snapshot && !pending && !componentBusy(snapshot)) run(op);
+    if (op && snapshot && !acting && !componentBusy(snapshot)) run(op);
   });
   dialogActions.append(cancelConfirm, acceptConfirm); dialog.append(dialogTitle, dialogText, dialogActions);
   host.replaceChildren(summary, extensionUpdate, install, barRow, progressText, error, details, controls, dialog);
@@ -147,7 +147,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let snapshot: ComponentSnapshot | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
-  let destroyed = false, pending = false, everConnected = false, pausing = false, retryable = false;
+  // `pending`: a request is out; `acting`: it is one the reader asked for. Only an action
+  // disables the buttons: a status read every second did, and they faded out and back each time.
+  let destroyed = false, pending = false, acting = false, everConnected = false, pausing = false, retryable = false;
+  /** What the reader asked for while a status read was out: it runs when the read is back. */
+  let queued: Operation | "retry" | undefined;
   /** The worker gave up on an engine that kept dying while it scored (lib/backend/nativeTransport.ts):
    *  the component may say it is ready, and that is not the whole story. */
   let crashed = false;
@@ -182,7 +186,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }).catch(() => { intro.textContent = t("componentUnsupportedPlatform"); commandBox.hidden = installActions.hidden = releaseNotice.hidden = true; });
 
   function confirm(op: "models.delete" | "component.uninstall"): void {
-    if (!snapshot || pending || componentBusy(snapshot)) return;
+    if (!snapshot || acting || componentBusy(snapshot)) return;
     confirming = op;
     const deleting = op === "models.delete";
     dialogTitle.textContent = t(deleting ? "componentDeleteModels" : "componentUninstall");
@@ -211,13 +215,13 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     const action = terminal ? null : primaryAction(s);
     primary.hidden = !action;
     if (action) { primary.textContent = t(action[0]); primaryOp = action[1]; }
-    primary.disabled = pending || (primaryOp === "models.pause" && pausing);
-    idleSelect.disabled = pending || busy || !s;
+    primary.disabled = acting || (primaryOp === "models.pause" && pausing);
+    idleSelect.disabled = acting || busy || !s;
     stop.hidden = !s || !["loading", "benchmarking", "ready", "idle"].includes(s.state);
     update.hidden = removeModels.hidden = uninstall.hidden = !s;
-    update.disabled = uninstall.disabled = pending || busy;
-    removeModels.disabled = pending || busy || !s || s.storage.models_bytes === 0;
-    stop.disabled = pending || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
+    update.disabled = uninstall.disabled = acting || busy;
+    removeModels.disabled = acting || busy || !s || s.storage.models_bytes === 0;
+    stop.disabled = acting || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
     finishRemoval.hidden = !terminal; finishRemoval.disabled = removingExtension;
     if (crashAction) crashAction.hidden = !crashed || terminal;
     // Settings only: the controls in one line, with the engine switch beside them.
@@ -302,7 +306,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   async function poll(op?: Operation): Promise<void> {
     if (destroyed || pending || (!op && document.visibilityState !== "visible")) return;
-    pending = true; buttons();
+    pending = true; acting = op !== undefined; buttons();
     const ac = new AbortController(); controller = ac;
     try {
       const payload = op === "engine.settings" ? {idle_unload_s: Number(idleSelect.value)} : op === "models.delete" || op === "component.uninstall" ? {confirm: true}
@@ -322,7 +326,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
         paint(reply);
       }
     } catch { if (!destroyed && !ac.signal.aborted) paint({ kind: "unavailable" }); }
-    finally { pending = false; controller = undefined; buttons(); schedule(); }
+    finally {
+      pending = acting = false; controller = undefined; buttons();
+      const next = queued; queued = undefined;
+      if (next === "retry") { if (!destroyed) void retryEngine(); } else if (next && !destroyed) run(next); else schedule();
+    }
   }
 
   async function engineCrashed(): Promise<boolean> {
@@ -334,15 +342,17 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   /** Retry: the worker may start the engine again (a probe is a Retry), then read it all again. */
   async function retryEngine(): Promise<void> {
-    if (pending || destroyed) return;
-    pending = true; buttons();
+    if (destroyed) return;
+    if (pending) { queued = "retry"; return; }
+    pending = acting = true; buttons();
     try { await browser.runtime.sendMessage({action: ACTIONS.GET_BACKEND_STATUS, probe: true}); } catch { /* the poll says */ }
-    pending = false;
+    pending = acting = false;
     run();
   }
 
   function run(op?: Operation): void {
-    if (pending || destroyed) return;
+    if (destroyed) return;
+    if (pending) { if (op) queued = op; return; }
     if (timer !== undefined) clearTimeout(timer);
     actionError = actionDetail = "";
     if (op === "component.uninstall") awaitingUninstall = true;

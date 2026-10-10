@@ -27,6 +27,34 @@ buildSync({ entryPoints: [join(__dirname, "unit-entry.ts")], bundle: true, forma
   define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify("1") } });
 
 const browser = await launchPlain({ headless: true });
+// The suite takes a minute. Past this it has hung, and nothing is printed until the end: say
+// where each page's script is instead of waiting for CI's limit. A debugger is attached to every
+// page as it opens, since a page already looping answers no new one; a pause interrupts it.
+const HANG_MS = Number(process.env.ANAGRAM_UNIT_HANG_MS ?? 5 * 60_000);
+const debuggers = new Map();
+const openPage = browser.newPage.bind(browser);
+browser.newPage = async (...args) => {
+  const p = await openPage(...args);
+  const cdp = await p.context().newCDPSession(p);
+  const scripts = new Map();
+  cdp.on("Debugger.scriptParsed", (e) => scripts.set(e.scriptId, e.url));
+  await cdp.send("Debugger.enable");
+  debuggers.set(p, { cdp, scripts });
+  return p;
+};
+setTimeout(async () => {
+  console.error(`test/unit.mjs: still running after ${Math.round(HANG_MS / 1000)} s. Where each page's script is:`);
+  for (const [p, { cdp, scripts }] of debuggers) {
+    if (p.isClosed()) continue;
+    const paused = new Promise((resolve) => cdp.once("Debugger.paused", resolve));
+    cdp.send("Debugger.pause").catch(() => undefined);
+    const stop = await Promise.race([paused, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    console.error(`  ${p.url().slice(0, 100)}${stop ? "" : ": running no script"}`);
+    for (const f of stop?.callFrames.slice(0, 15) ?? [])
+      console.error(`    ${f.functionName || "(anonymous)"}  ${(scripts.get(f.location.scriptId) ?? "").split(/[\\/]/).pop()}:${f.location.lineNumber + 1}`);
+  }
+  process.exit(1);
+}, HANG_MS).unref();
 const page = await browser.newPage();
 await page.setContent("<!doctype html><html><body></body></html>");
 await page.addScriptTag({ path: BUNDLE });

@@ -132,7 +132,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let stage: SetupStage | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
-  let destroyed = false, pending = false, checking = false, everConnected = false, crashed = false;
+  // `pending`: a request is out; `acting`: it is one the reader asked for, and only that
+  // disables the buttons (not the status read every second).
+  let destroyed = false, pending = false, acting = false, checking = false, everConnected = false, crashed = false;
   /** Setup cannot start: the browser's storage estimate leaves less room than the download needs. */
   let noRoom: number | null = null;
   /** Not set up: whether the browser asks sites to save data and the room was looked at, which
@@ -141,7 +143,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let actionError = "", actionDetail = "";
   let confirming: "cancel" | "delete" | undefined;
   /** An operation asked for while a status read was out: it goes as soon as that is back. */
-  let queued: Operation | undefined;
+  let queued: Operation | "retry" | undefined;
   const speed = new Speedometer();
 
   /** What a download has put on disk so far: the engine counts its storage when a file
@@ -154,7 +156,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }
 
   function confirm(what: "cancel" | "delete"): void {
-    if (!snapshot || pending) return;
+    if (!snapshot || acting) return;
     confirming = what;
     const bytes = what === "cancel" ? downloadedBytes() : snapshot.storage.models_bytes;
     dialogTitle.textContent = t(what === "cancel" ? "engineCancelDownload" : "componentDeleteModels");
@@ -166,7 +168,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   /** Set up, Resume and Retry: the room on disk first, then the download. */
   function download(): void {
-    if (pending || checking) return;
+    if (acting || checking) return;
     checking = true; paintButtons();
     void roomNeeded().then((room) => {
       checking = false;
@@ -228,7 +230,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     // switch (`extra`) stays whatever the stage.
     removeModel.hidden = idleField.hidden = crashed || !modelOnDisk;
     controls.hidden = !inSettings;
-    primary.disabled = cancel.disabled = removeModel.disabled = idleSelect.disabled = pending || checking;
+    primary.disabled = cancel.disabled = removeModel.disabled = idleSelect.disabled = acting || checking;
     barRow.hidden = bar.el.hidden && primary.hidden && cancel.hidden;
   }
 
@@ -328,7 +330,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   async function poll(op?: Operation): Promise<void> {
     if (destroyed || pending || (!op && document.visibilityState !== "visible")) return;
-    pending = true; paintButtons();
+    pending = true; acting = op !== undefined; paintButtons();
     const ac = new AbortController(); controller = ac;
     try {
       const payload = op === "engine.settings" ? { idle_unload_s: Number(idleSelect.value) } : op === "models.delete" ? { confirm: true } : undefined;
@@ -343,9 +345,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       } else paint(reply);
     } catch { if (!destroyed && !ac.signal.aborted) paint({ kind: "unavailable" }); }
     finally {
-      pending = false; controller = undefined; paintButtons();
+      pending = acting = false; controller = undefined; paintButtons();
       const next = queued; queued = undefined;
-      if (next && !destroyed) run(next); else schedule();
+      if (next === "retry") { if (!destroyed) void retryEngine(); } else if (next && !destroyed) run(next); else schedule();
     }
   }
 
@@ -358,17 +360,18 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   /** Retry: the worker may start the engine again (a probe is a Retry), then read it all again. */
   async function retryEngine(): Promise<void> {
-    if (pending || destroyed) return;
-    pending = true; paintButtons();
+    if (destroyed) return;
+    if (pending) { queued = "retry"; return; }
+    pending = acting = true; paintButtons();
     try { await browser.runtime.sendMessage({ action: ACTIONS.GET_BACKEND_STATUS, probe: true }); } catch { /* the poll says */ }
-    pending = false;
+    pending = acting = false;
     run();
   }
 
   function run(op?: Operation): void {
     if (destroyed) return;
-    // The confirmation's button stays live while the page reads the status: what it asked
-    // for waits for the read instead of being dropped.
+    // The buttons stay live while the page reads the status: what they ask for waits for
+    // the read instead of being dropped.
     if (pending) { if (op) queued = op; return; }
     if (timer !== undefined) clearTimeout(timer);
     actionError = actionDetail = "";

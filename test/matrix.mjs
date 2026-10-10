@@ -10,7 +10,6 @@
 //   shift      showing the chips grows no paragraph by more than one line
 //   inside     no chip sticks out of the block it annotates
 //   card       the detail card opens (hover, or tap on touch) fully inside the viewport
-//   ball       the floating ball is inside the viewport and on top; its panel opens inside
 //   pages      the options, onboarding and PDF reader pages fit the width, no side-scroll
 //   errors     the extension logs no console errors
 //
@@ -106,8 +105,13 @@ function measure(sel) {
   };
 }
 
-const clickFab = (page) =>
-  page.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector("button.fab")?.click());
+/** What the toolbar's show/hide control and its shortcut send the page: every chip hides, or
+ *  shows again. */
+const toggleChips = (context, page) =>
+  context.serviceWorkers()[0].evaluate(async (url) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
+    if (tab?.id != null) await chrome.tabs.sendMessage(tab.id, { action: "toggleOverlay" }).catch(() => undefined);
+  }, page.url());
 
 /** One profile, once more if the BROWSER died under it (a crashed or killed Chromium on a
  *  loaded CI runner says nothing about the extension). A failed assertion is never retried,
@@ -145,32 +149,29 @@ async function attemptProfile(profile) {
 
     // ---- chips / overflow / shift / inside ------------------------------------------
     const shown = await page.evaluate(measure, BADGE_SEL);
-    await clickFab(page);
+    // The same blocks measured with the chips hidden (`hidden` sees no chips, so no blocks).
+    await page.evaluate((sel) => {
+      const blockOf = (el) => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const d = getComputedStyle(p).display;
+          if (!d.startsWith("inline") && d !== "contents") return p;
+        }
+        return document.body;
+      };
+      window.__matrixBlocks = [...new Set([...document.querySelectorAll(sel)].map(blockOf))];
+    }, BADGE_SEL);
+    await toggleChips(context, page);
     await page.waitForTimeout(350);
     const hidden = await page.evaluate(measure, BADGE_SEL);
-    await clickFab(page);
+    const bare = await page.evaluate(() => window.__matrixBlocks.map((b) => b.getBoundingClientRect().height));
+    await toggleChips(context, page);
     await page.waitForTimeout(350);
 
-    check("chips", shown.chips >= 12 && shown.pending === 0, { chips: shown.chips, pending: shown.pending });
+    check("chips", shown.chips >= 12 && shown.pending === 0 && hidden.chips === 0, { chips: shown.chips, pending: shown.pending, whileHidden: hidden.chips });
     check("overflow", shown.scrollWidth <= Math.max(hidden.scrollWidth, shown.clientWidth) + 1, { shown: shown.scrollWidth, hidden: hidden.scrollWidth, width: shown.clientWidth });
-    // `hidden` measured zero visible hosts, so its block list is empty — compare by
-    // re-measuring the same blocks with the chips hidden.
     const grown = await page.evaluate(
-      async ({ sel, before }) => {
-        const fab = document.getElementById("anagram-fab")?.shadowRoot?.querySelector("button.fab");
-        const blockOf = (el) => {
-          for (let p = el.parentElement; p; p = p.parentElement) {
-            const d = getComputedStyle(p).display;
-            if (!d.startsWith("inline") && d !== "contents") return p;
-          }
-          return document.body;
-        };
-        const blocks = [...new Set([...document.querySelectorAll(sel)].map(blockOf))];
-        fab?.click();
-        await new Promise((r) => setTimeout(r, 300));
-        const bare = blocks.map((b) => b.getBoundingClientRect().height);
-        fab?.click();
-        await new Promise((r) => setTimeout(r, 300));
+      ({ before, bare }) => {
+        const blocks = window.__matrixBlocks;
         const out = [];
         blocks.forEach((b, i) => {
           const m = before[i];
@@ -180,7 +181,7 @@ async function attemptProfile(profile) {
         });
         return out;
       },
-      { sel: BADGE_SEL, before: shown.heights },
+      { before: shown.heights, bare },
     );
     check("shift", grown.length === 0, grown.slice(0, 3).join(" | "));
     check("inside", shown.outside.length === 0, shown.outside.slice(0, 3).join(" | "));
@@ -223,47 +224,6 @@ async function attemptProfile(profile) {
     }
     check("card", cardsOk, cardNotes.slice(0, 2).join(" | "));
 
-    // ---- the ball and its panel --------------------------------------------------------
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const ball = page.locator("#anagram-fab .fab").first();
-    if (!launch.hasTouch) await ball.hover({ timeout: 5000 }).catch(() => {}); // untuck
-    await page.waitForTimeout(400);
-    const fab = await page.evaluate(() => {
-      const host = document.getElementById("anagram-fab");
-      const btn = host?.shadowRoot?.querySelector("button.fab");
-      if (!btn) return null;
-      const de = document.documentElement;
-      const r = btn.getBoundingClientRect();
-      const cx = Math.min(Math.max(r.left + r.width / 2, 1), de.clientWidth - 1);
-      const cy = Math.min(Math.max(r.top + r.height / 2, 1), de.clientHeight - 1);
-      // A tucked ball hangs half off the edge by design; at least half of it must be visible.
-      const visibleW = Math.min(r.right, de.clientWidth) - Math.max(r.left, 0);
-      return {
-        onTop: document.elementFromPoint(cx, cy) === host,
-        inView: visibleW >= r.width / 2 - 1 && r.top >= 0 && r.bottom <= de.clientHeight + 0.5,
-        rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
-      };
-    });
-    const panel = await page.evaluate(async () => {
-      const sr = document.getElementById("anagram-fab")?.shadowRoot;
-      sr?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await new Promise((r) => setTimeout(r, 450));
-      const p = sr?.querySelector(".panel");
-      if (!p) return null;
-      const de = document.documentElement;
-      const r = p.getBoundingClientRect();
-      return {
-        open: p.classList.contains("open"),
-        items: p.querySelectorAll(".pitem").length,
-        fits: r.left >= -0.5 && r.top >= -0.5 && r.right <= de.clientWidth + 0.5 && r.bottom <= de.clientHeight + 0.5,
-        rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
-        view: [de.clientWidth, de.clientHeight],
-      };
-    });
-    await page.screenshot({ path: artifact(`matrix-${name}-panel.png`) }).catch(() => {});
-    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-    check("ball", !!fab && fab.onTop && fab.inView && !!panel && panel.open && panel.items > 0 && panel.fits, { fab, panel });
-
     // ---- extension pages ------------------------------------------------------------------
     const extId = new URL(context.serviceWorkers()[0].url()).host;
     const pageNotes = [];
@@ -301,7 +261,7 @@ await Promise.all(
   }),
 );
 
-const COLS = ["chips", "overflow", "shift", "inside", "card", "ball", "pages", "errors"];
+const COLS = ["chips", "overflow", "shift", "inside", "card", "pages", "errors"];
 console.log(`\n=== MATRIX (${process.platform}/${process.arch}, ${process.env.HEADED === "1" ? "headed" : "headless"}) ===`);
 console.log("profile".padEnd(40) + COLS.map((c) => c.padEnd(9)).join(""));
 for (const r of results) {
