@@ -13,7 +13,7 @@ The manifest Content-Security-Policy:
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self';
 connect-src 'self' http: https: file:;
-img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob:; font-src 'self' data:; style-src 'self';
 worker-src 'self'; frame-src 'self'; form-action 'none'; base-uri 'none'
 ```
 
@@ -83,7 +83,7 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/pdf/navigation.ts` | `https://*/*` | the corresponding HTTPS response-observation filter |
 | `lib/docs.ts` | `https://docs.google.com/document/d/` | builds the address of the document the tab is on |
 | `lib/docsOverlay.ts` | `https://docs.google.com/document/d/` | the same address, for the same-origin read above |
-| `lib/ui/installationCommand.ts` | `https://github.com/CoderBak/anagram/releases/download/v$` | builds the version-pinned install command the user runs once; the extension does not fetch it |
+| `lib/ui/installationCommand.ts` | `https://github.com/CoderBak/anagram/releases/download/v$` | builds the version-pinned install command the user runs once, which runs the installer only with the SHA-256 the extension was built with; the extension does not fetch it |
 | `lib/ui/sourceCode.ts` | `https://github.com/CoderBak/anagram/tree/v$` | the "Source code" link in the Settings and setup footers, to the running version's release tag; opened only when clicked |
 | `lib/ui/basecoat-vega.cdn.min.css` | `http://www.w3.org/2000/svg` | the SVG namespace inside data-URI icons; a name, not an address |
 | `lib/ui/basecoat-vega.cdn.min.css` | `https://tailwindcss.com` | the licence banner of the vendored Basecoat stylesheet |

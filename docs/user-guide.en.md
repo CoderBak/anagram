@@ -33,7 +33,8 @@ Step 1 decides how Anagram runs its model. Either way the model runs on this com
 - **On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card**, the
   page asks first, and nothing downloads until you pick:
   **One click** runs in the browser as above. **Terminal** asks the browser to let Anagram
-  talk to a local engine, then shows one command: run it in Terminal. No administrator
+  talk to a local engine, then shows one command: run it in Terminal. The command runs the
+  installer only if it is the very file this extension was built with. No administrator
   password or system Python is needed. It installs the engine under `~/.anagram`, registers
   it for this exact extension, and downloads the model files with progress in the terminal
   (`~/.anagram/bin/anagram download` resumes an interrupted download). Where pip or uv is

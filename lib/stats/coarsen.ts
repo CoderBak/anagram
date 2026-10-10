@@ -3,7 +3,7 @@
 // and an export applies them again for a coarser file. Pure.
 import { MIN_WORDS, MODEL_MIN_WORDS } from "../dom/text";
 import type { Layer } from "./config";
-import { PUBLIC_SUFFIXES } from "../publicSuffixes";
+import { registrableDomain } from "../publicSuffixes";
 
 // ---- time ---------------------------------------------------------------------------------
 
@@ -36,17 +36,6 @@ export function coarseDur(ms: number, layer: Layer<"dur">): number | null {
 }
 
 // ---- place --------------------------------------------------------------------------------
-
-/** The name a host is registered under: its last two labels, three under a known public
- *  second level ("bbc.co.uk", "alice.github.io"). An address is its own. */
-export function registrableDomain(host: string): string {
-  const h = host.toLowerCase().replace(/\.$/, "");
-  if (/^[\d.]+$/.test(h) || h.includes(":")) return h;
-  const labels = h.split(".");
-  if (labels.length <= 2) return h;
-  const two = labels.slice(-2).join(".");
-  return PUBLIC_SUFFIXES.has(two) ? labels.slice(-3).join(".") : two;
-}
 
 /** A path with what names one thing out of many left out: a segment with a digit in it, or
  *  longer than 24 characters, is ":id"; a hyphenated or underscored slug is ":slug". */

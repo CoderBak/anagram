@@ -21,3 +21,15 @@ export const PUBLIC_SUFFIXES: ReadonlySet<string> = new Set([
   "notion.site", "pages.dev", "readthedocs.io", "repl.co", "s3.amazonaws.com", "substack.com",
   "translate.goog", "tumblr.com", "vercel.app", "web.app", "wordpress.com", "workers.dev",
 ]);
+
+/** The name a host is registered under: its last two labels, three under one of the suffixes
+ *  above ("bbc.co.uk", "alice.github.io"). An address is its own. The reading log names a site
+ *  so (lib/stats/coarsen.ts), and the router shares a site's part of its limits by it. */
+export function registrableDomain(host: string): string {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  if (/^[\d.]+$/.test(h) || h.includes(":")) return h;
+  const labels = h.split(".");
+  if (labels.length <= 2) return h;
+  const two = labels.slice(-2).join(".");
+  return PUBLIC_SUFFIXES.has(two) ? labels.slice(-3).join(".") : two;
+}

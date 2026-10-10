@@ -564,6 +564,25 @@ it("one tab's frames hold half the router at most: another tab is still answered
   expect((await router.handle(req(["the tab again"]),{documentKey:"frame 0", tab:7})).results[0]!.degraded).toBeUndefined();
 });
 
+it("one site's tabs hold no more of the router than one tab: another site is still answered", async () => {
+  const { ROUTER_LIMITS } = await import("../../lib/backend/router");
+  const client = fakeClient(A), router = createRouter(client);
+  client.hold();
+  // Two tabs of one site, eight frames, each filling its document's share.
+  const frames = Array.from({length:8}, (_, doc) => router.handle(req(Array.from({length:ROUTER_LIMITS.documentBlocks}, (_, index)=>`s${doc} b${index}`)),{documentKey:`frame ${doc}`, tab:doc < 4 ? 7 : 9, site:"hostile.example"}));
+  // Past the site's part (two frames), the rest are refused at once, though either tab alone
+  // would have held two of its own.
+  const outcome = await Promise.all(frames.map((frame) => Promise.race([
+    frame.then((r) => (r.results.every((x) => x.degraded) ? "refused" : "answered")), settle().then(() => "held")])));
+  expect(outcome.filter((o) => o === "held")).toHaveLength(ROUTER_LIMITS.siteBlocks / ROUTER_LIMITS.documentBlocks);
+  expect(outcome.filter((o) => o === "refused")).toHaveLength(8 - ROUTER_LIMITS.siteBlocks / ROUTER_LIMITS.documentBlocks);
+  // …and a page of another site is admitted and scored.
+  const other = router.handle(req(["another site's paragraph"]),{documentKey:"other", tab:8, site:"other.example"});
+  await settle();
+  expect(client.calls.some((call) => call.some((block) => block.text === "another site's paragraph"))).toBe(true);
+  client.release(); await Promise.all([...frames, other]);
+});
+
 it("bounds all queued block references even when requests contain short text", async () => {
   const client = fakeClient(A), router = createRouter(client);
   client.hold();

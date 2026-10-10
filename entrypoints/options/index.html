@@ -8,74 +8,7 @@
          embedded chrome://extensions iframe. -->
     <meta name="manifest.open_in_tab" content="true" />
     <title data-i18n="optionsTitle">Anagram settings</title>
-    <style>
-      /* Layout only; colours, type and controls come from Basecoat (Vega). */
-      body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
-      .page { max-width: 720px; margin: 0 auto; padding: 24px 20px 32px; }
-      header.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-      header.hdr img { width: 44px; height: 44px; margin: -2px; }
-      header.hdr .logo-dark { display: none; }
-      html.dark header.hdr .logo-light { display: none; }
-      html.dark header.hdr .logo-dark { display: block; }
-      header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
-      header.hdr .ver { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); }
-      /* One list: a short label on the left, its controls on the right. */
-      .groups { display: flex; flex-direction: column; }
-      .group { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 2px 16px; padding: 8px 0; border-top: 1px solid var(--border); }
-      .groups > .group:first-child { border-top: 0; padding-top: 0; }
-      .group > .group-label { padding-top: 10px; font-size: 13.5px; font-weight: 600; }
-      .group-body { min-width: 0; }
-      .group-body.rows > .row:first-child { padding-top: 6px; }
-      .row > .row-body { justify-content: flex-end; }
-      .field-count { color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
-      .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0 2px; }
-      .form-row .input { flex: 1 1 200px; }
-      .form-row .select { width: 150px; }
-      .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); flex: 1 0 100%; }
-      .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); flex: 1 0 100%; }
-      .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
-      .mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
-      html.dark .mode-on { color: oklch(0.76 0.15 150); }
-      .mode-off { color: var(--muted-foreground); }
-      .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
-      .links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
-      .links span { line-height: 24px; }
-      .row .row-note.stats-warn { color: var(--foreground); }
-      .row .row-note.stats-warn p { margin: 4px 0 0; }
-      .stats-dims { flex: 1 0 100%; display: grid; gap: 8px; min-width: 0; overflow-x: auto; }
-      .stats-dims table.dims { width: 100%; table-layout: fixed; font-size: 13px; }
-      .stats-dims table.dims th:first-child { width: 52%; }
-      .stats-dims table.dims th, .stats-dims table.dims td { white-space: normal; overflow-wrap: anywhere; }
-      .stats-dims table.dims td { vertical-align: top; padding: 6px 8px; }
-      .stats-dims table.dims .select { width: 100%; min-width: 0; max-width: 260px; }
-      .stats-dims table.dims td.name label { display: block; font-weight: 500; }
-      .stats-dims table.dims td.name .hint { display: block; color: var(--muted-foreground); font-size: 12px; }
-      .stats-dims table.dims label.hash { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 2px; padding-inline-start: 4px; font-size: 12px; color: var(--muted-foreground); }
-      /* Hit areas, not paint: an invisible 24x24 box centred on each small box and dot (the
-         tick is Basecoat's ::after of a checkbox, the dot its ::before of a radio). */
-      input.input[type="checkbox"]:not([role="switch"]), input.input[type="radio"] { position: relative; }
-      input.input[type="checkbox"]:not([role="switch"])::before, input.input[type="radio"]::after {
-        content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: 24px; min-height: 24px;
-      }
-      .group:focus { outline: none; }
-      dialog.stats-dialog { margin: auto; width: min(440px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); background: var(--card, var(--background)); }
-      dialog.stats-dialog::backdrop { background: rgb(0 0 0 / .4); }
-      dialog.stats-dialog .dialog-title { margin: 0; font-size: 16px; font-weight: 600; }
-      dialog.stats-dialog p { margin: 10px 0 0; overflow-wrap: anywhere; }
-      dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-      /* Out of the page, still in the accessibility tree. */
-      .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-      @media (max-width: 520px) {
-        .group { grid-template-columns: minmax(0, 1fr); }
-        .group > .group-label { padding-top: 6px; }
-        /* Each field over its choice. */
-        .stats-dims table.dims thead { display: none; }
-        .stats-dims table.dims, .stats-dims table.dims tbody, .stats-dims table.dims tr, .stats-dims table.dims td { display: block; width: 100%; }
-        .stats-dims table.dims td { padding: 0 0 4px; }
-        .stats-dims table.dims tr { padding: 6px 0; }
-        .stats-dims table.dims .select { max-width: none; }
-      }
-    </style>
+    <link rel="stylesheet" href="/pages/options.css" />
   </head>
   <body>
     <main class="page">

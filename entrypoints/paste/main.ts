@@ -14,13 +14,11 @@ import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
 import { cancelDocumentSession } from "../../lib/access/session";
 import { band, bandLabel, BUCKET_BANDS, flagFromOf, isFlagged, isNoVerdict, type FlagFrom } from "../../lib/render/band";
 import { formatScore } from "../../lib/render/score";
-import { bandColorRules, levelOf } from "../../lib/render/scale";
+import { adoptBandColorRules, levelOf } from "../../lib/render/scale";
 
 localizePage(); followSystemTheme();
 // The four words' colours are the chips' and the marks' own.
-const bandRules = document.createElement("style");
-bandRules.textContent = bandColorRules("", "html.dark");
-document.head.append(bandRules);
+adoptBandColorRules();
 const input = document.getElementById("text") as HTMLTextAreaElement;
 input.maxLength = MAX_UNIT_TEXT_CHARS;
 const fileInput = document.getElementById("file") as HTMLInputElement;

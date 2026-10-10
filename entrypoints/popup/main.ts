@@ -42,7 +42,7 @@ import { commentHost } from "../../lib/access/commentFrames";
 import { sendTabControl } from "../../lib/messaging/tabControl";
 import type { PageReport } from "../../lib/capture/pageReport";
 import { mountReport } from "./report";
-import { bandColorRules } from "../../lib/render/scale";
+import { adoptBandColorRules } from "../../lib/render/scale";
 import { aiShare, localDate, viewedWords, type UiEvent } from "../../lib/stats/model";
 import { readStatsConfig } from "../../lib/stats/settings";
 import { openStatsStore } from "../../lib/stats/store";
@@ -453,9 +453,7 @@ async function init(): Promise<void> {
   localizePage();
   followSystemTheme();
   // The four words' colours are the chips' and the marks' own.
-  const bandRules = document.createElement("style");
-  bandRules.textContent = bandColorRules("", "html.dark");
-  document.head.append(bandRules);
+  adoptBandColorRules();
   const tab = await activeTab();
   currentTab = tab;
   noteUi("menu");

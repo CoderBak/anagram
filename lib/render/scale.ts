@@ -64,6 +64,14 @@ export function bandColorRules(selector: string, dark: string, property = "--c")
   ).join("\n");
 }
 
+/** The four words' colours on one of the extension's own pages, as a constructed stylesheet:
+ *  those pages allow no inline style (wxt.config.ts CSP). */
+export function adoptBandColorRules(doc: Document = document): void {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(bandColorRules("", "html.dark"));
+  doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+}
+
 /** The four words side by side as a left-to-right bar, each over its slice of the scale (the
  *  card's scale and the setup page's legend). */
 export function scaleGradient(dark: boolean): string {

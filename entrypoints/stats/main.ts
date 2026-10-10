@@ -13,7 +13,7 @@ import { localizePage } from "../../lib/ui/localize";
 import { messageLocale, t, type MessageKey } from "../../lib/i18n";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import { bandLabel, BUCKET_BANDS } from "../../lib/render/band";
-import { bandColorRules, levelOf } from "../../lib/render/scale";
+import { adoptBandColorRules, levelOf } from "../../lib/render/scale";
 import { settings } from "../../lib/settings/settings";
 import { addDays, localDate, monthRange, scoreOf, viewedWords, type PageKind, type Tally, type UiEvent, type UnitRow, type VisitRow } from "../../lib/stats/model";
 import { configOf, DIMENSION_IDS, normalize, presetConfig, presetOf, PRESET_IDS, rank, type Hashable, type Layers, type Preset, type RecordingConfig } from "../../lib/stats/config";
@@ -30,9 +30,7 @@ import { formatShare as percent, formatWords as words } from "../../lib/stats/fo
 localizePage();
 followSystemTheme();
 {
-  const rules = document.createElement("style");
-  rules.textContent = bandColorRules("", "html.dark");
-  document.head.append(rules);
+  adoptBandColorRules();
 }
 
 const store = openStatsStore();

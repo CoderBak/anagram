@@ -1,0 +1,47 @@
+/* Layout only; colours, type and controls come from Basecoat (Vega). */
+body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+.page { max-width: 640px; margin: 0 auto; padding: 24px 20px 28px; }
+header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+header.hdr img { width: 48px; height: 48px; margin: -2px; }
+header.hdr .logo-dark { display: none; }
+html.dark header.hdr .logo-light { display: none; }
+html.dark header.hdr .logo-dark { display: block; }
+header.hdr h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+header.hdr .tag { margin: 3px 0 0; font-size: 14px; color: var(--muted-foreground); }
+header.hdr .ver { margin-inline-start: auto; align-self: flex-start; font-size: 12px; color: var(--muted-foreground); }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.card > section { display: flex; flex-direction: column; gap: 10px; }
+
+/* The three steps: a number that turns into a tick once the step is done. */
+.step > header { display: flex; align-items: center; gap: 10px; }
+.step > header h2 { flex: 1; min-width: 0; }
+.num { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%;
+  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  background: var(--muted); color: var(--foreground); }
+.num svg { display: none; }
+.step.done .num { background: #00a06a; color: #fff; }
+html.dark .step.done .num { background: #33d996; color: #0a0a0a; }
+.step.done .num span { display: none; }
+.step.done .num svg { display: block; }
+.step .done-label { font-size: 12px; color: var(--muted-foreground); }
+.step:not(.done) .done-label { display: none; }
+.step-note { margin: 0; font-size: 13px; color: var(--muted-foreground); }
+
+/* Reading the marks: the four words in their colours, and the scale they cut. */
+/* The four words, each beside a chip as the page shows it (lib/render/badge.css.ts). */
+.words { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
+.word { display: inline-flex; align-items: center; gap: 7px; }
+.chip { display: inline-block; padding: 2px 6px; border: 1px solid var(--c); border-radius: 5px; background: var(--c); color: #141414; font-size: 11px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.chip.b3 { color: #ffffff; }
+html.dark .chip.b3 { color: #141414; }
+.chip.b0 { background: color-mix(in oklab, var(--c) 22%, var(--background)); border-color: color-mix(in oklab, var(--c) 70%, var(--background)); color: var(--foreground); }
+.bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; }
+.bar > span { background: var(--c); }
+/* The scale's four stretches: .00–1/6, 1/6–1/2, 1/2–5/6, 5/6–1.0. */
+.bar > .b0, .bar > .b3 { flex: 1; }
+.bar > .b1, .bar > .b2 { flex: 2; }
+.bar > span + span { border-inline-start: 2px solid var(--background); }
+.ends { display: flex; justify-content: space-between; margin-top: -4px; font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.note, .tip { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
+.links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 2px 0 0; font-size: 13px; }
+.links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }

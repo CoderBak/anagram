@@ -205,16 +205,12 @@ function layoutFaults(scope) {
  *  animating its height), fonts loaded, two frames drawn. */
 const settle = (page) =>
   page.evaluate(async () => {
-    const still = "*, *::before, *::after, ::details-content { transition: none !important; animation: none !important; }";
+    // A constructed sheet, as the extension's pages allow no inline style (wxt.config.ts CSP).
+    const still = (window.__still ??= new CSSStyleSheet());
+    still.replaceSync("*, *::before, *::after, ::details-content { transition: none !important; animation: none !important; }");
     const roots = [document];
     for (let i = 0; i < roots.length; i++) for (const el of roots[i].querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot);
-    for (const root of roots) {
-      if (root.querySelector?.(":scope > style[data-still]")) continue;
-      const style = document.createElement("style");
-      style.dataset.still = "";
-      style.textContent = still;
-      (root === document ? document.head : root).append(style);
-    }
+    for (const root of roots) if (!root.adoptedStyleSheets.includes(still)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, still];
     await document.fonts.ready;
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });

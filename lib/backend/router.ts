@@ -33,6 +33,9 @@ const PRIORITY: Record<ScanPriority, number> = { viewport: 2, near: 1, backgroun
 export const ROUTER_LIMITS = Object.freeze({
   requests: 256, blocks: 1024, chars: 1_000_000,
   tabRequests: 128, tabBlocks: 512, tabChars: 500_000,
+  // One site's tabs together: no more than one tab of it, so two tabs of a hostile site cannot
+  // take the whole router either, while every other site's pages are still answered.
+  siteRequests: 128, siteBlocks: 512, siteChars: 500_000,
   documentRequests: 16, documentBlocks: DOCUMENT_SHARE.blocks, documentChars: DOCUMENT_SHARE.chars,
 });
 
@@ -41,7 +44,7 @@ export interface RequestOrigin {
   private?: boolean;
   /**
    * Where the text was read: the tab's top-level site, the frame's own origin and whether the
-   * window is private (partitionOf, entrypoints/background.ts). Verdicts — cached and being
+   * window is private (placeOf, entrypoints/background.ts). Verdicts — cached and being
    * worked out — are shared within a partition only, as the browser partitions storage: a
    * verdict that came back at once would tell a page that the user had read the same text on
    * another site, or in a private window, within the cache's thirty days.
@@ -52,6 +55,9 @@ export interface RequestOrigin {
   /** The tab the document is in (the sender's, as the browser names it): its documents share
    *  a tab's part of the limits (ROUTER_LIMITS). Absent, the document is a tab of its own. */
   tab?: number;
+  /** The registered domain of the page the tab shows: a site's tabs share a site's part of the
+   *  limits. Absent where the browser names no address, the tab's part holds alone. */
+  site?: string;
   signal?: AbortSignal;
 }
 export interface BackendRouter {
@@ -88,6 +94,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
   const waiting: Batch[] = [];
   const documentUsage = new Map<string, Usage>();
   const tabUsage = new Map<string, Usage>();
+  const siteUsage = new Map<string, Usage>();
   const runningByDocument = new Map<string, number>();
   const lastServed = new Map<string, number>();
   const total: Usage = { requests: 0, blocks: 0, chars: 0 };
@@ -225,15 +232,20 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
     const partition = origin.partition ?? "";
     const usage = documentUsage.get(document) ?? { requests: 0, blocks: 0, chars: 0 };
     const held = tabUsage.get(tab) ?? { requests: 0, blocks: 0, chars: 0 };
+    const site = origin.site !== undefined ? `site:${origin.site}` : null;
+    const shared = (site && siteUsage.get(site)) || { requests: 0, blocks: 0, chars: 0 };
     const chars = req.blocks.reduce((sum, block) => sum + block.text.length, 0), blocks = req.blocks.length;
     if (origin.signal?.aborted || !blocks || total.requests >= ROUTER_LIMITS.requests ||
       total.blocks + blocks > ROUTER_LIMITS.blocks || total.chars + chars > ROUTER_LIMITS.chars ||
       held.requests >= ROUTER_LIMITS.tabRequests || held.blocks + blocks > ROUTER_LIMITS.tabBlocks ||
       held.chars + chars > ROUTER_LIMITS.tabChars ||
+      shared.requests >= ROUTER_LIMITS.siteRequests || shared.blocks + blocks > ROUTER_LIMITS.siteBlocks ||
+      shared.chars + chars > ROUTER_LIMITS.siteChars ||
       usage.requests >= ROUTER_LIMITS.documentRequests || usage.blocks + blocks > ROUTER_LIMITS.documentBlocks ||
       usage.chars + chars > ROUTER_LIMITS.documentChars) return response();
     total.requests++; total.blocks += blocks; total.chars += chars;
     held.requests++; held.blocks += blocks; held.chars += chars; tabUsage.set(tab, held);
+    if (site) { shared.requests++; shared.blocks += blocks; shared.chars += chars; siteUsage.set(site, shared); }
     usage.requests++; usage.blocks += blocks; usage.chars += chars; documentUsage.set(document, usage);
     let cancel!: () => void;
     const reader: Reader = { document, persist: origin.private !== true, active: true, entries: new Set(),
@@ -307,6 +319,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       total.requests--; total.blocks -= blocks; total.chars -= chars;
       held.requests--; held.blocks -= blocks; held.chars -= chars;
       if (!held.requests) tabUsage.delete(tab);
+      if (site) { shared.requests--; shared.blocks -= blocks; shared.chars -= chars; if (!shared.requests) siteUsage.delete(site); }
       usage.requests--; usage.blocks -= blocks; usage.chars -= chars;
       if (!usage.requests) { documentUsage.delete(document); if (!runningByDocument.has(document)) lastServed.delete(document); }
     }

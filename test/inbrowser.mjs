@@ -301,7 +301,7 @@ for (const lang of ["en", "zh-CN"]) {
     await grantInWorker(run.sw);
     await page.click("#engine-pick-native");
     const command = await until(() => textOf(page, "#install-cmd"), 15000);
-    check("choice: picking the local engine with the permission granted shows its install command", /^curl -fsSL '.*install\.sh'/.test(command ?? "") &&
+    check("choice: picking the local engine with the permission granted shows its install command", /^f=\$\(mktemp\) && curl -fsSL '.*install\.sh' -o "\$f" && echo '[0-9a-f]{64}  '"\$f" \| (?:shasum -a 256|sha256sum) -c - && /.test(command ?? "") &&
       (await engineOf(page)) === "native" && (await page.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("componentTitle") &&
       !(await shown(page, ".engine-choice")), command);
     await sleep(1000);

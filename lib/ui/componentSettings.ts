@@ -173,7 +173,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   void Promise.all([browser.runtime.getPlatformInfo(), safariBridge()]).then(([platform, bridge]) => {
     const instruction = installationCommand(platform.os, import.meta.env.BROWSER === "safari" ? "safari" : import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
-      browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en", bridge?.home);
+      browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en", import.meta.env.ANAGRAM_INSTALLERS, bridge?.home);
     if (destroyed) return;
     if (!instruction) { intro.textContent = t("componentUnsupportedPlatform"); commandBox.hidden = installActions.hidden = releaseNotice.hidden = true; return; }
     intro.textContent = t(instruction.platform === "windows" ? "componentInstallIntroWindows" : "componentInstallIntro");

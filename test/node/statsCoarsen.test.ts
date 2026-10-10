@@ -1,7 +1,8 @@
 // test/node/statsCoarsen.test.ts — each dimension's layers from a finer one
 // (lib/stats/coarsen.ts), and the configuration's own rules (lib/stats/config.ts).
 import { describe, expect, it } from "vitest";
-import { coarseDur, coarseLen, coarseTime, coarseVerdict, lenBand, pathPattern, placeLadder, registrableDomain } from "../../lib/stats/coarsen";
+import { coarseDur, coarseLen, coarseTime, coarseVerdict, lenBand, pathPattern, placeLadder } from "../../lib/stats/coarsen";
+import { registrableDomain } from "../../lib/publicSuffixes";
 import { configOf, normalize, presetConfig, presetOf, PRESET_IDS, PRESETS, DIMENSION_IDS, DIMENSIONS } from "../../lib/stats/config";
 
 describe("time and durations", () => {

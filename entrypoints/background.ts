@@ -54,15 +54,18 @@ import { createTabTracker } from "../lib/stats/tabs";
 import { readStatsConfig, statsSecret } from "../lib/stats/settings";
 import { noteStatsContext } from "../lib/stats/context";
 import { localDate } from "../lib/stats/model";
+import { registrableDomain } from "../lib/publicSuffixes";
 const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
 
 /** Where a text was read, for the caches pages share (RequestOrigin.partition in
  *  lib/backend/router.ts): the tab's top-level site, the frame's own origin, and a private
  *  window apart from the rest — the way the browser partitions a page's own storage. */
-async function partitionOf(sender: Pick<AccessSender, "tab">, document: { origin: string }): Promise<string> {
+/** Where a document's text was read: its partition (RequestOrigin.partition), and the registered
+ *  domain of the tab's page, which shares a site's part of the router's limits. */
+async function placeOf(sender: Pick<AccessSender, "tab">, document: { origin: string }): Promise<{ partition: string; site?: string }> {
   let top = "?";
   try { const url = await topUrlOf(sender); if (url) top = new URL(url).host; } catch { /* no address: its own partition */ }
-  return `${sender.tab?.incognito ? "private" : "normal"} ${top} ${document.origin}`;
+  return { partition: `${sender.tab?.incognito ? "private" : "normal"} ${top} ${document.origin}`, site: top === "?" || top === "" ? undefined : registrableDomain(top) };
 }
 
 /**
@@ -552,13 +555,14 @@ export default defineBackground(() => {
         return {ok:true};
       }
       case ACTIONS.COUNT_TOKENS: {
-        const counts=await tokenCounter.count(msg.texts,document!.signal,await partitionOf(sender,document!)).catch(()=>null);
+        const counts=await tokenCounter.count(msg.texts,document!.signal,(await placeOf(sender,document!)).partition).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);
-          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:await partitionOf(sender,document!),documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
+          const place=await placeOf(sender,document!);
+          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:place.partition,site:place.site,documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
           if(document!.signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.

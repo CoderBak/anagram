@@ -1,0 +1,120 @@
+/* Layout only; colours, type and controls come from Basecoat (Vega). The four words'
+   colours are the chips' own (lib/render/scale.ts), set as --c on .b0 … .b3 by main.ts. */
+body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
+.page { max-width: 760px; margin: 0 auto; padding: 24px 16px 32px; }
+header.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+header.hdr img { width: 44px; height: 44px; margin: -2px; }
+header.hdr .logo-dark { display: none; }
+html.dark header.hdr .logo-light { display: none; }
+html.dark header.hdr .logo-dark { display: block; }
+header.hdr > div { flex: 1; min-width: 0; }
+header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+header.hdr p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+.card { margin: 0 0 14px; }
+.card h2 { margin: 0; font-size: 14.5px; font-weight: 600; }
+.card .sub { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+.muted { color: var(--muted-foreground); }
+.note { margin: 8px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+.warn { margin: 8px 0 0; font-size: 12.5px; color: var(--foreground); padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--b2-c, #f0600f) 12%, var(--background)); }
+/* What each level records. */
+.levels { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.levels li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.levels strong { display: block; font-size: 13.5px; font-weight: 600; }
+.levels span { font-size: 12.5px; color: var(--muted-foreground); }
+.form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+/* The period, and what to do with it. */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 14px; }
+.bar .tabs > [role="tablist"] { height: 32px; }
+.bar .tabs > [role="tablist"] > [role="tab"] { font-size: 12.5px; padding: 2px 10px; }
+.bar .select { width: auto; min-width: 150px; }
+.bar .grow { flex: 1 1 auto; }
+.bar .period { flex: 1 0 100%; margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
+/* The headline: one number, its words, the bar of the four. */
+.hero { margin: 4px 0 0; font-size: 52px; font-weight: 600; line-height: 1.05; letter-spacing: -0.03em; }
+.hero-line { margin: 4px 0 0; }
+.mix { display: flex; height: 10px; margin: 14px 0 0; border-radius: 999px; overflow: hidden; background: var(--muted); }
+.mix > span { min-width: 2px; background: var(--c); }
+.mix > span + span { border-inline-start: 2px solid var(--card, var(--background)); }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 16px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+.legend li { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.legend .lbl { flex: 1; min-width: 0; }
+.legend .n { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--c); }
+.compare { margin: 10px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
+/* The trend: a column a day, the four words stacked by their expected words. */
+.trend { display: block; width: 100%; height: auto; margin-top: 10px; }
+.trend .rule { stroke: var(--border); stroke-width: 1; }
+.trend text { fill: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+.trend .seg { fill: var(--c); }
+.trend .hit { fill: transparent; }
+.trend g.col:hover .seg { opacity: .85; }
+details.table-view { margin-top: 8px; font-size: 12.5px; }
+details.table-view summary { cursor: pointer; color: var(--muted-foreground); min-height: 24px; line-height: 24px; }
+/* Tables that carry their own bar: a row per kind, site or page. */
+.table-container { margin-top: 8px; overflow-x: auto; }
+table.table { font-size: 12.5px; }
+table.table th, table.table td { white-space: nowrap; }
+table.table td.num, table.table th.num { text-align: end; font-variant-numeric: tabular-nums; }
+table.table td.name { width: 100%; white-space: normal; overflow-wrap: anywhere; min-width: 120px; }
+table.table td.name > span { display: block; }
+table.table td.name .mix { display: flex; width: 100%; max-width: 420px; height: 8px; margin: 6px 0 2px; }
+table.table a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.coverage-list { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; display: grid; gap: 3px; }
+.coverage-list li { display: flex; align-items: center; gap: 7px; }
+.cov0 { --c: color-mix(in oklab, var(--foreground) 70%, var(--background)); }
+.cov1 { --c: color-mix(in oklab, var(--foreground) 40%, var(--background)); }
+.cov2 { --c: color-mix(in oklab, var(--foreground) 25%, var(--background)); }
+.cov3 { --c: color-mix(in oklab, var(--foreground) 12%, var(--background)); }
+.empty { margin: 0; color: var(--muted-foreground); }
+/* Dialogs: export and clear. */
+dialog.stats-dialog { margin: auto; width: min(460px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); background: var(--card, var(--background)); }
+dialog.stats-dialog::backdrop { background: rgb(0 0 0 / .4); }
+dialog.stats-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
+dialog.stats-dialog p { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+dialog.stats-dialog .field { margin-top: 14px; display: grid; gap: 4px; }
+dialog.stats-dialog .field > label, dialog.stats-dialog legend { font-size: 13px; font-weight: 500; }
+dialog.stats-dialog fieldset { margin: 14px 0 0; padding: 0; border: 0; }
+dialog.stats-dialog fieldset label { display: flex; align-items: center; gap: 8px; min-height: 28px; padding-inline-start: 4px; font-size: 13px; }
+dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
+.links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* How it counts: the lens. */
+details.lens { margin: 0 0 14px; border: 1px solid var(--border); border-radius: 10px; padding: 0 12px; }
+details.lens > summary { cursor: pointer; min-height: 36px; line-height: 36px; font-size: 13px; font-weight: 500; }
+details.lens .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; padding: 4px 0 12px; }
+details.lens label { display: grid; gap: 4px; font-size: 12.5px; min-width: 0; }
+details.lens .select { width: 100%; min-width: 0; }
+details.lens label.check { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+details.lens .actions { display: flex; justify-content: flex-end; padding-bottom: 12px; }
+.range-inputs { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.range-inputs input { width: 140px; }
+/* A visit's replay: a row per paragraph, a bar for each spell it was on screen. */
+.replay { display: block; width: 100%; height: auto; margin-top: 8px; }
+.replay .lane { fill: var(--muted); }
+.replay .on { fill: var(--c); }
+.replay .scroll { stroke: var(--foreground); stroke-width: 1.2; fill: none; opacity: .6; }
+.replay text { fill: var(--muted-foreground); font-size: 10.5px; }
+.seg-tabs { display: inline-flex; gap: 4px; margin-top: 8px; }
+table.table button.linkish { border: 0; background: none; padding: 0; min-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font: inherit; }
+/* The export dialog: the dimension table and the preview scroll inside it. */
+dialog.stats-dialog.wide { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+dialog.stats-dialog table.dims td { vertical-align: top; padding: 5px 8px; white-space: normal; }
+dialog.stats-dialog table.dims .select { width: 100%; min-width: 0; max-width: 260px; }
+dialog.stats-dialog table.dims td.name label { display: block; font-weight: 500; }
+dialog.stats-dialog table.dims td.name .hint { display: block; color: var(--muted-foreground); font-size: 12px; }
+dialog.stats-dialog table.dims label.hash { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 2px; padding-inline-start: 4px; font-size: 12px; color: var(--muted-foreground); }
+.preview { margin-top: 12px; font-size: 12px; }
+.preview table { font-size: 11.5px; }
+.preview .table-container { max-height: 180px; overflow: auto; }
+/* Hit areas, not paint: an invisible 24x24 box centred on each small box and dot (the
+   tick is Basecoat's ::after of a checkbox, the dot its ::before of a radio). */
+input.input[type="checkbox"]:not([role="switch"]), input.input[type="radio"] { position: relative; }
+input.input[type="checkbox"]:not([role="switch"])::before, input.input[type="radio"]::after {
+  content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: 24px; min-height: 24px;
+}
+[hidden] { display: none !important; }
+/* Hit areas, not paint (WCAG 2.5.8). */
+.tabs > [role="tablist"] > [role="tab"] { position: relative; }
+.tabs > [role="tablist"] > [role="tab"]::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; height: 24px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

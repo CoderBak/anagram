@@ -272,29 +272,32 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
   kernels can use for fused multiply-adds), but no published artefact is built with it; using
   it means building ONNX Runtime with Emscripten ourselves, shipping a binary that is not the
   pinned npm package's, and keeping the plain one for Safari, which has no relaxed SIMD.
-- Security, still open (review of 2026-10-04):
-  - A first install runs `install.sh` (or `install.ps1`) as the release serves it, before
-    anything is verified: whoever can replace release assets can replace the installer too.
-    Releases are signed now, and updates run the installed installer; the setup page's
-    command could also carry the installer's SHA-256 (the extension is built from the same
-    tree, `lib/ui/installationCommand.ts`).
-  - The local engine parses page text (fastText, tokenizers, ONNX Runtime, MLX) in a process with
-    the user's privileges; a sandboxed inference child (Seatbelt, seccomp and Landlock) would
-    contain a parser bug.
-  - A tab holds half the router's admission at most (`ROUTER_LIMITS`), so one page's frames
-    cannot leave the other tabs Unavailable; two tabs of one hostile site still can, for as
-    long as both are open.
-  - `CSS.highlights` shows a page the marks on its own text, and so the flag level and whether
-    underlines are on; a page can tell chips are there.
-  - A getter of the page's own in the options it passes to `attachShadow` runs with the
-    page-world script's frame under it (entrypoints/shadow.content.ts): in Chrome that frame
-    names the extension's id; in Firefox it is "<anonymous code>". Any wrapper has a frame there.
-  - The extension pages keep `style-src 'unsafe-inline'`. Dropping it needs the `<style>` blocks
-    of the setup page, Settings, the popup and Analyze text moved into files, and the
-    `style="…"` the setup page's legend and the reader's print dialog write turned into classes
-    (the marks' rules are a constructed sheet already, and the card's marker and pending line no
-    longer write a style attribute). It buys little: no script runs inline, and with `img-src`
-    and `font-src` held to the extension, injected CSS has no address to send what it matches to.
+- Security, still open (review of 2026-10-04): the local engine parses page text (fastText,
+  tokenizers, ONNX Runtime, MLX) in a process with the user's privileges; a sandboxed
+  inference child (Seatbelt, seccomp and Landlock) would contain a parser bug. Left open by the
+  maintainer's decision (2026-10-10): what reaches it is validated and bounded
+  (`anagramd/contract.json`), and a sandbox that could be tested on macOS alone could break
+  inference on the graphics card for others.
+- Security, closed on 2026-10-10:
+  - A first install ran `install.sh` (or `install.ps1`) as the release served it. The setup
+    page's command now downloads it and runs it only with the SHA-256 this extension was built
+    with (`lib/ui/installationCommand.ts`; the digests are `wxt.config.ts` INSTALLERS, the very
+    files a release built from the same tree serves). Then the installer runs a release only
+    with its Sigstore signature.
+  - Two tabs of one hostile site could take the router's whole admission: a site's tabs now
+    share one tab's part (`ROUTER_LIMITS` site*, by registered domain), so every other site is
+    still answered.
+  - The extension pages allowed `style-src 'unsafe-inline'`. Each page's own rules are a file
+    (`public/pages/`, linked where its `<style>` stood, so the cascade is unchanged), and what
+    is made at run time is a constructed stylesheet or the CSSOM. Only the dev server's build
+    keeps it, as Vite sets CSS as `<style>` elements.
+  - Accepted, by the maintainer's decision: `CSS.highlights` shows a page the marks on its own
+    text, and so the flag level and whether underlines are on; a getter of the page's own in
+    the options it passes to `attachShadow` runs with the page-world script's frame under it
+    (entrypoints/shadow.content.ts), which in Chrome names the extension's id (in Firefox it is
+    "<anonymous code>"). Neither can be removed while the browser draws the marks and the hook
+    hears shadow roots as they are attached. PRIVACY.md says so, and that turning underlines
+    off leaves no marks to see.
 - Performance, still open (traces of 2026-10-05, M4, against the same page without Anagram):
   - A changing page's frames: Chromium takes every registered highlight range out of the page's
     markers and puts it back at every change of the DOM or of style, and repaints every marked

@@ -14,7 +14,7 @@
 //     from it even knowing it;
 //   * a frame of the granted site in a page of one not granted: Firefox leaves the page's
 //     address off the message (sender.tab.url), and the frame's verdicts must still not be
-//     shared with the same frame in another site's page (partitionOf in
+//     shared with the same frame in another site's page (placeOf in
 //     entrypoints/background.ts). 127.0.0.1 and [::1] stand in for two sites not granted.
 //
 //   npm run build:firefox && ANAGRAM_FIREFOX=<path to firefox> node test/shipping-firefox.mjs

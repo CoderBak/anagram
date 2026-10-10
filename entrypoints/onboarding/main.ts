@@ -14,16 +14,14 @@ import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
 import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { accessSummary } from "../../lib/access/grant";
-import { bandColorRules } from "../../lib/render/scale";
+import { adoptBandColorRules } from "../../lib/render/scale";
 import "../../lib/ui/rows.css";
 
 localizePage();
 followSystemTheme();
 linkSourceCode();
 // The four words' colours are the chips' and the marks' own.
-const scaleRule = document.createElement("style");
-scaleRule.textContent = bandColorRules("", "html.dark");
-document.head.append(scaleRule);
+adoptBandColorRules();
 document.getElementById("version")!.textContent = `v${browser.runtime.getManifest().version}`;
 if (messageLocale() === "zh-CN") {
   (document.getElementById("guide") as HTMLAnchorElement).href = "https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md";

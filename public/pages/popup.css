@@ -1,0 +1,78 @@
+/* Layout only — colours, type and controls come from Basecoat (Vega). */
+html { width: 340px; max-height: 600px; overflow-y: auto; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-size: 13px; line-height: 1.45; }
+header.hdr { display: flex; align-items: center; gap: 10px; padding: 10px 12px 9px 14px; border-bottom: 1px solid var(--border); }
+header.hdr img { width: 30px; height: 30px; margin: -2px; }
+header.hdr .logo-dark { display: none; }
+html.dark header.hdr .logo-light { display: none; }
+html.dark header.hdr .logo-dark { display: block; }
+header.hdr h1 { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+main { padding: 0 14px 10px; }
+.grp { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.grp .field { min-height: 28px; }
+.grp .field > label, .grp .field > section > label { font-size: 13px; font-weight: 450; }
+.grp .field > section > p { margin: 0; font-size: 11px; color: var(--muted-foreground); }
+.tabs > [role="tablist"] { height: 28px; }
+.tabs > [role="tablist"] > [role="tab"] { font-size: 12px; padding: 2px 9px; }
+/* The page: what was found on it, then the one thing to do here. */
+.act { padding-top: 12px; }
+.status { font-size: 13px; margin: 0 0 9px; }
+.status.down { color: var(--destructive); font-weight: 600; }
+.w-full { width: 100%; }
+.w-full + .w-full { margin-top: 6px; }
+.keepopen { margin: 0 0 8px; font-size: 11.5px; color: var(--muted-foreground); }
+/* What the page's paragraphs read as: one bar, four counts, then the flagged ones. */
+.report { margin: 0 0 10px; }
+.report[hidden] { display: none; }
+.mix { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--muted); }
+.mix > span { min-width: 3px; }
+.mix > span + span { border-inline-start: 1.5px solid var(--background); }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; margin: 9px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.legend li { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.legend .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend .n { font-variant-numeric: tabular-nums; font-weight: 600; }
+.legend .zero { color: var(--muted-foreground); }
+.legend .zero .n { font-weight: 400; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--c); }
+.report-coverage { margin: 8px 0 0; color: var(--muted-foreground); font-size: 11.5px; overflow-wrap: anywhere; }
+.report-lead { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.report h2 { margin: 12px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted-foreground); text-transform: none; }
+.report-list { list-style: none; padding: 0; margin: 2px 0 0; max-height: 200px; overflow-y: auto; overscroll-behavior: contain; }
+.report-result { display: flex; gap: 9px; width: 100%; padding: 7px 4px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; text-align: start; font: inherit; font-size: 12px; cursor: pointer; }
+.report-list li:last-child .report-result { border-bottom: 0; }
+.report-result:hover { background: var(--muted); }
+.report-result:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.report-result > span:last-child { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.report-score { flex: 0 0 auto; align-self: flex-start; }
+/* A verdict's chip as the page shows it (lib/render/badge.css.ts): the word's colour, the
+   number in the ink that reads on it; human's a tint with an edge. */
+.chip { display: inline-block; padding: 2px 6px; border: 1px solid var(--c); border-radius: 5px; background: var(--c); color: #141414; font-size: 11px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.chip.b3 { color: #ffffff; }
+html.dark .chip.b3 { color: #141414; }
+.chip.b0 { background: color-mix(in oklab, var(--c) 22%, var(--background)); border-color: color-mix(in oklab, var(--c) 70%, var(--background)); color: var(--foreground); }
+.report-pages { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; font-size: 11px; }
+.report-comment { display: flex; gap: 8px; align-items: center; font-size: 11.5px; }
+.report-comment span { flex: 1; }
+/* The two other ways in, and the engine, at the foot. */
+.foot { padding-top: 9px; }
+.tools { display: flex; gap: 4px; margin: 0 -6px; }
+.tools .btn { flex: 1 1 0; min-width: 0; font-weight: 450; }
+.tools .btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tools .btn > svg { color: var(--muted-foreground); }
+.engine { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 11px; color: var(--muted-foreground); }
+.engine::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #00a06a; flex: none; }
+.stats-today { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 6px 0 0; font-size: 11.5px; color: var(--muted-foreground); }
+.stats-today button { min-height: 24px; padding: 2px 0; border: 0; background: transparent; color: var(--foreground); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.toolbar-help { display: block; min-height: 24px; margin: 4px 0 0; padding: 2px 0; border: 0; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer; }
+/* Hit areas, not paint: an invisible 24x24 box centred on each small control. */
+input[type="checkbox"][role="switch"] { position: relative; }
+input[type="checkbox"][role="switch"]::after {
+  content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 100%; height: 100%; min-width: 24px; min-height: 24px;
+}
+.tabs > [role="tablist"] > [role="tab"] { position: relative; }
+.tabs > [role="tablist"] > [role="tab"]::after {
+  content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 100%; height: 24px;
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

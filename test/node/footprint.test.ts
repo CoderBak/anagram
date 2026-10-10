@@ -226,7 +226,7 @@ describe.each(["chrome-mv3"])("the shipping manifest of output/%s", (dir) => {
   const CSP =
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; " +
     "connect-src 'self' http: https: file:; " +
-    "img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob:; font-src 'self' data:; style-src 'self'; " +
     "worker-src 'self'; frame-src 'self'; form-action 'none'; base-uri 'none'";
 
   it.skipIf(!ready)("carries that exact Content-Security-Policy", () => {

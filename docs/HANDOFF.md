@@ -12,7 +12,7 @@ Update this file, or delete an item, when it is done.
 
 ## Where `dev` stands
 
-- **Release:** the last release is 0.8.2. Everything since sits under `[Unreleased]` in [CHANGELOG.md](../CHANGELOG.md). Since the handoff of 2026-10-05, every item it listed has been done or decided:
+- **Release:** the last release is 0.8.2; 0.9.0 is prepared (below). Everything since sits under `[Unreleased]` in [CHANGELOG.md](../CHANGELOG.md). Since the handoff of 2026-10-05, every item it listed has been done or decided:
   - the reading log, kept field by field at layers the reader chooses and worked out again under any rule (`lib/stats/`);
   - the minimum length fixed at 50 words, short paragraphs always grouped;
   - Windows with an NVIDIA GPU set up with the in-browser engine;
@@ -35,8 +35,11 @@ Update this file, or delete an item, when it is done.
 
 ## Waiting on the maintainer
 
-1. **The first signed release.** Dispatch `.github/workflows/release.yml` from a version tag. Agents never push tags or run workflows. The installers on `dev` refuse an HTTPS release without a signature, so the next release has to come from the workflow.
-2. **The first install's installer.** A first install runs `install.sh` or `install.ps1` as the release serves it, before anything is verified. The setup page's command could carry the installer's SHA-256, since the extension is built from the same tree (`lib/ui/installationCommand.ts`). Left open on purpose (DEVELOPMENT.md, Security, still open).
+1. **Release 0.9.0, the first signed one.** The release commit is on `dev` (version 0.9.0 in `package.json`, `anagramd/pyproject.toml` and their locks; CHANGELOG's `[Unreleased]` is `[0.9.0]`). Agents may not push, tag or run workflows here, so these are the maintainer's:
+   - `git push git@github.com:CoderBak/anagram.git dev`
+   - `git tag -a v0.9.0 -m "Anagram 0.9.0"` and `git push git@github.com:CoderBak/anagram.git v0.9.0`
+   - `gh workflow run release.yml --repo CoderBak/anagram --ref v0.9.0`, then `gh run watch` on the run it starts. Its gate runs the whole CI matrix (Linux, Windows, macOS) first: the first time Windows and Linux are run since 2026-10-05. Nothing is published unless it passes.
+   The installers on `dev` refuse an HTTPS release without a signature, so every release from here on comes from the workflow.
 
 ## Open, in order
 
@@ -54,13 +57,9 @@ The web reader's thresholds were swept on 2026-10-09 (hyperparameters.md, Recomm
 
 ### 2. Security, still open
 
-DEVELOPMENT.md, Security, still open, has the detail:
+- A sandboxed inference child for the local engine: left open by the maintainer's decision (2026-10-10); DEVELOPMENT.md, Security, has why.
 
-- the first install's installer (above);
-- a sandboxed inference child for the local engine;
-- two tabs of one hostile site can still use up the router's admission;
-- `style-src 'unsafe-inline'` on extension pages;
-- what `CSS.highlights` and an `attachShadow` getter let a page learn.
+Closed on 2026-10-10: the first install's installer is checked against the SHA-256 the extension was built with; a site's tabs share one tab's part of the router; the extension pages allow no inline style; and what `CSS.highlights` and an `attachShadow` getter let a page learn is accepted and written down in PRIVACY.md (DEVELOPMENT.md, Security, closed).
 
 ### 3. Performance, still open
 

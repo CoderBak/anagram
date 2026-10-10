@@ -1,4 +1,5 @@
 import { defineConfig } from "wxt";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +30,10 @@ if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
 // Each bundle gets only the English fallback messages its source graph can use.
 // Fail on unknown message keys or unscanned bundled modules; tests keep all messages.
 const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
+/** The installers this tree holds, which a release built from it serves unchanged
+ *  (scripts/release.mjs): the setup page's command runs one only when it has this SHA-256. */
+const INSTALLERS = Object.fromEntries((["sh", "ps1"] as const).map((ext) =>
+  [ext, createHash("sha256").update(readFileSync(resolve(ROOT, `install.${ext}`))).digest("hex")]));
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
 
@@ -138,8 +143,10 @@ function thirdPartyNotices() {
 // The private PDF loader reads only document-bound, authorized source tickets.
 // Other UI pages add connect-src 'self' in a meta policy; the viewer only opens bytes.
 // Native setup downloads run outside browser CSP.
-// Packaged pdf.js image decoders need wasm-unsafe-eval; inline page styles need
-// unsafe-inline. Neither directive permits remotely hosted scripts.
+// Packaged pdf.js image decoders need wasm-unsafe-eval, which permits no remotely hosted script.
+// No inline style either: each page's own rules are a file (public/pages/, linked first, as
+// its <style> stood, so the cascade is as it was), and what is made at run time is a
+// constructed stylesheet (adoptBandColorRules) or the CSSOM.
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -147,7 +154,7 @@ const CSP = [
   "connect-src 'self' http: https: file:",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self'",
   "worker-src 'self'",
   "frame-src 'self'",
   "form-action 'none'",
@@ -181,7 +188,7 @@ export default defineConfig({
   // A dev build is never shipped, and WXT's reloader pulls in code no shipping build has.
   vite: ({ command }) => ({
     // The test build reads a stand-in device (lib/ui/deviceInputs.ts); the shipping one has no such code.
-    define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify(TEST_GRANT_ALL ? "1" : "") },
+    define: { "import.meta.env.ANAGRAM_TEST_BUILD": JSON.stringify(TEST_GRANT_ALL ? "1" : ""), "import.meta.env.ANAGRAM_INSTALLERS": JSON.stringify(INSTALLERS) },
     // WXT's own context announces every content script to the page it runs in, with the
     // extension's id (lib/quietContext.ts).
     resolve: { alias: { "wxt/utils/content-script-context": QUIET_CONTEXT } },
@@ -251,7 +258,8 @@ export default defineConfig({
         if (typeof csp === "object" && csp.extension_pages && wxt.server) {
           csp.extension_pages = csp.extension_pages
             .replace("connect-src 'self'", `connect-src 'self' ${wxt.server.origin.replace(/^http/, "ws")}`)
-            .replace("style-src 'self'", `style-src 'self' ${wxt.server.origin}`)
+            // …and Vite's dev server sets the pages' CSS as <style> elements as it goes.
+            .replace("style-src 'self'", `style-src 'self' ${wxt.server.origin} 'unsafe-inline'`)
             .replace("img-src 'self'", `img-src 'self' ${wxt.server.origin}`)
             .replace("font-src 'self'", `font-src 'self' ${wxt.server.origin}`);
         }

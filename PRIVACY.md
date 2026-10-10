@@ -86,7 +86,12 @@ the content script when the page attaches a shadow root, so text a web component
 later is read too. What Anagram draws in a page keeps its words from the page: the chips
 and the selection card are closed shadow trees the page's scripts cannot read or change,
 and no mark is drawn over text inside another component's closed tree. The page can still
-see that chips are there, and the marks on its own text.
+see that chips are there, and the marks on its own text: which of its paragraphs are
+underlined, and so the word they are flagged from. Its scripts can also tell that the small
+script in its context is there, which in Chrome names the extension. Neither can be helped
+while the marks are drawn by the browser over the page's own text, and the shadow roots a page
+attaches are heard as it attaches them. Settings, Marks, **Underlines** off leaves no marks on
+a page to see.
 
 The local engine runs with your ordinary user privileges. When you install, download models or
 request an update, it contacts GitHub releases, the Astral Python and uv distributions,
@@ -95,8 +100,10 @@ signature), Hugging Face and its file CDN, and the fastText file host. Only when
 cannot be reached does it fall back to `hf-mirror.com`, a public mirror of the same
 repositories, for the same files, each checked against its pinned SHA-256. Where your pip
 or uv is set to a package or Python mirror, the installer fetches the packages and Python
-from that mirror instead, each file still checked against the locked checksums. Those
-requests carry normal download metadata and never page text.
+from that mirror instead, each file still checked against the locked checksums. The command
+the setup page gives you downloads the installer and runs it only if its SHA-256 is the one
+the extension was built with; the installer then runs a release only with its Sigstore
+signature. Those requests carry normal download metadata and never page text.
 
 ## What is stored
 
