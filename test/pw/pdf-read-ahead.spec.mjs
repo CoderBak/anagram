@@ -157,11 +157,12 @@ test("a slow engine reads only around the page, says so, and reads the rest once
   const menu = await popupOver(page);
   const offered = "PDF read-ahead: a slow engine reads around the page and the menu offers 'Read the whole document'";
   let state;
+  // The note and the button are read one after the other, and the menu can be redrawn between
+  // the two: wait for a reading in which both say so.
   await expect.poll(async () => {
     state = await menuState(menu);
-    return state.action;
-  }, { message: offered, timeout: 100_000, intervals: [500] }).toBe("Read the whole document");
-  expect.soft(state.scope, offered).toMatch(SHARE);
+    return state.action === "Read the whole document" && SHARE.test(state.scope ?? "") ? "offered" : `${state.action} | ${state.scope}`;
+  }, { message: offered, timeout: 100_000, intervals: [500] }).toBe("offered");
   expect.soft(Number(state.scope?.match(SHARE)?.[1]), offered).toBeLessThan(50);
 
   await menu.locator("#pageAction").click();
