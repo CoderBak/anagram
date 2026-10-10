@@ -37,7 +37,6 @@ Update this file, or delete an item, when it is done.
 
 1. **The first signed release.** Dispatch `.github/workflows/release.yml` from a version tag. Agents never push tags or run workflows. The installers on `dev` refuse an HTTPS release without a signature, so the next release has to come from the workflow.
 2. **The first install's installer.** A first install runs `install.sh` or `install.ps1` as the release serves it, before anything is verified. The setup page's command could carry the installer's SHA-256, since the extension is built from the same tree (`lib/ui/installationCommand.ts`). Left open on purpose (DEVELOPMENT.md, Security, still open).
-3. **The Liberation Sans fonts' licence.** PDF.js 6 ships Liberation Sans 1.07.4, under GPL-2.0 with Red Hat's font exceptions; PDF.js 5 shipped 2.x, under the SIL Open Font License. The reader carries them unmodified (`vendor/standard_fonts/`) for PDFs that name a standard font without embedding it, and THIRD_PARTY_NOTICES.md now says what they are and where their source is. Keep them, or pin the 2.x fonts under the OFL apart from PDF.js?
 
 ## Open, in order
 

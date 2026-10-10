@@ -42,6 +42,10 @@ Work on `dev`; `main` holds the published README only.
   build of Zotero's document-worker that reads the PDF's paragraphs (`vendor/document-worker/`,
   regenerated from the pinned commits by `scripts/documentWorker.mjs`). The reader's own
   reflow stays as the fallback while the worker runs and where it cannot.
+- The standard fonts are PDF.js's own, as its release ships them: since PDF.js 6 that includes
+  Liberation Sans 1.07.4, under GPL-2.0 with Red Hat's font exceptions, not 2.x under the OFL
+  (the maintainer's decision, 2026-10-10). THIRD_PARTY_NOTICES.md names the licence and the
+  source.
 
 ## Engines
 
