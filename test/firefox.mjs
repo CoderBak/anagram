@@ -929,7 +929,7 @@ for (const how of ["lang", "ids"]) {
     ["vendor/wasm/LICENSE_OPENJPEG", "BSD License"],
     ["vendor/wasm/LICENSE_JBIG2", "PDFium Authors"],
     ["vendor/standard_fonts/LICENSE_FOXIT", "PDFium Authors"],
-    ["vendor/standard_fonts/LICENSE_LIBERATION", "SIL Open Font License"],
+    ["vendor/standard_fonts/LICENSE_LIBERATION", "LIBERATION FONT SOFTWARE"],
   ].filter(([path, needle]) => !text(path).includes(needle)).map(([path]) => path);
   check("the Firefox build carries its own and every bundled component's licence", missing.length === 0, missing.join(", "));
 }

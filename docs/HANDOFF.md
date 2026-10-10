@@ -23,7 +23,10 @@ Update this file, or delete an item, when it is done.
   - pdf.js 6.4.299 and DOMPurify 3.4.16;
   - the cache's precision, the PDF rotation test, the words past the text cap, the statistics wording, single-page-site attribution;
   - coupled values put in one place, look-alike constants renamed, stale comments corrected.
-- **Verified at the commit that updated this file (2026-10-10)** on an Apple Silicon Mac: see the commit message for the suites and their counts.
+- **Verified on 2026-10-10** on an Apple Silicon Mac, by `npm run check` with `ANAGRAMD_PYTHON` and `ANAGRAM_FIREFOX` set (Firefox ESR 153.3), and the three suites it failed run again after their fixes:
+  - typecheck and build; vitest 1,213; walker 1,086; Python 40 and 152 more; installer 75; release signature 11; native setup in the browser 6; Playwright 276; pseudo-locale 201;
+  - Firefox: the viewer, as shipped 5, `firefox.mjs` 49, diagnostics 6;
+  - performance budgets A–J, with the reading log off and on (hyperparameters.md, Performance budgets).
 - **Not verified:**
   - Windows and Linux on real machines, and the Safari build (no Xcode here).
   - `test/webengine/parity.mjs` in Firefox, and the in-browser engine end to end. Both need the 1.4 GB model.
@@ -32,8 +35,9 @@ Update this file, or delete an item, when it is done.
 
 ## Waiting on the maintainer
 
-1. **The first signed release.** Dispatch `.github/workflows/release.yml` from a version tag. Agents never push tags or run workflows. Until a release carries a signature, the installers refuse every HTTPS release.
+1. **The first signed release.** Dispatch `.github/workflows/release.yml` from a version tag. Agents never push tags or run workflows. The installers on `dev` refuse an HTTPS release without a signature, so the next release has to come from the workflow.
 2. **The first install's installer.** A first install runs `install.sh` or `install.ps1` as the release serves it, before anything is verified. The setup page's command could carry the installer's SHA-256, since the extension is built from the same tree (`lib/ui/installationCommand.ts`). Left open on purpose (DEVELOPMENT.md, Security, still open).
+3. **The Liberation Sans fonts' licence.** PDF.js 6 ships Liberation Sans 1.07.4, under GPL-2.0 with Red Hat's font exceptions; PDF.js 5 shipped 2.x, under the SIL Open Font License. The reader carries them unmodified (`vendor/standard_fonts/`) for PDFs that name a standard font without embedding it, and THIRD_PARTY_NOTICES.md now says what they are and where their source is. Keep them, or pin the 2.x fonts under the OFL apart from PDF.js?
 
 ## Open, in order
 

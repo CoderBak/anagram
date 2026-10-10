@@ -400,7 +400,7 @@ fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
         # helper and the installer. The installer rolls back (here for a second); the
         # Python processes above it must wait for that, not kill it.
         app = self.home / 'app'
-        for name in ('native_component.py', 'download_modelkit.py', 'runtime_controller.py', 'safe_files.py'):
+        for name in ('native_component.py', 'download_modelkit.py', 'runtime_controller.py', 'safe_files.py', 'contract.json'):
             shutil.copyfile(SOURCE.parents[1] / 'anagramd' / name, app / name)
         shutil.copyfile(SOURCE, app / 'native_registration.py')
         (app / 'install.sh').write_text('trap \'sleep 1; : > "$ANAGRAM_HOME/rolled-back"; exit 130\' INT\n'

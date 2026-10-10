@@ -145,7 +145,7 @@ test("the silence: every quiet shape named with the reason the walk had", async 
     `silent: a sub-floor post in a feed — under the 50-word floor, with its word count: ${entryFor("div.post > p")}`,
   ).toBe(true);
   expect.soft(silence, "silent: the nav — page chrome, named by the branch of the filter that fired").toMatch(/page chrome nav\.site-nav — <nav> is chrome wherever it stands/);
-  expect.soft(silence, "silent: a list of links outside any landmark — link-dense, with the ratio").toMatch(/link-dense: \d+\/\d+ blocks over the 0\.6 link-text ratio \(worst [\d.]+\)/);
+  expect.soft(silence, "silent: a list of links outside any landmark — link-dense, with the ratio").toMatch(/link-dense: \d+\/\d+ blocks over the 0\.7 link-text ratio \(worst [\d.]+\)/);
   expect.soft(silence, "silent: the code block — inside a <pre> of machine text").toMatch(/inside a <pre> of machine text/);
   // `x6` is the id: "behind" is not a word any of our detectors or layouts use, so the
   // report keeps its shape and drops the word (lib/diagnostics/vocabulary.ts). That is

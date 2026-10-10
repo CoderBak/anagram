@@ -379,9 +379,9 @@ Copied unmodified from the pinned pdfjs-dist package and Mozilla's generic viewe
 ### Liberation Sans fonts (pdfjs-dist 6.4.299)
 
 - Project: https://github.com/liberationfonts/liberation-fonts
-- Licence: OFL-1.1
-- Copyright: Copyright (c) 2010 Google Corporation; Copyright (c) 2012 Red Hat, Inc.
-- In Anagram: vendor/standard_fonts/LiberationSans-*.ttf.
+- Licence: GPL-2.0 with Red Hat's font exceptions (the Liberation Fonts licence)
+- Copyright: Copyright (c) 2007 Red Hat, Inc. LIBERATION is a trademark of Red Hat, Inc.
+- In Anagram: vendor/standard_fonts/LiberationSans-*.ttf: Liberation Sans 1.07.4, unmodified, as PDF.js 6 ships it (PDF.js 5 shipped 2.x, under the SIL Open Font License). Their source is at https://releases.pagure.org/liberation-fonts/liberation-fonts-1.07.4.tar.gz.
 
 ```text
 LICENSE AGREEMENT AND LIMITED PRODUCT WARRANTY
