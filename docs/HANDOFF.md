@@ -47,7 +47,7 @@ The tools exist; see DEVELOPMENT.md, Checks.
 
 - [ ] **Feeds.** The page-kind rules were checked on the web benchmark's labelled articles, forums and other pages (0.80 held out, from 0.65). The benchmark has no real feeds; label a sample of feed pages before comparing feeds with the rest.
 - [ ] **`SCRIPT_SHARE`.** Sweeping it changes nothing on the web benchmark, because its pages are in Latin script. It needs pages in other scripts, and mixed ones.
-- [ ] **The minimum length.** Measure false positives on human web text at 50 and at 75 words.
+- [ ] **The minimum length on web text.** On EditLens human prefixes, 5.1% are flagged at 50 words against 2.2% at 75 (hyperparameters.md, Recommendations, 2); 50 stays by the maintainer's decision. A labelled set of human web paragraphs would measure it where Anagram reads.
 - [ ] **The PDF reflow core** (`PARA_GAP`, `INDENT`, `SHORT_LINE` and the rest, set on synthetic pages): sweep it on the dev split with `bench.mjs run`.
 
 The web reader's thresholds were swept on 2026-10-09 (hyperparameters.md, Recommendations); only the link share moved, to 0.7. The language gate was measured and stays. The PDF reader's dev-fitted rules were reported on the held-out split on 2026-10-10: coverage 95.7% against 96.2% on dev, leakage 4.6% against 3.3%, spread over kinds with no one rule failing. That split is now spent for them.

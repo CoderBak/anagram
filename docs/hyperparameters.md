@@ -232,10 +232,11 @@ Background batches no longer differ: a web page's 6,000-character batches are cu
    - Record every participant at paragraph rows or finer, so that another rule for "read" can be applied afterwards.
    - Report the definitions listed under [For the reading statistics](#for-the-reading-statistics).
    - The page-kind rules were checked on the web benchmark's labelled articles, forums and other pages (0.80 held out). Check feeds on a labelled sample of real feeds before comparing feeds with the rest; the benchmark has none.
-2. **Settle the minimum length on evidence.**
+2. **The minimum length, on the evidence there is.**
    - 0.7.0 raised it to 75 because "at 50 words a quarter of human texts read as AI-edited".
-   - 0.8.0 made it a setting, 50 by default, to match Pangram's product; since 2026-10-05 it is fixed at 50.
-   - Measure false positives on human web text at 50 and at 75.
+   - 0.8.0 made it a setting, 50 by default, to match Pangram's product; since 2026-10-05 it is fixed at 50, by the maintainer's decision.
+   - The evidence: the first 50, 75, 100 and 150 words of the EditLens test split's 1,317 human texts of 200 words or more, scored by Anagram's own path (`~/anagram-bench/bench/length_prefix.py`). Above Human: 25.4%, 18.1%, 12.8%, 6.6% (2.7% for the whole texts). Flagged, from Heavily edited up as by default: 5.1%, 2.2%, 1.8%, 0.5%. AI-generated: 1.8%, 1.1%, 0.6%, 0.2%. So at 50 words about one human paragraph in twenty is flagged, against one in forty-five at 75. A verdict under 75 words says it is less reliable (`MODEL_MIN_WORDS`).
+   - Prefixes of long texts are not naturally short texts, and the EditLens domains are not the web: a labelled set of human web paragraphs would measure it where Anagram reads.
 3. **What the sweeps settled (2026-10-09, web benchmark dev split, 2,345 pages).** Each threshold was moved both ways against the shipped value, and none moved F1 by more than 0.002 (0.8457 shipped):
    - `MAX_LINK_RATIO`: 0.5 to 1.0. 0.7 gains recall for no precision (F1 0.8464) and is shipped; 1.0 lets link lists in (precision 0.920, leakage 6.2%).
    - the symbol share (0.15 to 0.4), the name-list thresholds (caps, commas, tokens, or off), the short-run merge (6 to 10), the line and sentence counts: all within 0.002.
@@ -306,7 +307,7 @@ How this area affects the statistics:
 | Parameter | Value | Where | Controls | Basis | Notes |
 |---|---|---|---|---|---|
 | `MODEL_MIN_WORDS` | 75 words | `lib/dom/text.ts:94` | Below it, a verdict is flagged "less reliable". Teasers are only recognised below it. | Model | This value does not gate reading. It feeds the "less reliable" count. The teaser rule is tied to 75, not to the floor. |
-| `MIN_WORDS` | 50 words | `lib/dom/text.ts:102` | Evidence floor. A run this long is a unit by itself. Shorter runs of one voice are always grouped up to it. | Convention | The comment cites Pangram's product minimum. CHANGELOG 0.7.0 measured that at 50 words "a quarter of human texts read as AI-edited" and moved to 75. Release 0.8.0 lowered it back as a setting; since 2026-10-05 it is fixed. Shared with the PDF reader, selections, pasted text and the frame stub. This value sets stats coverage directly. |
+| `MIN_WORDS` | 50 words | `lib/dom/text.ts:102` | Evidence floor. A run this long is a unit by itself. Shorter runs of one voice are always grouped up to it. | Convention | The comment cites Pangram's product minimum. CHANGELOG 0.7.0 measured that at 50 words "a quarter of human texts read as AI-edited" and moved to 75. Release 0.8.0 lowered it back as a setting; since 2026-10-05 it is fixed. On EditLens human prefixes, 5.1% are flagged at 50 words and 2.2% at 75 (Recommendations, 2). Shared with the PDF reader, selections, pasted text and the frame stub. This value sets stats coverage directly. |
 | `WINDOW_CHARS` (imported) | 1800 chars (about 300 English words) | `lib/capture/windows.ts:41` | Caps group size, sets the post-versus-article line and limits orphan joins | Measured | Measured with the tokenizer on English. The model area owns this value. Raising it merges longer posts into one verdict. In CJK text, 1800 chars is far more than one pass. |
 | Post rule: scope prose clears the floor and fits one window | ≥ floor and ≤ 1800 chars | `lib/dom/walker.ts:1726` | A declared or recognised scope becomes ONE unit, with its full paragraphs included | Judgement | Justified as "about the mean training-text length", without a figure. Anything longer is an article, with one chip per full paragraph. |
 | `WHOLE_POST_CHARS` | 2 × `WINDOW_CHARS` = 3600 chars | `lib/dom/walker.ts:1474` | A re-scan root inside a scope this small restarts at the whole scope | Judgement | Too low and a re-scanned comment is read paragraph by paragraph, each paragraph too short. Too high and re-scans cost more. |
@@ -559,7 +560,7 @@ The web benchmark (`test/web-bench`, which tunes on dev and reports on test) is 
 - `MAX_HEADING_WORDS` 30
 - `EDGE_CHARS` 120 and "several alike" ≥ 2
 - `SHELL_ELEMENT_SHARE` 0.5
-- `MIN_WORDS` 50 itself, measured against the false-positive rate on human text at 50 compared with 75 words
+- `MIN_WORDS` 50 itself, on human web paragraphs (on EditLens prefixes: 5.1% flagged at 50 words, 2.2% at 75)
 
 `DOMINANCE` 0.56 is oddly precise and unexplained, but it only feeds the diagnostics.
 
