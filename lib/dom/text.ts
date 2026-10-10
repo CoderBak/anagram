@@ -574,6 +574,11 @@ const STRUCTURAL_SYMBOLS = new Set([
   "─", "│", "┌", "┐", "└", "┘", "├", "┤", "┬", "┴", "┼", "═", "║", "╔", "╗", "╚", "╝",
 ]);
 
+/** Share of a text's characters that may be structural symbols before it is machine layout
+ *  rather than writing (symbolNoiseRatio): the walker's barrier, the PDF reader's and the
+ *  diagnostics' account of both. */
+export const MAX_SYMBOL_NOISE = 0.2;
+
 /**
  * Fraction of non-whitespace characters that are structural/box-drawing symbols.
  * ASCII diagrams, table rules and divider rows score far above prose (which sits

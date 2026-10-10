@@ -60,6 +60,7 @@ import {
   countWords,
   linkTextRatio,
   symbolNoiseRatio,
+  MAX_SYMBOL_NOISE,
   hasColumnGaps,
   isSeparatorRun,
   looksLikeNameList,
@@ -282,8 +283,11 @@ export interface CollectOptions {
   scopesRead?: WeakSet<Element>;
 }
 
-/** Max link-text fraction for a run to count as prose (nav/menu barrier above it). */
-const MAX_LINK_RATIO = 0.6;
+/** Max link-text fraction for a run to count as prose (nav/menu barrier above it). 0.7 from the
+ *  web benchmark's sweep (2026-10-09): +0.11 F1 on the held-out pages, mostly reference and
+ *  course lists and documentation, at 0.03 points of precision; past it each step costs more
+ *  leaked words for each word gained, and no barrier at all costs a point of precision. */
+export const MAX_LINK_RATIO = 0.7;
 /** Max share of a run's characters in unrendered shortcodes (lib/dom/text.ts, shortcodeShare). */
 export const MAX_SHORTCODE_SHARE = 0.3;
 /** Words a text inside a card link needs, a sentence's end with them, to be prose. */
@@ -2095,7 +2099,7 @@ function createAssembler(
       return;
     }
     const columns = r.preserved && hasColumnGaps(r.raw);
-    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || columns || isRepetitive(r.text) || isServerDiagnostic(r.text)) {
+    if (symbolNoiseRatio(r.text) > MAX_SYMBOL_NOISE || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || columns || isRepetitive(r.text) || isServerDiagnostic(r.text)) {
       // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
       // Postel"), a page builder's unrendered shortcodes, a phrase repeated a hundred
       // times over and a server's warnings printed into the page: machine output, not prose —

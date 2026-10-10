@@ -35,6 +35,7 @@ import {
   looksLikeNameList,
   shortRole,
   symbolNoiseRatio,
+  MAX_SYMBOL_NOISE,
   wordShape,
   MAX_UNIT_TEXT_CHARS,
   MIN_SENTENCE_WORDS,
@@ -105,14 +106,6 @@ interface Blueprint {
   /** The id of the unit last minted from this, so its placement can be let go. */
   minted: string | null;
 }
-
-/**
- * Share of a block's characters that may be structural symbols before it is machine
- * layout rather than writing — a table rule, an ASCII diagram, a row of dot leaders. The
- * walker's own bound, applied here for the same reason: a stretch of short blocks must
- * not be welded into a unit of table rows.
- */
-const MAX_SYMBOL_NOISE = 0.2;
 
 /**
  * What a block is, as far as reading it with its neighbours goes. Above the evidence floor
