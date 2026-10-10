@@ -112,6 +112,44 @@ test("daily totals: the paragraphs read, once each, as expected words per verdic
   expect(JSON.stringify(db.totals), "no text, no address").not.toMatch(/Alpha|river|localhost|article\.html/);
 });
 
+test("a short paragraph read, then given a neighbour, counts its words once: short then, and the rest with the paragraph", async ({ page, pages, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("daily") });
+  pages.serve({
+    "/short.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>short</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui"><header style="height:160px">short</header><main><div id="box"><p>${para("Lonely", 20)}</p></div></main></body></html>`,
+    "/elsewhere.html": "<!doctype html><title>elsewhere</title><p>nothing</p>",
+  });
+  await page.goto(pages.url("/short.html"), { waitUntil: "load" });
+  await expect.poll(async () => dayTotal(await statsDb(extension))?.short ?? 0, { message: "the short paragraph read", timeout: 25_000 }).toBe(20);
+  // The page gives it a neighbour: the two are one paragraph of 60 words now, scored.
+  await page.evaluate((text) => { const p = document.createElement("p"); p.textContent = text; document.getElementById("box").append(p); }, para("Joined", 40));
+  await expect(settledChips(page)).toHaveCount(1);
+  await dayWith(extension, 1);
+  await leave(page, pages);
+  const day = dayTotal(await statsDb(extension));
+  expect(day.short, "its 20 words, read while short").toBe(20);
+  expect(day.scored, "the paragraph's other 40, not all 60 again").toBe(40);
+});
+
+test("what the reader left out is counted by why, in words, and none of it kept", async ({ page, pages, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("full") });
+  const links = Array.from({ length: 12 }, (_, i) => `<li><a href="/story/${i}">Story ${i} about the river towns and their quiet letters</a></li>`).join("");
+  pages.serve({
+    "/left.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>left out</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">
+<nav><a href="/">Home</a> <a href="/news">News</a> <a href="/sport">Sport</a> <a href="/about">About the paper and its people</a></nav>
+<main><header style="height:120px"></header><p>${para("Alpha")}</p><ul>${links}</ul><pre><code>const river = boats.map((b) => b.town);\nfor (const letter of river) send(letter);</code></pre><p>${para("Bravo")}</p></main></body></html>`,
+    "/elsewhere.html": "<!doctype html><title>elsewhere</title><p>nothing</p>",
+  });
+  await page.goto(pages.url("/left.html"), { waitUntil: "load" });
+  await expect(settledChips(page)).toHaveCount(2);
+  await leave(page, pages);
+  const db = await statsDb(extension);
+  const visit = db.visits.find((v) => v.url?.includes("left.html"));
+  expect(visit.leftOut.chrome, "the navigation").toBeGreaterThan(0);
+  expect(visit.leftOut.links, "the list of links").toBeGreaterThanOrEqual(12 * 9);
+  expect(visit.leftOut.code, "the code").toBeGreaterThan(0);
+  expect(JSON.stringify(db), "words only, never the text").not.toMatch(/Story 3|boats\.map/);
+});
+
 test("by site: each host's share of the day, and no page", async ({ page, pages, extension, storage }) => {
   await storage.set({ statsConfig: await presetConfig("sites", { layers: { place: "host" } }) });
   await readTop(page, pages);

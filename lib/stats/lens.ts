@@ -123,6 +123,10 @@ export { viewedWords };
 
 /** The page-kind rule's thresholds (lib/stats/pageKind.ts), which a lens may set otherwise and
  *  apply to the signals a visit kept. */
-export interface KindRule { manyVoices: number; articleShare: number }
-export const DEFAULT_KIND_RULE: KindRule = { manyVoices: 5, articleShare: 0.6 };
+/** The page-kind rule's numbers (lib/stats/pageKind.ts kindFrom): posts that make a feed, and no
+ *  one of them holding `onePost` of the words; the share of the words in one article, or in
+ *  <main>, that makes an article, with a body of text of `textBody` words; the body an article
+ *  declared in og:type alone needs. Measured on the web benchmark's labelled pages, 2026-10-09. */
+export interface KindRule { manyVoices: number; articleShare: number; onePost: number; textBody: number; ogBody: number }
+export const DEFAULT_KIND_RULE: KindRule = { manyVoices: 5, articleShare: 0.6, onePost: 0.4, textBody: 300, ogBody: 150 };
 export type { PageKind };

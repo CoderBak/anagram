@@ -20,23 +20,25 @@
 import type { ScoreResult } from "../contract";
 import type { Unit } from "../types";
 import { cyrb53 } from "../hash";
-import { countWords, unitParagraphs } from "../dom/text";
+import { MAX_UNIT_TEXT_CHARS, countWords, unitParagraphs } from "../dom/text";
+import { DEFAULT_LENS } from "./lens";
+import { POST } from "./pageKind";
 import { rank, type Layers } from "./config";
 import {
-  INPUT_KINDS, STATE_KINDS, UI_EVENTS, type EventStreams, type Exposure, type InputKind, type KindSignals, type PageKind,
-  type SkipReason, type StateKind, type Surface, type UiEvent, type UnitKind, type UnitStatus, type VisitRow,
+  HEARTBEAT_MS, INPUT_KINDS, STATE_KINDS, UI_EVENTS, type EventStreams, type Exposure, type InputKind, type KindSignals, type PageKind,
+  type LeftOut, type SkipReason, type StateKind, type Surface, type UiEvent, type UnitKind, type UnitStatus, type VisitRow,
 } from "./model";
 import type { WireUnit, WireVisit, StatsWire } from "./wire";
 
-/** The default rule's band, threshold and idle cut-off (lib/stats/lens.ts DEFAULT_LENS). */
-const READ_MS = 1000;
+/** The default rule's band and threshold (lib/stats/lens.ts DEFAULT_LENS), and the idle
+ *  cut-off. */
+const READ_MS = DEFAULT_LENS.readMs;
 const BAND_MARGIN = "-10% 0px -10% 0px";
 const IDLE_MS = 120_000;
 const TICK_MS = 1000;
 /** How soon what was learned is sent; and how often the time a page is shown is sent, when
  *  nothing else is. */
 const FLUSH_MS = 5000;
-const HEARTBEAT_MS = 60_000;
 /** A visit is sent once it has been shown this long, or something on it was read: a tab
  *  opened behind another and never looked at is no visit. */
 const SHOWN_TO_SEND_MS = 1000;
@@ -59,8 +61,6 @@ export interface RecorderHost {
   ownsDwell: boolean;
   fling: { delay(): number };
   verdictOf(unit: Unit): ScoreResult | undefined;
-  /** Whether a short stretch (by its first node) is still one the walk left unread. */
-  stillShort(first: Text): boolean;
   kind(): { kind: PageKind; signals: KindSignals | null };
   display(): { chips: string; underlines: string; flagFrom: string };
   flagged(result: ScoreResult): boolean;
@@ -93,6 +93,8 @@ export interface Recorder {
   /** The document is going: the visit's last message, now (its session's port is still up). */
   leave(): void;
   ui(kind: UiEvent, unit?: Unit): void;
+  /** Words the walk left out, by why: each part of the page once a visit (by `key`). */
+  leftOut(why: LeftOut, words: number, key: Node): void;
 }
 
 interface Tracked {
@@ -111,6 +113,12 @@ interface Tracked {
   since: number | null;
   expo: { any: Exposure; half: Exposure; band: Exposure; first?: number; last?: number; sightings: number; readAt?: number };
   counted: boolean;
+  /** A short stretch a paragraph has taken in since (the page gave it neighbours): its words
+   *  are the paragraph's now, and it is not counted again. */
+  joined?: true;
+  /** Words of the short stretches it took in that were counted already, as short: what the
+   *  paragraph counts is the rest of its words. */
+  lessWords?: number;
   dirty: boolean;
   sentText: boolean;
   found: number;
@@ -145,8 +153,6 @@ function scriptOf(text: string): string {
 
 const sentencesOf = (text: string): number => Math.max(1, (text.match(/[.!?。！？]+(?=\s|$)/g) ?? []).length);
 
-/** A post of a feed or a thread, where the markup marks one (as lib/stats/pageKind.ts). */
-const POST = 'article, [role="article"], [aria-posinset], [role="listitem"]:not(li)';
 const LANDMARK = "main, [role=main], article, aside, [role=complementary], nav, [role=navigation], header, footer, dialog, [role=dialog]";
 
 const READ_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " ", "Spacebar"]);
@@ -173,6 +179,9 @@ export function createRecorder(host: RecorderHost): Recorder {
   const byEl = new Map<Element, Set<Tracked>>();
   const byUnit = new Map<Unit, Tracked>();
   const byKey = new Map<number, Tracked>();
+  /** The short stretch tracked for each of its text nodes, and the paragraph for each of its. */
+  const shortByNode = new WeakMap<Text, Tracked>();
+  const unitByNode = new WeakMap<Text, Tracked>();
   const onScreen = new Set<Tracked>();
   let nextN = 0;
   let tick: ReturnType<typeof setTimeout> | null = null;
@@ -190,6 +199,11 @@ export function createRecorder(host: RecorderHost): Recorder {
       lastActivity: now(), idleFrom: null as number | null, idle: [] as [number, number][],
       minutes: { pointer: [] as number[], key: [] as number[], wheel: [] as number[], touch: [] as number[] },
       ui: {} as Partial<Record<UiEvent, number>>,
+      leftOut: {} as Partial<Record<LeftOut, number>>,
+      /** The kind of page, fixed by the first message that carries reading: the visit's row, the
+       *  page's totals and the day's by kind then all file it under the same one. */
+      kind: null as { kind: PageKind; signals: KindSignals | null } | null,
+      leftOutSeen: new WeakSet<Node>(),
       scroll: { depth: 0, distance: 0 },
       reads: [] as NonNullable<StatsWire["reads"]>,
       streams: emptyStreams(),
@@ -300,13 +314,14 @@ export function createRecorder(host: RecorderHost): Recorder {
 
   /** A paragraph read, counted for the totals once its verdict can be (or that it has none). */
   function count(t: Tracked): void {
-    if (t.counted || t.expo.readAt === undefined) return;
+    if (t.counted || t.joined || t.expo.readAt === undefined) return;
     const { status, why } = outcomeOf(t);
     if (status === "pending") return;
     t.status = status;
     t.counted = true;
     t.dirty = true;
-    visit.reads.push(why ? { n: t.n, w: t.words, why } : { n: t.n, w: t.words, p: t.result!.probs.slice(0, 4) });
+    const w = Math.max(0, t.words - (t.lessWords ?? 0));
+    visit.reads.push(why ? { n: t.n, w, why } : { n: t.n, w, p: t.result!.probs.slice(0, 4) });
     schedule();
   }
 
@@ -318,10 +333,16 @@ export function createRecorder(host: RecorderHost): Recorder {
     if (!set) {
       set = new Set();
       byEl.set(el, set);
-      viewIO?.observe(el);
-      bandIO?.observe(el);
+    } else {
+      // Watched already, for another paragraph (a short stretch the page has since given
+      // neighbours): the observers say nothing more until it moves, so it is watched afresh,
+      // and they say where it stands now, for this paragraph too.
+      viewIO?.unobserve(el);
+      bandIO?.unobserve(el);
     }
     set.add(t);
+    viewIO?.observe(el);
+    bandIO?.observe(el);
   }
 
   function unobserve(t: Tracked): void {
@@ -473,6 +494,7 @@ export function createRecorder(host: RecorderHost): Recorder {
       struct: structOf(unit, el),
     };
     if (unit?.page !== undefined) t.geom = { x: 0, y: 0, w: 0, h: 0, page: unit.page };
+    for (const node of short ?? []) shortByNode.set(node, t);
     byKey.set(key, t);
     observe(t, el);
     return t;
@@ -482,13 +504,32 @@ export function createRecorder(host: RecorderHost): Recorder {
     if (!on || !unit.topElement.isConnected || byUnit.has(unit)) return;
     const t = adopt(cyrb53(unit.text), unit.text, unit.wordCount, unit, null, unit.topElement);
     byUnit.set(unit, t);
+    // Short stretches this paragraph took in: their words are its own now. One read and
+    // counted already as short keeps that count, and the paragraph counts the rest of its
+    // words; one not counted yet never will be.
+    for (const part of unit.parts) {
+      for (const node of part.nodes) {
+        unitByNode.set(node, t);
+        const s = shortByNode.get(node);
+        if (!s || s.joined || s === t) continue;
+        s.joined = true;
+        if (s.counted) { t.lessWords = (t.lessWords ?? 0) + s.words; continue; }
+        settle(s, now());
+        onScreen.delete(s);
+        s.since = null;
+        unobserve(s);
+        s.removedAt = offset(now());
+        s.dirty = true;
+      }
+    }
     const r = host.verdictOf(unit);
     if (r) verdict(unit, r);
   }
 
   function trackShort(nodes: Text[]): void {
     const el = nodes[0]?.parentElement;
-    if (!on || !el || !el.isConnected) return;
+    // A stretch a paragraph has taken in by now (the meter held it while the recorder loaded).
+    if (!on || !el || !el.isConnected || nodes.some((n) => unitByNode.has(n))) return;
     const text = nodes.filter((n) => n.isConnected).map((n) => n.data).join(" ").trim();
     const words = countWords(text);
     if (words === 0) return;
@@ -655,7 +696,7 @@ export function createRecorder(host: RecorderHost): Recorder {
   function snapshotUnit(t: Tracked): WireUnit {
     const r = t.result;
     const out: WireUnit = { n: t.n, status: t.status, found: t.found, len: { words: t.words } };
-    if (sendText && !t.sentText) out.text = t.text.slice(0, 200_000);
+    if (sendText && !t.sentText) out.text = t.text.slice(0, MAX_UNIT_TEXT_CHARS);
     if (L.len !== "none") {
       out.len = {
         words: t.words, chars: t.text.length, sentences: sentencesOf(t.text), lines: t.lines,
@@ -680,7 +721,7 @@ export function createRecorder(host: RecorderHost): Recorder {
   }
 
   function snapshotVisit(final: boolean): WireVisit {
-    const { kind, signals } = safeKind();
+    const { kind, signals } = visit.kind ?? safeKind();
     const out: WireVisit = {
       id: visit.id, start: visit.startClock, frame: host.frame, surface: host.surface, kind, href: visit.href,
       shown: Math.round(visit.shown), active: Math.round(visit.active), focused: Math.round(visit.focused),
@@ -690,7 +731,10 @@ export function createRecorder(host: RecorderHost): Recorder {
     if (visit.restored) out.restored = true;
     if (visit.route) out.route = true;
     if (L.geom !== "none") { out.height = document.documentElement.scrollHeight; out.width = document.documentElement.scrollWidth; }
-    if (L.cover === "visit") out.found = host.found();
+    if (L.cover === "visit") {
+      out.found = host.found();
+      if (Object.keys(visit.leftOut).length > 0) out.leftOut = { ...visit.leftOut };
+    }
     out.display = host.display();
     if (L.scroll !== "none") out.scroll = { ...visit.scroll };
     if (L.input !== "none") out.idle = [...visit.idle];
@@ -731,6 +775,7 @@ export function createRecorder(host: RecorderHost): Recorder {
     visit.reads = [];
     const streams = rowsEvents ? visit.streams : null;
     if (rowsEvents) visit.streams = emptyStreams();
+    if (reads.length > 0) visit.kind ??= safeKind();
     const base = snapshotVisit(final);
     if (host.ownsDwell) { base.dwell = Math.max(0, Math.round(visit.shown - visit.dwellSent)); visit.dwellSent = visit.shown; }
     // Split what is waiting into messages the worker takes.
@@ -844,6 +889,11 @@ export function createRecorder(host: RecorderHost): Recorder {
     stop,
     track,
     trackShort,
+    leftOut(why, words, key) {
+      if (!on || visit.leftOutSeen.has(key)) return;
+      visit.leftOutSeen.add(key);
+      visit.leftOut[why] = (visit.leftOut[why] ?? 0) + words;
+    },
     verdict,
     forget,
     drop() {

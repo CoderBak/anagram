@@ -92,6 +92,12 @@ import { WINDOW_CHARS } from "../capture/windows";
 // walk can say: which runs stand beside each other, and in whose voice.
 import { clearsFloor, fitsWindow, groupWords, modelSized, orphanHome } from "../plan/group";
 import { MARK_ATTR } from "../types";
+import type { LeftOut } from "../stats/model";
+
+/** Why the walk left text out (CollectOptions.onLeftOut): the reading log's reasons. */
+export type LeftOutReason = LeftOut;
+/** At most this much of a skipped element's text has its words counted. */
+const MOST_LEFT_OUT_CHARS = 50_000;
 import { cutTextAt } from "./splits";
 import { finish } from "../slices";
 
@@ -245,6 +251,15 @@ export interface CollectOptions {
    * would mean reading the page a second time.
    */
   onShortText?: (nodes: Text[]) => void;
+  /**
+   * Text the walk left out, by why and how many words, where it decides to (the reading log's
+   * `leftOut`): runs mostly of links, of symbols or of names, code, a teaser the site cut,
+   * the page's chrome (navigation, header and footer, a consent banner, the mail program's
+   * lines over a quote), what is hidden. `key` is the node the count is of, so a walk that
+   * runs again over the same part of the page is counted once. Only the counting walks pay
+   * for the words of what they skip whole.
+   */
+  onLeftOut?: (why: LeftOutReason, words: number, key: Node) => void;
   /**
    * Called once per shadow root, open or closed, the walk descends into. The orchestrator
    * registers a MutationObserver on each: subtree observation of the document
@@ -537,7 +552,19 @@ export function* collectUnitsInSlices(
     opts.scopesRead.add(el);
     return false;
   };
-  const asm = createAssembler(scopes, opts.minWords ?? MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText);
+  const asm = createAssembler(scopes, opts.minWords ?? MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText, opts.onLeftOut);
+  /** The words of an element the walk does not go into, for the reading log. */
+  const leftOutWhole = (el: Element, why: LeftOutReason): void => {
+    if (!opts.onLeftOut) return;
+    const words = countWords((el.textContent ?? "").slice(0, MOST_LEFT_OUT_CHARS));
+    if (words > 0) opts.onLeftOut(why, words, el);
+  };
+  /** The words of a run read and not kept. */
+  const leftOutRun = (nodes: Text[], preserved: boolean, skips: readonly number[], why: LeftOutReason): void => {
+    if (!opts.onLeftOut || !nodes[0]) return;
+    const words = countWords(unitPartText(extractPartText(nodes), preserved, skipOffsets(nodes, skips)));
+    if (words > 0) opts.onLeftOut(why, words, nodes[0]);
+  };
 
   // ---- run accumulation ------------------------------------------------------------
 
@@ -646,8 +673,8 @@ export function* collectUnitsInSlices(
 
   function read(found: Found, claimed: boolean): Run | null {
     const { nodes, container, preserved, formulas, skips, note, truncated } = found;
-    if (!rects.get(container)) return null; // zero-size container → invisible text
-    if (cutToOneLine(container, styles)) return null; // a one-line preview of somebody's text (style.ts)
+    if (!rects.get(container)) { leftOutRun(nodes, preserved, skips, "hidden"); return null; } // zero-size container → invisible text
+    if (cutToOneLine(container, styles)) { leftOutRun(nodes, preserved, skips, "teaser"); return null; } // a one-line preview of somebody's text (style.ts)
     const raw = extractPartText(nodes);
     // One definition of a part's text (lib/dom/text.ts), because the orchestrator recomputes
     // it to tell whether a unit changed and the locator maps offsets in it back to the page.
@@ -893,6 +920,11 @@ export function* collectUnitsInSlices(
     if (excluded) {
       if (flow !== "inline" && flow !== "contents") closeRun();
       else leaveOut();
+      if (opts.onLeftOut) {
+        if (boiler || scopes.header(el) || scopes.furniture(el)) leftOutWhole(el, "chrome");
+        else if (tag === "PRE" || tag === "CODE") leftOutWhole(el, "code");
+        else if (el.getAttribute("aria-hidden") === "true" || (cs !== null && (cs as any).contentVisibility === "hidden")) leftOutWhole(el, "hidden");
+      }
       if (boiler) asm.barrier(el); // page chrome separates sections — no merging across
       return;
     }
@@ -1566,7 +1598,13 @@ function createAssembler(
   retake: (nodes: Text[]) => boolean,
   /** Short prose nobody could take (CollectOptions.onShortText). */
   onShortText?: (nodes: Text[]) => void,
+  /** Runs left out, for the reading log (CollectOptions.onLeftOut). */
+  onLeftOut?: CollectOptions["onLeftOut"],
 ): Assembler {
+  const leftOut = (runs: readonly Run[], why: LeftOutReason): void => {
+    const words = runs.reduce((n, r) => n + r.words, 0);
+    if (onLeftOut && words > 0 && runs[0]?.nodes[0]) onLeftOut(why, words, runs[0].nodes[0]);
+  };
   /** Emitted units with the walk index of their first run — scopes interleave, so
    *  units complete out of document order and are sorted once at the end. */
   const emitted: { unit: Unit; at: number }[] = [];
@@ -1622,7 +1660,7 @@ function createAssembler(
    * nobody to join, under a chip that speaks for a post it has not read to the end.
    */
   function release(runs: Run[]): void {
-    if (runs.some((r) => r.truncated)) return; // a preview the site cut is not the text (markCut)
+    if (runs.some((r) => r.truncated)) { leftOut(runs, "teaser"); return; } // a preview the site cut is not the text (markCut)
     const owned = runs.reduce((n, r) => n + (r.claimed ? 1 : 0), 0);
     if (owned === runs.length) return;
     if (owned > 0 && !retake(runs.flatMap((r) => r.nodes))) return;
@@ -2056,18 +2094,22 @@ function createAssembler(
       if (isSeparatorRun(r.text)) barrier(r.container);
       return;
     }
-    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || (r.preserved && hasColumnGaps(r.raw)) || isRepetitive(r.text) || isServerDiagnostic(r.text)) {
+    const columns = r.preserved && hasColumnGaps(r.raw);
+    if (symbolNoiseRatio(r.text) > 0.2 || shortcodeShare(r.text) > MAX_SHORTCODE_SHARE || columns || isRepetitive(r.text) || isServerDiagnostic(r.text)) {
       // ASCII diagrams / table rules / column-layout headers ("RFC 768   J.
       // Postel"), a page builder's unrendered shortcodes, a phrase repeated a hundred
       // times over and a server's warnings printed into the page: machine output, not prose —
       // barrier, never merged. The column-gap check applies ONLY to preserved-whitespace
       // runs: in normal HTML, interior space runs collapse invisibly and must not drop prose.
+      leftOut([r], columns ? "code" : "symbols");
       barrier(r.container);
       return;
     }
-    if ((r.linkRatio > MAX_LINK_RATIO && !inCardLink(r)) || looksLikeNameList(r.text)) {
+    const links = r.linkRatio > MAX_LINK_RATIO && !inCardLink(r);
+    if (links || looksLikeNameList(r.text)) {
       // Nav/menu/story-title lists and author/citation strings: not prose AND a
       // section boundary.
+      leftOut([r], links ? "links" : "names");
       barrier(r.container);
       return;
     }

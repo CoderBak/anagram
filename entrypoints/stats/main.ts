@@ -471,7 +471,8 @@ async function render(): Promise<void> {
   const needUnits = !isDefaultLens(lens);
   const [range, recent, first] = await Promise.all([
     store.read(from, to, { units: needUnits }).catch(none),
-    store.read(addDays(today, -29), today).catch(none),
+    // The thirty days the period is held against, counted by the same rule.
+    store.read(addDays(today, -29), today, { units: needUnits }).catch(none),
     store.first().catch(() => null),
   ]);
   if (ticket !== rendering) return;
@@ -496,7 +497,7 @@ async function render(): Promise<void> {
     : range.units.length > 0 ? t("statsLensApplied") : t("statsLensCannot");
   if (nothing) return;
 
-  const recentSummary = summarize(recent, addDays(today, -29), today, DEFAULT_LENS);
+  const recentSummary = summarize(recent, addDays(today, -29), today, lens);
   headline(total, headlineOf(recentSummary.total, lens));
   $("trendCard").hidden = from === to;
   if (from !== to) trendChart(summary.trend, from, to);

@@ -2,6 +2,7 @@
 import { storage } from "#imports";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { DEFAULT_FLAG_FROM, type FlagFrom } from "../render/flagLevel";
+import { PUBLIC_SUFFIXES } from "../publicSuffixes";
 export type { ScoreCacheMode } from "../cachePolicy";
 
 export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
@@ -56,26 +57,6 @@ export interface SiteRule {
   mode: SiteMode;
 }
 
-/** Stop inheritance at common public/hosting suffixes so unrelated sites stay separate.
- *  This is a limited guard, not the complete Public Suffix List. */
-const SUFFIX_GUARD = new Set([
-  // country second levels
-  "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "net.uk", "sch.uk",
-  "com.au", "net.au", "org.au", "edu.au", "gov.au", "id.au",
-  "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn",
-  "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp",
-  "co.kr", "or.kr", "ne.kr", "go.kr",
-  "com.br", "net.br", "org.br", "gov.br",
-  "co.in", "net.in", "org.in", "gov.in", "ac.in",
-  "co.nz", "net.nz", "org.nz", "govt.nz", "ac.nz",
-  "co.za", "org.za", "net.za",
-  "com.mx", "com.ar", "com.tr", "com.sg", "com.hk", "com.tw", "com.pl", "com.es", "com.ru",
-  // one-site-per-subdomain hosting
-  "github.io", "gitlab.io", "pages.dev", "workers.dev", "vercel.app", "netlify.app",
-  "herokuapp.com", "appspot.com", "firebaseapp.com", "web.app", "glitch.me", "repl.co",
-  "blogspot.com", "wordpress.com", "substack.com", "notion.site", "translate.goog",
-]);
-
 /** Compare hostnames without case, trailing dots or a leading www. */
 export function normalizeRuleHost(hostname: string): string {
   const h = hostname.trim().toLowerCase().replace(/\.+$/, "");
@@ -98,7 +79,7 @@ function ruleCandidates(host: string): string[] {
     if (cut < 0) break;
     const parent = rest.slice(cut + 1);
     // Do not inherit rules from a TLD or guarded public suffix.
-    if (!parent.includes(".") || SUFFIX_GUARD.has(parent)) break;
+    if (!parent.includes(".") || PUBLIC_SUFFIXES.has(parent)) break;
     out.push(parent);
     rest = parent;
   }

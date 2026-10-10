@@ -11,7 +11,7 @@ import type { ScoreResult } from "../contract";
 import { lazyVendor } from "../lazy";
 import type { Layers } from "./config";
 import type { Recorder, RecorderHost } from "./recorder";
-import type { UiEvent } from "./model";
+import type { LeftOut, UiEvent } from "./model";
 
 /** This document is in a private window, where nothing is measured (the worker would keep
  *  none of it either). */
@@ -31,8 +31,9 @@ const loadChunk = (): Promise<RecorderModule> => lazyVendor<RecorderModule>("sta
 
 export interface ReadingMeter {
   running(): boolean;
-  /** Start, or start again under other layers, with the units on the page now. */
-  start(layers: Layers, units: () => Iterable<Unit>): void;
+  /** Start, or start again under other layers, with the units on the page now and the short
+   *  stretches the walk left unread (a walk may have run before statistics were asked for). */
+  start(layers: Layers, units: () => Iterable<Unit>, shorts?: () => Iterable<Text[]>): void;
   /** Stop. `send` (the default) sends what was learned first; false drops it. */
   stop(send?: boolean): void;
   track(unit: Unit): void;
@@ -43,6 +44,8 @@ export interface ReadingMeter {
   newView(units: Iterable<Unit>): void;
   leave(): void;
   ui(kind: UiEvent, unit?: Unit): void;
+  /** Words the walk left out, by why (CollectOptions.onLeftOut). */
+  leftOut(why: LeftOut, words: number, key: Node): void;
 }
 
 /** At most this many short stretches wait for the recorder to load. */
@@ -53,11 +56,12 @@ export function createReadingMeter(host: Omit<RecorderHost, "layers">, loadRecor
   let layers: Layers | null = null;
   let generation = 0;
   let held: Text[][] = [];
+  let heldOut: [LeftOut, number, Node][] = [];
   const gone = new Set<Unit>();
 
   return {
     running: () => layers !== null,
-    start(next, units) {
+    start(next, units, shorts) {
       if (layers && JSON.stringify(layers) === JSON.stringify(next)) return;
       if (recorder) { recorder.stop(true); recorder = null; }
       layers = next;
@@ -66,9 +70,12 @@ export function createReadingMeter(host: Omit<RecorderHost, "layers">, loadRecor
         if (ticket !== generation || !layers) return;
         recorder = module.createRecorder({ ...host, layers });
         recorder.start(units());
+        for (const nodes of shorts?.() ?? []) recorder.trackShort(nodes);
         for (const nodes of held) recorder.trackShort(nodes);
+        for (const [why, words, key] of heldOut) recorder.leftOut(why, words, key);
         for (const unit of gone) recorder.forget(unit);
         held = [];
+        heldOut = [];
         gone.clear();
       }, () => { if (ticket === generation) layers = null; });
     },
@@ -78,6 +85,7 @@ export function createReadingMeter(host: Omit<RecorderHost, "layers">, loadRecor
       recorder = null;
       layers = null;
       held = [];
+      heldOut = [];
       gone.clear();
     },
     track(unit) { recorder?.track(unit); },
@@ -94,5 +102,9 @@ export function createReadingMeter(host: Omit<RecorderHost, "layers">, loadRecor
     newView(units) { recorder?.newView(units); },
     leave() { recorder?.leave(); },
     ui(kind, unit) { recorder?.ui(kind, unit); },
+    leftOut(why, words, key) {
+      if (recorder) recorder.leftOut(why, words, key);
+      else if (layers && heldOut.length < MOST_HELD) heldOut.push([why, words, key]);
+    },
   };
 }

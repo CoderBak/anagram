@@ -270,7 +270,7 @@ export function createOrchestrator(
    * Entries leave when the node is taken into a unit (the reader opened a "see more" and
    * it now has neighbours) or when the DOM lets it go (purgeDisconnected).
    */
-  const shortTexts = new Set<Text>();
+  const shortTexts = new Map<Text, Text[]>();
   /** One verdict per analyzed unit — the aggregate everything counts by, plus its windows. */
   let verdictsById = new Map<string, UnitVerdict>();
   /** PAGED DOCUMENTS: the verdicts on paragraphs whose page is not drawn now, let go with it
@@ -331,7 +331,6 @@ export function createOrchestrator(
     surface: opts.statsSurface ?? "web",
     frame: toolbarOwner ? "top" : "frame",
     verdictOf: (unit) => verdictsById.get(unit.id)?.result,
-    stillShort: (node) => shortTexts.has(node),
     kind: () => {
       const said = opts.pageKind?.();
       if (said) return { kind: said, signals: null };
@@ -626,7 +625,7 @@ export function createOrchestrator(
   function purgeDisconnected(rescanQueue?: Set<Element>): void {
     // Detached text nodes are held by nothing else here — a feed that scrolls for an hour
     // would otherwise keep every short paragraph it ever showed.
-    for (const node of shortTexts) if (!node.isConnected) shortTexts.delete(node);
+    for (const node of shortTexts.keys()) if (!node.isConnected) shortTexts.delete(node);
     let left = false;
     for (const unit of [...unitsById.values()]) {
       const gone =
@@ -737,10 +736,12 @@ export function createOrchestrator(
       scopesRead,
       ...(changed ? { changed } : {}),
       onShortText: (nodes) => {
-        if (nodes[0]) shortTexts.add(nodes[0]);
+        if (nodes[0]) shortTexts.set(nodes[0], nodes);
         reading.trackShort(nodes);
       },
       onShadowRoot: observers.observeRoot,
+      // What the walk left out, for the reading log; only while it records.
+      ...(reading.running() ? { onLeftOut: reading.leftOut } : {}),
     };
     return opts.collect
       ? opts.collect(root, claimFilter, options)
@@ -1508,7 +1509,11 @@ export function createOrchestrator(
     // Where the engine scores decides how much a request carries; the settings don't wait for it.
     void sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS })
       .then((s) => { if (seq === bootSeq) learnDevice(s as BackendStatus | undefined); }, () => undefined);
-    applySnapshot(await readSettings());
+    // The statistics setting too, read beside the rest: the first walk then reports what it
+    // leaves out and leaves short to a reading log that is already listening.
+    const statsRead = Promise.resolve().then(() => settings.statsConfig.getValue()).catch(() => undefined);
+    const [snapshot, statsValue] = await Promise.all([readSettings(), statsRead]);
+    applySnapshot(snapshot);
     if (seq !== bootSeq || !started) return; // stopped or restarted while we waited
 
     watchSettings();
@@ -1520,7 +1525,7 @@ export function createOrchestrator(
       unwatchStats = settings.statsConfig.watch(applyStatsConfig);
       unwatchLeaving?.();
       unwatchLeaving = beforeDocumentLeaves(() => reading.leave());
-      void settings.statsConfig.getValue().then((config) => { if (seq === bootSeq && started) applyStatsConfig(config); }, () => undefined);
+      applyStatsConfig(statsValue);
     } catch {
       /* dead extension context: no statistics either */
     }
@@ -1542,7 +1547,7 @@ export function createOrchestrator(
   function applyStatsConfig(value: unknown): void {
     const config = configOf(value);
     const wanted = started && config.on && !inPrivateWindow();
-    if (wanted) reading.start(config.layers, () => unitsById.values());
+    if (wanted) reading.start(config.layers, () => unitsById.values(), () => shortTexts.values());
     else if (reading.running()) reading.stop(false);
   }
 

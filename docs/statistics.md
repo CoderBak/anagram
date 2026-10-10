@@ -37,7 +37,7 @@ way. What is kept is one layer per dimension:
 | Engine | every detail (engine, backend, precision, cache, timing) · engine and cache · model only |
 | Use of Anagram | every use (cards, chips, the menu, jumps, Analyze, sites switched, the reader, the statistics page, exports) · counts per visit · none |
 | Device | exact (browser, system and their versions, cores, memory) · families · none |
-| What was missed | per visit (paragraphs and words found) and time in front of tabs Anagram cannot read · per day · none |
+| What was missed | per visit (paragraphs and words found, and the words left out by why: mostly links, symbols or names, code, a teaser the site cut, the page's navigation and other chrome, hidden; counted, never kept) and time in front of tabs Anagram cannot read · per day · none |
 
 A row holds only what it can: paragraph rows hold no event streams, visit rows no paragraphs,
 and so on; Settings makes a choice coarser where the rows chosen cannot hold it, and says so.
@@ -91,16 +91,25 @@ and once under its most likely band. Words read that could not be scored are kep
 **short** (under 50 words, with nothing of its own voice to join), **language** (not English),
 **unavailable** and **removed**.
 
-Each visit is filed under the kind of page it was: `document` (the PDF reader, the Google Docs
-view, Drive and OneDrive previews, e-book readers), `forum` (a page that declares a question or a
-discussion in schema.org, or whose address is a thread's: `/questions/…`, `/comments/…`,
-`/thread/…`, `/threads/…`, `/discussions/…`, `/t/…`, Hacker News' `item`), `feed` (a short list
-of social sites, a page with `role="feed"`, or one where five or more posts hold more than half
-of the first 64 paragraphs found), `article` (a page that declares an article, including
-TechArticle, or where 60% of the words of those paragraphs stand in one post, or, with at most
-one post, in `<main>`) or `other` (lib/stats/pageKind.ts). Where page structure is kept in full,
-the signals the rule looked at are kept with the visit, so the rule can be checked or another
-applied afterwards.
+Each visit is filed under the kind of page it was, decided once, with its first paragraph read:
+`document` (the PDF reader, the Google Docs view, Drive and OneDrive previews, e-book readers),
+`forum` (a page that declares a question or a discussion in schema.org, names forum software in
+its generator meta, is on a `forum.`, `forums.`, `community.` or `discuss.` host, or whose
+address, query included, is a thread's: `/questions/…`, `/comments/…`, `/thread(s)/…`,
+`/discussions/…`, `/t/…`, `/forum(s)/…`, `viewtopic.php`, `?topic=`, Hacker News' `item`), `feed`
+(a short list of social sites, a page with `role="feed"`, or one where five or more posts hold
+more than half of the first 64 paragraphs found and none of them two-fifths of the words),
+`article` (a page that declares an article in schema.org, including TechArticle, or in og:type
+with a body of text of 150 words; or where 60% of the words of those paragraphs stand in one
+post, or, with at most one post, in `<main>` with a body of text; or one element holding 300 words
+of them as its children) or `other` (anything else; a page that says it is a product is never an
+article) (lib/stats/pageKind.ts). On the web benchmark's pages labelled article, forum or other,
+this files 80% of the held-out pages right (it filed 65%; 2026-10-09); there were no real feeds to
+check it on. Where page structure is kept in full, the signals the rule looked at are kept with
+the visit, so the rule can be checked or another applied afterwards.
+
+A visit is filed under the day it began, and what it read under the day the worker heard of it,
+by the browser's clock, so a visit over midnight counts on both days.
 
 ## The exported file
 

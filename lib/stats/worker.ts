@@ -3,7 +3,9 @@
 //
 // A page says what it read and how, and nothing else (STATS_RECORD, held to
 // lib/stats/wire.ts's schema). WHERE it was read is the browser's to say: the site comes from
-// the tab the browser names on the sender, the date from this worker's clock, and a private
+// the tab the browser names on the sender, the date from this worker's clock (a visit is filed
+// under the day it began, never later than now; what it read is added to the day it arrives
+// in, so a visit over midnight counts on both days), and a private
 // window from the tab's own flag. The address the recorder names (the one its visit began at,
 // which a route change since has not moved) is taken only where its origin is the tab's or
 // the frame's own. A private window's reading is never kept, nor a site the reader switched
@@ -162,7 +164,9 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
     const secret = needsSecret ? await deps.secret() : null;
     const hashOf = (value: string): string => keyedHash(secret!, value);
     const v = wire.visit;
-    const date = localDate(new Date(v.start));
+    const date = localDate(new Date(Math.min(v.start, now().getTime())));
+    /** The day what this message read is added to. */
+    const today = localDate(now());
     const existing = await deps.store.visit(v.id);
     const tabId = sender.tab?.id;
     const dur = (ms: number | undefined): number | undefined => ms === undefined ? undefined : coarseDur(ms, L.dur) ?? undefined;
@@ -252,21 +256,22 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
     const anything = (wire.reads?.length ?? 0) > 0;
     const models = model ? [model] : [];
     if (anything) {
-      totals.push({ date, scope: "day", key: "", tally: read, models });
-      totals.push({ date, scope: "kind", key: row.kind, tally: read });
+      totals.push({ date: today, scope: "day", key: "", tally: read, models });
+      totals.push({ date: today, scope: "kind", key: row.kind, tally: read });
     }
     // The page and the site the words count for: the tab's (a frame's words are its page's).
     const pagePlaces = place.page ? placeLadder(place.page) : null;
     if (rowsAt("site") && L.place !== "none") {
       const siteKey = pagePlaces ? (hashed("place") ? hashOf(pagePlaces.host) : pagePlaces[rank("place", L.place) <= rank("place", "host") ? "host" : "domain"]) : "";
-      if (anything) totals.push({ date, scope: "site", key: siteKey, tally: read, ...(hashed("place") ? { hashed: true } : {}) });
+      if (anything) totals.push({ date: today, scope: "site", key: siteKey, tally: read, ...(hashed("place") ? { hashed: true } : {}) });
     }
     if (rowsAt("page") && rank("place", L.place) <= rank("place", "pattern")) {
       const layer = L.place as typeof PLACE_LAYERS[number];
       const pageKey = pagePlaces ? (hashed("place") ? hashOf(pagePlaces[layer]) : pagePlaces[layer]) : `file:${rawTitle}`;
       if (anything || shownDelta > 0) {
         totals.push({
-          date, scope: "page", key: pageKey, tally: read, kind: row.kind, ...(hashed("place") ? { hashed: true } : {}),
+          // The kind a visit settles on comes with its first reading (lib/stats/recorder.ts).
+          date: today, scope: "page", key: pageKey, tally: read, ...(anything ? { kind: row.kind } : {}), ...(hashed("place") ? { hashed: true } : {}),
           ...(title !== undefined && isTop ? { title } : {}),
           ...(rank("time", L.time) <= rank("time", "min") ? { start: localMinute(new Date(v.start)) } : {}),
           ...(L.dur !== "none" && isTop ? { dwell: shownDelta } : {}),

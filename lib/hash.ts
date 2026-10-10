@@ -9,8 +9,8 @@
 // © 2018 bryc): 53-bit output, for what stays within one page — the content script's own
 // cache of its verdicts (lib/capture/cache.ts) and the reading log's paragraphs within a
 // visit (lib/stats/). A 32-bit hash made wrong-chip collisions realistic over a long
-// session of heavy browsing: birthday bound ~1 in 2^16 per ~300 unique paragraphs, against
-// ~1 in 2^26 here.
+// session of heavy browsing: for ~300 unique paragraphs, a collision ~1 in 2^17 at 32 bits,
+// against ~1 in 2^37 here.
 import { Sha256 } from "./webengine/sha256";
 
 const encoder = new TextEncoder();

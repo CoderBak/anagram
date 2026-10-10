@@ -8,16 +8,24 @@
 //   document — what a surface reads: the PDF reader, the Google Docs overlay, Drive's and
 //              OneDrive's previews, an e-book reader (lib/surfaces/). The caller knows.
 //   forum    — a question and its answers, or a thread of replies: the page declares it
-//              (schema.org QAPage or DiscussionForumPosting), or its address is shaped like
-//              one (/questions/…, /comments/…, /thread/…, /t/…, Hacker News' item?id=).
+//              (schema.org QAPage or DiscussionForumPosting), names forum software in its
+//              generator meta, is on a forum's host (forum., community., discuss.), or its
+//              address is shaped like one, query included (/questions/…, /comments/…,
+//              /thread/…, /t/…, /forum/…, viewtopic.php, ?topic=, Hacker News' item?id=).
 //   feed     — posts by many voices, one after another: a page of a well-known feed (the
 //              short list below), a page that says it is one (role="feed"), or one where
-//              the paragraphs read stand in five or more separate posts, most of them in one.
-//   article  — one author's text: the page declares it (og:type article, a schema.org
-//              Article, NewsArticle, BlogPosting, Report or ScholarlyArticle), or most of
-//              what is read stands in one <article> or <main>. Comments under an article
-//              leave it an article.
+//              the paragraphs read stand in five or more separate posts, most of the
+//              paragraphs in one and none of the posts holding two-fifths of the words.
+//   article  — one author's text: the page declares it (a schema.org Article, NewsArticle,
+//              BlogPosting, Report or ScholarlyArticle; og:type article, with a body of text
+//              of 150 words), or most of what is read stands in one <article>, or in <main>
+//              with a body of text, or there is such a body at all: 300 words one element
+//              holds. Comments under an article leave it an article; a product page is none.
 //   other    — anything else: a shop, a search page, a mail client, a dashboard.
+//
+// Its numbers were checked on the web benchmark's pages labelled article, forum and other
+// (2026-10-09): 0.62 → 0.80 of the held-out pages filed right. It has no real feeds to be
+// checked on.
 //
 // The rule is asked again with each message, and costs a few selector queries and a look at
 // the first paragraphs read. What it looked at is kept with the visit (KindSignals), so the
@@ -32,13 +40,18 @@ const FEED_HOSTS = [
   "linkedin.com", "mastodon.social", "tumblr.com", "weibo.com", "weibo.cn", "reddit.com", "tiktok.com",
 ];
 
-/** Paths a thread lives at on the common forum and Q&A software. */
-const FORUM_PATH = /\/(?:questions?|comments|threads?|t|discussions?)\/[^/]/i;
+/** Addresses a thread lives at on the common forum and Q&A software, the query included
+ *  (index.php?threads/…, viewtopic.php?t=…). */
+const FORUM_ADDRESS = /[/?](?:questions?|comments|threads?|t|discussions?)\/[^/]|\b(?:viewthread|viewtopic|showthread|showtopic|printthread)\b|[?&]topic=\d|\/topic\/\d|\/t-\d+\.html|\/forums?\/[^/]/i;
+/** Forum software as a page's generator meta names it. */
+const FORUM_SOFTWARE = /discourse|vbulletin|phpbb|xenforo|mybb|\bsmf\b|simple machines|ubb\.threads|invision|nodebb|flarum|vanilla/i;
+const FORUM_HOST = /^(?:forums?|community|discuss)\./i;
 const FORUM_TYPES = /"@type"\s*:\s*\[?\s*"(?:QAPage|DiscussionForumPosting)"/;
 const ARTICLE_TYPES = /"@type"\s*:\s*\[?\s*"(?:Article|NewsArticle|BlogPosting|Report|ScholarlyArticle|TechArticle)"/;
 
-/** A post of a feed or a thread, where the markup marks one (lib/dom/scope.ts, DECLARED). */
-const POST = 'article, [role="article"], [aria-posinset], [role="listitem"]:not(li)';
+/** A post of a feed or a thread, where the markup marks one (lib/dom/scope.ts, DECLARED); the
+ *  recorder files paragraphs by it too (lib/stats/recorder.ts). */
+export const POST = 'article, [role="article"], [aria-posinset], [role="listitem"]:not(li)';
 /** How many of the paragraphs read are looked at: the first ones are the page's. */
 const SAMPLE = 64;
 /** How much of the page's JSON-LD is looked at, at most. */
@@ -64,10 +77,12 @@ function declares(doc: Document, types: RegExp, itemtypes: RegExp): boolean {
 }
 
 /** What a page says about itself and how its first paragraphs read stand, for the rule. */
-export function kindSignals(doc: Document, address: { hostname: string; pathname: string }, units: readonly Unit[]): KindSignals {
+export function kindSignals(doc: Document, address: { hostname: string; pathname: string; search?: string }, units: readonly Unit[]): KindSignals {
   const forumDeclared = declares(doc, FORUM_TYPES, /schema\.org\/(?:QAPage|DiscussionForumPosting)\b/);
   const og = doc.querySelector('meta[property="og:type"]')?.getAttribute("content")?.trim().toLowerCase();
-  const articleDeclared = og === "article" || declares(doc, ARTICLE_TYPES, /schema\.org\/(?:Article|NewsArticle|BlogPosting|Report|ScholarlyArticle|TechArticle)\b/);
+  const articleTyped = declares(doc, ARTICLE_TYPES, /schema\.org\/(?:Article|NewsArticle|BlogPosting|Report|ScholarlyArticle|TechArticle)\b/);
+  const articleDeclared = og === "article" || articleTyped;
+  const generator = doc.querySelector('meta[name="generator" i]')?.getAttribute("content") ?? "";
   const sample = units.slice(0, SAMPLE);
   const posts = new Map<Element, number>();
   let inPosts = 0;
@@ -81,32 +96,51 @@ export function kindSignals(doc: Document, address: { hostname: string; pathname
   const largest = Math.max(0, ...posts.values());
   const main = doc.querySelector("main, [role=main]");
   const inMain = main ? sample.filter((u) => main.contains(u.topElement)).reduce((n, u) => n + u.wordCount, 0) : 0;
+  // A body of text: the paragraphs one element holds as its own children.
+  const byParent = new Map<Element, number>();
+  for (const unit of sample) {
+    const parent = unit.topElement.parentElement;
+    if (parent) byParent.set(parent, (byParent.get(parent) ?? 0) + unit.wordCount);
+  }
   return {
     feedHost: hostIn(address.hostname, FEED_HOSTS),
     feedRole: doc.querySelector('[role="feed"]') !== null,
-    forumPath: FORUM_PATH.test(address.pathname) || (address.hostname === "news.ycombinator.com" && address.pathname === "/item"),
+    forumPath: FORUM_ADDRESS.test(address.pathname + (address.search ?? "")) || (address.hostname === "news.ycombinator.com" && address.pathname === "/item"),
     declared: forumDeclared ? "forum" : articleDeclared ? "article" : null,
     posts: posts.size,
     inPosts,
     sample: sample.length,
     largestShare: total > 0 ? largest / total : 0,
     mainShare: total > 0 ? inMain / total : 0,
+    forumSoftware: FORUM_SOFTWARE.test(generator),
+    forumHost: FORUM_HOST.test(address.hostname),
+    ogOnly: og === "article" && !articleTyped,
+    ogProduct: og?.startsWith("product") === true,
+    body: Math.max(0, ...byParent.values()),
   };
 }
 
 /** The kind the signals make, by `rule`: forum, feed, article or other (a document is the
  *  caller's to say). */
 export function kindFrom(s: KindSignals, rule: KindRule = DEFAULT_KIND_RULE): PageKind {
-  if (s.declared === "forum" || s.forumPath) return "forum";
+  if (s.declared === "forum" || s.forumPath || s.forumSoftware || s.forumHost) return "forum";
   if (s.feedHost || s.feedRole) return "feed";
-  if (s.declared === "article") return "article";
+  // A visit kept before the body was measured is filed as it was then.
+  const body = s.body ?? Infinity;
+  // Declared in og:type alone, an article has a body of text, where anything was read.
+  if (s.declared === "article" && (!s.ogOnly || s.sample === 0 || body >= rule.ogBody)) return "article";
   if (s.sample === 0) return "other";
-  if (s.posts >= rule.manyVoices && s.inPosts * 2 > s.sample) return "feed";
-  // One author's text: most of the words read stand in one article, or in the page's main.
-  if (s.largestShare >= rule.articleShare || (s.posts <= 1 && s.mainShare >= rule.articleShare)) return "article";
+  if (s.posts >= rule.manyVoices && s.inPosts * 2 > s.sample && s.largestShare < rule.onePost) return "feed";
+  // A product page declares no article (an og:type product with no Article type).
+  if (s.ogProduct && s.declared !== "article") return "other";
+  // One author's text: most of the words read stand in one article, or in the page's main
+  // with a body of text, or there is such a body.
+  if (s.largestShare >= rule.articleShare) return "article";
+  if (s.posts <= 1 && s.mainShare >= rule.articleShare && body >= rule.textBody) return "article";
+  if (s.body !== undefined && s.body >= rule.textBody) return "article";
   return "other";
 }
 
-export function pageKindOf(doc: Document, address: { hostname: string; pathname: string }, units: readonly Unit[]): PageKind {
+export function pageKindOf(doc: Document, address: { hostname: string; pathname: string; search?: string }, units: readonly Unit[]): PageKind {
   return kindFrom(kindSignals(doc, address, units));
 }

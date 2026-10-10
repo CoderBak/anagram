@@ -8,13 +8,13 @@
 // starts, as an MV3 worker must, and do nothing while the configuration does not ask for them.
 import { browser } from "#imports";
 import { rank, type RecordingConfig } from "./config";
-import { localDate, type Arrival, type TabEvent } from "./model";
+import { HEARTBEAT_MS, localDate, type Arrival, type TabEvent } from "./model";
 import type { LogStore } from "./store";
 import type { TabFacts } from "./worker";
 
 /** A tab whose recorder was heard from this recently is covered: a recorder speaks every
- *  minute at least while its page is shown. */
-const COVERED_MS = 70_000;
+ *  HEARTBEAT_MS at least while its page is shown, and a message may take a few seconds. */
+const COVERED_MS = HEARTBEAT_MS + 10_000;
 /** Shorter spells in front of an uncovered tab are not kept. */
 const UNCOVERED_MIN_MS = 1000;
 const IDS_KEY = "statsIds";

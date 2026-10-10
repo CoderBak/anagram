@@ -12,7 +12,7 @@ import { addDays, datesBetween, monthRange, emptyTally, type UnitRow } from "../
 import { createStatsKeeper, type StatsKeeperDeps, type StatsSender, type TabFacts } from "../../lib/stats/worker";
 import { memoryStatsStore } from "../../lib/stats/store";
 import { presetConfig, type Preset, type RecordingConfig } from "../../lib/stats/config";
-import { DEFAULT_LENS, headlineOf, sharesUnder, tallyUnder, type Lens } from "../../lib/stats/lens";
+import { DEFAULT_KIND_RULE, DEFAULT_LENS, headlineOf, sharesUnder, tallyUnder, type Lens } from "../../lib/stats/lens";
 import { summarize } from "../../lib/stats/summary";
 import { buildExport, exportCsvFiles, preview, type ExportOptions } from "../../lib/stats/export";
 import { sketchSimilarity } from "../../lib/stats/hash";
@@ -110,6 +110,19 @@ describe("what each preset keeps", () => {
     expect(day.tally.units).toEqual([1, 0, 0, 1]);
     expect(day.tally.argmax).toEqual([1, 0, 0, 1]);
     expect(day.models).toEqual([{ id: "fake-editlens", ver: "test", calibration: "none" }]);
+  });
+
+  it("a visit over midnight: filed under the day it began, its reading under the day it came in", async () => {
+    const nextMorning = new Date(2026, 9, 5, 0, 5).getTime();
+    const { store, keep } = keeper(preset("paragraphs"), { now: () => new Date(nextMorning) });
+    await keep.record(wire({}, { start: new Date(2026, 9, 4, 23, 50).getTime() }), sender(), "content");
+    const d = store.dump();
+    expect(d.visits.map((v) => v.date)).toEqual(["2026-10-04"]);
+    expect([...new Set(d.totals.map((t) => t.date))]).toEqual(["2026-10-05"]);
+    // A start the page says is still to come is now's.
+    const late = keeper(preset("paragraphs"), { now: () => new Date(START) });
+    await late.keep.record(wire({}, { start: START + 3 * 86_400_000 }), sender(), "content");
+    expect(late.store.dump().visits.map((v) => v.date)).toEqual(["2026-10-04"]);
   });
 
   it("sites: each registered domain's tallies", async () => {
@@ -427,13 +440,46 @@ describe("the kind of page", () => {
   });
 
   it("tells an article by what it declares or by one article holding the text, comments and all", () => {
-    const og = parseHTML(`<html><head><meta property="og:type" content="article"></head><body>${Array.from({ length: 6 }, () => "<article><p>c</p></article>").join("")}</body></html>`).document;
+    const og = parseHTML(`<html><head><meta property="og:type" content="article"></head><body><article><p>a</p><p>b</p></article>${Array.from({ length: 6 }, () => "<article><p>c</p></article>").join("")}</body></html>`).document;
     expect(pageKindOf(og, at("https://example.com/2026/story"), unitsIn(og, "p"))).toBe("article");
-    const one = parseHTML(`<html><body><main><p>a</p><p>b</p><p>c</p></main><aside><p>d</p></aside></body></html>`).document;
+    // Declared in og:type alone, with no body of text: a page of comment cards is not an article.
+    const cards = parseHTML(`<html><head><meta property="og:type" content="article"></head><body>${Array.from({ length: 6 }, () => "<article><p>c</p></article>").join("")}</body></html>`).document;
+    expect(pageKindOf(cards, at("https://example.com/"), unitsIn(cards, "p"))).toBe("feed");
+    const one = parseHTML(`<html><body><main><p>a</p><p>b</p><p>c</p><p>d</p></main><aside><p>e</p></aside></body></html>`).document;
     expect(pageKindOf(one, at("https://example.com/essay"), unitsIn(one, "p"))).toBe("article");
     const shop = parseHTML(`<html><body><div><p>a</p></div><div><p>b</p></div></body></html>`).document;
     expect(pageKindOf(shop, at("https://shop.example/item/1"), unitsIn(shop, "p"))).toBe("other");
     expect(pageKindOf(shop, at("https://shop.example/"), [])).toBe("other");
+    // A <main> of a few short paragraphs (a product's landing page) has no body of text …
+    const landing = parseHTML(`<html><body><main><div><p>a</p></div><div><p>b</p></div></main></body></html>`).document;
+    expect(pageKindOf(landing, at("https://vercel.example/"), unitsIn(landing, "p"))).toBe("other");
+    // … where a page with no landmark at all but one has an article.
+    const bare = parseHTML(`<html><body><div class="post"><p>a</p><p>b</p><p>c</p><p>d</p></div></body></html>`).document;
+    expect(pageKindOf(bare, at("https://blog.example/notes"), unitsIn(bare, "p"))).toBe("article");
+    // A product page is not an article, whatever share of its text one box holds.
+    const product = parseHTML(`<html><head><meta property="og:type" content="product"></head><body><article><p>a</p><p>b</p><p>c</p><p>d</p></article></body></html>`).document;
+    expect(pageKindOf(product, at("https://shop.example/boots"), unitsIn(product, "p"))).toBe("other");
+  });
+
+  it("tells a forum by its address with its query, its software, or its host", () => {
+    const plain = parseHTML("<html><body><p>a</p></body></html>").document;
+    for (const url of ["https://example.org/index.php?threads/a-question.123/", "https://example.org/viewtopic.php?t=1658", "https://example.org/index.php?/topic/201820-ai/", "https://example.org/forum/general-chat", "https://example.org/archive/t-921.html"])
+      expect(pageKindOf(plain, at(url), []), url).toBe("forum");
+    const discourse = parseHTML(`<html><head><meta name="generator" content="Discourse 3.4.0 - https://github.com/discourse/discourse"></head><body><p>a</p></body></html>`).document;
+    expect(pageKindOf(discourse, at("https://talk.example.com/latest"), [])).toBe("forum");
+    expect(pageKindOf(plain, at("https://community.example.com/x/1"), [])).toBe("forum");
+    expect(pageKindOf(plain, at("https://example.org/topics"), [])).toBe("other");
+  });
+
+  it("does not take an article with a few related-post cards for a feed", () => {
+    const related = parseHTML(`<html><body><article><p>a</p><p>b</p><p>c</p><p>d</p><p>e</p></article>${Array.from({ length: 5 }, () => "<article><p>card</p></article>").join("")}</body></html>`).document;
+    expect(pageKindOf(related, at("https://example.com/story"), unitsIn(related, "p"))).toBe("article");
+  });
+
+  it("files a visit kept before the text body was measured as it was then", () => {
+    const old = { feedHost: false, feedRole: false, forumPath: false, declared: null, posts: 0, inPosts: 0, sample: 3, largestShare: 0, mainShare: 0.8 };
+    expect(kindFrom(old)).toBe("article");
+    expect(kindFrom({ ...old, mainShare: 0.2 })).toBe("other");
   });
 
   it("keeps what it looked at, so another rule can be applied to it afterwards", () => {
@@ -441,6 +487,6 @@ describe("the kind of page", () => {
     const s = kindSignals(posts, at("https://example.com/"), unitsIn(posts, "p"));
     expect(s).toMatchObject({ posts: 4, inPosts: 4, sample: 4 });
     expect(kindFrom(s)).toBe("other");
-    expect(kindFrom(s, { manyVoices: 4, articleShare: 0.6 })).toBe("feed");
+    expect(kindFrom(s, { ...DEFAULT_KIND_RULE, manyVoices: 4 })).toBe("feed");
   });
 });

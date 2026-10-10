@@ -97,6 +97,8 @@ const counts = (keys: readonly string[]) => v.pipe(v.record(v.picklist(keys as [
 const Signals = v.strictObject({
   feedHost: v.boolean(), feedRole: v.boolean(), forumPath: v.boolean(), declared: v.nullable(v.picklist(["forum", "article"])),
   posts: int(0, 100_000), inPosts: int(0, 100_000), sample: int(0, 100_000), largestShare: num(0, 1), mainShare: num(0, 1),
+  forumSoftware: v.optional(v.boolean()), forumHost: v.optional(v.boolean()), ogOnly: v.optional(v.boolean()), ogProduct: v.optional(v.boolean()),
+  body: v.optional(int(0, 100_000_000)),
 });
 
 const Visit = v.strictObject({

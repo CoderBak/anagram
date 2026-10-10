@@ -35,7 +35,13 @@ export const ARRIVALS = ["link", "typed", "bookmark", "reload", "history", "form
 export type Arrival = (typeof ARRIVALS)[number];
 
 /** Text a walk leaves out, by why (lib/dom/walker.ts barriers and drops). */
-export const LEFT_OUT = ["links", "symbols", "names", "code", "teaser", "chrome", "frame", "hidden"] as const;
+/** How often a page's recorder speaks while its page is shown and nothing else is to be said:
+ *  the worker takes a tab it has not heard from for a while longer than this as not covered
+ *  (lib/stats/tabs.ts). */
+export const HEARTBEAT_MS = 60_000;
+
+/** Why the walk left text out (lib/dom/walker.ts CollectOptions.onLeftOut). */
+export const LEFT_OUT = ["links", "symbols", "names", "code", "teaser", "chrome", "hidden"] as const;
 export type LeftOut = (typeof LEFT_OUT)[number];
 
 /** Four numbers, one per word, human first. */
@@ -145,6 +151,18 @@ export interface KindSignals {
   sample: number;
   largestShare: number;
   mainShare: number;
+  /** Since 2026-10-10 (a visit kept before has none, and is filed as it was then): */
+  /** The page names forum software in its generator meta (Discourse, phpBB, …). */
+  forumSoftware?: boolean;
+  /** Its host is a forum's: forum., forums., community., discuss. */
+  forumHost?: boolean;
+  /** It says it is an article in og:type alone, with no schema.org Article type. */
+  ogOnly?: boolean;
+  /** It says it is a product (og:type). */
+  ogProduct?: boolean;
+  /** The words of the paragraphs looked at that one element holds as its children: the page's
+   *  body of text, if it has one. */
+  body?: number;
 }
 
 export interface VisitRow {

@@ -8,7 +8,7 @@
 // that has no meaning without a native process (runtime benchmarks, component update and
 // uninstall) is refused as the host refuses an unknown operation.
 import { isRecord, parseNativeReply, type NativeReply } from "../backend/nativeProtocol";
-import { CONTRACT_VERSION } from "../contract";
+import { CONTRACT_LIMITS, CONTRACT_VERSION } from "../contract";
 
 export { CONTRACT_VERSION };
 /** Operations the in-browser engine answers: the native host's, and `warm`, its own (a model
@@ -22,14 +22,14 @@ export type EngineOperation = typeof ENGINE_OPERATIONS[number];
 export const ENGINE_PORT = "anagram-engine";
 export const ENGINE_READY = "anagram-engine-ready";
 export const ENGINE_FAILED = "anagram-engine-failed";
-/** anagramd/native_host.py's limits. */
+/** anagramd/native_host.py's limits on a message; those on a request are the contract's,
+ *  which the local engine reads from the same file (anagramd/contract.json). */
 export const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 export const MAX_RESPONSE_BYTES = 1024 * 1024 - 1024;
-export const MAX_BLOCKS = 256;
-export const MAX_TEXT_CHARS = 16000;
-export const MAX_TOKEN_TEXTS = 512;
-export const MAX_TOKEN_CHARS = 256000;
-export const MAX_ID_CHARS = 64;
+export const {
+  blocks: MAX_BLOCKS, text_chars: MAX_TEXT_CHARS, token_texts: MAX_TOKEN_TEXTS,
+  token_chars: MAX_TOKEN_CHARS, id_chars: MAX_ID_CHARS,
+} = CONTRACT_LIMITS;
 const IDENTIFIER = /^[A-Za-z0-9_.:-]{1,96}$/;
 
 export interface EngineRequest { v: 1; id: string; op: EngineOperation; payload: Record<string, unknown> }
