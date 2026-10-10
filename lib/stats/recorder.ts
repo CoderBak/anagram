@@ -21,7 +21,7 @@ import type { ScoreResult } from "../contract";
 import type { Unit } from "../types";
 import { cyrb53 } from "../hash";
 import { MAX_UNIT_TEXT_CHARS, countWords, unitParagraphs } from "../dom/text";
-import { DEFAULT_LENS } from "./lens";
+import { BAND_MARGIN, DEFAULT_LENS } from "./lens";
 import { POST } from "./pageKind";
 import { rank, type Layers } from "./config";
 import {
@@ -33,7 +33,6 @@ import type { WireUnit, WireVisit, StatsWire } from "./wire";
 /** The default rule's band and threshold (lib/stats/lens.ts DEFAULT_LENS), and the idle
  *  cut-off. */
 const READ_MS = DEFAULT_LENS.readMs;
-const BAND_MARGIN = "-10% 0px -10% 0px";
 const IDLE_MS = 120_000;
 const TICK_MS = 1000;
 /** How soon what was learned is sent; and how often the time a page is shown is sent, when

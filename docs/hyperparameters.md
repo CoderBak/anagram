@@ -177,11 +177,9 @@ The two readers read different text, captions and front matter for instance. So 
 
 These are places where behaviour, comments or docs disagree with what was intended. What has been fixed since 2026-10-05 has been taken out. "Verified" means the claim was checked against the code a second time.
 
-### Values that must change together but are written separately
+### Values that must change together
 
-- **The reading log's default rule:** the recorder's `BAND_MARGIN` (`-10% 0px -10% 0px`) is what `visibility: "band"` in `DEFAULT_LENS` means; nothing ties the two. Its `READ_MS` is `DEFAULT_LENS.readMs`.
-
-Since 2026-10-10 the other values that were written twice come from one place: the place-retry wait (`PLACE_WAIT_MS + 100`), the page-kind sample (`KIND_SAMPLE`), the chip width (`CHIP_PX`), `COVERED_MS` (`HEARTBEAT_MS + 10 s`), the 200,000-character text cap (`MAX_UNIT_TEXT_CHARS`, used by the reading log's schema and the paste page), the engine's request limits, the idle-unload range and the language-ID pin (`anagramd/contract.json`), the tier download sizes (summed from `modelkit.json`), the embedding size (`EMBEDDING_BYTES` in `lib/device.ts`), the idle choices (`IDLE_CHOICES`), the walker's link, symbol and marker thresholds (shared with the diagnostics), the PDF reader's `SPACE_GAP`, `PARA_GAP`, `INDENT`, `SHORT_LINE`, `EDGE_PERCENTILE` and `PITCH_OF_SIZE` (exported by the reflow), the 50 MiB PDF cap (`MAX_HANDOFF_BYTES` is `SOURCE_CAP`), the diagnostics' settings defaults (the storage items' own fallbacks), and the public suffixes (`PUBLIC_SUFFIXES`).
+Only the orchestrator's boot defaults still copy the settings' fallbacks (`DEFAULT_SNAPSHOT`, Area 2). Since 2026-10-10 the other values that were written twice come from one place: the reading log's band (`BAND_MARGIN` beside the lens it defines) and read time (`DEFAULT_LENS.readMs`), the place-retry wait (`PLACE_WAIT_MS + 100`), the page-kind sample (`KIND_SAMPLE`), the chip width (`CHIP_PX`), `COVERED_MS` (`HEARTBEAT_MS + 10 s`), the 200,000-character text cap (`MAX_UNIT_TEXT_CHARS`, used by the reading log's schema and the paste page), the engine's request limits, the idle-unload range and the language-ID pin (`anagramd/contract.json`), the tier download sizes (summed from `modelkit.json`), the embedding size (`EMBEDDING_BYTES` in `lib/device.ts`), the idle choices (`IDLE_CHOICES`), the walker's link, symbol and marker thresholds (shared with the diagnostics), the PDF reader's `SPACE_GAP`, `PARA_GAP`, `INDENT`, `SHORT_LINE`, `EDGE_PERCENTILE` and `PITCH_OF_SIZE` (exported by the reflow), the 50 MiB PDF cap (`MAX_HANDOFF_BYTES` is `SOURCE_CAP`), the diagnostics' settings defaults (the storage items' own fallbacks), and the public suffixes (`PUBLIC_SUFFIXES`).
 
 ### Same purpose, different value
 
@@ -1411,7 +1409,7 @@ No value in `lib/stats/` is backed by a measurement in a comment, doc, changelog
 | Parameter | Value | Where | Controls | Basis | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `DEFAULT_LENS` read rule | 1000 ms in all with some of the paragraph in the middle 80% (`visibility: "band"`), time flung past not counted, once per visit | lib/stats/lens.ts:38-41 | What totals, visits and the toolbar menu count as read | Judgement | The rule a paper must report. Raising the time drops skimmed text, mostly in feeds. |
-| `READ_MS` / `BAND_MARGIN` | 1000 ms; `-10% 0px -10% 0px`, `threshold: 0` | lib/stats/recorder.ts:32-33, :248, :782 | The default rule as the recorder applies it (`readAt`) | Judgement | Copies of `DEFAULT_LENS`'s time and band. One line inside the band counts the whole paragraph's words, so word totals favour long paragraphs. |
+| `READ_MS` / `BAND_MARGIN` | 1000 ms; `-10% 0px -10% 0px`, `threshold: 0` | lib/stats/recorder.ts (`READ_MS` is `DEFAULT_LENS.readMs`); lib/stats/lens.ts (`BAND_MARGIN`) | The default rule as the recorder applies it (`readAt`) | Judgement | The lens's own time and band. One line inside the band counts the whole paragraph's words, so word totals favour long paragraphs. |
 | Exposure kept | per paragraph: any part, at least half, the middle band; each as all, focused, flung, both, in ms while shown | lib/stats/recorder.ts:229-252 | What another rule can be applied to | Judgement | Settled at each change of state (shown, focus, fling), not sampled per tick. Kept at paragraph rows or finer only. |
 | "At least half" | ≥0.5 of the paragraph, or any of it when taller than the viewport | lib/stats/recorder.ts:349 | The lens's `half` visibility | Judgement | — |
 | Lens choices | read after 0.25–30 s; band, half or any; focused only; flung or not; once per visit, day or ever; expected words, chip word or most likely band; words, paragraphs or seconds; AI or heavy and AI; floor 50, 75, 100 or 150 | entrypoints/stats/main.ts:100-108; lib/stats/lens.ts:13-36 | **How it counts** on the statistics page | Judgement | Applies to paragraph rows or finer; totals hold the default alone. Once per day or ever needs the text's hash, else a paragraph counts once per visit. Above 50 the floor is approximate. Kept for the tab's session only. |
@@ -1599,7 +1597,6 @@ No value in `lib/stats/` is backed by a measurement in a comment, doc, changelog
 #### Duplicates and contradictions across files
 
 - The page-kind sample is set twice: `SAMPLE = 64` (pageKind.ts:43) and the literal `firstUnits(64)` (orchestrator.ts:338).
-- The default read rule is written twice: `READ_MS` and `BAND_MARGIN` in recorder.ts:32-33, `readMs` and `visibility` in `DEFAULT_LENS` (lens.ts:38-41).
 - The 200 000-character text cap is `MAX_UNIT_TEXT_CHARS`, `STATS_LIMITS.textChars` (wire.ts:83) and a literal in recorder.ts:658.
 - The diagnostics copy the walker's thresholds (silence.ts:65–68 against walker.ts:271, :290 and the literal `0.2` at :2059). Nothing ties them together.
 - Token-count limits differ: client `COUNT_CHARS` 200 000 against the worker's 256 000, though the client's comment says they match.

@@ -10,6 +10,10 @@ import {
 } from "./model";
 import { MIN_WORDS } from "../dom/text";
 
+/** The viewport's middle 80%, as an IntersectionObserver margin: what `visibility: "band"`
+ *  means, and the band the recorder watches (lib/stats/recorder.ts). */
+export const BAND_MARGIN = "-10% 0px -10% 0px";
+
 export interface Lens {
   /** Time on screen that makes a paragraph read. */
   readMs: number;
