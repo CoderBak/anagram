@@ -1,2 +1,5 @@
-# Preserve the byte-for-byte, hash-verified upstream distribution.
-vendor/pdfjs/** linguist-vendored -whitespace -text
+# Every checkout holds the repository's bytes, LF on Windows too: files are hashed (the vendored
+# builds, the installers' digests) and compared with what the scripts generate.
+* text=auto eol=lf
+# Preserve the byte-for-byte, hash-verified upstream distributions.
+vendor/** linguist-vendored -whitespace -text

@@ -905,18 +905,21 @@ export function liveScopeSurvey(docOf: () => Document = () => document): () => S
   let pending: MutationRecord[] = [];
   let flooded = false;
   let watch: MutationObserver | null = null;
+  // Records come in through the callback between tasks, and through takeRecords() when a scan
+  // follows changes made in the same task (a walk's own cuts); the limit holds for both.
+  const note = (records: MutationRecord[]): void => {
+    if (flooded) return;
+    for (const r of records) pending.push(r);
+    if (pending.length > MAX_KEPT_RECORDS) {
+      flooded = true;
+      pending = [];
+      watch!.disconnect();
+    }
+  };
   return () => {
     const doc = docOf();
-    watch ??= new MutationObserver((records) => {
-      if (flooded) return;
-      for (const r of records) pending.push(r);
-      if (pending.length > MAX_KEPT_RECORDS) {
-        flooded = true;
-        pending = [];
-        watch!.disconnect();
-      }
-    });
-    for (const r of watch.takeRecords()) pending.push(r);
+    watch ??= new MutationObserver(note);
+    note(watch.takeRecords());
     if (survey && !flooded && (pending.length === 0 || survey.changed(pending))) {
       pending = [];
       return survey;
@@ -1202,6 +1205,14 @@ function createSurvey(doc: Document): KeptSurvey {
     const neighbour = (n: Node | null): void => {
       if (n && n.nodeType === Node.ELEMENT_NODE) whole.add(n as Element);
     };
+    // childElementCount walks every child: asked once per parent, not once per record, or the
+    // pieces of one long text cut apart cost their number squared.
+    const counts = new Map<Element, number>();
+    const elementsIn = (el: Element): number => {
+      let n = counts.get(el);
+      if (n === undefined) counts.set(el, (n = el.childElementCount));
+      return n;
+    };
     for (const r of records) {
       const target = r.target;
       if (r.type === "attributes") {
@@ -1213,7 +1224,7 @@ function createSurvey(doc: Document): KeptSurvey {
         neighbour(target.previousSibling);
         neighbour(target.nextSibling);
         // The text beside a wrapper that holds one element alone is read (inRunningText).
-        if (parent.childElementCount === 1) whole.add(parent);
+        if (elementsIn(parent) === 1) whole.add(parent);
       } else {
         if (target.nodeType !== Node.ELEMENT_NODE) return false; // the document's own children
         const parent = target as Element;
@@ -1224,7 +1235,7 @@ function createSurvey(doc: Document): KeptSurvey {
         let removed = 0;
         for (const n of r.addedNodes) if (n.nodeType === Node.ELEMENT_NODE) { added++; whole.add(n as Element); }
         for (const n of r.removedNodes) if (n.nodeType === Node.ELEMENT_NODE) removed++;
-        const after = parent.childElementCount;
+        const after = elementsIn(parent);
         if (after === 1 || after - added + removed === 1) whole.add(parent);
       }
     }

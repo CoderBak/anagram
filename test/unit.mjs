@@ -2718,6 +2718,14 @@ const results = await page.evaluate(() => {
       q.pieces === 20000 && q.same && q.ms < 8000,
     note: JSON.stringify(r),
   });
+  // The same 4 MB cut the same number of times, on any machine: quoted lines, or a marker at the
+  // end, cost what plain paragraphs do. Each walk follows the last one's 20,000 or more cuts,
+  // which a kept scope survey once went through one by one, 22 times the walk itself.
+  results.push({
+    name: "quoted lines, or a marker at the end, cost no more than three times what plain paragraphs of the same 4 MB do",
+    ok: q.ms < 3 * g.ms + 300 && m.ms < 3 * g.ms + 300,
+    note: JSON.stringify({ paragraphs: g.ms, quotations: q.ms, oneMarkerAtTheEnd: m.ms }),
+  });
   results.push({
     name: "a paragraph of 50,000 inline elements is read whole, the walk pausing inside it",
     ok: r.manyNodes.units === 1 && r.manyNodes.pauses >= 10,

@@ -13,6 +13,8 @@ const sha256 = (text: string): string => createHash("sha256").update(text).diges
 /** Run a command without blocking this process: the stand-in release is served from it. */
 const run = (file: string, args: string[]): Promise<string> =>
   new Promise((resolve) => execFile(file, args, { timeout: 30_000 }, (_error, stdout, stderr) => resolve(`${stdout}${stderr}`)));
+/** Two runs of a shell each: PowerShell alone takes seconds to start on a CI runner. */
+const RUN_TIMEOUT = 75_000;
 
 describe("native installation command", () => {
   it.each(["mac", "linux"])("pins %s scripts and assets to the installed extension version", (os) => {
@@ -97,7 +99,7 @@ describe("the installation command, run", () => {
     const refused = await run("/bin/sh", ["-c", local(result.command, result.scriptUrl)]);
     expect(existsSync(marker)).toBe(false);
     expect(refused).toMatch(/FAILED/);
-  });
+  }, RUN_TIMEOUT);
 
   const pwsh = (() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], { stdio: "pipe" }); return true; } catch { return false; } })();
   it.skipIf(!pwsh)("in PowerShell, runs the installer with its digest, and refuses one that differs", async () => {
@@ -111,5 +113,5 @@ describe("the installation command, run", () => {
     const refused = await run("pwsh", ["-NoProfile", "-Command", local(result.command, result.scriptUrl)]);
     expect(existsSync(marker)).toBe(false);
     expect(refused).toMatch(/nothing was run/);
-  });
+  }, RUN_TIMEOUT);
 });
