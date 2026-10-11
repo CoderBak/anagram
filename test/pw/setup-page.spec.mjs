@@ -153,6 +153,9 @@ test.describe("Settings", () => {
   test("the engine row carries the switch, Delete model files and the idle unload inline; Keep open only while downloading", async ({ extension }) => {
     const ready = await openScripted(extension, "options.html", "ready_gpu");
     await painted(ready);
+    // The switch comes once the page has read the device (a GPU-less runner's adapter request
+    // takes a while): the line is measured when all three are drawn.
+    for (const id of ["engine-switch", "engine-delete", "idleUnload"]) await expect(ready.locator(`#${id}`)).toBeVisible();
     const line = await ready.evaluate(() => {
       const ids = ["engine-switch", "engine-delete", "idleUnload"];
       const centre = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return Math.round(r.top + r.height / 2); };
