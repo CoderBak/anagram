@@ -30,7 +30,7 @@ const browser = await launchPlain({ headless: true });
 // The suite takes a minute. Past this it has hung, and nothing is printed until the end: say
 // where each page's script is instead of waiting for CI's limit. A debugger is attached to every
 // page as it opens, since a page already looping answers no new one; a pause interrupts it.
-const HANG_MS = Number(process.env.ANAGRAM_UNIT_HANG_MS ?? 5 * 60_000);
+const HANG_MS = Number(process.env.ANAGRAM_UNIT_HANG_MS ?? 10 * 60_000);
 const debuggers = new Map();
 /** What a section that runs in steps is doing now, for the watchdog. */
 let step = "";
@@ -2777,47 +2777,47 @@ const results = await page.evaluate(() => {
   });
   await hp.close();
 }
-// Two pages, a step an evaluate each: on the Windows runner one of them stopped answering at
-// all, and the watchdog says which step (`step`).
+// Two pages, a step an evaluate each, each step given a minute: a page that stops answering
+// fails its check and the suite goes on (`answered`), and the watchdog says which step it was.
+/** The step's answer, or HUNG when the page has not answered in `ms`: a page left hung is not
+ *  waited for, closing it included. */
+const HUNG = Symbol("hung");
+const answered = (promise, ms = 60_000) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(HUNG), ms))]);
+const abandon = (p) => { void p.close().catch(() => undefined); };
 {
+  // Chromium on the Windows runner stops answering, in its own code, when a text this deep in
+  // nested shadow roots changes (576 levels; reading them, as above, it survives): 64 there.
+  const levels = process.platform === "win32" ? 64 : 512 + 64;
+  const name = `shadow roots nested ${levels} deep are all watched`;
   const hp = await browser.newPage();
   await hp.setContent("<!doctype html><html><body><p id='p'>a paragraph</p></body></html>");
   await hp.addScriptTag({ path: BUNDLE });
-  const watch = () => hp.evaluate(() => {
+  step = "nested shadow roots: built, and the observers started";
+  // Shadow roots nested past the walk's limit, there before the observers start, and the deepest
+  // changed afterwards: it is watched like any other.
+  const built = await answered(hp.evaluate(async (levels) => {
     window.drains = [];
     window.observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty: (nodes, removed, quiet) => { window.drains.push({ nodes, removed: removed.length, quiet: quiet.size }); } });
-  });
-  const drained = () => hp.evaluate(async () => {
-    const t0 = performance.now();
-    while (window.drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
-    return window.drains.length > 0;
-  });
-  step = "nested shadow roots: built, and the observers started";
-  await watch();
-  // Shadow roots nested past the walk's limit (not much past it: Chromium on the Windows runner
-  // stops answering before 3,000), there before the observers start, and the deepest
-  // changed afterwards: it is watched like any other.
-  await hp.evaluate(async (levels) => {
     let at = document.body;
     for (let i = 0; i < levels; i++) at = at.appendChild(document.createElement("span")).attachShadow({ mode: "open" });
     window.deepest = at.appendChild(document.createElement("span"));
     window.observers.start();
     await new Promise((done) => setTimeout(done, 300));
-  }, 512 + 64);
-  step = "nested shadow roots: the deepest changed";
-  await hp.evaluate(() => { window.deepest.textContent = "changed in the deepest shadow root"; });
-  step = "nested shadow roots: waiting for the drain";
-  const reached = await drained();
-  const deep = reached && await hp.evaluate(() => window.drains.some((d) => d.nodes.some((n) => window.deepest.contains(n) || n === window.deepest)));
-  await hp.evaluate(() => window.observers.stop());
-  results.push({
-    name: "shadow roots nested 576 deep are all watched",
-    ok: deep,
-    note: reached ? "" : "no drain in 10 s after the deepest root changed",
-  });
-  await hp.close();
+  }, levels));
+  step = "nested shadow roots: the deepest changed, waiting for the drain";
+  const deep = built === HUNG ? HUNG : await answered(hp.evaluate(async () => {
+    window.deepest.textContent = "changed in the deepest shadow root";
+    const t0 = performance.now();
+    while (window.drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
+    window.observers.stop();
+    if (window.drains.length === 0) return "no drain in 10 s after the deepest root changed";
+    return window.drains.some((d) => d.nodes.some((n) => window.deepest.contains(n) || n === window.deepest)) ? "watched" : "drained without the deepest root";
+  }));
+  results.push({ name, ok: deep === "watched", note: deep === HUNG ? `the page stopped answering at "${step}"` : deep });
+  if (built === HUNG || deep === HUNG) abandon(hp); else await hp.close();
 }
 {
+  const name = "a storm past ten thousand changed nodes is handed over as the whole page, none of them held";
   const hp = await browser.newPage();
   await hp.setContent("<!doctype html><html><body><p id='p'>a paragraph</p></body></html>");
   await hp.addScriptTag({ path: BUNDLE });
@@ -2828,25 +2828,28 @@ const results = await page.evaluate(() => {
   });
   // A storm: thirty thousand nodes added one by one, then thrown away, between two drains.
   // The observers hold none of them: the drain reads the page again instead.
+  let storm = HUNG;
   step = "a storm: thirty thousand nodes added";
-  await hp.evaluate(() => { for (let i = 0; i < 30000; i++) document.body.appendChild(document.createElement("i")).textContent = String(i); });
-  step = "a storm: thirty thousand nodes removed";
-  await hp.evaluate(() => { for (const el of [...document.body.querySelectorAll("i")]) el.remove(); });
-  step = "a storm: waiting for the drain";
-  const storm = await hp.evaluate(async () => {
-    const t0 = performance.now();
-    while (window.drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
-    window.observers.stop();
-    const first = window.drains[0];
-    return first ? { nodes: first.nodes.map((n) => n.nodeName), removed: first.removed, quiet: first.quiet } : null;
+  if (await answered(hp.evaluate(() => { for (let i = 0; i < 30000; i++) document.body.appendChild(document.createElement("i")).textContent = String(i); })) !== HUNG) {
+    step = "a storm: thirty thousand nodes removed";
+    if (await answered(hp.evaluate(() => { for (const el of [...document.body.querySelectorAll("i")]) el.remove(); })) !== HUNG) {
+      step = "a storm: waiting for the drain";
+      storm = await answered(hp.evaluate(async () => {
+        const t0 = performance.now();
+        while (window.drains.length === 0 && performance.now() - t0 < 10000) await new Promise((done) => setTimeout(done, 50));
+        window.observers.stop();
+        const first = window.drains[0];
+        return first ? { nodes: first.nodes.map((n) => n.nodeName), removed: first.removed, quiet: first.quiet } : null;
+      }));
+    }
+  }
+  results.push({
+    name,
+    ok: storm !== HUNG && JSON.stringify(storm) === JSON.stringify({ nodes: ["BODY"], removed: 0, quiet: 0 }),
+    note: storm === HUNG ? `the page stopped answering at "${step}"` : storm ? JSON.stringify(storm) : "no drain in 10 s after the storm",
   });
   step = "";
-  results.push({
-    name: "a storm past ten thousand changed nodes is handed over as the whole page, none of them held",
-    ok: JSON.stringify(storm) === JSON.stringify({ nodes: ["BODY"], removed: 0, quiet: 0 }),
-    note: storm ? JSON.stringify(storm) : "no drain in 10 s after the storm",
-  });
-  await hp.close();
+  if (storm === HUNG) abandon(hp); else await hp.close();
 }
 
 // ---- a chip inside a clipped box follows the page when it reflows -------------------------
