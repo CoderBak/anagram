@@ -44,6 +44,15 @@ class RegistrationTests(unittest.TestCase):
         (self.home / 'app/native_host.py').write_text('# fixture')
         (self.home / 'bin/anagram-native.exe').write_bytes(b'fixture')
         self.registry = FakeRegistry()
+        if os.name == 'nt':
+            # The POSIX layout's directory lock is flock, which Windows lacks; a Windows host only
+            # ever registers the Windows layout (lock_hkcu). The layout checks run here all the
+            # same, under a plain file's descriptor; the lock's own tests are POSIX-only.
+            def stand_in(manifest, created):
+                return os.open(Path(self.temp.name) / 'posix-lock', os.O_RDWR | os.O_CREAT, 0o600)
+            stub = patch.object(reg, 'lock_registrations', stand_in)
+            stub.start()
+            self.addCleanup(stub.stop)
 
     def register(self, browser='chrome', extension=ID, platform='linux', language='en'):
         return reg.register(self.home, browser, extension, language, user_home=self.user,
