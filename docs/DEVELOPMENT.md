@@ -216,7 +216,8 @@ on real test computers.
 and `uv.lock`. `npm run release` builds both browser ZIPs, the component archive and
 installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs: a local check,
 unsigned. A release is published by `.github/workflows/release.yml`, dispatched by hand from
-its version tag, which runs the CI matrix, builds the same assets, signs each with Sigstore
+its version tag, which first runs CI's macOS job (the gate; Linux, Windows and Firefox are
+CI's own runs and hold no release), builds the same assets, signs each with Sigstore
 (keyless, its certificate naming that workflow at that tag) and attaches them with their
 `.sigstore.json` bundles. `install.sh` and `install.ps1` install a release fetched over
 HTTPS only with that signature (`installer/verify_release.py`, with sigstore-python pinned

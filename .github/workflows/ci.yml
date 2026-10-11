@@ -10,6 +10,10 @@ on:
         description: "Ref to test instead of the caller's, e.g. the tag a release builds"
         type: string
         default: ""
+      systems:
+        description: "The runners to test on, as a JSON list; empty for the usual ones and the Firefox job"
+        type: string
+        default: ""
 
 concurrency:
   group: ci-${{ inputs.ref || github.ref }}
@@ -21,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && '["ubuntu-latest","windows-latest","macos-latest"]' || '["ubuntu-latest","windows-latest"]') }}
+        os: ${{ fromJSON(inputs.systems != '' && inputs.systems || ((github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && '["ubuntu-latest","windows-latest","macos-latest"]' || '["ubuntu-latest","windows-latest"]')) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     env:
@@ -89,6 +93,8 @@ jobs:
 
   firefox:
     name: firefox (ubuntu-latest)
+    # Not when a caller names the systems (the release's macOS-only gate).
+    if: inputs.systems == ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: test
