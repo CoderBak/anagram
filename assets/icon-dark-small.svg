@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Dark icon for 16, 32 and 48 px, drawn on the 16 px grid so every edge lands on a whole pixel at
+       1x, 2x and 3x. The tile fills the canvas; a toolbar button has no room for a margin.
+       Left: the score's scale, one stroke through the chips' dark-page colours (lib/render/scale.ts),
+       human at the top. Right: three lines of prose. Paired with icon-dark.svg, the same picture for
+       96 and 128 px. -->
+  <defs>
+    <path id="tileShape" d="M4 0H12C14.5 0 16 1.5 16 4V12C16 14.5 14.5 16 12 16H4C1.5 16 0 14.5 0 12V4C0 1.5 1.5 0 4 0Z"/>
+    <linearGradient id="scale" x1="0" y1="5" x2="0" y2="11" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#33d996"/>
+      <stop offset="0.333" stop-color="#ffc21a"/>
+      <stop offset="0.667" stop-color="#ff8633"/>
+      <stop offset="1" stop-color="#ff5470"/>
+    </linearGradient>
+  </defs>
+  <use href="#tileShape" fill="#16171b"/>
+  <rect x="3" y="4" width="2" height="8" rx="1" fill="url(#scale)"/>
+  <g fill="#f4f3ef">
+    <rect x="7" y="4" width="6" height="2" rx="1"/>
+    <rect x="7" y="7" width="6" height="2" rx="1"/>
+    <rect x="7" y="10" width="3" height="2" rx="1"/>
+  </g>
+</svg>

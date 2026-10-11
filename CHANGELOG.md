@@ -16,6 +16,7 @@ The first signed release: reading statistics kept on this computer only, release
 
 ### Changed
 
+- A new icon: a slim stroke of the four verdict colours beside three lines of text, the last one short as a paragraph ends. At 16, 32 and 48 px it is drawn on its own pixel grid, so the toolbar shows it sharp.
 - A paragraph needs 50 words to be read, and short paragraphs of one voice are always read together: Settings no longer has **Length** (the minimum length and grouping short paragraphs). Everyone reads under the same rule, which a study of what people read needs, and nothing is dropped unreported any more where grouping was off. A minimum of 75, 100 or 150 chosen before is replaced by 50.
 - On Windows with an NVIDIA graphics card, the setup page sets up the in-browser engine by itself, which runs on that card, instead of offering the local engine "on your NVIDIA graphics card": on Windows the local engine installs Torch without CUDA and would have run on the processor. Linux with an NVIDIA card still has the choice; the local engine stays available in Settings everywhere it installs.
 - The frames inside a page (ad slots, embedded players, tracking pixels) no longer each load all of Anagram: each runs a 6 KB script that asks for the rest only once the frame is large enough and holds text, or a shadow root. On an article among twelve ad frames, Anagram took 30–34 ms of the page's processor time rather than 36–43 ms, the ad frames held 8.5 MB rather than 12.9 MB, and the first chip came 10–20 ms sooner. A page's own top frame loads as before.

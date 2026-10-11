@@ -1,6 +1,5 @@
 // test/node/icons.test.ts — the icon: clean SVG sources, the PNGs scripts/icons.mjs renders
-// from them, and the manifest that names them. The ball's own use of it is checked in
-// a browser (test/pw/scenarios-ui.spec.mjs).
+// from them, and the manifest that names them.
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -16,12 +15,15 @@ function png(file: string): { width: number; height: number; colorType: number }
 }
 
 describe("the icon sources", () => {
-  for (const file of ["assets/icon-dark.svg", "assets/icon-light.svg"]) {
-    it(`${file} has transparent corners and carries no provenance metadata`, () => {
+  // The full drawings for 96 and 128 px, the small ones on the 16 px grid for 16 to 48.
+  for (const file of ["assets/icon-dark.svg", "assets/icon-light.svg", "assets/icon-dark-small.svg", "assets/icon-light-small.svg"]) {
+    it(`${file} has transparent corners and carries no provenance metadata or script`, () => {
       const svg = readFileSync(join(ROOT, file), "utf8");
-      expect(svg).not.toMatch(/c2pa|<metadata/i);
+      expect(svg).not.toMatch(/c2pa|<metadata|<script|<foreignObject|<image|href="(?!#)/i);
       // No rectangle over the whole canvas: the tile is the only thing that paints its corners.
-      expect(svg).not.toMatch(/<rect width="1254" height="1254" fill="#[0-9a-f]+"/i);
+      const [, w, h] = /viewBox="0 0 (\d+) (\d+)"/.exec(svg) ?? [];
+      expect(w, "a viewBox from the origin").toBeDefined();
+      expect(svg).not.toMatch(new RegExp(`<rect[^>]*width="${w}"[^>]*height="${h}"`));
       expect(svg).toContain('id="tileShape"');
     });
   }
