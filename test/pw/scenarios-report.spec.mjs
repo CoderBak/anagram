@@ -277,7 +277,9 @@ keyboard("the toolbar menu lists the flagged paragraphs as buttons named with th
   expect.soft(named, `${list} (the list is named by its title, and every row is a button in the tab order)`).toEqual({ by: "Flagged paragraphs (4/4)", buttons: true });
   const at = await flaggedAt(page);
   await menu.locator(".report-result").nth(1).focus();
-  await menu.keyboard.press("Enter");
+  // The row takes the reader there and the menu closes itself, at times before the key is let
+  // go: a menu gone by then has done its work, which the page's flash below checks.
+  await menu.keyboard.press("Enter").catch((e) => { if (!menu.isClosed()) throw e; });
   await page.bringToFront();
   await expect.poll(() => flashedAt(page), { message: `${list} (the second row lands on the second flagged paragraph)` }).toBe(at[1]);
 });
