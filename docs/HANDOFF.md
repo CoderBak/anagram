@@ -12,7 +12,7 @@ Update this file, or delete an item, when it is done.
 
 ## Where `dev` stands
 
-- **Release:** the last release is 0.8.2; 0.9.0 is prepared (below). Everything since sits under `[Unreleased]` in [CHANGELOG.md](../CHANGELOG.md). Since the handoff of 2026-10-05, every item it listed has been done or decided:
+- **Release:** 0.9.0, the first signed release, was published on 2026-10-11 by `.github/workflows/release.yml` from `v0.9.0`; its CHANGELOG section lists what it holds. Since the handoff of 2026-10-05, every item it listed has been done or decided:
   - the reading log, kept field by field at layers the reader chooses and worked out again under any rule (`lib/stats/`);
   - the minimum length fixed at 50 words, short paragraphs always grouped;
   - Windows with an NVIDIA GPU set up with the in-browser engine;
@@ -31,15 +31,12 @@ Update this file, or delete an item, when it is done.
   - Windows and Linux on real machines, and the Safari build (no Xcode here).
   - `test/webengine/parity.mjs` in Firefox, and the in-browser engine end to end. Both need the 1.4 GB model.
   - Private-window exclusion from the reading log. It is unit-tested only, because Playwright cannot load an extension in an incognito context.
-  - A signed release end to end. The signing and verifying are tested against fixtures (`test/release-signature.sh`), but no release has been made by the workflow yet.
+  - Installing 0.9.0 from the release on a clean machine. Its assets were checked after publishing: each `.sigstore.json` verifies with `installer/verify_release.py` on the installer's Python 3.12.13 (a changed `install.sh` does not), and both extension ZIPs carry the published installers' SHA-256.
 
 ## Waiting on the maintainer
 
-1. **Release 0.9.0, the first signed one.** The release commit is on `dev` (version 0.9.0 in `package.json`, `anagramd/pyproject.toml` and their locks; CHANGELOG's `[Unreleased]` is `[0.9.0]`). Agents may not push, tag or run workflows here, so these are the maintainer's:
-   - `git push git@github.com:CoderBak/anagram.git dev`
-   - `git tag -a v0.9.0 -m "Anagram 0.9.0"` and `git push git@github.com:CoderBak/anagram.git v0.9.0`
-   - `gh workflow run release.yml --repo CoderBak/anagram --ref v0.9.0`, then `gh run watch` on the run it starts. Its gate runs the whole CI matrix (Linux, Windows, macOS) first: the first time Windows and Linux are run since 2026-10-05. Nothing is published unless it passes.
-   The installers on `dev` refuse an HTTPS release without a signature, so every release from here on comes from the workflow.
+1. **CI on Linux and Windows, and the next release.** Since 2026-10-11 a release is gated on CI's macOS job alone (the maintainer's decision; `release.yml` passes `systems: '["macos-latest"]'`). Linux and macOS pass the whole of `ci.yml`. Windows passes up to `test/native_registration.py`, whose fix (`434d671`) is pushed; its later steps (the launcher, the fastText wheel, the browser suites, the matrix, the decoders) have never run on it. `ci.yml` is enabled in the repository's Actions settings for this work. Agents push, tag and run workflows only when the maintainer says so for a release, as for 0.9.0.
+   The installers refuse an HTTPS release without a signature, so every release comes from the workflow: `npm run bump`, a release commit, the tag, then `gh workflow run release.yml --ref v<version>`.
 
 ## Open, in order
 
