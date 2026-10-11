@@ -11,5 +11,9 @@ export default defineConfig({
   test: {
     include: ["test/node/**/*.test.ts"],
     restoreMocks: true,
+    // The property tests take a few seconds here and three to five times that on a CI runner
+    // (the Windows one ran the scheduler's 18 s, a PDF one 5.8 s): 5 s failed tests that pass.
+    // What has its own time bound asserts it.
+    testTimeout: 30_000,
   },
 });
