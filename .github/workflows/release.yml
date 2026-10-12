@@ -8,6 +8,12 @@ name: release
 # tag (installer/verify_release.py). A release built anywhere else is not one they install.
 on:
   workflow_dispatch:
+    inputs:
+      assets:
+        description: "What the release lists: everything, or the Chrome extension and the macOS engine alone"
+        type: choice
+        options: [all, chrome-macos]
+        default: all
 
 jobs:
   # Nothing is published that macOS has not passed: ci.yml's every suite on the primary target
@@ -60,6 +66,11 @@ jobs:
               for offline in (False, True):
                   release.verify(archive, bundle, release.SIGNER + version, offline=offline)
           PY
+      # A release for Chrome on macOS alone lists neither Windows' engine nor the Firefox build;
+      # everything was still built, signed and checked above.
+      - name: Leave out what a Chrome and macOS release does not list
+        if: inputs.assets == 'chrome-macos'
+        run: rm -f dist/anagram.zip dist/anagram.zip.* dist/install.ps1 dist/install.ps1.* dist/anagram-firefox-*
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}

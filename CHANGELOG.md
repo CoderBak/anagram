@@ -5,7 +5,9 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.9.1] — 2026-10-12
+
+Quieter chips that show what they cover when hovered, simpler pages, and a PDF reader that comes back after Chrome discards its tab. Published for Chrome on macOS only.
 
 ### Changed
 

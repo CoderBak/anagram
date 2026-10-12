@@ -12,7 +12,7 @@ Update this file, or delete an item, when it is done.
 
 ## Where `dev` stands
 
-- **Release:** 0.9.0, the first signed release, was published on 2026-10-11 by `.github/workflows/release.yml` from `v0.9.0`; its CHANGELOG section lists what it holds. Since the handoff of 2026-10-05, every item it listed has been done or decided:
+- **Release:** 0.9.1 (2026-10-12), for Chrome on macOS only: `release.yml` run with `assets: chrome-macos` lists the Chrome extension, `install.sh` and `anagram.tar.gz`, leaving out Windows' engine and the Firefox build. 0.9.0 (2026-10-11) was the first signed release and lists everything. Since the handoff of 2026-10-05, every item it listed has been done or decided:
   - the reading log, kept field by field at layers the reader chooses and worked out again under any rule (`lib/stats/`);
   - the minimum length fixed at 50 words, short paragraphs always grouped;
   - Windows with an NVIDIA GPU set up with the in-browser engine;

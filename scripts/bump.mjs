@@ -1,4 +1,5 @@
-// Keep release versions aligned; --check also verifies the native scoring contract.
+// Keep release versions aligned. The scoring contract's version is anagramd/contract.json's
+// alone, read by both engines, so there is nothing of it to align here.
 // Usage: node scripts/bump.mjs <x.y.z> | --check
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -66,21 +67,6 @@ const FIELDS = [
   lineField("anagramd/uv.lock", '[[package]] name = "anagramd"', /^(name = "anagramd"\nversion = ")([^"]*)(")/m),
 ];
 
-// Contract changes are checked, never inferred from a release version.
-const CONTRACTS = [
-  { file: "lib/contract.ts", what: "CONTRACT_VERSION", re: /^export const CONTRACT_VERSION = "([^"]*)";/m },
-  { file: "anagramd/engine.py", what: "CONTRACT_VERSION", re: /^CONTRACT_VERSION = "([^"]*)"/m },
-];
-
-/** Read the browser and native engine contract versions. */
-function readContracts() {
-  return CONTRACTS.map((c) => {
-    const version = readFileSync(join(ROOT, c.file), "utf8").match(c.re)?.[1] ?? null;
-    if (version === null) fail(`${c.file}: no ${c.what} found — the file changed shape, fix this script before releasing`);
-    return { ...c, version, major: version.split(".")[0] };
-  });
-}
-
 /** Read all four. A missing field is fatal: bumping three of four is the drift itself. */
 function readAll() {
   return FIELDS.map((f) => {
@@ -96,15 +82,9 @@ const arg = process.argv[2];
 if (arg === "--check") {
   const found = readAll();
   for (const f of found) console.log(`${f.version.padEnd(10)} ${f.file}`);
-  const contracts = readContracts();
-  console.log("");
-  for (const c of contracts) console.log(`${c.version.padEnd(10)} ${c.file}  (${c.what})`);
   const versions = [...new Set(found.map((f) => f.version))];
   if (versions.length !== 1) fail(`the four versions disagree: ${versions.join(", ")}`);
-  const majors = [...new Set(contracts.map((c) => c.major))];
-  if (majors.length !== 1)
-    fail(`the contract majors disagree: ${contracts.map((c) => `${c.file} says ${c.version}`).join(", ")}`);
-  console.log(`\nall four agree on ${versions[0]}, and both speak contract ${majors[0]}.x`);
+  console.log(`\nall four agree on ${versions[0]}`);
   process.exit(0);
 }
 
