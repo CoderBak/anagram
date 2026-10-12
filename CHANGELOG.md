@@ -5,7 +5,9 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## [Unreleased]
+## [0.9.2] — 2026-10-12
+
+Settings laid out in two columns with the statistics choices as tiles, a working switch for PDFs on this computer, a setup page that goes one step at a time, and a statistics page that leads with four figures and narrows to a site. Published for Chrome on macOS only.
 
 ### Changed
 
