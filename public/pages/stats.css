@@ -17,10 +17,6 @@ header.hdr p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-foreground
 .note { margin: 8px 0 0; font-size: 12.5px; color: var(--muted-foreground); }
 .warn { margin: 8px 0 0; font-size: 12.5px; color: var(--foreground); padding: 8px 10px; border-radius: 8px; background: color-mix(in oklab, var(--b2-c, #f0600f) 12%, var(--background)); }
 /* What each level records. */
-.levels { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.levels li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
-.levels strong { display: block; font-size: 13.5px; font-weight: 600; }
-.levels span { font-size: 12.5px; color: var(--muted-foreground); }
 .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 /* The period, and what to do with it. */
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 14px; }

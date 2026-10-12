@@ -130,8 +130,10 @@ function markHighlight(step: number, active: boolean): Highlight | null {
   return h;
 }
 
-// Ranges added per unit id, with the step they are painted in, so we can clear them.
-const _byUnit = new Map<string, Array<{ step: number; range: Range }>>();
+/** A range of a unit's text on a step of the scale, kept per unit id so it can be cleared;
+ *  `rest`: drawn while the unit is not active, as the underline setting says. */
+interface Entry { step: number; range: Range; rest: boolean }
+const _byUnit = new Map<string, Entry[]>();
 /** The one unit the reader is on — hovered chip, pinned card, or a jump's target. */
 let _activeUnit: string | null = null;
 
@@ -188,7 +190,7 @@ function park(id: string): void {
 function unpark(id: string): void {
   if (!_parked.delete(id)) return;
   const active = _activeUnit === id;
-  for (const e of _byUnit.get(id) ?? []) markHighlight(e.step, active)?.add(e.range);
+  for (const e of _byUnit.get(id) ?? []) if (active || e.rest) markHighlight(e.step, active)?.add(e.range);
 }
 
 function watch(unit: Unit): void {
@@ -317,7 +319,8 @@ export function clearActiveUnit(id: string): void {
   if (_activeUnit === id) setActiveUnit(null);
 }
 
-/** Move one unit's ranges between the resting highlights and the active ones. */
+/** Move one unit's ranges between the resting highlights and the active ones. Active, every
+ *  range the unit was read from shows; at rest, only the ones drawn at rest (`rest`). */
 function restate(id: string, active: boolean): void {
   if (_painted.has(id)) _painter?.activate(id, active);
   const entries = _byUnit.get(id);
@@ -325,7 +328,7 @@ function restate(id: string, active: boolean): void {
   if (!entries || _parked.has(id)) return;
   for (const e of entries) {
     markHighlight(e.step, !active)?.delete(e.range);
-    markHighlight(e.step, active)?.add(e.range);
+    if (active || e.rest) markHighlight(e.step, active)?.add(e.range);
   }
 }
 
@@ -364,8 +367,9 @@ export function setRangeLocator(locator: RangeLocator | null): void {
  * the marks itself, over the picture, from the same ranges and the same steps of the scale.
  */
 export interface MarkPainter {
-  /** Draw these marks for `unit`, or return false to leave it to the page's highlights. */
-  paint(unit: Unit, marks: ReadonlyArray<{ step: number; ranges: readonly Range[] }>, active: boolean): boolean;
+  /** Draw these marks for `unit`, or return false to leave it to the page's highlights. A
+   *  mark not `rest` shows only while the unit is active. */
+  paint(unit: Unit, marks: ReadonlyArray<{ step: number; ranges: readonly Range[]; rest: boolean }>, active: boolean): boolean;
   /** Take a unit's marks off again. */
   clear(id: string): void;
   /** The unit became (or stopped being) the one the reader is on. */
@@ -418,9 +422,11 @@ function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; e
 
 /**
  * Register what was read, stretch by stretch, each in the colour of its own score;
- * "unavailable" and "unsupported" get no mark, and neither does text no scored pass read,
- * nor a stretch under `minLevel`, the level paragraphs are flagged from (Settings): below it
- * a paragraph has its chip only.
+ * "unavailable" and "unsupported" get no mark, and neither does text no scored pass read.
+ * At rest only what the underline setting draws shows: the stretches from `minLevel` up, the
+ * level paragraphs are flagged from (Settings), and none when `atRest` is false (a paragraph
+ * that is not flagged, or underlines off). While the unit is active — its chip hovered —
+ * every stretch it was read from shows, so the reader sees the scope of any verdict.
  * Detection cannot attribute below what the model read in one pass, so that is the grain
  * of the marks: the whole unit for nearly every paragraph (one pass, marked uniformly in
  * the chip's colour, no offsets resolved), and stretch by stretch between pass edges for a
@@ -430,30 +436,30 @@ function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; e
  * and the verdict), the unit falls back to whole parts in the AGGREGATE colour rather
  * than showing nothing; the mutation observer is about to retire it anyway.
  */
-export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): void {
+export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0, atRest = true): void {
   if (!highlightsSupported()) return;
 
   clearHighlight(unit.id);
 
   if (isNoVerdict(band(verdict.result))) return; // no verdict → no mark
-  if (scaleStep(verdict.result.score) < minLevel) return; // not flagged → its chip only
 
-  const marks: Array<{ step: number; ranges: Range[] }> = [];
+  const marks: Array<{ step: number; ranges: Range[]; rest: boolean }> = [];
+  const rest = (step: number): boolean => atRest && step >= minLevel;
   const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
-  // The stretches the verdict judged, neighbours on one step of the scale drawn as one; of a
-  // flagged paragraph, the ones under the level stay unmarked.
-  const runs = stepRuns(verdict.stretches).filter((run) => run.step >= minLevel);
+  // The stretches the verdict judged, neighbours on one step of the scale drawn as one.
+  const runs = stepRuns(verdict.stretches);
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
   const own = _locator?.(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs);
   const located = own !== undefined ? own : onePass ? null : locateSpans(unit.parts, unit.text, runs);
+  const whole = scaleStep(verdict.result.score);
   if (located && own !== undefined && onePass) {
-    marks.push({ step: scaleStep(verdict.result.score), ranges: located[0] ?? [] });
+    marks.push({ step: whole, ranges: located[0] ?? [], rest: rest(whole) });
   } else if (located) {
     // One list of ranges per span asked about (RangeLocator, locateSpans).
-    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i] ?? [] }));
+    runs.forEach((run, i) => marks.push({ step: run.step, ranges: located[i] ?? [], rest: rest(run.step) }));
   } else {
-    marks.push({ step: scaleStep(verdict.result.score), ranges: wholeParts(unit) });
+    marks.push({ step: whole, ranges: wholeParts(unit), rest: rest(whole) });
   }
 
   // A unit re-rendered while the pointer is still on its chip (a verdict landing on a
@@ -463,8 +469,8 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): vo
     _painted.add(unit.id);
     return;
   }
-  const entries: Array<{ step: number; range: Range }> = [];
-  for (const { step, ranges } of marks) for (const range of ranges) if (!inClosedTree(range)) entries.push({ step, range });
+  const entries: Entry[] = [];
+  for (const { step, ranges, rest } of marks) for (const range of ranges) if (!inClosedTree(range)) entries.push({ step, range, rest });
   if (entries.length === 0) return;
   _byUnit.set(unit.id, entries);
   // On a surface with a locator of its own (the PDF reader, a preview's pdf.js) the text is
@@ -478,7 +484,7 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0): vo
       return;
     }
   }
-  for (const e of entries) markHighlight(e.step, active)?.add(e.range);
+  for (const e of entries) if (active || e.rest) markHighlight(e.step, active)?.add(e.range);
 }
 
 /**

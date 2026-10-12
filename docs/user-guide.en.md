@@ -77,12 +77,11 @@ page in front of you once. Google Play Books, Libby and VitalSource Bookshelf sh
 in a frame from a second address, and the switch asks for both; a reader granted with an
 older version shows as off until you switch it on again.
 
-- A chip after each paragraph shows the score. Hover it for where the score sits on the
-  scale, the four-way breakdown and the word count. Anagram reads English only: a paragraph
+- A chip after each paragraph shows the score. Hover it to see the text the score covers,
+  where the score sits on the scale, the four-way breakdown and the word count. Anagram reads English only: a paragraph
   in another language gets no chip, and the toolbar menu counts how many it passed over.
-- The chip takes one colour per word: green for Human, gold for Lightly edited, orange for
-  Heavily edited and deep crimson for AI-generated, brighter on dark pages. Human's chip is
-  lighter, so a mostly human page stays calm. Heavily edited and AI-generated paragraphs are
+- The dot on a chip takes one colour per word: green for Human, gold for Lightly edited, orange for
+  Heavily edited and deep crimson for AI-generated, brighter on dark pages. Heavily edited and AI-generated paragraphs are
   flagged: underlined in their colour, listed in the toolbar menu and counted on its icon;
   the others keep their chip only. Settings, Marks, **Flag** changes from which word. The word follows the number: Human below .17, Lightly edited below .50,
   Heavily edited below .83, AI-generated above. When the word is likely wrong, the card
@@ -106,8 +105,8 @@ older version shows as off until you switch it on again.
   29% to 18%, and paraphrasing with another model to 6%. Text whose letters were replaced
   with look-alike Cyrillic ones gets no verdict: it shows as another language.
 - A paragraph needs 50 words to be scored, as in Pangram's own product. Shorter paragraphs
-  are scored together with their neighbours in the same section, never across a heading; a
-  ×2 on a chip means it covers two paragraphs, and a short paragraph with nothing to join is
+  are scored together with their neighbours in the same section, never across a heading
+  (hovering the chip shows every paragraph it covers), and a short paragraph with nothing to join is
   not scored. The open model was trained on texts
   of 75 words or more, so the card of a verdict on fewer says "Short text: less reliable".
   On EditLens test texts cut to length, the word was right for 67% of texts of

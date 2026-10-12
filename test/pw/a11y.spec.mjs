@@ -744,8 +744,8 @@ test("forced colours: chips keep a boundary, and a verdict its colour", async ({
       const pill = host.shadowRoot?.querySelector(".pill");
       if (!pill) continue;
       const cs = getComputedStyle(pill);
-      // A verdict's chip is filled with its colour; a chip still waiting shows a dot.
-      const coloured = pill.classList.contains("scored") ? pill : host.shadowRoot.querySelector(".dot");
+      // A chip's colour is its dot's, the verdict's word or a waiting chip's grey.
+      const coloured = host.shadowRoot.querySelector(".dot");
       out.push({ borderStyle: cs.borderTopStyle, borderWidth: cs.borderTopWidth, borderColor: cs.borderTopColor, background: cs.backgroundColor, colourAdjust: coloured ? getComputedStyle(coloured).forcedColorAdjust : null });
     }
     return out;

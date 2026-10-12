@@ -150,7 +150,7 @@ export function createLineLayerSurface(source: LineSource): Surface {
   /** Our layer over each page box. */
   const overlays = new WeakMap<HTMLElement, HTMLElement>();
   /** What each unit's marks are made of. */
-  const drawn = new Map<string, { bars: HTMLElement[]; tints: HTMLElement[] }>();
+  const drawn = new Map<string, { bars: HTMLElement[]; tints: HTMLElement[]; hover: Set<HTMLElement> }>();
   let visible = true;
   let answered = false;
   /** The pages as read once per turn: a burst asks whether the document is there and for
@@ -315,8 +315,8 @@ export function createLineLayerSurface(source: LineSource): Surface {
     paint(unit, marks, active) {
       if (!mine.has(unit.id)) return false;
       clear(unit.id);
-      const d = { bars: [] as HTMLElement[], tints: [] as HTMLElement[] };
-      for (const { step, ranges } of marks) {
+      const d = { bars: [] as HTMLElement[], tints: [] as HTMLElement[], hover: new Set<HTMLElement>() };
+      for (const { step, ranges, rest } of marks) {
         const score = step / SCALE_STEPS;
         for (const [node, from, to] of ranges.flatMap((range) => (range.collapsed ? [] : textIn(range)))) {
           const at = lineOf(node);
@@ -337,7 +337,9 @@ export function createLineLayerSurface(source: LineSource): Surface {
           tint.style.cssText =
             `position:absolute;left:${left};width:${width};top:${pct(b.top, page.height)};` +
             `height:${pct(size, page.height)};background:${scaleColor(score, false, 0.18)};`;
-          bar.hidden = !visible;
+          // A bar not drawn at rest (a paragraph that is not flagged) shows with its tint.
+          if (!rest) d.hover.add(bar);
+          bar.hidden = !visible || (!rest && !active);
           tint.hidden = !active || !visible;
           layer.prepend(tint, bar); // under the chips, which come after
           d.bars.push(bar);
@@ -350,12 +352,14 @@ export function createLineLayerSurface(source: LineSource): Surface {
     clear,
     activate(id, active) {
       const d = drawn.get(id);
-      if (d) for (const tint of d.tints) tint.hidden = !active || !visible;
+      if (!d) return;
+      for (const tint of d.tints) tint.hidden = !active || !visible;
+      for (const bar of d.hover) bar.hidden = !active || !visible;
     },
     show(on) {
       visible = on;
       for (const d of drawn.values()) {
-        for (const bar of d.bars) bar.hidden = !on;
+        for (const bar of d.bars) bar.hidden = !on || d.hover.has(bar);
         if (!on) for (const tint of d.tints) tint.hidden = true;
       }
     },

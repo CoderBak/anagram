@@ -690,9 +690,11 @@ async function main(): Promise<void> {
   const params = new URL(location.href).searchParams;
   const src = documentAddress(params.get("src")), ticket = params.get("ticket");
   originalUrl = src; original.hidden = !src;
-  // Only a reload or a step back to a reader that held this very source reads it again.
+  // Only a reload, a step back, or a tab Chrome discarded to save memory and is loading again
+  // (the reader looked empty on returning to it) reads this very source again.
   const arrival = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type;
-  const returning = (arrival === "reload" || arrival === "back_forward") && !!src && heldSource() === src;
+  const discarded = (document as Document & { wasDiscarded?: boolean }).wasDiscarded === true;
+  const returning = (arrival === "reload" || arrival === "back_forward" || discarded) && !!src && heldSource() === src;
   if (src && ticket) await openTicket(ticket, src);
   else if (src && returning && !params.has("err") && await reopen(src)) return;
   else {

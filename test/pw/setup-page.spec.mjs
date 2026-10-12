@@ -30,15 +30,17 @@ async function openScripted(extension, path, state, options = {}, viewport = { w
 test.describe("the setup page", () => {
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
-  test("teaches toolbar pinning and keeps the guide reachable from Settings", async ({ extension }) => {
+  test("teaches toolbar pinning in two short steps, which the toolbar menu's link opens", async ({ extension }) => {
     const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
-    await expect(page.locator("#toolbarGuide")).toContainText("toolbar menu");
     await expect(page.locator("#toolbarGuide li")).toHaveCount(2);
-    await expect(page.locator("#toolbarGuide")).toContainText("pin beside it");
-    await page.goto(extension.url("options.html") + "#toolbar-guide");
-    // Not a fold: the steps are on the page, and the link brings them into view.
+    await expect(page.locator("#toolbarGuide")).toContainText("pin beside Anagram");
+    // The toolbar menu's "How to keep Anagram in the toolbar" opens this step; Settings has no
+    // copy of it.
+    await page.goto(extension.url("onboarding.html") + "#pinCard");
     await expect(page.locator("#toolbarGuide li").first()).toBeVisible();
-    await expect(page.locator("#toolbar-guide")).toBeInViewport();
+    await expect(page.locator("#pinCard")).toBeInViewport();
+    await page.goto(extension.url("options.html"));
+    await expect(page.locator("#toolbarGuide")).toHaveCount(0);
   });
 
   test("numbers its steps — the engine, where it reads, the toolbar — and ticks each off once done", async ({ extension }) => {

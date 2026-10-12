@@ -381,16 +381,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     // The pill is the word's colour (lib/render/scale.ts), its number in the ink that reads
     // on it (badge.css.ts).
     pill.className = `pill band-${b}${isNoVerdict(b) ? "" : ` scored b${levelOf(result.score)}`}`;
-    // The bare number (".38") — what it means is in the card and the intro, not on
-    // every line. A merged unit says so up front (".38 ×3"): one verdict covering N
-    // short paragraphs must never masquerade as a single-paragraph judgment. How many
-    // paragraphs that is is the unit's to say (unitParagraphs): in a PDF the parts are the
-    // pieces a page break or a column cut ONE paragraph into.
-    const paragraphs = unitParagraphs(unit);
-    const xn = paragraphs > 1 ? ` ×${paragraphs}` : "";
+    // The bare number (".38"), and nothing else: what it means is in the card, and how much
+    // text it covers shows when the chip is hovered (every paragraph it read is tinted) and
+    // in the card ("Paragraphs read together").
     // Unsupported language → the detected code ("zh"), never a number.
-    num.textContent =
-      (b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : score) + xn;
+    num.textContent = b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : score;
 
     renderCard(root.querySelector(".card") as HTMLElement, unit, verdict, b, score);
   }

@@ -248,11 +248,11 @@
     "description": "Toolbar menu over a page none of whose paragraphs is in English: why nothing was scored."
   },
   "panelCovShort": {
-    "message": "$1 too short to score",
+    "message": "$1 too short",
     "description": "Coverage line: prose the walk found and did NOT score, under the minimum length (Settings) with no neighbour of its own voice to join."
   },
   "panelCovLessReliable": {
-    "message": "$1 less reliable (under $2 words)",
+    "message": "$1 under $2 words",
     "description": "Coverage line: scored paragraphs under the model's 75-word training minimum, whose cards say \"Short text: less reliable\". Shown only when there are any. $2 = 75."
   },
   "panelCovNotEnglish": {
@@ -436,7 +436,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteClear": {
-    "message": "Clear text and results",
+    "message": "Clear",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteBusy": {
@@ -494,10 +494,6 @@
   "onbUserGuide": {
     "message": "User guide",
     "description": "Link to the online user guide."
-  },
-  "onbArxivTip": {
-    "message": "Tip: arXiv papers read most precisely in their HTML version, at arxiv.org/html/.",
-    "description": "A tip on the setup page's How it reads card."
   },
   "componentTitle": {
     "message": "Local engine",
@@ -680,7 +676,7 @@
     "description": "In-browser edition: confirmation before deleting the model; $1 is its size, e.g. 1.4 GB."
   },
   "engineOnGpu": {
-    "message": "Runs on your graphics card (WebGPU).",
+    "message": "On your graphics card.",
     "description": "In-browser edition, engine ready: where the model runs, in plain words."
   },
   "engineOnCpu": {
@@ -1131,10 +1127,6 @@
     "message": "Remove",
     "description": "Button that removes a rule; also the hidden header of that column."
   },
-  "optNoRules": {
-    "message": "No site rules yet.",
-    "description": "Empty state of the rules table."
-  },
   "optBadHost": {
     "message": "Enter a hostname like example.com.",
     "description": "Validation error of the add-rule form."
@@ -1200,15 +1192,11 @@
     "description": "Setup page: heading of the block that explains the words, the colours and the dot."
   },
   "onbScoreLine": {
-    "message": "Each paragraph gets a chip with a score from .00 (human) to 1.0 (AI-generated), in its word's colour. Hover the chip for the details. Heavily edited and AI-generated paragraphs are flagged: underlined, listed in the toolbar menu and counted on its icon. Settings changes from which word.",
+    "message": "Hover a chip for details. English text only.",
     "description": "Setup page, under the four words and the coloured scale."
   },
-  "onbStepDone": {
-    "message": "Done",
-    "description": "Setup page: beside a step that is complete."
-  },
   "onbModelNotice": {
-    "message": "Anagram uses Pangram's open EditLens model (CC BY-NC-SA 4.0). Commercial use is not permitted. It should not be used to enforce any AI-usage policy in an educational or professional setting.",
+    "message": "Model: Pangram's EditLens (CC BY-NC-SA 4.0). Not for commercial use, nor to enforce AI-use policies at school or work.",
     "description": "Setup page: the licence and fair-use notice for the model, in the spirit of Pangram's own."
   },
   "accessHint": {
@@ -1222,10 +1210,6 @@
   "optReadAhead": {
     "message": "Read whole PDFs in the background",
     "description": "Settings, PDFs: switch for reading the pages of a document before they are scrolled to."
-  },
-  "optReadAheadNote": {
-    "message": "Paced to how fast this computer scores: a fast one reads the whole document, a slow one the pages around where you are, and only while you are not scrolling.",
-    "description": "Settings, PDFs: the note under the read-ahead switch."
   },
   "optLocalPdfs": {
     "message": "PDFs on this computer",
@@ -1307,16 +1291,12 @@
     "message": "How to keep Anagram in the toolbar",
     "description": "Toolbar menu: link to the pinning instructions, shown while Anagram is not pinned."
   },
-  "toolbarPinIntro": {
-    "message": "Everything Anagram does is in its toolbar menu: each page's results, the switch for each site, and Settings.",
-    "description": "Setup page: why to pin Anagram — its toolbar menu is where it is used from."
-  },
   "toolbarExtensionsMenu": {
-    "message": "Click the Extensions button (puzzle piece) beside the address bar.",
+    "message": "Click the puzzle-piece button beside the address bar.",
     "description": "Pinning step 1 (Chrome, Firefox): open the browser's Extensions menu."
   },
   "toolbarChromePin": {
-    "message": "Find Anagram and click the pin beside it.",
+    "message": "Click the pin beside Anagram.",
     "description": "Pinning step 2 in Chrome: click the pin beside Anagram."
   },
   "toolbarFirefoxPin": {
@@ -1367,17 +1347,9 @@
     "message": "AI-generated only",
     "description": "Settings, Flag: flag AI-generated paragraphs only."
   },
-  "optFlagFromHint": {
-    "message": "Flagged paragraphs are underlined, counted on the toolbar icon and listed in its menu; the others keep their chip only.",
-    "description": "Settings, under the Flag row: what being flagged means."
-  },
   "optUnderlineFlagged": {
     "message": "Flagged paragraphs",
     "description": "Settings, Underlines: underline the flagged paragraphs (the other choice is Off)."
-  },
-  "onbEnglishOnly": {
-    "message": "Anagram reads English only. A paragraph in another language gets no chip; the toolbar menu counts how many it passed over.",
-    "description": "Setup page, Reading the marks: Anagram scores English only, and what happens to other languages."
   },
   "pasteCoverageRead": {
     "message": "$1 of $2 paragraphs read",
@@ -1420,11 +1392,11 @@
     "description": "Statistics page, while nothing is recorded: the heading of the card that explains the levels."
   },
   "statsOffLead": {
-    "message": "Anagram can keep a record of how much of what you read reads as AI-generated. It stays on this computer, and nothing is ever sent anywhere.",
+    "message": "Keep a record of what you read, on this computer only.",
     "description": "Statistics page, while nothing is recorded: what the feature is, and that it never leaves the computer."
   },
   "statsNeverNote": {
-    "message": "Never private windows, sites you switched Anagram off for, Analyze text, what you type, or what you select or copy.",
+    "message": "Never kept: private windows, sites Anagram is off for, Analyze text, and what you type, select or copy.",
     "description": "Statistics page, while off: what is never recorded at any level. 'Analyze text' is the extension's own page for pasted text."
   },
   "optStatsLevel": {
@@ -1698,10 +1670,6 @@
   "statsLocalFiles": {
     "message": "PDFs on this computer",
     "description": "Statistics sites table: PDFs opened from this computer, which have no site."
-  },
-  "statsRecordingOff": {
-    "message": "Recording is off.",
-    "description": "Statistics page, under the title: nothing is being recorded."
   },
   "statsRecordingLine": {
     "message": "Recording: $1, paragraphs and visits kept for $2 days.",

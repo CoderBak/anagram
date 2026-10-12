@@ -56,6 +56,7 @@ const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
 const switchEngineEl = document.getElementById("switchEngine") as HTMLButtonElement;
 const keepOpenEl = document.getElementById("keepOpen") as HTMLElement;
+const displayModeRowEl = document.getElementById("displayModeRow")!;
 const openReaderEl = document.getElementById("openReader") as HTMLButtonElement;
 const analyzeTextEl = document.getElementById("analyzeText") as HTMLButtonElement;
 const pageActionEl = document.getElementById("pageAction") as HTMLButtonElement;
@@ -243,6 +244,8 @@ function paint(): void {
   // empty line above them would only be a gap where a sentence used to be.
   const reported = lead.status === "counts" && !!counts && !!report && !facts.tab?.translated;
   statusEl.hidden = lead.status === "none" || reported;
+  // All chips or flagged only means something once the page has been read.
+  displayModeRowEl.hidden = !counts;
   // While the in-browser engine's model downloads, the browser has to stay open.
   keepOpenEl.hidden = !(lead.status === "setup" && facts.setup?.state === "downloading");
   // The main button already opens the reader empty on these tabs.
@@ -607,12 +610,12 @@ async function init(): Promise<void> {
   gearEl.addEventListener("click", () => {
     void browser.runtime.openOptionsPage();
   });
-  // How to keep Anagram in the toolbar, only while it is not kept there.
+  // How to keep Anagram in the toolbar, only while it is not kept there: the setup page's step.
   const toolbarHelp = document.getElementById("toolbarHelp")!;
   const userSettings = (browser as { action?: { getUserSettings?: () => Promise<{ isOnToolbar?: boolean }> } }).action?.getUserSettings;
   void userSettings?.().then((u) => { toolbarHelp.hidden = u.isOnToolbar !== false; }).catch(() => undefined);
   toolbarHelp.addEventListener("click", () => {
-    void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#toolbar-guide" });
+    void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") + "#pinCard" });
     window.close();
   });
   (document.getElementById("localFileSettings") as HTMLButtonElement).addEventListener("click", () => {

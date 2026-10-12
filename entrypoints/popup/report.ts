@@ -117,7 +117,9 @@ export function mountReport(host: HTMLElement, hooks: {
       // The row's score is the paragraph's chip, as it stands on the page.
       const score = document.createElement("span");
       score.className = `report-score chip b${BUCKET_BANDS.indexOf(entry.band)}`;
-      score.textContent = formatScore(entry.score);
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      score.append(dot, formatScore(entry.score));
       const text = document.createElement("span");
       text.textContent = entry.snippet;
       button.append(score, text);

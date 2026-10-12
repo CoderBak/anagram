@@ -344,6 +344,6 @@ test("the report's coverage line: what was too short to score, and what was scor
   await expect.poll(async () => (await menuReport(menu))?.bands.reduce((a, n) => a + n, 0), { message: cov }).toBe(2);
   const shown = await menuReport(menu);
   expect.soft(shown.title, cov).toMatch(/^(Flagged paragraphs \(\d\/2\)|Nothing flagged on this page\.)$/);
-  expect.soft(shown.notes, cov).toEqual(["1 too short to score, 1 less reliable (under 75 words)"]);
+  expect.soft(shown.notes, cov).toEqual(["1 too short, 1 under 75 words"]);
   expect.soft(shown.notes.join(" "), cov).not.toMatch(/\bread\b/);
 });

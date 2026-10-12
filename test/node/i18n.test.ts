@@ -426,3 +426,22 @@ describe("the English each bundle carries", () => {
     });
   });
 });
+
+// The English stays in the pages' HTML and is not replaced in English (lib/ui/localize.ts): a
+// message reworded in messages.json and not in the page shows the old words to every English
+// reader, which happened to Statistics.
+describe("the pages' English", () => {
+  const en = EN;
+  const unescape = (s: string): string => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'");
+  for (const page of readdirSync(join(ROOT, "entrypoints")).filter((d) => existsSync(join(ROOT, "entrypoints", d, "index.html")))) {
+    it(`${page}: every plain data-i18n text is its English message`, () => {
+      const html = readFileSync(join(ROOT, "entrypoints", page, "index.html"), "utf8");
+      const differ: string[] = [];
+      for (const [, , key, text] of html.matchAll(/<(\w+)[^>]*\sdata-i18n="([^"]+)"[^>]*>([^<]*)<\/\1>/g)) {
+        const shown = unescape(text!.split(/\s+/).join(" ").trim());
+        if (shown && shown !== en[key!]?.message.split(/\s+/).join(" ")) differ.push(`${key}: "${shown}"`);
+      }
+      expect(differ).toEqual([]);
+    });
+  }
+});

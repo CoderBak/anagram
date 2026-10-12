@@ -2198,11 +2198,33 @@ const results = await page.evaluate(() => {
     PW.setActiveUnit(human.id);
     PW.clearHighlight(human.id);
     check("clearing an ACTIVE unit leaves nothing behind in either set", marksOf(sandbox).length === 0, JSON.stringify(marksOf(sandbox)));
+
+    // A paragraph that is not underlined (not flagged, or underlines off) still shows what its
+    // verdict read while its chip is hovered, and nothing at rest.
+    PW.setHighlight(human, humanVerdict, 0, false);
+    const resting = marksOf(sandbox).join();
+    PW.setActiveUnit(human.id);
+    const hovered = marksOf(sandbox).join();
+    PW.setActiveUnit(null);
+    check("a unit not underlined at rest has no mark, its whole scope tinted while its chip is hovered, and none after",
+      resting === "" && hovered === `anagram-a${humanStep}` && marksOf(sandbox).length === 0, JSON.stringify({ resting, hovered, after: marksOf(sandbox) }));
+    // Flagged from a step: at rest the stretches under it are left out, and hovered they show.
+    const twoStretches = PW.unitVerdict(human.id, human.text.length, [
+      { start: 0, end: 200, result: res([0.9, 0.1, 0, 0]) }, { start: 150, end: human.text.length, result: res([0, 0, 0.1, 0.9]) }]);
+    PW.setHighlight(human, twoStretches, PW.scaleStep(0.9), true);
+    const restSteps = new Set(marksOf(sandbox));
+    PW.setActiveUnit(human.id);
+    const hoverSteps = new Set(marksOf(sandbox));
+    PW.setActiveUnit(null);
+    PW.clearHighlight(human.id);
+    check("flagged from a step: at rest only the stretches at it or above, hovered every stretch",
+      [...restSteps].every((n) => n.startsWith("anagram-s")) && hoverSteps.size > restSteps.size && [...hoverSteps].every((n) => n.startsWith("anagram-a")),
+      JSON.stringify({ rest: [...restSteps], hover: [...hoverSteps] }));
   }
 
   // ---- how sure: the card ----------------------------------------------------------------
-  // The chip is its word's colour, filled, whatever the doubt (lib/render/badge.css.ts): no
-  // dot, no ring. Under one half the card says "Unsure: close to" the neighbouring word
+  // The chip is neutral, its word only a dot in its colour, whatever the doubt
+  // (lib/render/badge.css.ts): no fill, no ring. Under one half the card says "Unsure: close to" the neighbouring word
   // (lib/render/confidence.ts, unsureNote), and never puts a number on the doubt.
   {
     sandbox.innerHTML = `<p>${words(80)}</p>`;
@@ -2215,14 +2237,17 @@ const results = await page.evaluate(() => {
       const root = sandbox.querySelector('[data-anagram="host"]').shadowRoot;
       return {
         sure: PW.verdictConfidence(verdict).toFixed(3),
-        // The dot stays for the pending chip's breathing, and is not shown once scored.
+        // The dot carries the word's colour; the pill around it stays neutral.
         dot: (() => { const dot = root.querySelector(".pill .dot"); return !!dot && getComputedStyle(dot).display !== "none"; })(),
+        dotColour: getComputedStyle(root.querySelector(".pill .dot")).backgroundColor,
+        pillColour: getComputedStyle(root.querySelector(".pill")).backgroundColor,
         unsure: root.querySelector(".card .unsure")?.textContent ?? "",
         card: root.querySelector(".card").textContent,
       };
     });
-    check("a scored chip shows no dot: its word's colour is the whole of it",
-      seen.every((s) => !s.dot), JSON.stringify(seen.map((s) => s.dot)));
+    check("a scored chip is a neutral pill with its word's colour on the dot alone",
+      seen.every((s) => s.dot && s.pillColour === seen[0].pillColour) && new Set(seen.map((s) => s.dotColour)).size >= 2,
+      JSON.stringify(seen.map((s) => [s.dot, s.dotColour, s.pillColour])));
     check("the card says Unsure, and the word it is close to, only where the word is likelier wrong than right, and never a number for it",
       seen.every((s) => (Number(s.sure) < 0.5) === /^Unsure: close to \S/.test(s.unsure)) &&
       seen.some((s) => s.unsure) && seen.some((s) => !s.unsure) &&

@@ -156,11 +156,11 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
   }, report).toPass({ timeout: 30_000 });
 });
 
-// On a web page three short paragraphs of one voice are read together and the chip says ×3;
+// On a web page three short paragraphs of one voice are read together under one chip;
 // in a PDF they used to be dropped one by one. The rules are the same ones (lib/plan/group.ts),
 // the reconstruction supplying the barriers: the three under the first heading are one unit,
 // and the two under the second, 48 words with nothing of their section to join, are read by nobody.
-test("short paragraphs under a heading are read as ONE unit: nothing crosses the heading, the chip says ×3 beside the text, the marks lie on all three", async ({ context, pdfs, nativeHost, storage }) => {
+test("short paragraphs under a heading are read as ONE unit: nothing crosses the heading, its card counts three, the chip sits beside the text, the marks lie on all three", async ({ context, pdfs, nativeHost, storage }) => {
   await storage.set({ underlineScope: "all" });
   const mark = nativeHost.textMark();
   const page = await openPdfInReader(context, pdfs.url("/grouped.pdf"));
@@ -169,8 +169,10 @@ test("short paragraphs under a heading are read as ONE unit: nothing crosses the
   const grouped = await readReader(page);
   const one = "PDF reader: three short paragraphs under a heading are read as ONE unit, and nothing crosses the heading";
   expect.soft(nativeHost.textsSince(mark), one).toEqual([GROUPED_UNIT_TEXT]);
-  const chip = "PDF reader: the grouped chip says ×3, sits inside its page and never over the text";
-  expect.soft(await page.locator(`.anagramPdfChips ${BADGE_SEL} .num`).textContent(), chip).toMatch(/×3$/);
+  const chip = "PDF reader: the grouped chip is the bare number, its card counts three paragraphs, and it sits inside its page and never over the text";
+  expect.soft(await page.locator(`.anagramPdfChips ${BADGE_SEL} .num`).textContent(), chip).toMatch(/^(\.\d\d|1\.0)$/);
+  expect.soft(await page.locator(`.anagramPdfChips ${BADGE_SEL} .card .row`).evaluateAll((rows) =>
+    rows.find((r) => /together/i.test(r.querySelector(".k")?.textContent ?? ""))?.querySelector(".v")?.textContent), chip).toBe("3");
   expect.soft(grouped.placed.filter((c) => !c.inPage || c.overText), chip).toEqual([]);
   expect.soft(GROUPED_PARAS.slice(0, 3).filter((para) => !grouped.marked.some((t) => t.includes(para[0]))), "PDF reader: the marks lie on all three paragraphs of the group").toEqual([]);
 });

@@ -5,6 +5,18 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Changed
+
+- Chips are quiet: a grey pill with the score, the verdict's colour only on a small dot beside it. The colour stays on the underlines of the flagged paragraphs. A chip no longer says "×3" when its verdict covers several short paragraphs; hovering it shows them, and its card counts them.
+- Hovering any chip shows the text its verdict read, tinted in the verdict's colour, whether or not the paragraph is flagged and whether underlines are on.
+- Settings, the setup page, the toolbar menu and the statistics page say less: every setting is one row, label on the left and control on the right; the explanations under them are gone; Statistics shows only its menu until it records something; the setup page explains the marks in one line. The statistics page offers its presets in one menu and says what the chosen one keeps.
+
+### Fixed
+
+- A PDF reader tab that Chrome discarded to save memory opens its document again when you come back to it, instead of an empty reader.
+
 ## [0.9.0] — 2026-10-11
 
 The first signed release: reading statistics kept on this computer only, releases signed with Sigstore and installed only with their signature, PDF.js 6, and less of a busy page's time.

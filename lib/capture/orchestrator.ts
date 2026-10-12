@@ -585,13 +585,12 @@ export function createOrchestrator(
     return displayMode === "all" || flagged(v.result);
   }
 
-  /** A painted unit's underlines: only a flagged one's, and of it only the stretches at the
-   *  level or above (setHighlight), so below it a paragraph has its chip only — unless the
-   *  reader asked for underlines on every paragraph. */
+  /** A painted unit's marks. At rest only a flagged one is underlined, and of it only the
+   *  stretches at the level or above (setHighlight), unless the reader asked for underlines on
+   *  every paragraph or on none; hovering any chip shows the whole of what its verdict read. */
   function mark(unit: Unit, v: UnitVerdict): void {
     const every = underlineScope === "all";
-    if (highlightsEnabled && (every || flagged(v.result))) setHighlight(unit, v, every ? 0 : flagLevel(flagFrom));
-    else clearHighlight(unit.id);
+    setHighlight(unit, v, every ? 0 : flagLevel(flagFrom), highlightsEnabled && (every || flagged(v.result)));
   }
 
   // --- ownership / invalidation ----------------------------------------------------
@@ -1191,7 +1190,7 @@ export function createOrchestrator(
       }
     }
     badges.setVisible(visible);
-    setHighlightsVisible(visible && highlightsEnabled);
+    setHighlightsVisible(visible);
     updateToolbar();
   }
 
@@ -1235,7 +1234,7 @@ export function createOrchestrator(
       }
     }
     badges.setVisible(visible);
-    setHighlightsVisible(visible && highlightsEnabled);
+    setHighlightsVisible(visible);
   }
 
   function updateToolbar(): void {
@@ -1465,7 +1464,7 @@ export function createOrchestrator(
   function setVisible(v: boolean): void {
     visible = v;
     badges.setVisible(v);
-    setHighlightsVisible(v && highlightsEnabled);
+    setHighlightsVisible(v);
   }
 
   function toggle(): void {
@@ -1583,7 +1582,7 @@ export function createOrchestrator(
     underlineScope = s.underlineScope;
     displayMode = s.displayMode;
     flagFrom = s.flagFrom;
-    setHighlightsVisible(visible && highlightsEnabled);
+    setHighlightsVisible(visible);
   }
 
   /** Live changes from here on, exactly as they behaved before the snapshot existed. */
@@ -1628,23 +1627,19 @@ export function createOrchestrator(
     }
   }
 
+  /** Underlines on or off: what is drawn at rest. A hovered chip shows its scope either way. */
   function applyHighlightSetting(v: boolean): void {
     highlightsEnabled = v;
-    if (v) {
-      for (const [id, verdict] of verdictsById) {
-        const unit = unitsById.get(id);
-        if (unit && visibleUnderMode(verdict)) {
-          try {
-            mark(unit, verdict);
-          } catch {
-            /* detached mid-flight — purge will catch it */
-          }
+    for (const [id, verdict] of verdictsById) {
+      const unit = unitsById.get(id);
+      if (unit && visibleUnderMode(verdict)) {
+        try {
+          mark(unit, verdict);
+        } catch {
+          /* detached mid-flight — purge will catch it */
         }
       }
-    } else {
-      for (const id of [...unitsById.keys()]) clearHighlight(id);
     }
-    setHighlightsVisible(visible && v);
   }
 
   function clearAllResults(): void {

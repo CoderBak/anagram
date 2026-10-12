@@ -9,10 +9,9 @@
 // - The chip reads the bare number (".38" on a 0-1 scale — see lib/render/score.ts);
 //   what the number means is explained in the hover card's footer and on the onboarding
 //   page, not repeated on every line.
-// - Visual language follows Basecoat's Vega pack (the extension pages): neutral
-//   greys, hairline borders, 6–8 px radii, one flat shadow, no blur. The verdict's
-//   colour is the score on one continuous scale (lib/render/scale.ts) and lives only on
-//   the dot, the swatches and the marks; every word and number stays in ink.
+// - The chip is quiet: a neutral pill, no border and no shadow, the number in grey, and the
+//   verdict's word only as a small dot in its colour (lib/render/scale.ts). The page's text
+//   leads; the colour is on the underlines of the paragraphs that are flagged.
 // - A chip can render in a PENDING state ("analyzing") the moment its unit is
 //   dispatched, then morphs in place into the verdict — the host is reused, so
 //   the line lays out once, not twice.
@@ -63,19 +62,18 @@ export const BADGE_CSS: string = `
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.42em;
+  gap: 0.4em;
   box-sizing: border-box;
   font-size: clamp(9px, 0.66em, 12px);
   line-height: 1;
   padding: 0.3em 0.6em 0.3em 0.5em;
-  border-radius: 6px;
-  border: 1px solid #e5e5e5;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: #f4f4f5;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.01em;
-  color: #525252;
+  color: #52525b;
   white-space: nowrap;
   direction: ltr; /* the number must not bidi-flip inside RTL paragraphs */
   cursor: default;
@@ -84,23 +82,20 @@ export const BADGE_CSS: string = `
      feed's chips fading in and turning their colour took a third of what Anagram cost it. */
 }
 
-/* A chip where the whole pill has no room (between two columns of a PDF): a square of its
-   colour alone, the number in the card. */
-:host([data-compact]) .pill { gap: 0; padding: 0; width: 1.1em; height: 1.1em; border-radius: 0.3em; justify-content: center; }
+/* A chip where the whole pill has no room (between two columns of a PDF): its dot alone,
+   the number in the card. */
+:host([data-compact]) .pill { gap: 0; padding: 0.2em; background: transparent; }
 :host([data-compact]) .num { display: none; }
+:host([data-compact]) .dot { width: 0.8em; height: 0.8em; }
 
-:host(:hover) .pill {
-  background: #f5f5f5;
-  border-color: #d4d4d4;
-}
+:host(:hover) .pill { background: #e4e4e7; }
 
 .dot {
-  width: 0.7em;
-  height: 0.7em;
+  width: 0.6em;
+  height: 0.6em;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--dot, #9aa3ad);
-  box-shadow: 0 0 0 0.18em var(--ring, rgba(154, 163, 173, 0.16));
+  background: var(--dot, #a1a1aa);
 }
 
 .num {
@@ -108,24 +103,12 @@ export const BADGE_CSS: string = `
   font-variant-numeric: tabular-nums;
 }
 
-/* The word's colour (.b0 human … .b3 AI-generated, set per chip in badge.ts) is the chip
-   itself: the whole pill in it, the number in the ink that reads on it (WCAG AA on each).
-   Human's chip is a tint of its green with a green edge, as its underline is half-strength
-   (lib/render/highlight.ts): a mostly human page stays calm, and the other three stand out.
-   A verdict has no dot; the dot is the waiting chip's, and a no-verdict's. */
+/* The word's colour (.b0 human … .b3 AI-generated, set per chip in badge.ts) is the dot's;
+   the pill and its number stay neutral whatever the verdict. */
 ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
-.pill.scored { gap: 0; padding: 0.3em 0.55em; background: var(--c); border-color: var(--c); color: #141414; }
-.pill.scored .dot { display: none; }
-.pill.scored.b3 { color: #ffffff; }
-.pill.scored.b0 { background: color-mix(in oklab, var(--c) 22%, #ffffff); border-color: color-mix(in oklab, var(--c) 75%, #ffffff); color: #1f1f1f; }
-/* Hovered: a darker edge, the fill kept — darkening the fill took gold and orange under the
-   4.5:1 their dark number needs. */
-:host(:hover) .pill.scored { border-color: color-mix(in oklab, var(--c) 60%, #000000); box-shadow: 0 0 0 1px color-mix(in oklab, var(--c) 60%, #000000); }
-:host(:hover) .pill.scored.b0 { background: color-mix(in oklab, var(--c) 34%, #ffffff); border-color: var(--c); }
-/* The square a compact chip is: its full colour, human's too, or it is too small to see. */
-:host([data-compact]) .pill.scored, :host([data-compact]) .pill.scored.b0 { background: var(--c); border-color: var(--c); }
-.pill.band-unknown { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); }
-.pill.band-unsupported { --dot: #a3a3a3; --ring: rgba(163, 163, 163, 0.16); color: #737373; font-weight: 500; }
+.pill.scored .dot { background: var(--c); }
+.pill.band-unknown { --dot: #a1a1aa; }
+.pill.band-unsupported { --dot: #a1a1aa; color: #71717a; }
 
 /* ---- pending ("analyzing") state --------------------------------------------- */
 /* Shown the moment a unit's batch actually goes to the backend; morphs in place
@@ -284,20 +267,10 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
 
 /* ---- dark surfaces ------------------------------------------------------------ */
 
-:host(.pg-dark) .pill {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #171717;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  color: #a3a3a3;
-}
-:host(.pg-dark:hover) .pill { background: #262626; border-color: rgba(255, 255, 255, 0.2); }
-:host(.pg-dark) .pill.scored { color: #141414; background: var(--c); border-color: var(--c); box-shadow: none; }
-:host(.pg-dark) .pill.scored.b0 { color: #e5e5e5; background: color-mix(in oklab, var(--c) 22%, #171717); border-color: color-mix(in oklab, var(--c) 65%, #171717); }
-:host(.pg-dark:hover) .pill.scored { background: color-mix(in oklab, var(--c) 85%, #ffffff); border-color: color-mix(in oklab, var(--c) 85%, #ffffff); }
-:host(.pg-dark:hover) .pill.scored.b0 { background: color-mix(in oklab, var(--c) 32%, #171717); border-color: var(--c); }
-:host(.pg-dark[data-compact]) .pill.scored.b0 { background: var(--c); border-color: var(--c); }
-:host(.pg-dark) .pill.band-unknown { color: #b9c0c8; }
-:host(.pg-dark) .pill.band-unsupported { color: #a3a3a3; }
+:host(.pg-dark) .pill { background: #27272a; color: #d4d4d8; }
+:host(.pg-dark:hover) .pill { background: #3f3f46; }
+:host(.pg-dark[data-compact]) .pill { background: transparent; }
+:host(.pg-dark) .pill.band-unsupported { color: #a1a1aa; }
 :host(.pg-dark) .card .verdict.band-unsupported { color: #a3a3a3; }
 
 :host(.pg-dark) .card {
@@ -320,14 +293,12 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
    guarantee a visible chip boundary. */
 @media (forced-colors: active) {
   .pill, .card { border: 1px solid ButtonText; }
-  .dot, .pill.scored { forced-color-adjust: none; }
-  /* A filled chip keeps its colour, with an edge in the system's text colour around it. */
-  .pill.scored, .pill.scored.b0 { border-color: CanvasText; }
+  .dot { forced-color-adjust: none; }
 }
 
 /* Jump-target pulse: a ring in the chip's own verdict colour, nothing foreign. */
 @keyframes anagram-flash {
-  0%, 100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+  0%, 100% { box-shadow: none; }
   25%, 65% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--c, var(--dot, #a3a3a3)) 35%, transparent); }
 }
 .pill.pg-flash { animation: anagram-flash ${FLASH_PULSE_MS}ms ease-in-out ${FLASH_PULSES}; }

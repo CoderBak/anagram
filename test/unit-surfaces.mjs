@@ -188,7 +188,7 @@ export async function surfaceChecks(browser, bundle, fixtures, results) {
       const whole = new Range();
       whole.setStart(part.nodes[0], 0);
       whole.setEnd(part.nodes.at(-1), part.nodes.at(-1).length);
-      s.painter.paint(p4, [{ step: 10, ranges: [whole] }], false);
+      s.painter.paint(p4, [{ step: 10, ranges: [whole], rest: true }], false);
       const wholeBars = overlays.flatMap((o) => [...o.querySelectorAll(":scope > div")]).filter((d) => !d.hidden).length;
       s.painter.clear(p4.id);
       const withoutP4 = overlays.flatMap((o) => [...o.querySelectorAll(":scope > div")]).filter((d) => !d.hidden).length;

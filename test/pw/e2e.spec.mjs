@@ -4,7 +4,7 @@
 // planned on the engine's token counts, one chip, each stretch marked in the colour of the
 // passes that read it — BR-split/short-sibling/pre-wrap content merges into single units, a
 // post written one short sentence per line is one unit while two voices never share one, a
-// post of mixed paragraphs (X markup) sits under ONE chip reading ×N and is one chip again
+// post of mixed paragraphs (X markup) sits under ONE chip whose card counts N and is one chip again
 // after it is opened in place, inline code does not fragment prose, pure-CJK text is
 // settled by the local language gate instead of being scored (the host never sees it),
 // hidden tabs and <details> get badges when revealed, pushState swaps re-badge and purge,
@@ -54,6 +54,10 @@ test.use({ launch: { viewport: { width: 1280, height: 720 } } });
 const chipsIn = (page, id) => page.locator(`#${id} ${BADGE_SEL}`);
 const numOf = (page, id) => page.locator(`#${id} ${BADGE_SEL} .num`).textContent();
 const cardOf = (page, id) => page.locator(`#${id} ${BADGE_SEL} .card`).textContent();
+/** How many paragraphs the chip's verdict read together, from its card's row (the chip shows the
+ *  bare number); 1 when the card has no such row. */
+const partsOf = (page, id) => page.locator(`#${id} ${BADGE_SEL} .card .row`).evaluateAll((rows) =>
+  Number(rows.find((r) => /together/i.test(r.querySelector(".k")?.textContent ?? ""))?.querySelector(".v")?.textContent ?? 1));
 const hasMark = (texts, marker) => texts.some((t) => t.includes(marker));
 
 test("the page is read: a chip on every unit, underlines, no floating button, and no marker attribute in the page's own DOM", async ({ selftest: page }) => {
@@ -158,10 +162,11 @@ test("short pieces of one voice are one unit, two voices never, and the engine g
     .toBe(true);
 });
 
-test("a post of mixed paragraphs is ONE chip reading ×4, and still one, ×6, once it is opened in place", async ({ selftest: page }) => {
-  const one = "a post of mixed paragraphs: ONE chip reading ×4, marks on every paragraph, none on the name or 'Show more'";
+test("a post of mixed paragraphs is ONE chip of four paragraphs, and still one, of six, once it is opened in place", async ({ selftest: page }) => {
+  const one = "a post of mixed paragraphs: ONE chip, the bare number, four paragraphs read together, marks on every paragraph, none on the name or 'Show more'";
   await expect.soft(chipsIn(page, "postwhole"), one).toHaveCount(1);
-  expect.soft(await numOf(page, "postwhole"), one).toMatch(/^(\.\d\d|1\.0) ×4$/);
+  expect.soft(await numOf(page, "postwhole"), one).toMatch(/^(\.\d\d|1\.0)$/);
+  expect.soft(await partsOf(page, "postwhole"), one).toBe(4);
   const marks = await marked(page);
   expect.soft(["POSTW-ONE", "POSTW-TWO", "POSTW-THREE", "POSTW-FOUR"].every((m) => hasMark(marks, m)), one).toBe(true);
   expect.soft(hasMark(marks, "Another Poster") || hasMark(marks, "Show more"), one).toBe(false);
@@ -169,8 +174,8 @@ test("a post of mixed paragraphs is ONE chip reading ×4, and still one, ×6, on
   // Opened in place: the text is re-rendered with two more paragraphs. The old unit's nodes
   // are gone; the re-scan starts inside the post and must come back with ONE unit.
   await page.locator("#postmore").click();
-  const opened = "…opened in place (text re-rendered, two more paragraphs): still ONE chip, now ×6, marks on all six";
-  await expect(page.locator(`#postwhole ${BADGE_SEL} .num`), opened).toHaveText(/×6$/);
+  const opened = "…opened in place (text re-rendered, two more paragraphs): still ONE chip, now of six paragraphs, marks on all six";
+  await expect.poll(() => partsOf(page, "postwhole"), { message: opened }).toBe(6);
   await expect(chipsIn(page, "postwhole"), opened).toHaveCount(1);
   await expect
     .poll(async () => {

@@ -25,7 +25,6 @@ import type { CacheCountReply } from "../../lib/messaging/protocol";
 import { mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
-import { mountToolbarGuide } from "../../lib/ui/toolbarGuide";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
 import { configOf, normalize, presetConfig, presetOf, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
@@ -37,15 +36,6 @@ import { formatWords } from "../../lib/stats/format";
 import { formatSize } from "../../lib/ui/size";
 
 const log = createLogger("options");
-mountToolbarGuide(document.getElementById("toolbarGuide")!);
-const toolbarGuide = document.getElementById("toolbar-guide")!;
-function showToolbarGuide(): void {
-  if (location.hash !== "#toolbar-guide") return;
-  toolbarGuide.scrollIntoView({ block: "start" });
-  toolbarGuide.focus({ preventScroll: true });
-}
-window.addEventListener("hashchange", showToolbarGuide);
-showToolbarGuide();
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
 const underlineEl = document.getElementById("underline") as HTMLSelectElement;
@@ -66,13 +56,7 @@ async function renderSites(): Promise<void> {
   const hosts = Object.keys(overrides).sort();
   sitesEl.textContent = "";
 
-  if (hosts.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = t("optNoRules");
-    sitesEl.appendChild(empty);
-    return;
-  }
+  if (hosts.length === 0) return;
 
   const wrap = document.createElement("div");
   wrap.className = "table-container";
@@ -298,6 +282,9 @@ void (async () => {
   const detailEl = document.getElementById("statsDetailDays") as HTMLSelectElement;
   const totalsEl = document.getElementById("statsTotals") as HTMLSelectElement;
   const sizeEl = document.getElementById("statsSize") as HTMLElement;
+  const actionsEl = document.getElementById("statsActions") as HTMLElement;
+  /** Records the log holds: its buttons stay while there is something to open, export or clear. */
+  let kept = 0;
   const statusEl = document.getElementById("statsStatus") as HTMLElement;
   const store = openStatsStore();
   let config: RecordingConfig = await readStatsConfig();
@@ -315,7 +302,10 @@ void (async () => {
     const customOption = [...presetEl.options].find((o) => o.value === "custom")!;
     customOption.hidden = preset !== "custom";
     presetEl.value = preset;
-    noteEl.textContent = presetHint(preset);
+    // Off, the section is its one menu; what each choice keeps is said once it is on.
+    noteEl.textContent = config.on ? presetHint(preset) : "";
+    for (const row of document.querySelectorAll<HTMLElement>("#statistics .stats-more")) row.hidden = !config.on;
+    actionsEl.hidden = !config.on && kept === 0;
     warnEl.replaceChildren(...warningsOf(config).map((key) => Object.assign(document.createElement("p"), { textContent: t(key) })));
     customizeEl.hidden = !config.on;
     if (!config.on) { dimsEl.hidden = true; customizeEl.setAttribute("aria-expanded", "false"); }
@@ -329,6 +319,8 @@ void (async () => {
     const { rows, bytes } = await store.size().catch(() => ({ rows: {} as Record<string, number>, bytes: null }));
     const count = Object.values(rows).reduce((a, b) => a + b, 0);
     sizeEl.textContent = t("optStatsSizeValue", formatSize(bytes ?? 0), formatWords(count));
+    kept = count;
+    actionsEl.hidden = !config.on && kept === 0;
   }
 
   /** Keep `next` from now on; where it keeps less than before, offer to delete what it would

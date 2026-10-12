@@ -18,20 +18,20 @@
         </div>
       </header>
 
-      <!-- Recording is off: what each preset would keep, and the way to turn one on. -->
+      <!-- Recording is off: a preset to turn on, and what the chosen one keeps. -->
       <section class="card" id="offCard" aria-labelledby="offTitle" hidden>
         <header>
           <h2 id="offTitle" data-i18n="statsOffTitle">Statistics are off</h2>
-          <p data-i18n="statsOffLead">Anagram can keep a record of how much of what you read reads as AI-generated. It stays on this computer, and nothing is ever sent anywhere.</p>
+          <p data-i18n="statsOffLead">Keep a record of what you read, on this computer only.</p>
         </header>
         <section>
-          <ul class="levels" id="presetList"></ul>
-          <p class="note" data-i18n="statsNeverNote">Never private windows, sites you switched Anagram off for, Analyze text, what you type, or what you select or copy.</p>
           <div class="form-row">
-            <select id="turnOnPreset" class="select" aria-label="Record" data-i18n-aria-label="optStatsLevel"></select>
+            <select id="turnOnPreset" class="select" aria-label="Record" data-i18n-aria-label="optStatsLevel" aria-describedby="turnOnHint"></select>
             <button type="button" class="btn" data-size="sm" id="turnOn" data-i18n="statsTurnOn">Turn on</button>
           </div>
+          <p class="note" id="turnOnHint"></p>
           <div id="turnOnWarn"></div>
+          <p class="note" data-i18n="statsNeverNote">Never kept: private windows, sites Anagram is off for, Analyze text, and what you type, select or copy.</p>
         </section>
       </section>
 

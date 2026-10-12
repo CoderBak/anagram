@@ -62,9 +62,8 @@ export function mountPdfRows(host: HTMLElement, { readAhead = false }: { readAhe
     const body = el("div", "row-body");
     const input = switchInput("pdfReadAhead");
     const error = el("p", "row-error"); error.setAttribute("role", "alert"); error.hidden = true;
-    const note = el("p", "row-note", t("optReadAheadNote"));
     body.append(input);
-    row.append(label, body, note, error);
+    row.append(label, body, error);
     auto.after(row);
     bindConfirmedToggle(input, settings.pdfReadAhead, failedIn(error));
   }

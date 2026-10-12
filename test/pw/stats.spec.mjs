@@ -250,13 +250,15 @@ async function statsPage(page, extension, records) {
   return page;
 }
 
-test("the statistics page, while off, says what each choice keeps and turns one on", async ({ page, extension, storage }) => {
+test("the statistics page, while off, offers the presets in one menu, says what the chosen one keeps, and turns it on", async ({ page, extension, storage }) => {
   await statsPage(page, extension);
   await expect(page.locator("#offCard")).toBeVisible();
   await expect(page.locator("#content")).toBeHidden();
-  await expect(page.locator("#presetList li")).toHaveCount(7);
+  await expect(page.locator("#turnOnPreset option")).toHaveCount(7);
+  await expect(page.locator("#turnOnHint")).toHaveText(/^Each day: how many words you read/);
   await expect(page.locator("#turnOnWarn p")).toHaveCount(0);
   await page.selectOption("#turnOnPreset", "fullText");
+  await expect(page.locator("#turnOnHint")).toHaveText(/^Everything, the text of every paragraph/);
   await expect(page.locator("#turnOnWarn p")).toContainText(["This keeps the text of every paragraph you read."]);
   await page.selectOption("#turnOnPreset", "pages");
   await page.click("#turnOn");
@@ -372,9 +374,14 @@ test("clear: everything kept is deleted, after a confirmation", async ({ page, e
 test("Settings: a choice, what it keeps, its warnings, field by field, and how long", async ({ page, extension, storage }) => {
   await page.goto(extension.url("options.html#statistics"), { waitUntil: "load" });
   await expect(page.locator("#statsPreset")).toHaveValue("off");
-  await expect(page.locator("#statsPresetNote")).toHaveText("Nothing is kept.");
-  await expect(page.locator("#statsCustomize")).toBeHidden();
+  // Off, the section is its one menu: nothing said under it, nothing more to set, nothing kept to open.
+  await expect(page.locator("#statsPresetNote")).toHaveText("");
+  await expect(page.locator("#statistics .stats-more")).toHaveCount(5);
+  for (const row of await page.locator("#statistics .stats-more").all()) await expect(row).toBeHidden();
+  await expect(page.locator("#statsActions")).toBeHidden();
   await page.selectOption("#statsPreset", "pages");
+  await expect(page.locator("#statsPresetNote")).not.toHaveText("");
+  await expect(page.locator("#statsFine")).toBeVisible();
   await expect(page.locator("#statsWarnings p")).toHaveText(["This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it."]);
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("page");
   await page.click("#statsCustomize");

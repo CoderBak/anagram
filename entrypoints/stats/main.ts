@@ -478,7 +478,8 @@ async function render(): Promise<void> {
   showPeriod();
 
   const preset = config.on ? presetOf(config) ?? "custom" : "off";
-  $("levelLine").textContent = config.on ? t("statsRecordingLine", presetLabel(preset), integer.format(config.retention.detail)) : t("statsRecordingOff");
+  // Off, the card below says so.
+  $("levelLine").textContent = config.on ? t("statsRecordingLine", presetLabel(preset), integer.format(config.retention.detail)) : "";
   $("offCard").hidden = config.on;
   $("content").hidden = !config.on && first === null;
   $("period").textContent = rangeText(from, to);
@@ -518,16 +519,12 @@ async function render(): Promise<void> {
 // ---- turning it on ---------------------------------------------------------------------------
 
 {
-  const list = $("presetList");
+  // One menu of presets, and what the chosen one keeps: not every preset's at once.
   const select = $<HTMLSelectElement>("turnOnPreset");
-  for (const p of PRESET_IDS) {
-    const item = el("li");
-    item.append(el("strong", undefined, presetLabel(p)), el("span", undefined, presetHint(p)));
-    list.append(item);
-    select.add(new Option(presetLabel(p), p));
-  }
+  for (const p of PRESET_IDS) select.add(new Option(presetLabel(p), p));
   const warn = (): void => {
     const config2 = presetConfig(select.value as Preset);
+    $("turnOnHint").textContent = presetHint(select.value as Preset);
     $("turnOnWarn").replaceChildren(...warningsOf(config2).map((key) => el("p", "warn", t(key))));
   };
   select.addEventListener("change", warn);
