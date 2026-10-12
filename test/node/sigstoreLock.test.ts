@@ -60,7 +60,14 @@ describe("the release's signature check", () => {
 
   it("is what the release workflow signs with, from the tag, and uploads", () => {
     const workflow = read(".github/workflows/release.yml");
-    expect(workflow).not.toMatch(/inputs:/);
+    // Built from the tag it is dispatched from and nothing else: no input names a ref (one once
+    // let a run build another tag than the one its certificate names). The one input, assets,
+    // only leaves signed files out of the upload, in the step after signing.
+    expect([...workflow.matchAll(/\binputs\.(\w+)/g)].map((m) => m[1])).toEqual(["assets"]);
+    expect(workflow.indexOf("inputs.assets")).toBeGreaterThan(workflow.indexOf("sigstore sign "));
+    expect(workflow).toMatch(/if: inputs\.assets == 'chrome-macos'\n\s+run: rm -f /);
+    expect(workflow).toContain("ref: ${{ github.ref }}");
+    expect(workflow).not.toMatch(/ref: \$\{\{ inputs\./);
     expect(workflow).toContain("if: startsWith(github.ref, 'refs/tags/v')");
     expect(workflow).toMatch(/id-token: write/);
     expect(workflow).toContain("--require-hashes --no-deps --only-binary :all: -r installer/sigstore.txt");
