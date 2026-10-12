@@ -27,7 +27,41 @@ if (messageLocale() === "zh-CN") {
   (document.getElementById("guide") as HTMLAnchorElement).href = "https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md";
 }
 
-const done = (id: string, yes: boolean): void => { document.getElementById(id)!.classList.toggle("done", yes); };
+// One step at a time: the first one not done is open, the others are a line each with their
+// tick; a header opens or closes its step, and what the reader opened or closed stays so.
+const steps = ["engineCard", "whereCard", "pinCard"].map((id) => document.getElementById(id)!);
+const chosen = new Map<HTMLElement, boolean>();
+function layout(): void {
+  const current = steps.find((step) => !step.classList.contains("done"));
+  for (const step of steps) {
+    const open = chosen.get(step) ?? step === current;
+    step.classList.toggle("open", open);
+    step.querySelector(".step-toggle")!.setAttribute("aria-expanded", String(open));
+  }
+}
+for (const step of steps) {
+  const toggle = (): void => { chosen.set(step, !step.classList.contains("open")); layout(); };
+  const header = step.querySelector("header")!;
+  header.addEventListener("click", (e) => { if (!(e.target as Element).closest(".step-toggle")) toggle(); });
+  step.querySelector(".step-toggle")!.addEventListener("click", toggle);
+}
+// Sent to a step (the toolbar menu's "How to keep Anagram in the toolbar"): that step open, in view.
+function openAsked(): void {
+  const asked = steps.find((step) => `#${step.id}` === location.hash);
+  if (!asked) return;
+  chosen.set(asked, true);
+  layout();
+  requestAnimationFrame(() => asked.scrollIntoView({ block: "start" }));
+}
+window.addEventListener("hashchange", openAsked);
+const done = (id: string, yes: boolean): void => {
+  const step = document.getElementById(id)!;
+  if (step.classList.contains("done") === yes) return;
+  step.classList.toggle("done", yes);
+  layout();
+};
+layout();
+openAsked();
 
 const where = document.getElementById("where")!;
 mountSiteAccess(where, { hint: true });

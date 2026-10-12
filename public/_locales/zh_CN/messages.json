@@ -937,9 +937,6 @@
   "optLocalPdfs": {
     "message": "本机上的 PDF"
   },
-  "optFileAccessTurnOn": {
-    "message": "去开启"
-  },
   "engineKeepOpen": {
     "message": "下载完成前请保持浏览器开启。"
   },
@@ -1120,20 +1117,11 @@
   "statsTrend": {
     "message": "逐日"
   },
-  "statsTrendHint": {
-    "message": "每天读到并完成评分的词数，按四类判断分开。"
-  },
   "statsShowTable": {
     "message": "以表格显示"
   },
   "statsByKind": {
     "message": "按页面类型"
-  },
-  "statsFeeds": {
-    "message": "信息流与其他"
-  },
-  "statsFeedsHint": {
-    "message": "社交信息流和时间线，与文章、论坛、文档等其他内容对比。"
   },
   "statsBySite": {
     "message": "按网站"
@@ -1204,11 +1192,8 @@
   "statsKindOther": {
     "message": "其他页面"
   },
-  "statsEverythingElse": {
-    "message": "其他内容"
-  },
   "statsHeroLine": {
-    "message": "预计为 AI 生成（共读到并评分 $1 个词）"
+    "message": "预计为 AI 生成"
   },
   "statsHeroNone": {
     "message": "这段时间读到的内容都无法评分。"
@@ -1281,6 +1266,9 @@
   },
   "statsRecordingLine": {
     "message": "正在记录：$1，段落和访问保留 $2 天。"
+  },
+  "statsRecordingTotals": {
+    "message": "正在记录：$1。"
   },
   "optStats": {
     "message": "统计"
@@ -1724,43 +1712,43 @@
     "message": "每日合计"
   },
   "statsPresetHint_daily": {
-    "message": "每天：你读了多少词，从人工到 AI 生成各占多少，以及在哪类页面上读的。不含站点，不含页面。"
+    "message": "每天读了多少词及其判断。不含站点。"
   },
   "statsPreset_sites": {
     "message": "每日合计和站点"
   },
   "statsPresetHint_sites": {
-    "message": "同上，并记录每个站点当天所占的部分。不含页面地址。"
+    "message": "每日合计，以及各站点所占比例。"
   },
   "statsPreset_pages": {
     "message": "每个页面"
   },
   "statsPresetHint_pages": {
-    "message": "同上，并记录你读过的每个页面：地址、标题、当天首次阅读的时间和停留时长。"
+    "message": "另记每个页面的地址、标题和阅读时长。"
   },
   "statsPreset_paragraphs": {
     "message": "每个段落"
   },
   "statsPresetHint_paragraphs": {
-    "message": "每次访问和你读过的每个段落：长度、判断、在屏幕上停留多久，以及文本的加盐哈希，用来识别重复阅读。不含地址、标题和文本。"
+    "message": "每个段落的判断和在屏幕上的时长。不含地址和文本。"
   },
   "statsPreset_study": {
     "message": "研究"
   },
   "statsPresetHint_study": {
-    "message": "阅读研究所需的内容：每次访问、每个段落和每次滚动，精确到 0.1 秒；记录域名而非地址；记录能识别改动过的副本的文本指纹，但不记录文本。"
+    "message": "供研究用的访问、段落和滚动记录。不含地址和文本。"
   },
   "statsPreset_full": {
     "message": "完整阅读轨迹"
   },
   "statsPresetHint_full": {
-    "message": "除文本外的一切：完整地址和标题、屏幕上内容的每次变化、滚动、输入和指针、标签页和窗口，精确到毫秒。"
+    "message": "除文本外的一切，精确到毫秒。"
   },
   "statsPreset_fullText": {
     "message": "完整轨迹和文本"
   },
   "statsPresetHint_fullText": {
-    "message": "一切内容，包括你读过的每个段落的文本。"
+    "message": "一切内容，包括你读过的文本。"
   },
   "statsPreset_custom": {
     "message": "自定义"
@@ -1780,21 +1768,6 @@
   "statsWarnPointer": {
     "message": "这会在 Anagram 读取的每个页面上，每秒 10 次记录指针的位置。"
   },
-  "optStatsDetail": {
-    "message": "详细设置"
-  },
-  "optStatsCustomize": {
-    "message": "逐项选择…"
-  },
-  "optStatsCustomizeHide": {
-    "message": "收起"
-  },
-  "optStatsDimsLead": {
-    "message": "Anagram 能保存的每类内容，从最精确到不保存。较粗的选择总能从较细的得出，反之则不行。"
-  },
-  "optStatsMoved": {
-    "message": "已调粗以适应每行能保存的内容：$1。"
-  },
   "optStatsFine": {
     "message": "每一步保留"
   },
@@ -1806,9 +1779,6 @@
   },
   "optStatsUntilCleared": {
     "message": "直到清除"
-  },
-  "optStatsSize": {
-    "message": "占用空间"
   },
   "optStatsSizeValue": {
     "message": "$2 条记录，$1"
@@ -1925,7 +1895,7 @@
     "message": "这些是 Anagram 保存的合计：要用其他方式计算，需要保存段落（设置 > 统计）。"
   },
   "statsHeroLineHeavy": {
-    "message": "预计为重度 AI 编辑或 AI 生成，共读过并评分 $1 个词"
+    "message": "预计为重度 AI 编辑或 AI 生成"
   },
   "statsColParagraphs": {
     "message": "段落"
@@ -1941,9 +1911,6 @@
   },
   "statsVisits": {
     "message": "访问"
-  },
-  "statsVisitsHint": {
-    "message": "每个页面或文档的阅读经过，最新的在前。保存了每一步时，“回放”会显示每段何时在屏幕上。"
   },
   "statsNoVisits": {
     "message": "这段时间没有保存访问。"
@@ -1992,5 +1959,44 @@
   },
   "statsExportTable": {
     "message": "$1：$2 行"
+  },
+  "optFileAccessChromeHint": {
+    "message": "在打开的页面中开启“允许访问文件网址”，然后返回此处。"
+  },
+  "statsDeltaUp": {
+    "message": "比之前 $2 天高 $1 个百分点。"
+  },
+  "statsDeltaDown": {
+    "message": "比之前 $2 天低 $1 个百分点。"
+  },
+  "statsDeltaSame": {
+    "message": "与之前 $1 天大致相同。"
+  },
+  "statsKpiScored": {
+    "message": "已评分词数"
+  },
+  "statsKpiTop": {
+    "message": "AI 生成占比最高"
+  },
+  "statsKpiTopLine": {
+    "message": "$2 词中占 $1"
+  },
+  "statsMix": {
+    "message": "四类判断"
+  },
+  "statsFilterSite": {
+    "message": "站点：$1"
+  },
+  "statsFilterClear": {
+    "message": "显示全部"
+  },
+  "statsMore": {
+    "message": "更多"
+  },
+  "statsKpiPages": {
+    "message": "页面 $1"
+  },
+  "statsKpiSites": {
+    "message": "站点 $1"
   }
 }

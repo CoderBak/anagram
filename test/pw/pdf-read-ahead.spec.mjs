@@ -341,6 +341,7 @@ test("Settings offers the read-ahead among the PDF rows, on unless turned off, a
   await expect.poll(() => storage.get("pdfReadAhead"), { message: "Settings: turning it on is stored" }).toEqual({ pdfReadAhead: true });
 
   await page.goto(extension.url("onboarding.html"));
-  await page.locator("#autoOpenPdfs").waitFor();
+  // The step may be folded while an earlier one is still to do.
+  await page.locator("#autoOpenPdfs").waitFor({ state: "attached" });
   await expect(page.locator("#pdfReadAhead"), "the setup page leaves the read-ahead to Settings").toHaveCount(0);
 });

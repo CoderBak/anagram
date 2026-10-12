@@ -1215,10 +1215,6 @@
     "message": "PDFs on this computer",
     "description": "Row label: reading PDF files opened from this computer."
   },
-  "optFileAccessTurnOn": {
-    "message": "Turn it on",
-    "description": "Button that takes the person to the browser's page where file access is switched on."
-  },
   "engineKeepOpen": {
     "message": "Keep this browser open until the download finishes.",
     "description": "Shown only while the in-browser engine's model downloads."
@@ -1349,7 +1345,7 @@
   },
   "optUnderlineFlagged": {
     "message": "Flagged paragraphs",
-    "description": "Settings, Underlines: underline the flagged paragraphs (the other choice is Off)."
+    "description": "Settings, Underlines: underline the flagged paragraphs (the other choices are Every paragraph and Off)."
   },
   "pasteCoverageRead": {
     "message": "$1 of $2 paragraphs read",
@@ -1459,10 +1455,6 @@
     "message": "Day by day",
     "description": "Statistics page: heading of the daily trend chart."
   },
-  "statsTrendHint": {
-    "message": "Words read and scored each day, split into the four verdicts.",
-    "description": "Statistics page: what the daily trend chart shows."
-  },
   "statsShowTable": {
     "message": "Show as a table",
     "description": "Statistics page: disclosure that shows the trend chart's numbers as a table."
@@ -1470,14 +1462,6 @@
   "statsByKind": {
     "message": "By kind of page",
     "description": "Statistics page: heading of the table by kind of page (feeds, articles, …)."
-  },
-  "statsFeeds": {
-    "message": "Feeds and everything else",
-    "description": "Statistics page: heading of the comparison between feeds and all other pages."
-  },
-  "statsFeedsHint": {
-    "message": "Social feeds and timelines against articles, forums, documents and the rest.",
-    "description": "Statistics page: what the feeds comparison compares."
   },
   "statsBySite": {
     "message": "By site",
@@ -1571,13 +1555,9 @@
     "message": "Other pages",
     "description": "Kind of page: everything else."
   },
-  "statsEverythingElse": {
-    "message": "Everything else",
-    "description": "Statistics page, feeds comparison: the row of every page that is not a feed."
-  },
   "statsHeroLine": {
-    "message": "expected to be AI-generated, of $1 words read and scored",
-    "description": "Statistics page: the line under the big percentage. $1 is the number of words scored."
+    "message": "expected to be AI-generated",
+    "description": "Statistics page: the line under the big percentage."
   },
   "statsHeroNone": {
     "message": "None of the words read in this period could be scored.",
@@ -1674,6 +1654,10 @@
   "statsRecordingLine": {
     "message": "Recording: $1, paragraphs and visits kept for $2 days.",
     "description": "Statistics page, under the title. $1 is the level's name, $2 the retention in days."
+  },
+  "statsRecordingTotals": {
+    "message": "Recording: $1.",
+    "description": "Statistics page, under the title, for a choice that keeps totals only (no paragraphs or visits). $1 is the choice's name."
   },
   "optStats": {
     "message": "Statistics",
@@ -2264,7 +2248,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (daily)."
   },
   "statsPresetHint_daily": {
-    "message": "Each day: how many words you read, how they read from human to AI-generated, and on what kind of page. No sites, no pages.",
+    "message": "Words read each day and how they score. No sites.",
     "description": "What the choice 'Daily totals' keeps."
   },
   "statsPreset_sites": {
@@ -2272,7 +2256,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (sites)."
   },
   "statsPresetHint_sites": {
-    "message": "The same, and each site's share of the day. No page addresses.",
+    "message": "Daily totals, and each site's share.",
     "description": "What the choice 'Daily totals and sites' keeps."
   },
   "statsPreset_pages": {
@@ -2280,7 +2264,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (pages)."
   },
   "statsPresetHint_pages": {
-    "message": "The same, and each page you read: its address, its title, when you first read it and for how long.",
+    "message": "Also each page's address, title and reading time.",
     "description": "What the choice 'Every page' keeps."
   },
   "statsPreset_paragraphs": {
@@ -2288,7 +2272,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (paragraphs)."
   },
   "statsPresetHint_paragraphs": {
-    "message": "Each visit and each paragraph you read: its length, its verdict, how long it was on screen, and a salted hash of its text to tell when you read it again. No addresses, no titles, no text.",
+    "message": "Each paragraph's verdict and time on screen. No addresses or text.",
     "description": "What the choice 'Every paragraph' keeps."
   },
   "statsPreset_study": {
@@ -2296,7 +2280,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (study)."
   },
   "statsPresetHint_study": {
-    "message": "What a study of reading needs: every visit, paragraph and scroll, timed to a tenth of a second; domains but not addresses; sketches of the text that recognise an edited copy, but no text.",
+    "message": "Visits, paragraphs and scrolling for research. No addresses or text.",
     "description": "What the choice 'Research study' keeps."
   },
   "statsPreset_full": {
@@ -2304,7 +2288,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (full)."
   },
   "statsPresetHint_full": {
-    "message": "Everything but the text: full addresses and titles, every step of what was on screen, scrolling, input and the pointer, tabs and windows, to the millisecond.",
+    "message": "Everything but the text, to the millisecond.",
     "description": "What the choice 'Full reading trace' keeps."
   },
   "statsPreset_fullText": {
@@ -2312,7 +2296,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (fullText)."
   },
   "statsPresetHint_fullText": {
-    "message": "Everything, the text of every paragraph you read included.",
+    "message": "Everything, including the text you read.",
     "description": "What the choice 'Full trace with text' keeps."
   },
   "statsPreset_custom": {
@@ -2339,26 +2323,6 @@
     "message": "This records where your pointer is on every page Anagram reads, ten times a second.",
     "description": "Warning under a choice that keeps the pointer's track."
   },
-  "optStatsDetail": {
-    "message": "In detail",
-    "description": "Settings, Statistics: the row whose button shows the field-by-field table."
-  },
-  "optStatsCustomize": {
-    "message": "Choose field by field…",
-    "description": "Settings, Statistics: button that shows a table of every kind of thing that can be kept."
-  },
-  "optStatsCustomizeHide": {
-    "message": "Hide the fields",
-    "description": "Settings, Statistics: the same button while the table is shown."
-  },
-  "optStatsDimsLead": {
-    "message": "Each kind of thing Anagram can keep, from the most exact to nothing. A coarser choice can always be made from a finer one, never the other way.",
-    "description": "Settings, Statistics: the line above the field-by-field table."
-  },
-  "optStatsMoved": {
-    "message": "Made coarser to fit what each row can hold: $1.",
-    "description": "Settings, Statistics: a choice was coarsened to fit the rows kept. $1 names what was changed."
-  },
   "optStatsFine": {
     "message": "Keep every step for",
     "description": "Settings, Statistics: how long the fine trace (every step on screen, scrolling, input) is kept."
@@ -2374,10 +2338,6 @@
   "optStatsUntilCleared": {
     "message": "Until cleared",
     "description": "Settings, Statistics: keep the daily totals until the person clears them."
-  },
-  "optStatsSize": {
-    "message": "Space used",
-    "description": "Settings, Statistics: how much the statistics take on disk."
   },
   "optStatsSizeValue": {
     "message": "$1 in $2 records",
@@ -2532,8 +2492,8 @@
     "description": "How it counts: no paragraphs are kept, so only the default applies."
   },
   "statsHeroLineHeavy": {
-    "message": "expected to be heavily edited or AI-generated, of $1 words read and scored",
-    "description": "Statistics page: the line under the big percentage when the headline includes heavily edited. $1 is the number of words scored."
+    "message": "expected to be heavily edited or AI-generated",
+    "description": "Statistics page: the line under the big percentage when the headline includes heavily edited."
   },
   "statsColParagraphs": {
     "message": "Paragraphs",
@@ -2554,10 +2514,6 @@
   "statsVisits": {
     "message": "Visits",
     "description": "Statistics page: the card of visits."
-  },
-  "statsVisitsHint": {
-    "message": "Each page or document as it was read, newest first. Where every step was kept, Replay shows when each paragraph was on screen.",
-    "description": "Statistics page: the line under Visits."
   },
   "statsNoVisits": {
     "message": "No visit was kept in this period.",
@@ -2622,5 +2578,57 @@
   "statsExportTable": {
     "message": "$1: $2 rows",
     "description": "Export dialog: a table of the file ($1) and its rows ($2)."
+  },
+  "optFileAccessChromeHint": {
+    "message": "Turn on “Allow access to file URLs” on the page that opened, then come back.",
+    "description": "Settings and setup, under the local-PDF switch: Chrome's own switch for file URLs is still off, on the extension page that just opened."
+  },
+  "statsDeltaUp": {
+    "message": "Up $1 points on the previous $2 days.",
+    "description": "Statistics page, under the AI-generated share: $1 percentage points higher than the $2 days before the period."
+  },
+  "statsDeltaDown": {
+    "message": "Down $1 points on the previous $2 days.",
+    "description": "Statistics page, under the AI-generated share: $1 percentage points lower than the $2 days before the period."
+  },
+  "statsDeltaSame": {
+    "message": "About the same as the previous $1 days.",
+    "description": "Statistics page, under the AI-generated share: within a point of the $1 days before the period."
+  },
+  "statsKpiScored": {
+    "message": "Words scored",
+    "description": "Statistics page, title of the figure that counts the words scored in the period."
+  },
+  "statsKpiTop": {
+    "message": "Most AI-generated",
+    "description": "Statistics page, title of the figure naming the site (or kind of page) with the largest AI-generated share."
+  },
+  "statsKpiTopLine": {
+    "message": "$1 of $2 words",
+    "description": "Statistics page, under that site: its AI-generated share ($1) of its words read ($2)."
+  },
+  "statsMix": {
+    "message": "The four verdicts",
+    "description": "Statistics page, title of the panel with the four verdicts' shares."
+  },
+  "statsFilterSite": {
+    "message": "Site: $1",
+    "description": "Statistics page, the chip shown while the page is narrowed to one site ($1)."
+  },
+  "statsFilterClear": {
+    "message": "Show all",
+    "description": "Statistics page, the button in that chip that shows every site again."
+  },
+  "statsMore": {
+    "message": "More",
+    "description": "Statistics page, the menu holding the month, a date range, Export and Clear."
+  },
+  "statsKpiPages": {
+    "message": "Pages $1",
+    "description": "Statistics page, under the words scored: how many pages ($1) they were read on."
+  },
+  "statsKpiSites": {
+    "message": "Sites $1",
+    "description": "Statistics page, under the words scored: on how many sites ($1)."
   }
 }

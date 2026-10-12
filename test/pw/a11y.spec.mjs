@@ -426,8 +426,9 @@ const PAGE_SPECS = [
     },
   },
   {
-    // A week recorded in full: the headline, the trend with its table open, how it counts, the
-    // tables of kinds, feeds and sites, the coverage, the pages, and a visit's replay.
+    // A week recorded in full: the figures, the trend with its table open and a day's numbers
+    // pointed at, how it counts, the tables of kinds and sites with one site picked, the pages,
+    // and a visit's replay.
     name: "statistics (a week recorded)",
     path: "stats.html",
     viewport: { width: 1100, height: 900 },
@@ -440,10 +441,28 @@ const PAGE_SPECS = [
       await page.click('#ranges [data-range="7"]');
       await page.waitForSelector("#trendChart svg g.col", { timeout: 8000 });
       await page.click("#trendCard summary");
+      await page.hover("#trendChart g.col:last-of-type rect.hit");
+      await page.waitForSelector("#trendTip:not([hidden])", { timeout: 8000 });
+      await page.click("#siteTable tbody tr.pick");
+      await page.waitForSelector("#filter:not([hidden])", { timeout: 8000 });
       await page.click("#lens summary");
       await page.click("#visitsTable button.linkish");
       await page.waitForSelector("#replay:not([hidden])", { timeout: 8000 });
       await page.waitForTimeout(200);
+    },
+  },
+  {
+    // The More menu open: the month, a range, Export and Clear.
+    name: "statistics (more)",
+    path: "stats.html",
+    viewport: { width: 1100, height: 900 },
+    async before(storage, extension) {
+      await storage.set({ statsConfig: await presetConfig("daily") });
+      await seedStats(extension.worker(), statsWeek());
+    },
+    async prepare(page) {
+      await page.click("#more summary");
+      await page.waitForSelector("#export:visible", { timeout: 8000 });
     },
   },
   {
@@ -456,6 +475,7 @@ const PAGE_SPECS = [
       await seedStats(extension.worker(), statsVisit());
     },
     async prepare(page) {
+      await page.click("#more summary");
       await page.click("#export");
       await page.waitForSelector("#exportDialog[open]", { timeout: 8000 });
       await page.click("#exportDimsBox summary");
@@ -464,8 +484,8 @@ const PAGE_SPECS = [
     },
   },
   {
-    // Settings' statistics, field by field.
-    name: "settings (statistics field by field)",
+    // Settings' statistics at the fullest preset: the tiles, its warnings and how long.
+    name: "settings (statistics, full trace with text)",
     path: "options.html#statistics",
     viewport: { width: 1100, height: 900 },
     async before(storage) {
@@ -473,8 +493,6 @@ const PAGE_SPECS = [
     },
     async prepare(page) {
       await page.waitForSelector("#statsWarnings p", { timeout: 8000 });
-      await page.click("#statsCustomize");
-      await page.waitForSelector("#statsDims table.dims", { timeout: 8000 });
     },
   },
   {

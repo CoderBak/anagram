@@ -122,6 +122,12 @@ export function rank<D extends Dimension>(d: D, layer: Layer<D>): number {
 }
 
 /** Which preset a configuration is, or null for one of the reader's own. */
+/** Which retentions have anything under them: every step only where events are kept,
+ *  paragraphs and visits only where visits are (the totals always). */
+export function retained(layers: Layers): { fine: boolean; detail: boolean } {
+  return { fine: layers.rows === "event", detail: rank("rows", layers.rows) <= rank("rows", "visit") };
+}
+
 export function presetOf(config: RecordingConfig): Preset | null {
   if (!config.on) return null;
   for (const id of PRESET_IDS) {

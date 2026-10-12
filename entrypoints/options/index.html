@@ -19,143 +19,119 @@
         <span class="ver" id="version"></span>
       </header>
 
-      <section class="card" data-size="sm">
-        <section class="groups">
-          <div class="group" id="engineGroup">
-            <span class="group-label" id="engineLabel" data-i18n="optEngine">Engine</span>
-            <div class="group-body" role="group" aria-labelledby="engineLabel"><div id="componentSettings"></div></div>
-          </div>
+      <div class="settings">
+        <section class="panel" id="engineGroup" aria-labelledby="engineLabel">
+          <h2 id="engineLabel" data-i18n="optEngine">Engine</h2>
+          <div id="componentSettings"></div>
+        </section>
 
-          <div class="group">
-            <span class="group-label" id="sitesLabel" data-i18n="optSites">Sites</span>
-            <div class="group-body rows" id="siteRows" role="group" aria-labelledby="sitesLabel">
-              <div class="row" id="comments" hidden>
-                <p id="commentsState" role="status" aria-live="polite"></p>
-                <span class="row-body">
-                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
-                </span>
-              </div>
-              <div class="row">
-                <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
-                <span class="row-body"><input id="enabled" class="input" type="checkbox" role="switch" /></span>
-              </div>
-              <div id="sites"></div>
-              <form class="form-row" id="addRule">
-                <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
-                  data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
-                <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
-                  <option value="on" data-i18n="optAlwaysOn">Always on</option>
-                  <option value="off" data-i18n="optAlwaysOff">Always off</option>
-                </select>
-                <button type="submit" class="btn" data-size="sm" data-i18n="optAdd">Add</button>
-                <p class="form-error" id="addError" hidden></p>
-                <p class="form-note" id="addNote" hidden></p>
-              </form>
+        <section class="panel" aria-labelledby="sitesLabel">
+          <h2 id="sitesLabel" data-i18n="optSites">Sites</h2>
+          <div class="rows" id="siteRows">
+            <div class="row" id="comments" hidden>
+              <p id="commentsState" role="status" aria-live="polite"></p>
+              <span class="row-body">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
+              </span>
             </div>
-          </div>
-
-          <div class="group">
-            <span class="group-label" id="pdfsLabel" data-i18n="optPdfs">PDFs</span>
-            <div class="group-body rows" id="pdfRows" role="group" aria-labelledby="pdfsLabel"></div>
-          </div>
-
-          <div class="group">
-            <span class="group-label" id="marksLabel" data-i18n="optMarks">Marks</span>
-            <div class="group-body rows" role="group" aria-labelledby="marksLabel">
-              <div class="row">
-                <label for="flagFrom" data-i18n="optFlagFrom">Flag</label>
-                <span class="row-body">
-                  <select id="flagFrom" class="select">
-                    <option value="light" data-i18n="optFlagLight">Lightly edited and above</option>
-                    <option value="heavy" data-i18n="optFlagHeavy">Heavily edited and above</option>
-                    <option value="ai" data-i18n="optFlagAi">AI-generated only</option>
-                  </select>
-                </span>
-              </div>
-              <div class="row">
-                <label for="displayMode" data-i18n="optChips">Chips</label>
-                <span class="row-body">
-                  <select id="displayMode" class="select">
-                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                    <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
-                  </select>
-                </span>
-              </div>
-              <div class="row">
-                <label for="underline" data-i18n="optUnderline">Underlines</label>
-                <span class="row-body">
-                  <select id="underline" class="select">
-                    <option value="flagged" data-i18n="optUnderlineFlagged">Flagged paragraphs</option>
-                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                    <option value="off" data-i18n="optUnderlineOff">Off</option>
-                  </select>
-                </span>
-              </div>
+            <div class="row">
+              <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
+              <span class="row-body"><input id="enabled" class="input" type="checkbox" role="switch" /></span>
             </div>
+            <div id="sites"></div>
+            <form class="form-row" id="addRule">
+              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
+                data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
+              <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
+                <option value="on" data-i18n="optAlwaysOn">Always on</option>
+                <option value="off" data-i18n="optAlwaysOff">Always off</option>
+              </select>
+              <button type="submit" class="btn" data-size="sm" data-i18n="optAdd">Add</button>
+              <p class="form-error" id="addError" hidden></p>
+              <p class="form-note" id="addNote" hidden></p>
+            </form>
           </div>
+        </section>
 
-          <div class="group">
-            <span class="group-label" id="cacheLabel" data-i18n="optCache">Cache</span>
-            <div class="group-body rows" role="group" aria-labelledby="cacheLabel">
-              <div class="row">
-                <span id="cacheCount" class="row-label"></span>
-                <span class="row-body">
-                  <select id="cacheMode" class="select" aria-label="Verdict cache" data-i18n-aria-label="optCacheMode">
-                    <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
-                    <option value="session" data-i18n="optCacheSession">Memory only</option>
-                  </select>
-                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear</button>
-                </span>
-                <p id="cacheStatus" class="row-note" role="status"></p>
-              </div>
+        <section class="panel span-2" aria-labelledby="marksLabel">
+          <h2 id="marksLabel" data-i18n="optMarks">Marks</h2>
+          <div class="fields">
+            <div class="field">
+              <label for="flagFrom" data-i18n="optFlagFrom">Flag</label>
+              <select id="flagFrom" class="select">
+                <option value="light" data-i18n="optFlagLight">Lightly edited and above</option>
+                <option value="heavy" data-i18n="optFlagHeavy">Heavily edited and above</option>
+                <option value="ai" data-i18n="optFlagAi">AI-generated only</option>
+              </select>
             </div>
-          </div>
-
-          <div class="group" id="statistics" tabindex="-1">
-            <span class="group-label" id="statsLabel" data-i18n="optStats">Statistics</span>
-            <div class="group-body rows" role="group" aria-labelledby="statsLabel">
-              <div class="row">
-                <label for="statsPreset" data-i18n="optStatsLevel">Record</label>
-                <span class="row-body"><select id="statsPreset" class="select" aria-describedby="statsPresetNote statsWarnings"></select></span>
-                <p id="statsPresetNote" class="row-note"></p>
-                <div id="statsWarnings" class="row-note stats-warn"></div>
-              </div>
-              <div class="row stats-more">
-                <span class="row-label" data-i18n="optStatsDetail">In detail</span>
-                <span class="row-body"><button type="button" class="btn" data-variant="outline" data-size="sm" id="statsCustomize" aria-expanded="false" aria-controls="statsDims" data-i18n="optStatsCustomize">Choose field by field…</button></span>
-                <div id="statsDims" class="stats-dims" hidden>
-                  <p class="row-note" data-i18n="optStatsDimsLead">Each kind of thing Anagram can keep, from the most exact to nothing. A coarser choice can always be made from a finer one, never the other way.</p>
-                  <p id="statsMoved" class="row-note" role="status"></p>
-                </div>
-              </div>
-              <div class="row stats-more">
-                <label for="statsFine" data-i18n="optStatsFine">Keep every step for</label>
-                <span class="row-body"><select id="statsFine" class="select"></select></span>
-              </div>
-              <div class="row stats-more">
-                <label for="statsDetailDays" data-i18n="optStatsDetailKeep">Keep paragraphs and visits for</label>
-                <span class="row-body"><select id="statsDetailDays" class="select"></select></span>
-              </div>
-              <div class="row stats-more">
-                <label for="statsTotals" data-i18n="optStatsTotalsKeep">Keep daily totals for</label>
-                <span class="row-body"><select id="statsTotals" class="select"></select></span>
-              </div>
-              <div class="row stats-more">
-                <span class="row-label" data-i18n="optStatsSize">Space used</span>
-                <span class="row-body" id="statsSize"></span>
-              </div>
-              <div class="row lead" id="statsActions">
-                <span class="row-body">
-                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="openStats" data-i18n="optStatsOpen">Open statistics</button>
-                  <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportStats" data-i18n="statsExport">Export…</button>
-                  <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clearStats" data-i18n="statsClear">Clear statistics</button>
-                </span>
-                <p id="statsStatus" class="row-note" role="status"></p>
-              </div>
+            <div class="field">
+              <label for="displayMode" data-i18n="optChips">Chips</label>
+              <select id="displayMode" class="select">
+                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="underline" data-i18n="optUnderline">Underlines</label>
+              <select id="underline" class="select">
+                <option value="flagged" data-i18n="optUnderlineFlagged">Flagged paragraphs</option>
+                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                <option value="off" data-i18n="optUnderlineOff">Off</option>
+              </select>
             </div>
           </div>
         </section>
-      </section>
+
+        <section class="panel" aria-labelledby="pdfsLabel">
+          <h2 id="pdfsLabel" data-i18n="optPdfs">PDFs</h2>
+          <div class="rows" id="pdfRows"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="cacheLabel">
+          <h2 id="cacheLabel" data-i18n="optCache">Cache</h2>
+          <div class="rows">
+            <div class="row">
+              <span id="cacheCount" class="row-label"></span>
+              <span class="row-body">
+                <select id="cacheMode" class="select" aria-label="Verdict cache" data-i18n-aria-label="optCacheMode">
+                  <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
+                  <option value="session" data-i18n="optCacheSession">Memory only</option>
+                </select>
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear</button>
+              </span>
+              <p id="cacheStatus" class="row-note" role="status"></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel span-2" id="statistics" tabindex="-1" aria-labelledby="statsLabel">
+          <h2 id="statsLabel" data-i18n="optStats">Statistics</h2>
+          <!-- What the reading log keeps: a preset each, said in a line; filled by main.ts. -->
+          <div class="presets" id="statsPresets" role="radiogroup" aria-labelledby="statsLabel"></div>
+          <div id="statsWarnings" class="stats-warn"></div>
+          <div class="fields" id="statsKeep">
+            <div class="field">
+              <label for="statsFine" data-i18n="optStatsFine">Keep every step for</label>
+              <select id="statsFine" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="statsDetailDays" data-i18n="optStatsDetailKeep">Keep paragraphs and visits for</label>
+              <select id="statsDetailDays" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="statsTotals" data-i18n="optStatsTotalsKeep">Keep daily totals for</label>
+              <select id="statsTotals" class="select"></select>
+            </div>
+          </div>
+          <div class="actions-row" id="statsActions">
+            <span id="statsSize" class="muted"></span>
+            <button type="button" class="btn" data-variant="outline" data-size="sm" id="openStats" data-i18n="optStatsOpen">Open statistics</button>
+            <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportStats" data-i18n="statsExport">Export…</button>
+            <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clearStats" data-i18n="statsClear">Clear statistics</button>
+            <p id="statsStatus" class="row-note" role="status"></p>
+          </div>
+        </section>
+      </div>
 
       <dialog class="stats-dialog" id="clearStatsDialog" aria-labelledby="clearStatsTitle" aria-describedby="clearStatsText">
         <p class="dialog-title" id="clearStatsTitle" data-i18n="statsClearTitle">Clear statistics?</p>

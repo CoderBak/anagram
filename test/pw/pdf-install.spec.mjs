@@ -52,8 +52,11 @@ for (const language of ["en", "zh-CN"]) {
 
     test("optional file access, preference, no forced tab switch, narrow layout and accessibility", async ({ page, context, extension, localPdf }, testInfo) => {
       await page.goto(extension.url("options.html"));
-      await page.locator("#fileAccessEnable").waitFor();
-      expect(await page.locator("#fileAccess").isChecked(), "PDFs on this computer show as off").toBe(false);
+      // A switch like the others, off, and one that can be turned on (no button beside it).
+      await expect(page.locator("#fileAccess"), "PDFs on this computer show as off").not.toBeChecked();
+      await expect(page.locator("#fileAccess")).toBeEnabled();
+      await expect(page.locator("#fileAccess")).toHaveAttribute("role", "switch");
+      await expect(page.locator("#fileAccessEnable")).toBeHidden();
       expect((await extension.sw.evaluate(() => chrome.permissions.getAll())).origins).toEqual([]);
       const pdf = await context.newPage();
       await pdf.goto(localPdf).catch(() => {});

@@ -1,15 +1,14 @@
 // lib/ui/pdfRows.ts — the two PDF rows the setup page and Settings share: "Open PDFs in
 // Anagram automatically" (the autoOpenPdfs setting) and "PDFs on this computer".
 //
-// The second one cannot be turned on from here. Chrome keeps "Allow access to file URLs" on
-// the extension's details page, out of any extension's reach, so the row shows whether it is
-// on and, while it is off, its button takes the person there (Firefox: the steps, in words).
-// The button also asks for Anagram's own half, the file origin, in the same click; the row is
-// on when both are.
+// The second is a switch like the first, on when Anagram holds the file origin and the
+// browser's own "Allow access to file URLs" is on. Turning it on asks for the origin; Chrome keeps
+// its own switch on the extension's details page, out of any extension's reach, so while that is
+// off the row says so and opens the page (Firefox: the steps, in words). Off gives the origin back.
 import { browser } from "#imports";
 import { t } from "../i18n";
 import { settings } from "../settings/settings";
-import { getFileAccess, openFileAccessSettings, requestFileAccess } from "../pdf/fileAccess";
+import { FILE_ORIGIN, getFileAccess, openFileAccessSettings, requestFileAccess } from "../pdf/fileAccess";
 import { bindConfirmedToggle } from "./confirmedToggle";
 import { FILE_URL_ACCESS_SUPPORTED } from "../surface";
 import "./rows.css";
@@ -41,9 +40,12 @@ export function mountPdfRows(host: HTMLElement, { readAhead = false }: { readAhe
   const local = el("div", "row"); local.id = "local-pdfs";
   const localLabel = el("label", undefined, t("optLocalPdfs")); localLabel.htmlFor = "fileAccess";
   const localBody = el("div", "row-body");
-  const state = switchInput("fileAccess"); state.disabled = true; state.hidden = true;
-  const turnOn = el("button", "btn", t("optFileAccessTurnOn")); turnOn.type = "button"; turnOn.id = "fileAccessEnable";
-  turnOn.dataset.variant = "outline"; turnOn.dataset.size = "sm"; turnOn.setAttribute("aria-describedby", "fileAccess");
+  // A switch like the others: on asks for the permission (and, where the browser keeps a switch of
+  // its own for file URLs, opens it), off gives the permission back.
+  const state = switchInput("fileAccess");
+  // Safari's way in instead of the switch (below); elsewhere it stays hidden.
+  const turnOn = el("button", "btn"); turnOn.type = "button"; turnOn.id = "fileAccessEnable";
+  turnOn.dataset.variant = "outline"; turnOn.dataset.size = "sm";
   turnOn.hidden = true;
   localBody.append(state, turnOn);
   const steps = el("p", "row-note"); steps.id = "fileAccessInstructions"; steps.tabIndex = -1; steps.setAttribute("role", "status"); steps.hidden = true;
@@ -86,9 +88,6 @@ export function mountPdfRows(host: HTMLElement, { readAhead = false }: { readAhe
     const { granted, allowed } = await getFileAccess();
     if (mine !== generation) return;
     state.checked = granted && allowed;
-    // Off, the button is the row's answer; a greyed-out switch beside it only repeats it.
-    state.hidden = !state.checked;
-    turnOn.hidden = state.checked;
     if (state.checked) steps.hidden = true;
   }
   async function showSteps(): Promise<void> {
@@ -98,16 +97,28 @@ export function mountPdfRows(host: HTMLElement, { readAhead = false }: { readAhe
       steps.focus();
     }
   }
-  turnOn.addEventListener("click", () => {
-    // The permission request keeps the click's activation only if nothing comes before it.
+  state.addEventListener("change", () => {
+    if (!state.checked) {
+      steps.hidden = true;
+      void browser.permissions.remove({ origins: [FILE_ORIGIN] }).catch(() => false).finally(() => void refresh());
+      return;
+    }
+    // The permission request keeps the change's activation only if nothing comes before it.
     const asked = requestFileAccess();
-    turnOn.disabled = true;
+    state.disabled = true;
     void asked.then(async (accepted) => {
-      if (!accepted) { failed(true); return; }
+      // Declined: the switch goes back off, which says so.
       failed(false);
-      if (!(await getFileAccess()).allowed) await showSteps();
+      if (!accepted) return;
+      if (!(await getFileAccess()).allowed) {
+        // The browser's own switch is still off: say where it is, open it where we can, and
+        // come on once it is on (refresh on focus).
+        steps.textContent = t("optFileAccessChromeHint");
+        steps.hidden = false;
+        await showSteps();
+      }
     }).catch(() => failed(true)).finally(() => {
-      turnOn.disabled = false;
+      state.disabled = false;
       void refresh();
     });
   });

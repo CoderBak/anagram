@@ -36,6 +36,7 @@
       </section>
 
       <div id="content" hidden>
+        <!-- The period, and everything else behind one More menu. -->
         <div class="bar">
           <div class="tabs">
             <nav role="tablist" aria-orientation="horizontal" aria-label="Period" data-i18n-aria-label="statsPeriod" id="ranges">
@@ -44,20 +45,107 @@
               <button type="button" role="tab" data-range="30" aria-selected="false" data-i18n="statsLast30">30 days</button>
             </nav>
           </div>
-          <select id="month" class="select" aria-label="Month" data-i18n-aria-label="statsMonth">
-            <option value="" data-i18n="statsMonthPick">A month…</option>
-          </select>
-          <span class="range-inputs">
-            <label class="vh" for="rangeFrom" data-i18n="statsFrom">From</label>
-            <input type="date" class="input" id="rangeFrom" />
-            <span aria-hidden="true">–</span>
-            <label class="vh" for="rangeTo" data-i18n="statsTo">To</label>
-            <input type="date" class="input" id="rangeTo" />
-          </span>
-          <span class="grow"></span>
-          <button type="button" class="btn" data-variant="outline" data-size="sm" id="export" data-i18n="statsExport">Export…</button>
-          <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clear" data-i18n="statsClear">Clear statistics</button>
           <p class="period" id="period" role="status" aria-live="polite"></p>
+          <span class="filter" id="filter" hidden>
+            <span id="filterText"></span>
+            <button type="button" class="btn" data-variant="ghost" data-size="sm" id="filterClear" data-i18n="statsFilterClear">Show all</button>
+          </span>
+          <details class="more" id="more">
+            <summary class="btn" data-variant="outline" data-size="sm" data-i18n="statsMore">More</summary>
+            <div class="menu">
+              <label><span data-i18n="statsMonth">Month</span>
+                <select id="month" class="select"><option value="" data-i18n="statsMonthPick">A month…</option></select>
+              </label>
+              <span class="range-inputs">
+                <label class="vh" for="rangeFrom" data-i18n="statsFrom">From</label>
+                <input type="date" class="input" id="rangeFrom" />
+                <span aria-hidden="true">–</span>
+                <label class="vh" for="rangeTo" data-i18n="statsTo">To</label>
+                <input type="date" class="input" id="rangeTo" />
+              </span>
+              <span class="menu-actions">
+                <button type="button" class="btn" data-variant="outline" data-size="sm" id="export" data-i18n="statsExport">Export…</button>
+                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clear" data-i18n="statsClear">Clear statistics</button>
+              </span>
+            </div>
+          </details>
+        </div>
+
+        <section class="panel" id="emptyCard" hidden>
+          <p class="empty" id="emptyText" data-i18n="statsNothing">Nothing was recorded in this period.</p>
+        </section>
+
+        <div id="sections">
+          <!-- The answer first: four figures. -->
+          <div class="kpis">
+            <section class="panel kpi" aria-labelledby="heroTitle">
+              <h2 id="heroTitle" data-i18n="statsHeadline">What you read</h2>
+              <p class="hero" id="heroShare"></p>
+              <p class="hero-line" id="heroLine"></p>
+              <p class="compare" id="heroCompare"></p>
+            </section>
+            <section class="panel kpi" aria-labelledby="scoredTitle">
+              <h2 id="scoredTitle" data-i18n="statsKpiScored">Words scored</h2>
+              <p class="figure" id="scoredFigure"></p>
+              <p class="compare" id="scoredLine"></p>
+            </section>
+            <section class="panel kpi" aria-labelledby="topTitle">
+              <h2 id="topTitle" data-i18n="statsKpiTop">Most AI-generated</h2>
+              <p class="figure small" id="topFigure"></p>
+              <p class="compare" id="topLine"></p>
+            </section>
+            <section class="panel kpi" aria-labelledby="coverageTitle">
+              <h2 id="coverageTitle" data-i18n="statsCoverage">What could be scored</h2>
+              <p class="figure" id="coverageFigure"></p>
+              <div class="mix" id="coverageMix" aria-hidden="true"></div>
+              <ul class="coverage-list" id="coverageList"></ul>
+              <p class="vh" id="coverageLine"></p>
+            </section>
+          </div>
+
+          <div class="grid-2-1">
+            <section class="panel" id="trendCard" aria-labelledby="trendTitle">
+              <h2 id="trendTitle" data-i18n="statsTrend">Day by day</h2>
+              <div id="trendChart"></div>
+              <div class="tip" id="trendTip" hidden></div>
+              <details class="table-view"><summary data-i18n="statsShowTable">Show as a table</summary><div class="table-container" id="trendTable"></div></details>
+            </section>
+            <section class="panel" aria-labelledby="mixTitle">
+              <h2 id="mixTitle" data-i18n="statsMix">The four verdicts</h2>
+              <div class="mix" id="heroMix" aria-hidden="true"></div>
+              <ul class="legend" id="heroLegend"></ul>
+              <p class="note" data-i18n="statsExpectedNote">Shares are expected words: each paragraph's words are split by how likely the model finds each verdict, so a doubtful paragraph counts partly on both sides.</p>
+            </section>
+          </div>
+
+          <div class="grid-2">
+            <section class="panel" id="siteCard" aria-labelledby="siteTitle">
+              <h2 id="siteTitle" data-i18n="statsBySite">By site</h2>
+              <div class="table-container" id="siteTable"></div>
+              <p class="note" id="siteMore"></p>
+            </section>
+            <section class="panel" id="kindCard" aria-labelledby="kindTitle">
+              <h2 id="kindTitle" data-i18n="statsByKind">By kind of page</h2>
+              <div class="table-container" id="kindTable"></div>
+            </section>
+          </div>
+
+          <section class="panel" id="pagesCard" aria-labelledby="pagesTitle">
+            <h2 id="pagesTitle" data-i18n="statsPages">Pages</h2>
+            <div class="table-container" id="pagesTable"></div>
+            <p class="note" id="pagesMore"></p>
+          </section>
+
+          <section class="panel" id="visitsCard" aria-labelledby="visitsTitle">
+            <h2 id="visitsTitle" data-i18n="statsVisits">Visits</h2>
+            <div class="table-container" id="visitsTable"></div>
+            <p class="note" id="visitsMore"></p>
+            <div id="replay" hidden>
+              <h3 class="card-sub" id="replayTitle"></h3>
+              <div id="replayChart"></div>
+              <p class="note" data-i18n="statsReplayNote">A row per paragraph, in the order they were found; a bar for each spell any of it was on screen, in its chip's colour; the line is how far down the page was scrolled.</p>
+            </div>
+          </section>
         </div>
 
         <details class="lens" id="lens">
@@ -76,89 +164,6 @@
           </div>
           <div class="actions"><button type="button" class="btn" data-variant="outline" data-size="sm" id="lensReset" data-i18n="statsLensReset">Count as Anagram does</button></div>
         </details>
-
-        <section class="card" id="emptyCard" hidden>
-          <section><p class="empty" id="emptyText" data-i18n="statsNothing">Nothing was recorded in this period.</p></section>
-        </section>
-
-        <div id="sections">
-          <section class="card" aria-labelledby="heroTitle">
-            <header><h2 id="heroTitle" data-i18n="statsHeadline">What you read</h2></header>
-            <section>
-              <p class="hero" id="heroShare"></p>
-              <p class="hero-line" id="heroLine"></p>
-              <div class="mix" id="heroMix" aria-hidden="true"></div>
-              <ul class="legend" id="heroLegend"></ul>
-              <p class="compare" id="heroCompare"></p>
-              <p class="note" data-i18n="statsExpectedNote">Shares are expected words: each paragraph's words are split by how likely the model finds each verdict, so a doubtful paragraph counts partly on both sides.</p>
-            </section>
-          </section>
-
-          <section class="card" id="trendCard" aria-labelledby="trendTitle">
-            <header>
-              <h2 id="trendTitle" data-i18n="statsTrend">Day by day</h2>
-              <p class="sub" data-i18n="statsTrendHint">Words read and scored each day, split into the four verdicts.</p>
-            </header>
-            <section>
-              <div id="trendChart"></div>
-              <details class="table-view"><summary data-i18n="statsShowTable">Show as a table</summary><div class="table-container" id="trendTable"></div></details>
-            </section>
-          </section>
-
-          <section class="card" aria-labelledby="kindTitle">
-            <header><h2 id="kindTitle" data-i18n="statsByKind">By kind of page</h2></header>
-            <section><div class="table-container" id="kindTable"></div></section>
-          </section>
-
-          <section class="card" aria-labelledby="feedTitle">
-            <header>
-              <h2 id="feedTitle" data-i18n="statsFeeds">Feeds and everything else</h2>
-              <p class="sub" data-i18n="statsFeedsHint">Social feeds and timelines against articles, forums, documents and the rest.</p>
-            </header>
-            <section><div class="table-container" id="feedTable"></div></section>
-          </section>
-
-          <section class="card" id="siteCard" aria-labelledby="siteTitle">
-            <header><h2 id="siteTitle" data-i18n="statsBySite">By site</h2></header>
-            <section>
-              <div class="table-container" id="siteTable"></div>
-              <p class="note" id="siteMore"></p>
-            </section>
-          </section>
-
-          <section class="card" aria-labelledby="coverageTitle">
-            <header><h2 id="coverageTitle" data-i18n="statsCoverage">What could be scored</h2></header>
-            <section>
-              <p id="coverageLine"></p>
-              <div class="mix" id="coverageMix" aria-hidden="true"></div>
-              <ul class="coverage-list" id="coverageList"></ul>
-            </section>
-          </section>
-
-          <section class="card" id="pagesCard" aria-labelledby="pagesTitle">
-            <header><h2 id="pagesTitle" data-i18n="statsPages">Pages</h2></header>
-            <section>
-              <div class="table-container" id="pagesTable"></div>
-              <p class="note" id="pagesMore"></p>
-            </section>
-          </section>
-
-          <section class="card" id="visitsCard" aria-labelledby="visitsTitle">
-            <header>
-              <h2 id="visitsTitle" data-i18n="statsVisits">Visits</h2>
-              <p class="sub" data-i18n="statsVisitsHint">Each page or document as it was read, newest first. Where every step was kept, Replay shows when each paragraph was on screen.</p>
-            </header>
-            <section>
-              <div class="table-container" id="visitsTable"></div>
-              <p class="note" id="visitsMore"></p>
-              <div id="replay" hidden>
-                <h3 class="card-sub" id="replayTitle"></h3>
-                <div id="replayChart"></div>
-                <p class="note" data-i18n="statsReplayNote">A row per paragraph, in the order they were found; a bar for each spell any of it was on screen, in its chip's colour; the line is how far down the page was scrolled.</p>
-              </div>
-            </section>
-          </section>
-        </div>
       </div>
 
       <dialog class="stats-dialog wide" id="exportDialog" aria-labelledby="exportTitle">

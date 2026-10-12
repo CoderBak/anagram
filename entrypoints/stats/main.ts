@@ -15,8 +15,9 @@ import { ACTIONS } from "../../lib/messaging/protocol";
 import { bandLabel, BUCKET_BANDS } from "../../lib/render/band";
 import { adoptBandColorRules, levelOf } from "../../lib/render/scale";
 import { settings } from "../../lib/settings/settings";
-import { addDays, localDate, monthRange, scoreOf, viewedWords, type PageKind, type Tally, type UiEvent, type UnitRow, type VisitRow } from "../../lib/stats/model";
-import { configOf, DIMENSION_IDS, normalize, presetConfig, presetOf, PRESET_IDS, rank, type Hashable, type Layers, type Preset, type RecordingConfig } from "../../lib/stats/config";
+import { addDays, datesBetween, localDate, monthRange, scoreOf, viewedWords, type PageKind, type Tally, type TotalRow, type UiEvent, type UnitRow, type VisitRow } from "../../lib/stats/model";
+import { placeLadder } from "../../lib/stats/coarsen";
+import { configOf, DIMENSION_IDS, normalize, presetConfig, presetOf, PRESET_IDS, rank, retained, type Hashable, type Layers, type Preset, type RecordingConfig } from "../../lib/stats/config";
 import { openStatsStore, type LogRange } from "../../lib/stats/store";
 import { summarize, type Row } from "../../lib/stats/summary";
 import { DEFAULT_LENS, headlineOf, isDefaultLens, sharesUnder, type Lens } from "../../lib/stats/lens";
@@ -168,12 +169,22 @@ rangeTabs.forEach((tab, i) => {
     next.click();
   });
 });
+// The More menu closes once something in it is chosen, on a click elsewhere, and on Escape.
+const more = $<HTMLDetailsElement>("more");
+const closeMore = (): void => { more.open = false; };
+document.addEventListener("click", (e) => { if (more.open && !more.contains(e.target as Node)) closeMore(); });
+more.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !more.open) return;
+  closeMore();
+  more.querySelector("summary")!.focus();
+});
 monthEl.addEventListener("change", () => {
   period = monthEl.value ? { kind: "month", month: monthEl.value } : { kind: "today" };
+  closeMore();
   void render();
 });
 for (const input of [fromEl, toEl]) input.addEventListener("change", () => {
-  if (fromEl.value && toEl.value) { period = { kind: "range", from: fromEl.value, to: toEl.value }; void render(); }
+  if (fromEl.value && toEl.value) { period = { kind: "range", from: fromEl.value, to: toEl.value }; closeMore(); void render(); }
 });
 
 /** The months there is anything for, newest first, as the picker's choices. */
@@ -193,10 +204,11 @@ async function fillMonths(today: string): Promise<void> {
 
 // ---- the sections ----------------------------------------------------------------------------
 
-function headline(total: Tally, average: number | null): void {
+function headline(total: Tally, compare: string): void {
   $("heroShare").textContent = percent(headlineOf(total, lens));
   const what = lens.headline === "ai" ? "statsHeroLine" : "statsHeroLineHeavy";
-  $("heroLine").textContent = total.scored > 0 ? t(what, words(total.scored)) : t("statsHeroNone");
+  // How many words that is, the next figure says.
+  $("heroLine").textContent = total.scored > 0 ? t(what) : t("statsHeroNone");
   $("heroMix").replaceWith(Object.assign(mix(total), { id: "heroMix" }));
   const legend = $("heroLegend");
   const s = sharesUnder(total, lens);
@@ -205,17 +217,26 @@ function headline(total: Tally, average: number | null): void {
     item.append(el("span", "dot"), el("span", "lbl", bandLabel(band)), el("span", "n", percent(s ? s[i]! : null)));
     return item;
   }));
-  $("heroCompare").textContent = average === null ? "" : t("statsCompare30", percent(average));
+  $("heroCompare").textContent = compare;
 }
 
-/** A table whose rows each carry their numbers, and under each row's name its bar. */
-function bandTable(head: MessageKey, rows: { label: string; tally: Tally }[]): HTMLTableElement {
+/** A table whose rows each carry their numbers, and under each row's name its bar. With `pick`,
+ *  a row is a way into the page filtered to it (Enter or a click), the picked one marked. */
+function bandTable(head: MessageKey, rows: { label: string; tally: Tally; key?: string }[], pick?: (key: string) => void, picked?: string | null): HTMLTableElement {
   const table = el("table", "table");
   const tr = table.createTHead().insertRow();
   tr.append(el("th", undefined, t(head)), el("th", "num", t(lens.weight === "words" ? "statsColWords" : lens.weight === "paragraphs" ? "statsColParagraphs" : "statsColSeconds")), el("th", "num", t(lens.headline === "ai" ? "statsColAi" : "statsColHeavyAi")));
   const body = table.createTBody();
   for (const row of rows) {
     const r = body.insertRow();
+    if (pick && row.key !== undefined) {
+      const key = row.key;
+      r.className = "pick";
+      r.tabIndex = 0;
+      if (picked === key) r.setAttribute("aria-current", "true");
+      r.addEventListener("click", () => pick(key));
+      r.addEventListener("keydown", (e) => { if (e.key === "Enter") pick(key); });
+    }
     const label = r.insertCell();
     label.className = "name";
     label.append(el("span", undefined, row.label), mix(row.tally));
@@ -261,12 +282,16 @@ function trendChart(days: { date: string; tally: Tally }[], from: string, to: st
     add(svg, "text", { x: left - 6, y: y + 4, "text-anchor": "end" }, compact.format(tick));
   }
   const slot = plotW / days.length;
-  const colW = Math.min(24, Math.max(2, slot * 0.7));
+  const colW = Math.min(40, Math.max(2, slot * 0.55));
   const labelEvery = Math.ceil(days.length / 8);
   days.forEach((d, i) => {
     const x = left + slot * i + (slot - colW) / 2;
     const col = add(svg, "g", { class: "col" });
-    add(col, "title", {}, `${dayFormat.format(dateOf(d.date))}: ${t("statsTrendTip", words(d.tally.scored), percent(headlineOf(d.tally, lens)))}`);
+    col.addEventListener("mouseenter", (e) => showTip(e as MouseEvent, d));
+    col.addEventListener("mousemove", (e) => moveTip(e as MouseEvent));
+    col.addEventListener("mouseleave", () => { $("trendTip").hidden = true; });
+    // A day is a way in: the page for that day alone.
+    col.addEventListener("click", () => { period = { kind: "range", from: d.date, to: d.date }; $("trendTip").hidden = true; void render(); });
     let y = top + plotH;
     const segs = parts(d.tally).map((w, band) => ({ band, h: (w / max) * plotH })).filter((p) => p.h > 0.5);
     segs.forEach((p, k) => {
@@ -298,6 +323,23 @@ function trendChart(days: { date: string; tally: Tally }[], from: string, to: st
   $("trendTable").replaceChildren(table);
 }
 
+/** The pointed-at day's numbers beside the pointer, inside its panel. */
+function showTip(e: MouseEvent, d: { date: string; tally: Tally }): void {
+  const tip = $("trendTip");
+  const s = sharesUnder(d.tally, lens);
+  tip.replaceChildren(el("strong", undefined, dayFormat.format(dateOf(d.date))),
+    el("span", undefined, t("statsTrendTip", words(d.tally.scored), percent(headlineOf(d.tally, lens)))),
+    ...BUCKET_BANDS.map((band, i) => { const line = el("span", `tip-line b${i}`); line.append(el("span", "dot"), ` ${bandLabel(band)} ${percent(s ? s[i]! : null)}`); return line; }));
+  tip.hidden = false;
+  moveTip(e);
+}
+function moveTip(e: MouseEvent): void {
+  const tip = $("trendTip"), card = $("trendCard").getBoundingClientRect();
+  const x = Math.min(e.clientX - card.left + 12, card.width - tip.offsetWidth - 8);
+  tip.style.left = `${Math.max(8, x)}px`;
+  tip.style.top = `${e.clientY - card.top + 12}px`;
+}
+
 /** 1, 2 or 5 times a power of ten: the gridlines' step. */
 function niceStep(x: number): number {
   if (!(x > 0)) return 1;
@@ -308,6 +350,7 @@ function niceStep(x: number): number {
 function coverage(total: Tally): void {
   const viewed = viewedWords(total);
   $("coverageLine").textContent = t("statsCoverageLine", words(total.scored), words(viewed), percent(viewed > 0 ? total.scored / viewed : null));
+  $("coverageFigure").textContent = percent(viewed > 0 ? total.scored / viewed : null);
   const parts: [number, MessageKey][] = [
     [total.scored, "statsCovScored"], [total.short, "statsCovShort"], [total.language, "statsCovLanguage"], [total.unavailable, "statsCovUnavailable"], [total.removed, "statsCovRemoved"],
   ];
@@ -321,7 +364,8 @@ function coverage(total: Tally): void {
     bar.append(slice);
   });
   $("coverageMix").replaceWith(bar);
-  $("coverageList").replaceChildren(...parts.map(([n, key], i) => {
+  // Each kept row in its own segment's shade; the kinds that held no words are left out.
+  $("coverageList").replaceChildren(...parts.map(([n, key], i) => ({ n, key, i })).filter((p) => p.n > 0).map(({ n, key, i }) => {
     const item = el("li", `cov${Math.min(i, 3)}`);
     item.append(el("span", "dot"), el("span", "lbl", t(key, words(n))));
     return item;
@@ -459,6 +503,32 @@ async function showReplay(v: VisitRow): Promise<void> {
 let config: RecordingConfig | null = null;
 let shown: { range: LogRange; from: string; to: string } | null = null;
 let rendering = 0;
+/** The site the page is narrowed to (a row of By site picked), or null. */
+let siteFilter: string | null = null;
+
+/** Whether a page's key (its address at some layer, or "file:" and its title) is on `site`. */
+function onSite(pageKey: string, site: string): boolean {
+  if (pageKey.startsWith("file:")) return site === "";
+  const ladder = placeLadder(pageKey);
+  return !!ladder && (ladder.host === site || ladder.domain === site);
+}
+
+/** What `range` holds of one site: its own totals as the day's, its pages (and their kinds), its
+ *  visits and their paragraphs. */
+function bySite(range: LogRange, site: string): LogRange {
+  const visits = range.visits.filter((v) => (v.site ?? "") === site);
+  const ids = new Set(visits.map((v) => v.id));
+  const totals: TotalRow[] = [];
+  for (const row of range.totals) {
+    if (row.scope === "site" && row.key === site) totals.push({ ...row, scope: "day", key: "" }, row);
+    else if (row.scope === "page" && onSite(row.key, site)) {
+      totals.push(row);
+      if (row.kind) totals.push({ ...row, scope: "kind", key: row.kind });
+    }
+  }
+  return { visits, units: range.units.filter((u) => ids.has(u.visit)), totals };
+}
+$("filterClear").addEventListener("click", () => { siteFilter = null; void render(); });
 
 async function render(): Promise<void> {
   const ticket = ++rendering;
@@ -467,19 +537,25 @@ async function render(): Promise<void> {
   const { from, to } = bounds(period, today);
   const none = (): LogRange => ({ visits: [], units: [], totals: [] });
   const needUnits = !isDefaultLens(lens);
-  const [range, recent, first] = await Promise.all([
+  // A day is held against the thirty before it; a longer period against the one as long before it.
+  const length = datesBetween(from, to).length;
+  const [againstFrom, againstTo] = length === 1 ? [addDays(today, -29), today] : [addDays(from, -length), addDays(from, -1)];
+  const narrow = (r: LogRange): LogRange => siteFilter === null ? r : bySite(r, siteFilter);
+  const [all, recentAll, first] = await Promise.all([
     store.read(from, to, { units: needUnits }).catch(none),
-    // The thirty days the period is held against, counted by the same rule.
-    store.read(addDays(today, -29), today, { units: needUnits }).catch(none),
+    store.read(againstFrom, againstTo, { units: needUnits }).catch(none),
     store.first().catch(() => null),
   ]);
+  const range = narrow(all), recent = narrow(recentAll);
   if (ticket !== rendering) return;
   await fillMonths(today);
   showPeriod();
 
   const preset = config.on ? presetOf(config) ?? "custom" : "off";
   // Off, the card below says so.
-  $("levelLine").textContent = config.on ? t("statsRecordingLine", presetLabel(preset), integer.format(config.retention.detail)) : "";
+  $("levelLine").textContent = !config.on ? ""
+    : retained(config.layers).detail ? t("statsRecordingLine", presetLabel(preset), integer.format(config.retention.detail))
+    : t("statsRecordingTotals", presetLabel(preset));
   $("offCard").hidden = config.on;
   $("content").hidden = !config.on && first === null;
   $("period").textContent = rangeText(from, to);
@@ -496,18 +572,56 @@ async function render(): Promise<void> {
     : range.units.length > 0 ? t("statsLensApplied") : t("statsLensCannot");
   if (nothing) return;
 
-  const recentSummary = summarize(recent, addDays(today, -29), today, lens);
-  headline(total, headlineOf(recentSummary.total, lens));
+  // Against what came before: a share up or down by whole points, or about the same.
+  const before = headlineOf(summarize(recent, againstFrom, againstTo, lens).total, lens);
+  const now = headlineOf(total, lens);
+  let compare = "";
+  if (before !== null && now !== null) {
+    if (length === 1) compare = t("statsCompare30", percent(before));
+    else {
+      const points = Math.round((now - before) * 100);
+      compare = points === 0 ? t("statsDeltaSame", String(length)) : t(points > 0 ? "statsDeltaUp" : "statsDeltaDown", String(Math.abs(points)), String(length));
+    }
+  }
+  headline(total, compare);
+  // The figures beside it: what was scored and on how much, and where the most AI was.
+  $("scoredFigure").textContent = words(total.scored);
+  // How many pages and sites, each said only where it was kept.
+  $("scoredLine").textContent = [
+    // A page read on several days is a row a day: counted once.
+    ...(summary.pages.length ? [t("statsKpiPages", words(new Set(summary.pages.map((p) => p.key)).size))] : []),
+    // Narrowed to a site, that it is one goes without saying.
+    ...(summary.sites.length && siteFilter === null ? [t("statsKpiSites", words(summary.sites.length))] : []),
+  ].join(" · ");
+  // A site with too few words to say anything about is not the "most" of anything.
+  const floor = Math.max(200, viewedWords(total) * 0.05);
+  // Among sites where there are several, else among kinds of page (one site: the filter's own).
+  const candidates = [...(summary.sites.length > 1 ? summary.sites.map((r) => ({ label: r.key || t("statsLocalFiles"), tally: r.tally })) : []),
+    ...(summary.sites.length > 1 ? [] : summary.kinds.map((k) => ({ label: t(KIND_KEY[k.kind]), tally: k.tally })))]
+    .filter((c) => viewedWords(c.tally) >= floor && headlineOf(c.tally, lens) !== null);
+  // Nothing to set side by side (one site, no kinds kept): the day with the most, over several.
+  if (candidates.length === 0 && summary.trend.length > 1) {
+    candidates.push(...summary.trend.map((d) => ({ label: dayFormat.format(dateOf(d.date)), tally: d.tally }))
+      .filter((c) => viewedWords(c.tally) >= floor / 2 && headlineOf(c.tally, lens) !== null));
+  }
+  candidates.sort((a, b) => headlineOf(b.tally, lens)! - headlineOf(a.tally, lens)!);
+  // The most of several that read alike is not worth naming.
+  const spread = candidates.length > 1 ? headlineOf(candidates[0]!.tally, lens)! - headlineOf(candidates.at(-1)!.tally, lens)! : 0;
+  const top = spread >= 0.01 ? candidates[0] : undefined;
+  $("topFigure").textContent = top ? top.label : "–";
+  $("topLine").textContent = top ? t("statsKpiTopLine", percent(headlineOf(top.tally, lens)), words(viewedWords(top.tally))) : "";
+
   $("trendCard").hidden = from === to;
   if (from !== to) trendChart(summary.trend, from, to);
+  $("kindCard").hidden = summary.kinds.length === 0;
   $("kindTable").replaceChildren(bandTable("statsColKind", summary.kinds.map((k) => ({ label: t(KIND_KEY[k.kind]), tally: k.tally }))));
-  $("feedTable").replaceChildren(bandTable("statsColKind", [
-    { label: t("statsKindFeed"), tally: summary.feeds },
-    { label: t("statsEverythingElse"), tally: summary.rest },
-  ]));
-  const sites = summary.sites;
+  // Narrowed to a site, the chip says which; By site lists every site still, the picked one marked.
+  $("filter").hidden = siteFilter === null;
+  $("filterText").textContent = siteFilter === null ? "" : t("statsFilterSite", siteFilter || t("statsLocalFiles"));
+  const sites = siteFilter === null ? summary.sites : summarize(all, from, to, lens).sites;
   $("siteCard").hidden = sites.length === 0;
-  if (sites.length > 0) $("siteTable").replaceChildren(bandTable("statsColSite", sites.slice(0, TOP_SITES).map((s) => ({ label: s.key || t("statsLocalFiles"), tally: s.tally }))));
+  const pickSite = (key: string): void => { siteFilter = siteFilter === key ? null : key; void render(); };
+  if (sites.length > 0) $("siteTable").replaceChildren(bandTable("statsColSite", sites.slice(0, TOP_SITES).map((r) => ({ label: r.key || t("statsLocalFiles"), tally: r.tally, key: r.key })), pickSite, siteFilter));
   $("siteMore").textContent = sites.length > TOP_SITES ? t("statsMoreSites", words(sites.length - TOP_SITES)) : "";
   coverage(total);
   $("pagesCard").hidden = summary.pages.length === 0;
@@ -622,7 +736,7 @@ exportPreset.addEventListener("change", () => {
   void refreshPreview();
 });
 for (const input of document.querySelectorAll<HTMLInputElement>("#exportForm input[name=link]")) input.addEventListener("change", () => void refreshPreview());
-$("export").addEventListener("click", openExport);
+$("export").addEventListener("click", () => { closeMore(); openExport(); });
 $("exportCancel").addEventListener("click", () => exportDialog.close());
 $("exportForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -658,7 +772,7 @@ function save(name: string, type: string, data: string | Uint8Array): void {
 // ---- clear --------------------------------------------------------------------------------------
 
 const clearDialog = $<HTMLDialogElement>("clearDialog");
-$("clear").addEventListener("click", () => { clearDialog.showModal(); $("clearCancel").focus(); });
+$("clear").addEventListener("click", () => { closeMore(); clearDialog.showModal(); $("clearCancel").focus(); });
 $("clearCancel").addEventListener("click", () => clearDialog.close());
 $("clearConfirm").addEventListener("click", () => {
   void Promise.all([store.clear(), settings.statsSecret.setValue(null)]).then(() => { clearDialog.close(); period = { kind: "today" }; return render(); });

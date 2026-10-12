@@ -333,10 +333,14 @@ async function statsPages(context, sw, extId, lang) {
     await page.click('#ranges [data-range="7"]').catch(() => {});
     await page.locator("#trendChart svg").waitFor({ timeout: 10000 }).catch(() => {});
     await page.click("#trendCard summary").catch(() => {});
+    await page.hover("#trendChart g.col:last-of-type rect.hit").catch(() => {});
+    await page.click("#siteTable tbody tr.pick").catch(() => {});
     await page.click("#lens summary").catch(() => {});
     await page.click("#visitsTable button.linkish").catch(() => {});
     await page.locator("#replay:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
     await check(page, lang, "statistics, a week");
+    await page.click("#more summary").catch(() => {});
+    await check(page, lang, "statistics, more");
     await page.click("#export").catch(() => {});
     await page.locator("#exportDialog[open]").waitFor({ timeout: 5000 }).catch(() => {});
     await page.click("#exportDimsBox summary").catch(() => {});
@@ -344,8 +348,7 @@ async function statsPages(context, sw, extId, lang) {
     await check(page, lang, "statistics, export");
     await page.goto(url("options.html#statistics"), { waitUntil: "load" });
     await page.locator("#statsWarnings p").first().waitFor({ timeout: 5000 }).catch(() => {});
-    await page.click("#statsCustomize").catch(() => {});
-    await check(page, lang, "settings, statistics in full");
+    await check(page, lang, "settings, statistics");
   }
   await page.setViewportSize(POPUP);
   await page.goto(url("popup.html"), { waitUntil: "load" });

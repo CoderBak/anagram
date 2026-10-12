@@ -27,10 +27,10 @@ import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
-import { configOf, normalize, presetConfig, presetOf, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
+import { configOf, normalize, presetConfig, presetOf, retained, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
 import { openStatsStore } from "../../lib/stats/store";
 import { forgetStatsSecret, readStatsConfig, saveStatsConfig, statsSecret } from "../../lib/stats/settings";
-import { dimensionLabel, layerTable, presetHint, presetLabel, PRESET_IDS, warningsOf } from "../../lib/stats/ui";
+import { presetHint, presetLabel, PRESET_IDS, warningsOf } from "../../lib/stats/ui";
 import { keepsLess, stripTo } from "../../lib/stats/strip";
 import { formatWords } from "../../lib/stats/format";
 import { formatSize } from "../../lib/ui/size";
@@ -267,17 +267,14 @@ async function refreshCacheCount(): Promise<void> {
 }
 
 // --- statistics ------------------------------------------------------------------------------
-// What the reading log keeps (lib/stats/config.ts): a preset, or a layer for each dimension, and
-// for how long. Off by default; what a choice keeps is said under it, and what someone else
-// using this browser profile could read is said plainly. The log itself is this extension's own
-// IndexedDB, opened here to size it, coarsen it and clear it.
+// What the reading log keeps (lib/stats/config.ts): a preset, shown as a tile with a line of
+// what it keeps, and for how long. Off by default; what someone else using this browser profile
+// could read is said plainly. A setting made field by field before shows as its own tile. The
+// log itself is this extension's own IndexedDB, opened here to size it, coarsen it and clear it.
 void (async () => {
-  const presetEl = document.getElementById("statsPreset") as HTMLSelectElement;
-  const noteEl = document.getElementById("statsPresetNote") as HTMLElement;
+  const presetsEl = document.getElementById("statsPresets") as HTMLElement;
   const warnEl = document.getElementById("statsWarnings") as HTMLElement;
-  const customizeEl = document.getElementById("statsCustomize") as HTMLButtonElement;
-  const dimsEl = document.getElementById("statsDims") as HTMLElement;
-  const movedEl = document.getElementById("statsMoved") as HTMLElement;
+  const keepEl = document.getElementById("statsKeep") as HTMLElement;
   const fineEl = document.getElementById("statsFine") as HTMLSelectElement;
   const detailEl = document.getElementById("statsDetailDays") as HTMLSelectElement;
   const totalsEl = document.getElementById("statsTotals") as HTMLSelectElement;
@@ -289,27 +286,38 @@ void (async () => {
   const store = openStatsStore();
   let config: RecordingConfig = await readStatsConfig();
 
-  for (const p of ["off", ...PRESET_IDS, "custom"] as const) presetEl.add(new Option(presetLabel(p), p));
+  const tiles = new Map<string, { tile: HTMLElement; input: HTMLInputElement }>();
+  for (const p of ["off", ...PRESET_IDS, "custom"] as const) {
+    const tile = document.createElement("label");
+    tile.className = "preset";
+    const input = Object.assign(document.createElement("input"), { type: "radio", name: "statsPreset", value: p });
+    const name = Object.assign(document.createElement("span"), { className: "name", textContent: presetLabel(p) });
+    const what = Object.assign(document.createElement("span"), { className: "what", textContent: presetHint(p) });
+    tile.append(input, name, what);
+    presetsEl.append(tile);
+    tiles.set(p, { tile, input });
+    input.addEventListener("change", () => {
+      if (!input.checked || p === "custom") return;
+      void choose(p === "off" ? { ...config, on: false } : presetConfig(p as Preset, config.retention));
+    });
+  }
   for (const days of RETENTION.fine) fineEl.add(new Option(t("optStatsDays", days), String(days)));
   for (const days of RETENTION.detail) detailEl.add(new Option(t("optStatsDays", days), String(days)));
   for (const days of RETENTION.totals) totalsEl.add(new Option(days ? t("optStatsDays", days) : t("optStatsUntilCleared"), String(days)));
 
-  const table = layerTable("stats-dim", (layers, hashed) => void choose({ ...config, on: true, layers, hashed }));
-  dimsEl.insertBefore(table.element, movedEl);
-
   function paint(): void {
     const preset = config.on ? presetOf(config) ?? "custom" : "off";
-    const customOption = [...presetEl.options].find((o) => o.value === "custom")!;
-    customOption.hidden = preset !== "custom";
-    presetEl.value = preset;
-    // Off, the section is its one menu; what each choice keeps is said once it is on.
-    noteEl.textContent = config.on ? presetHint(preset) : "";
-    for (const row of document.querySelectorAll<HTMLElement>("#statistics .stats-more")) row.hidden = !config.on;
+    for (const [p, { tile, input }] of tiles) {
+      input.checked = p === preset;
+      if (p === "custom") tile.hidden = preset !== "custom";
+    }
+    keepEl.hidden = !config.on;
+    // Only the lengths of what this choice keeps.
+    const has = retained(config.layers);
+    fineEl.closest<HTMLElement>(".field")!.hidden = !has.fine;
+    detailEl.closest<HTMLElement>(".field")!.hidden = !has.detail;
     actionsEl.hidden = !config.on && kept === 0;
     warnEl.replaceChildren(...warningsOf(config).map((key) => Object.assign(document.createElement("p"), { textContent: t(key) })));
-    customizeEl.hidden = !config.on;
-    if (!config.on) { dimsEl.hidden = true; customizeEl.setAttribute("aria-expanded", "false"); }
-    table.show(config.layers, config.hashed);
     fineEl.value = String(config.retention.fine);
     detailEl.value = String(config.retention.detail);
     totalsEl.value = String(config.retention.totals);
@@ -328,9 +336,8 @@ void (async () => {
    *  loses nothing it was not told to. */
   async function choose(next: RecordingConfig): Promise<void> {
     const before = config;
-    const { config: normal, moved } = normalize(next);
+    const { config: normal } = normalize(next);
     config = await saveStatsConfig(next.on ? normal : { ...next, on: false });
-    movedEl.textContent = moved.length ? t("optStatsMoved", moved.map(dimensionLabel).join(", ")) : "";
     paint();
     if (keepsLess(before, config)) {
       const kept = await store.size().catch(() => null);
@@ -356,17 +363,6 @@ void (async () => {
     ).finally(() => dropDialog.close());
   });
 
-  presetEl.addEventListener("change", () => {
-    const value = presetEl.value;
-    if (value === "custom") return;
-    void choose(value === "off" ? { ...config, on: false } : presetConfig(value as Preset, config.retention));
-  });
-  customizeEl.addEventListener("click", () => {
-    const open = dimsEl.hidden;
-    dimsEl.hidden = !open;
-    customizeEl.setAttribute("aria-expanded", String(open));
-    customizeEl.textContent = t(open ? "optStatsCustomizeHide" : "optStatsCustomize");
-  });
   const retention = (): Retention => ({
     fine: Number(fineEl.value) as Retention["fine"], detail: Number(detailEl.value) as Retention["detail"], totals: Number(totalsEl.value) as Retention["totals"],
   });

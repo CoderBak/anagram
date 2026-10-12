@@ -52,8 +52,6 @@ export interface Summary {
   total: Tally;
   trend: { date: string; tally: Tally }[];
   kinds: { kind: PageKind; tally: Tally }[];
-  feeds: Tally;
-  rest: Tally;
   sites: Row[];
   pages: Row[];
   visits: Row[];
@@ -94,14 +92,11 @@ export function summarize(range: LogRange, from: string, to: string, lens: Lens)
   }
   const total = emptyTally();
   for (const t of day.values()) addTally(total, t);
-  const feeds = emptyTally(), rest = emptyTally();
-  for (const [k, t] of kind) addTally(k === "feed" ? feeds : rest, t);
   const byWords = (a: Row, b: Row): number => viewedWords(b.tally) - viewedWords(a.tally) || a.key.localeCompare(b.key);
   return {
     total,
     trend: datesBetween(from, to).map((date) => ({ date, tally: day.get(date) ?? emptyTally() })),
     kinds: PAGE_KINDS.filter((k) => kind.has(k) && viewedWords(kind.get(k)!) > 0).map((k) => ({ kind: k, tally: kind.get(k)! })),
-    feeds, rest,
     sites: [...site.values()].sort(byWords),
     pages: [...page.values()].sort((a, b) => (b.start ?? "").localeCompare(a.start ?? "") || byWords(a, b)),
     visits: visits.filter((r) => viewedWords(r.tally) > 0 || (r.visit?.shown ?? 0) > 0).sort((a, b) => (b.visit?.start ?? 0) - (a.visit?.start ?? 0)),

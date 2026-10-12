@@ -21,7 +21,8 @@ later; its location is part of the extension's identity.
 
 The setup page opens with three numbered steps, and each number turns into a tick when its
 step is done: 1. set up the engine, 2. where Anagram reads (**Allow all sites** and the two
-PDF switches), 3. keep Anagram in the toolbar. **Reading the marks** under them shows the
+PDF switches), 3. keep Anagram in the toolbar. One step is open at a time, the first one not
+done; click a step's title to open or close it. **Reading the marks** under them shows the
 four words, their colours and the scale.
 
 Step 1 decides how Anagram runs its model. Either way the model runs on this computer:
@@ -140,8 +141,9 @@ older version shows as off until you switch it on again.
   and **Analyze text** opens a page for pasted text, which it reads paragraph by paragraph
   (blank lines part them): a chip after each, the flagged ones underlined, the whole text's
   verdict above and how much of it reads as each word. You can also drop a file into the
-  reader. Local PDFs need "Allow access to file URLs" on the extension's page in
-  `chrome://extensions`; the setup page and Settings have a button that takes you there.
+  reader. Local PDFs need **PDFs on this computer** on (the setup page or Settings) and
+  Chrome's own "Allow access to file URLs" on the extension's page in `chrome://extensions`,
+  which no extension can turn on: while it is off, turning the switch on opens that page.
   The reader reads the whole document in the background, nearest pages first, so a page's
   chips are there when you scroll to it; how much of the computer it takes follows how fast
   it scores, and on a slow one it reads only the pages around yours until you choose **Read
@@ -163,19 +165,20 @@ older version shows as off until you switch it on again.
 
 ## Settings
 
-The toolbar icon's gear opens Settings, one list of rows.
+The toolbar icon's gear opens Settings: a panel each, two side by side (one under another in a
+narrow window).
 
 - **Engine**: its status in words, the switch to the other engine, delete model files and
   when the model is unloaded. The local engine adds update, stop and uninstall. FP32 is
   always the automatic choice; FP16 is used only where FP32 does not fit.
 - **Sites**: allow all sites or remove that access, run on granted sites by default, and per-site rules.
 - **PDFs**: open PDFs in Anagram automatically, and PDFs on this computer.
-- **Marks**: from which word a paragraph is flagged (Lightly edited, Heavily edited, the
-  default, or AI-generated only), chips on every paragraph or only flagged ones, and
-  underlines on flagged paragraphs or none.
+- **Marks**, side by side: **Flag** from which word (Lightly edited, Heavily edited, the
+  default, or AI-generated only), **Chips** on every paragraph or only flagged ones, and
+  **Underlines** on flagged paragraphs, every paragraph or none.
 - **Cache**: how long verdicts are kept, and clearing them.
-- **Statistics**: what Anagram records of your reading (off by default), how long it is kept,
-  and the statistics page, export and clearing (below).
+- **Statistics**: what Anagram records of your reading, a tile per choice (off by default), how
+  long it is kept, and the statistics page, export and clearing (below).
 
 The engine unloads the model after five minutes without work by default and reloads on demand.
 **Source code** in the footer opens the code of the exact version you are running.
@@ -183,7 +186,8 @@ The engine unloads the model after five minutes without work by default and relo
 ## Statistics
 
 Anagram can keep a record of how much of what you read reads as AI-generated. It is off until
-you choose what to keep, in Settings, Statistics, **Record**, or on the statistics page:
+you choose what to keep, in Settings, Statistics (each choice a tile saying what it keeps), or
+on the statistics page:
 
 - **Daily totals**: each day's words read, how they read from human to AI-generated, and on
   what kind of page (feeds, articles, forums, documents, other).
@@ -197,10 +201,9 @@ you choose what to keep, in Settings, Statistics, **Record**, or on the statisti
 - **Full reading trace**, with or without the text: everything, to the millisecond, the
   pointer's track included.
 
-**Choose field by field…** shows every kind of thing Anagram can keep, from the most exact to
-nothing, and lets you choose each one; addresses and titles can be kept as salted hashes. Under
-the choice, Settings warns you of what someone else using this browser profile could see. How
-long each part is kept is yours too: every step (7, 30 or 90 days), paragraphs and visits (30,
+A choice made field by field in an earlier version shows as **Your own**. Under the tiles,
+Settings warns you of what someone else using this browser profile could see. You
+also choose how long each part your choice keeps stays: every step (7, 30 or 90 days), paragraphs and visits (30,
 90 or 365 days), the daily totals (a year, or until you clear them). Choosing to keep less asks
 whether to delete what the new choice would not have kept; it stays unless you say so.
 
@@ -215,12 +218,17 @@ another time on screen, by how much of a paragraph was shown, in a focused windo
 day or once ever, by the chip's word or the most likely verdict, by paragraphs or by time.
 
 When statistics are on, the toolbar menu says how today's reading reads ("Today: 14%
-AI-generated, of 8,400 words scored.") and links to the statistics page: the share and the four
-verdicts for Today, the last 7 or 30 days, a month or any range, against the last 30 days;
-the trend day by day; by kind of page, feeds against the rest, by site, by page and by visit,
-where every step was kept with a replay of when each paragraph was on screen; and how much of
-what you read could be scored. **Export…** saves a file of the period, never finer than what
-was kept, with each kind of thing at the layer you choose, as JSON or as CSV tables in a zip,
+AI-generated, of 8,400 words scored.") and links to the statistics page, for Today or the last 7
+or 30 days (**More** has a month, any range, **Export…** and **Clear statistics**). Four figures
+come first: the share expected to be AI-generated, against the period as long before it (a day
+against the last 30 days); the words scored, on how many pages and sites; the site, or kind of
+page, with the largest share; and how much of what you read could be scored. Under them, the
+trend day by day, which gives a day's numbers when you point at it and shows that day alone when
+you click it; the four verdicts; by site and by kind of page, where clicking a site shows the
+whole page for that site alone until **Show all**; by page; and by visit, where every step was
+kept with a replay of when each paragraph was on screen. **Export…** saves a file of the
+period, never finer than what was kept, with each kind of thing at the layer you choose (field
+by field if you like, addresses and titles as salted hashes), as JSON or as CSV tables in a zip,
 and shows you what it holds first. Its ids and hashes are that file's own unless you choose
 to make them the same in every file (a study that collects several of your files asks for
 that). Anagram never uploads it. [statistics.md](statistics.md) describes the file.

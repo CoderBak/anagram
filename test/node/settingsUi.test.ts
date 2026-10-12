@@ -1,6 +1,7 @@
 // test/node/settingsUi.test.ts — what Settings and the setup page no longer carry.
 //
-// The pages are one compact list each (test/pw/setup-page.spec.mjs judges them rendered); this
+// Settings is a page of panels and the setup page one of steps (test/pw/setup-page.spec.mjs judges
+// them rendered); this
 // pins what was deleted so it stays deleted: the Scope setting with the code path for "main",
 // the shortcuts list, the report and debug switches, the folds, and the speed and memory
 // figures of the engine choice.
@@ -33,11 +34,10 @@ describe("the Scope setting is gone", () => {
   });
 });
 
-describe("Settings is one list", () => {
+describe("Settings is a page of panels", () => {
   const html = read("entrypoints", "options", "index.html");
 
-  it("has no section headings, no folds and no shortcuts", () => {
-    expect(html).not.toMatch(/<h[2-6][ >]/);
+  it("has no folds and no shortcuts", () => {
     expect(html).not.toMatch(/<details|<summary/);
     expect(html).not.toMatch(/kbd|shortcuts|cmdToggleOverlay/);
   });
@@ -47,9 +47,10 @@ describe("Settings is one list", () => {
     for (const messages of LOCALES) expect(Object.keys(messages).filter((k) => /^(optReportText|optReportUrl|optDebug|optShortcuts)$/.test(k))).toEqual([]);
   });
 
-  it("names its rows: Engine, Sites, PDFs, Marks, Length, Cache and Statistics", () => {
-    const labels = [...html.matchAll(/class="group-label"[^>]*data-i18n="(\w+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["optEngine", "optSites", "optPdfs", "optMarks", "optCache", "optStats"]);
+  it("names its panels: Engine, Sites, Marks, PDFs, Cache and Statistics", () => {
+    const labels = [...html.matchAll(/<h2 [^>]*data-i18n="(\w+)"/g)].map((m) => m[1]);
+    expect(labels).toEqual(["optEngine", "optSites", "optMarks", "optPdfs", "optCache", "optStats"]);
+    expect([...html.matchAll(/<section class="panel/g)]).toHaveLength(6);
   });
 
   it("no longer holds the PDF reader or the paste page: the popup does", () => {
@@ -63,7 +64,7 @@ describe("the setup page is one page", () => {
 
   it("has no folds and numbers its steps: the engine, where it reads, the toolbar, then the marks", () => {
     // The download is the step that takes longest and the one nothing works without, so it
-    // starts first; the three steps are on screen together, each turning into a tick when done.
+    // starts first; the first step not done is open, each turning into a tick when done.
     expect(html).not.toMatch(/<details|<summary/);
     const at = (id: string) => html.indexOf(`id="${id}"`);
     expect(at("engineCard")).toBeGreaterThan(0);

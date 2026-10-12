@@ -24,6 +24,15 @@ html.dark .step.done .num { background: #33d996; color: #0a0a0a; }
 .step.done .num span { display: none; }
 .step.done .num svg { display: block; }
 .step-note { margin: 0; font-size: 13px; color: var(--muted-foreground); }
+/* One step at a time: a closed step is its header alone. */
+.step > header { cursor: pointer; user-select: none; }
+.step:not(.open) > section { display: none; }
+.step-toggle { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.step-toggle:hover { background: var(--muted); }
+.step-toggle:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.step-toggle svg { transition: transform .15s; }
+.step.open .step-toggle svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .step-toggle svg { transition: none; } }
 
 /* Reading the marks: the four words in their colours, and the scale they cut. */
 /* The four words, each beside a chip as the page shows it (lib/render/badge.css.ts): a neutral

@@ -5,6 +5,16 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [Unreleased]
+
+### Changed
+
+- Settings is a page of panels, two side by side: Engine beside Sites, Marks across the page with Flag, Chips and Underlines on one line, PDFs beside Cache, and Statistics across; no rule between rows, one spacing throughout. In a narrow window the panels stack.
+- Statistics in Settings offers its choices as tiles, each saying in a line what it keeps, and asks how long to keep only what the chosen one keeps (no "every step" for daily totals); the field-by-field table is gone from Settings (an export still chooses field by field), and a choice made that way before shows as **Your own**. The statistics page no longer says paragraphs and visits are kept for 90 days under a choice that keeps neither.
+- **PDFs on this computer** is a switch like the others: turning it on asks for Anagram's access to files and, while Chrome's own "Allow access to file URLs" is off, opens the extension's page where it is; turning it off gives the access back. It was a **Turn it on** button beside a switch that could not be used.
+- The setup page opens one step at a time, the first one not done; a step's title opens or closes it, and the toolbar menu's **How to keep Anagram in the toolbar** opens that step.
+- The statistics page leads with four figures: the share expected to be AI-generated against the period as long before it (a day against the last 30 days), the words scored and on how many pages and sites, the site or kind of page with the largest share, and how much could be scored. Pointing at a day of the trend gives its numbers and clicking it shows that day; clicking a site shows the whole page for that site alone, until **Show all**. The month, a range, **Export…** and **Clear statistics** are under **More**. The table of feeds against the rest is gone: By kind of page has the feeds.
+
 ## [0.9.1] — 2026-10-12
 
 Quieter chips that show what they cover when hovered, simpler pages, and a PDF reader that comes back after Chrome discards its tab. Published for Chrome on macOS only.

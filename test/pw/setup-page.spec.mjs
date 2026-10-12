@@ -5,8 +5,8 @@
 // What is judged here is the shape the user asked for, not the engine (test/inbrowser.mjs
 // drives that): permissions come first on the setup page; no card quotes a speed or a memory
 // figure; "Keep this browser open" shows only while the in-browser download runs, on the setup
-// page, in Settings and in the popup; Settings keeps its controls unfolded, with a separate toolbar guide; the
-// popup carries the PDF reader and Analyze text. The engine's states are scripted into each
+// page, in Settings and in the popup; the setup page opens one step at a time; Settings is panels
+// in two columns with nothing folded; the popup carries the PDF reader and Analyze text. The engine's states are scripted into each
 // page (test/webengine/scripted-engine.mjs) on the device builds (test/pw/devices.mjs).
 import { join } from "node:path";
 import { test, expect } from "./fixtures.mjs";
@@ -64,6 +64,18 @@ test.describe("the setup page", () => {
     expect(order.folds, "no collapsed fold anywhere").toBe(0);
     // The test build may read every site; no engine is set up and nothing is pinned.
     expect(order.done).toEqual([false, true, false]);
+    // One step open at a time, the first not done; a header opens or closes its own, which stays so.
+    const open = () => page.evaluate(() => [...document.querySelectorAll(".step")].map((s) => s.classList.contains("open")));
+    expect(await open()).toEqual([true, false, false]);
+    await expect(page.locator("#engineCard .step-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#local-pdfs")).toBeHidden();
+    await page.click("#whereCard .step-toggle");
+    await expect(page.locator("#local-pdfs")).toBeVisible();
+    await expect(page.locator("#whereCard .step-toggle")).toHaveAttribute("aria-expanded", "true");
+    await page.click("#engineCard header h2");
+    expect(await open()).toEqual([false, true, false]);
+    await page.waitForTimeout(2500);
+    expect(await open(), "the page's own checks change nothing chosen").toEqual([false, true, false]);
   });
 
   test("the choice quotes no speed and no memory", async ({ extension }) => {
@@ -134,22 +146,39 @@ test.describe("the setup page", () => {
 test.describe("Settings", () => {
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
-  test("keeps settings unfolded, with only the toolbar guide collapsible", async ({ extension }) => {
+  test("lays its settings out as panels, two to a row, nothing folded, the marks' three choices on one line", async ({ extension }) => {
     const page = await openScripted(extension, "options.html", "ready_gpu");
     await painted(page);
-    const seen = await page.evaluate(() => ({
-      headings: [...document.querySelectorAll("h2, h3")].filter((h) => !h.closest("dialog") && h.getClientRects().length > 0).length,
-      folds: document.querySelectorAll("details:not(#toolbar-guide)").length,
-      ids: ["analysisScope", "debug", "openReader"].filter((id) => document.getElementById(id)),
-      labels: [...document.querySelectorAll(".group-label")].map((el) => el.textContent),
-      text: document.body.innerText,
-    }));
-    expect(seen.headings, "no section headings").toBe(0);
+    const seen = await page.evaluate(() => {
+      const top = (el) => Math.round(el.getBoundingClientRect().top);
+      const panels = [...document.querySelectorAll(".settings > .panel")];
+      return {
+        titles: panels.map((p) => p.querySelector("h2").textContent),
+        tops: panels.map(top),
+        folds: document.querySelectorAll("details").length,
+        marks: ["flagFrom", "displayMode", "underline"].map((id) => top(document.getElementById(id))),
+        ids: ["analysisScope", "debug", "openReader", "toolbarGuide", "statsPreset", "statsCustomize"].filter((id) => document.getElementById(id)),
+        text: document.body.innerText,
+      };
+    });
+    expect(seen.titles).toEqual(["Engine", "Sites", "Marks", "PDFs", "Cache", "Statistics"]);
     expect(seen.folds, "no settings hidden in folds").toBe(0);
-    expect(seen.ids, "Scope, the two report switches, Debug logging and the PDF reader are gone").toEqual([]);
-    expect(seen.labels).toEqual(["Engine", "Sites", "PDFs", "Marks", "Cache", "Statistics"]);
-    expect(seen.text).not.toMatch(/Shortcuts|Alt\s*\+\s*Shift|Scope|Include passage|Include page title|Debug logging|Analyze text/);
+    // Engine beside Sites, Marks across, PDFs beside Cache, Statistics across.
+    const [engine, sites, marks, pdfs, cache, stats] = seen.tops;
+    expect(engine).toBe(sites);
+    expect(pdfs).toBe(cache);
+    expect(marks).toBeGreaterThan(engine);
+    expect(pdfs).toBeGreaterThan(marks);
+    expect(stats).toBeGreaterThan(pdfs);
+    expect(new Set(seen.marks).size, "Flag, Chips and Underlines side by side").toBe(1);
+    expect(seen.ids, "Scope, Debug logging, the PDF reader, the toolbar guide and the field-by-field statistics are gone").toEqual([]);
+    expect(seen.text).not.toMatch(/Shortcuts|Alt\s*\+\s*Shift|Scope|Include passage|Include page title|Debug logging|Analyze text|In detail/);
     expect(seen.text, "the engine in words").toContain("In the browser, on the graphics card: Ready");
+    // Narrow, one column.
+    await page.setViewportSize({ width: 600, height: 900 });
+    const narrow = await page.evaluate(() => [...document.querySelectorAll(".settings > .panel")].map((p) => Math.round(p.getBoundingClientRect().left)));
+    expect(new Set(narrow).size).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
   test("the engine row carries the switch, Delete model files and the idle unload inline; Keep open only while downloading", async ({ extension }) => {
