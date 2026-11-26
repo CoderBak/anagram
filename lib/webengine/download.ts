@@ -15,7 +15,7 @@
 // the part carries across the switch, the hash decides what is kept, and a mirror that worked
 // is tried first for the rest of the session's files.
 import { Sha256 } from "./sha256";
-import type { FileStore } from "./storage";
+import type { FileStore, FileWriter } from "./storage";
 import { MIRROR_HOST, type PinnedFile } from "./pin";
 
 export class DownloadPaused extends Error {
@@ -238,23 +238,27 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
     await response.body?.cancel().catch(() => {});
     throw new DownloadFailed(`The download of ${entry.path ?? entry.name} was sent somewhere other than the model's host`);
   }
-  let resumed = false;
-  if (response.status === 206) {
+  const resumed = response.status === 206;
+  if (resumed) {
     const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get("Content-Range") ?? "");
     if (!range || Number(range[1]) !== offset || Number(range[3]) !== entry.size_bytes) {
       await response.body?.cancel().catch(() => {});
       throw new DownloadFailed(`The server answered ${entry.path ?? entry.name} with an unexpected range`, true);
     }
-    resumed = true;
-  } else if (response.status === 200) {
-    // The server ignored the range: start over.
-    if (offset > 0) { await store.truncate(part, 0); offset = 0; hasher.reset(); onProgress(0); }
-  } else {
+  } else if (response.status !== 200) {
     await response.body?.cancel().catch(() => {});
     throw new DownloadFailed(`The server answered ${entry.path ?? entry.name} with status ${response.status}`, response.status >= 500 || response.status === 429, response.status >= 500);
   }
   if (!response.body) throw new DownloadFailed(`The server sent no body for ${entry.path ?? entry.name}`, true);
-  const writer = await store.writer(part, resumed);
+  let writer: FileWriter;
+  try {
+    // A full response to a range request starts the file over.
+    if (!resumed && offset > 0) { await store.truncate(part, 0); offset = 0; hasher.reset(); onProgress(0); }
+    writer = await store.writer(part, resumed);
+  } catch (error) {
+    await response.body.cancel().catch(() => {});
+    throw error;
+  }
   const reader = response.body.getReader();
   let oversized = false;
   try {

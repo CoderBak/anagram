@@ -258,6 +258,22 @@ describe("model download", () => {
     expect(await store.read("model.bin")).toEqual(FILE);
   });
 
+  it.each(["writer", "truncate"] as const)("cancels the response when the disk refuses %s before reading the body", async (operation) => {
+    const store = new MemoryStore();
+    if (operation === "truncate") {
+      const writer = await store.writer("model.bin.part", false);
+      await writer.write(FILE.subarray(0, 300));
+      await writer.close();
+    }
+    vi.spyOn(store, operation).mockRejectedValue(new DOMException("Disk full", "QuotaExceededError"));
+    const cancel = vi.fn();
+    const transport = vi.fn(async () => new Response(new ReadableStream({ cancel }), { status: 200 }));
+    expect(failureKind(await failure(downloadFile(store, entry(), { transport, ...NO_WAIT })))).toBe("storage");
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(await store.size("model.bin.part")).toBe(operation === "truncate" ? 300 : null);
+  });
+
   it("takes the file system's other ways of saying the disk is full for one", async () => {
     // Chrome's other error for a write the file system refused names its code; a flush that
     // finds the disk full as the file is closed; a file that cannot even be opened for writing.
