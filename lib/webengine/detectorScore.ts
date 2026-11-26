@@ -23,6 +23,14 @@ export function normalizeDetector(s: string): string {
     .trim();
 }
 const maxIndex = (v: ArrayLike<number>) => (v[1]! > v[0]! ? (v[2]! > v[1]! ? 2 : 1) : v[2]! > v[0]! ? 2 : 0);
+/** Stop counting as soon as the passage meets the release's minimum. */
+export function enoughDetectorWords(text: string, minimum: number): boolean {
+  if (!/\p{L}/u.test(text)) return false;
+  const words = /[\p{L}\p{N}_]+(?:['’][\p{L}\p{N}_]+)*/gu;
+  for (let count = 0; count < minimum; count++) if (!words.test(text)) return false;
+  return true;
+}
+
 export async function detectorScore(
   raw: string,
   tok: Tokenizer,
@@ -30,10 +38,7 @@ export async function detectorScore(
   crf: Crf,
   run: (ids: number[]) => Promise<Heads>,
 ) {
-  if (
-    (raw.match(/[\p{L}\p{N}_]+(?:['’][\p{L}\p{N}_]+)*/gu)?.length ?? 0) < meta.min_words ||
-    !/\p{L}/u.test(raw)
-  )
+  if (!enoughDetectorWords(raw, meta.min_words))
     return {
       bucket: 0,
       probs: [1 / 3, 1 / 3, 1 / 3],
@@ -57,18 +62,21 @@ export async function detectorScore(
     const prior = [0, 0, 0],
       max = Math.max(...segment);
     segment.forEach((value, i) => {
+      const weight = Math.exp(value - max);
       for (let k = 0; k < 3; k++)
-        prior[k]! += Math.exp(value - max) * Math.max(0, 1 - 2 * Math.abs(i / 14 - k / 2));
+        prior[k]! += weight * Math.max(0, 1 - 2 * Math.abs(i / 14 - k / 2));
     });
     const sum = prior.reduce((a, b) => a + b);
+    const logPrior = prior.map(p => Math.log(Math.max(1e-6, p / sum)));
+    const mixedDelta = mixed[1]! - mixed[0]!;
     for (let i = start; i < end; i++) {
       for (let k = 0; k < 3; k++) {
         features[i * 6 + k]! += token[(i - start + 1) * 3 + k]!;
-        features[i * 6 + 3 + k]! += Math.log(Math.max(1e-6, prior[k]! / sum));
+        features[i * 6 + 3 + k]! += logPrior[k]!;
       }
       const centre = 1 - Math.abs(i - start - (len - 1) / 2) / ((len + 1) / 2);
       weights[i]! += centre;
-      mix[i]! += centre * (mixed[1]! - mixed[0]!);
+      mix[i]! += centre * mixedDelta;
       counts[i]!++;
     }
     if (start === last) break;
@@ -101,7 +109,7 @@ export async function detectorScore(
     labels[i] = label;
     label = back[i * 3 + label]!;
   }
-  const chars = Array.from(text);
+  const length = offsets.at(-1)?.[1] ?? 0;
   const ends: number[] = [];
   let units = 0,
     scalars = 0;
@@ -154,11 +162,12 @@ export async function detectorScore(
     }
   }
   const countsByLabel = [0, 0, 0];
-  let owner = 0;
-  for (let i = 0; i < chars.length; i++) {
-    while (owner + 1 < n && offsets[owner + 1]![0] <= i) owner++;
-    countsByLabel[labels[owner]!]!++;
+  // The last token starting at a scalar owns it, including tokens splitting one scalar.
+  for (let i = 0; i < n; i++) {
+    const start = i ? offsets[i]![0] : 0;
+    const end = i + 1 < n ? offsets[i + 1]![0] : length;
+    countsByLabel[labels[i]!]! += end - start;
   }
-  const probs = countsByLabel.map((v) => v / chars.length);
+  const probs = countsByLabel.map(v => v / length);
   return { sentenceLabels:sentenceStarts.map(start=>labels[start]!), bucket: maxIndex(probs), probs, score: probs[2]! + probs[1]! / 2, tokens: n, truncated: false };
 }

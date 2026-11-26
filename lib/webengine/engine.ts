@@ -16,7 +16,7 @@ import { sha256Hex } from "./sha256";
 import { MemoryStore, type FileStore } from "./storage";
 import { pin as releasePin } from "./pin";
 import { validRelease, type DetectorRelease } from "../detectorReleases";
-import { checkDetector, detectorScore, normalizeDetector, type DetectorMeta, type Crf } from "./detectorScore";
+import { checkDetector, detectorScore, enoughDetectorWords, normalizeDetector, type DetectorMeta, type Crf } from "./detectorScore";
 import { Tokenizer } from "./tokenizer";
 
 /** The preprocessing this engine performs, named in the model version. */
@@ -808,7 +808,7 @@ export class Engine {
       const todo: Array<{ id: string; text: string; lang: string; prob: number }> = [];
       const results = new Map<string, ScoreResult>();
       for (const block of blocks) {
-        if (loaded.detector && ((block.text.match(/[\p{L}\p{N}_]+(?:['’][\p{L}\p{N}_]+)*/gu)?.length ?? 0)<loaded.detector.meta.min_words || !/\p{L}/u.test(block.text))) {
+        if (loaded.detector && !enoughDetectorWords(block.text, loaded.detector.meta.min_words)) {
           results.set(block.id,{id:block.id,bucket:0,probs:[1/3,1/3,1/3],score:0,tokens:0,truncated:false,insufficient:true});
           continue;
         }
