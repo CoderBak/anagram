@@ -67,7 +67,7 @@
 .fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px var(--field-gap); }
 .preference-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--value-width); align-items: center; gap: var(--field-gap); }
 .preference-row > select { width: 100%; min-width: 0; }
-.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .field[hidden] { display: none; }
 .field > label { font-size: 12.5px; font-weight: 500; color: var(--muted-foreground); }
 .field > .select { width: 100%; min-width: 0; margin-block-start: auto; }
@@ -176,11 +176,11 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   .field > .select { margin: 0; }
 }
 @container (max-width: 360px) {
-  .panel { --value-width: min(56%, 160px); --field-gap: 8px; }
-  .fields { --value-width: min(61%, 200px); }
+  .panel { --value-width: min(61%, 200px); --field-gap: 8px; }
 }
 @container (max-width: 319px) {
-  .field { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .panel { --value-width: min(56%, 160px); }
+  .field { grid-template-columns: minmax(0, 1fr); gap: 7px; }
 }
 @media (max-width: 480px) {
   #addRule { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
