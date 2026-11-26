@@ -71,15 +71,17 @@
         <div id="sections">
           <div class="overview">
             <section class="activity" aria-labelledby="trendTitle">
-              <div class="activity-heading">
+              <div class="activity-summary">
                 <h2 id="trendTitle" data-i18n="statsTrend">Reading activity</h2>
+                <div class="activity-facts">
+                  <dl class="measure"><dt id="scoredTitle"></dt><dd id="scoredFigure"></dd></dl>
+                  <p class="context" id="scoredLine"></p>
+                </div>
                 <div id="plotControls" class="plot-controls" role="group" aria-label="Chart scale" data-i18n-aria-label="statsChartScale">
                   <button type="button" id="trendVolume" aria-pressed="true"></button>
                   <button type="button" id="trendShare" aria-pressed="false" data-i18n="statsChartShare">Share</button>
                 </div>
               </div>
-              <dl class="measure"><dt id="scoredTitle"></dt><dd id="scoredFigure"></dd></dl>
-              <p class="context" id="scoredLine"></p>
               <div id="trendCard">
                 <div id="trendChart"></div>
                 <p class="note" id="trendUnavailable" data-i18n="statsNoVerdicts" hidden>No verdicts available.</p>
@@ -88,16 +90,20 @@
               </div>
             </section>
             <section class="distribution" aria-labelledby="mixTitle">
-              <h2 id="mixTitle" data-i18n="statsMix">Verdict distribution</h2>
-              <dl class="measure"><dt id="heroLine"></dt><dd id="heroShare"></dd></dl>
-              <p class="context" id="heroCompare"></p>
-              <ul class="legend" id="heroLegend"></ul>
-              <details class="breakdown" id="scoringDetails">
-                <summary data-i18n="statsCoverageDetails">Scoring details</summary>
-                <p id="coverageLine"></p>
-                <ul class="coverage-list" id="coverageList"></ul>
-                <p id="topDetail" hidden><span id="topTitle"></span> <strong id="topFigure"></strong> <span id="topLine"></span></p>
-              </details>
+              <div>
+                <h2 id="mixTitle" data-i18n="statsMix">Verdict distribution</h2>
+                <dl class="measure"><dt id="heroLine"></dt><dd id="heroShare"></dd></dl>
+                <p class="context" id="heroCompare"></p>
+              </div>
+              <div class="verdict-details">
+                <ul class="legend" id="heroLegend"></ul>
+                <details class="breakdown" id="scoringDetails">
+                  <summary data-i18n="statsCoverageDetails">Scoring details</summary>
+                  <p id="coverageLine"></p>
+                  <ul class="coverage-list" id="coverageList"></ul>
+                  <p id="topDetail" hidden><span id="topTitle"></span> <strong id="topFigure"></strong> <span id="topLine"></span></p>
+                </details>
+              </div>
             </section>
           </div>
 
@@ -164,7 +170,7 @@
           <header class="export-header">
             <h2 id="exportTitle" data-i18n="statsExportTitle">Export statistics</h2>
             <div class="actions">
-              <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportCancel" data-i18n="buttonCancel">Cancel</button>
+              <button type="button" class="btn" data-variant="ghost" data-size="sm" id="exportCancel" data-i18n="buttonCancel">Cancel</button>
               <button type="submit" class="btn" data-size="sm" id="exportSave" data-i18n="statsExportSave">Save file</button>
             </div>
           </header>
