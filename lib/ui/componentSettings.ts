@@ -6,6 +6,7 @@
 import { prependActionIcon } from "./actionIcon";
 import { engineManagement } from "./disclosure";
 import { browser } from "#imports";
+import type { PublicPath } from "wxt/browser";
 import { t, tn, messageLocale, type MessageKey } from "../i18n";
 import { requestComponent, finishNativeUninstall, type ComponentSnapshot } from "../backend/nativeClient";
 import { runtimeReady } from "../backend/runtimeClient";
@@ -87,24 +88,25 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
 
   // Not installed: the one-sentence instruction, the command, Copy and View script.
   const install = element("section", undefined, "component-install"); install.id = "install"; install.hidden = true;
-  const intro = element("p", t("componentInstallIntro")); intro.setAttribute("role", "status");
+  const intro = element("p"); intro.setAttribute("role", "status");
   const releaseNotice = element("p", t("componentUnreleased"), "component-notice");
   releaseNotice.hidden = import.meta.env.VITE_ANAGRAM_RELEASE_BUILD === "1";
   const commandBox = element("pre", undefined, "component-command");
   const command = element("code"); command.id = "install-cmd"; command.tabIndex = -1; commandBox.append(command);
   commandBox.id = "install-details"; commandBox.hidden = true;
   const script = element("a", t("componentViewScript"), "btn"); script.dataset.variant = "ghost"; script.dataset.size = "sm";
-  script.target = "_blank"; script.rel = "noopener noreferrer"; script.hidden = true;
+  script.target = "_blank"; script.rel = "noopener noreferrer";
   const preview = makeButton("componentShowCommand", () => showCommand(commandBox.hidden), "ghost");
   preview.id = "install-preview";
   preview.setAttribute("aria-controls", commandBox.id);
   preview.setAttribute("aria-expanded", "false");
   function showCommand(open: boolean): void {
-    commandBox.hidden = script.hidden = !open;
-    if (!open) intro.textContent = t(shell === "windows" ? "componentInstallIntroWindows" : "componentInstallIntro");
+    commandBox.hidden = copyActions.hidden = !open;
+    if (!open) intro.textContent = installIntro;
     preview.setAttribute("aria-expanded", String(open));
     preview.textContent = t(open ? "componentHideCommand" : "componentShowCommand");
   }
+  let installIntro = "";
   let shell: "posix" | "windows" = "posix";
   const copy = makeButton("componentCopyInstall", () => {
     void (async () => {
@@ -127,8 +129,10 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }, "primary"); copy.id = "install-copy"; copy.disabled = true; delete copy.dataset.variant;
   prependActionIcon(copy, "copy");
   const commandActions = element("div", undefined, "component-actions");
-  commandActions.hidden = true; commandActions.append(copy, preview, script);
-  install.append(intro, releaseNotice, commandActions, commandBox);
+  commandActions.hidden = true; commandActions.append(preview, script);
+  const copyActions = element("div", undefined, "component-actions");
+  copyActions.hidden = true; copyActions.append(copy);
+  install.append(intro, releaseNotice, commandActions, commandBox, copyActions);
 
   const bar = progressBar(); bar.el.hidden = true;
   const percent = element("span", "", "engine-percent"); percent.hidden = true;
@@ -203,8 +207,13 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (destroyed) return;
     if (!instruction) { intro.textContent = t("componentUnsupportedPlatform"); commandActions.hidden = releaseNotice.hidden = true; return; }
     shell = instruction.platform;
-    intro.textContent = t(instruction.platform === "windows" ? "componentInstallIntroWindows" : "componentInstallIntro");
-    command.textContent = instruction.command; script.href = instruction.scriptUrl; commandActions.hidden = false;
+    const windows = shell === "windows";
+    const folder = windows ? "%LOCALAPPDATA%\\Anagram" : bridge?.home || "~/.anagram";
+    installIntro = t(windows ? "componentInstallIntroWindows" : "componentInstallIntro", folder);
+    intro.textContent = installIntro;
+    command.textContent = instruction.command;
+    script.href = browser.runtime.getURL((windows ? "/installer-source/install.ps1.html" : "/installer-source/install.sh.html") as PublicPath);
+    commandActions.hidden = false;
     copy.disabled = import.meta.env.VITE_ANAGRAM_RELEASE_BUILD !== "1";
   }).catch(() => { intro.textContent = t("componentUnsupportedPlatform"); commandActions.hidden = releaseNotice.hidden = true; });
 

@@ -32,8 +32,11 @@ if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
 const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
 /** The installers this tree holds, which a release built from it serves unchanged
  *  (scripts/release.mjs): the setup page's command runs one only when it has this SHA-256. */
-const INSTALLERS = Object.fromEntries((["sh", "ps1"] as const).map((ext) =>
-  [ext, createHash("sha256").update(readFileSync(resolve(ROOT, `install.${ext}`))).digest("hex")]));
+const installerSources = (["sh", "ps1"] as const).map(ext => ({
+  name: `install.${ext}`, ext, contents: readFileSync(resolve(ROOT, `install.${ext}`), "utf8"),
+}));
+const INSTALLERS = Object.fromEntries(installerSources.map(({ ext, contents }) =>
+  [ext, createHash("sha256").update(contents).digest("hex")]));
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
 
@@ -201,6 +204,11 @@ export default defineConfig({
     // AGPL: every copy of the extension carries the licence text, and the notices of the
     // third-party work it contains.
     "build:publicAssets": (_wxt, files) => {
+      for (const { name, contents } of installerSources) {
+        const source = contents.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+        files.push({ relativeDest: `installer-source/${name}.html`, contents:
+          `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${name}</title><pre>${source}</pre></html>` });
+      }
       for (const name of ["LICENSE", NOTICES_FILE]) files.push({ absoluteSrc: resolve(ROOT, name), relativeDest: name });
     },
     "build:before": () => shippedPackages.clear(),

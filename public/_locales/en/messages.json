@@ -540,8 +540,8 @@
     "description": "Setup page: badge on the in-browser engine's card."
   },
   "engineOneClickWhat": {
-    "message": "Runs in your browser.",
-    "description": "Setup page, in-browser engine card: what it is."
+    "message": "Anagram saves the model in this browser profile. You can analyze text without running a command.",
+    "description": "Where the browser engine stores the model and how to start using it."
   },
   "engineOneClickButton": {
     "message": "Download model ($1)",
@@ -552,16 +552,12 @@
     "description": "Setup page: title of the card for the local engine, installed with one command in a terminal."
   },
   "engineTerminalWhat": {
-    "message": "Runs as a local process.",
+    "message": "Connect the extension to a separate program you install with Terminal.",
     "description": "Setup page, local engine card on macOS and Linux: what it is."
   },
   "engineTerminalWhatWindows": {
-    "message": "Install the local engine with PowerShell.",
+    "message": "Connect the extension to a separate program you install with PowerShell.",
     "description": "Setup page, local engine card on Windows: what it is."
-  },
-  "engineTerminalWhatNvidia": {
-    "message": "Runs as a local process.",
-    "description": "The terminal card on Linux beside an NVIDIA GPU."
   },
   "engineTerminalButton": {
     "message": "Get install command",
@@ -828,12 +824,12 @@
     "description": "Error after the engine was removed but the extension could not remove itself."
   },
   "componentInstallIntro": {
-    "message": "Run the install command in Terminal.",
-    "description": "Install instruction on macOS and Linux, above the command."
+    "message": "The Terminal command installs the engine in $1 and registers it with your browser for this user account.",
+    "description": "What the optional installer changes. $1 is the installation folder."
   },
   "componentInstallIntroWindows": {
-    "message": "Run the install command in PowerShell.",
-    "description": "Install instruction on Windows, above the command."
+    "message": "The PowerShell command installs the engine in $1 and registers it with your browser for this user account.",
+    "description": "What the optional installer changes. $1 is the installation folder."
   },
   "componentUnsupportedPlatform": {
     "message": "No install command is available for this platform.",
@@ -872,7 +868,7 @@
     "description": "Button that copies the install command."
   },
   "componentViewScript": {
-    "message": "View script",
+    "message": "Read installer source",
     "description": "Link to the install script."
   },
   "componentCopyFailed": {

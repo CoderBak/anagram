@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 /** Everything a build reads from the tree. */
 const INPUTS = ["entrypoints", "lib", "public", "scripts", "vendor", "wxt.config.ts", "tsconfig.json", "package.json", "package-lock.json",
-  "LICENSE", "THIRD_PARTY_NOTICES.md"];
+  "install.sh", "install.ps1", "LICENSE", "THIRD_PARTY_NOTICES.md"];
 
 /** The hash of every input's path and bytes, in a fixed order. */
 export function inputsHash(root) {

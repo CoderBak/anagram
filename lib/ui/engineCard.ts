@@ -181,8 +181,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
       oneClickTight.textContent = t("engineTight");
       oneClickTight.hidden = !d.tight;
-      terminalWhat.textContent = t(d.reason === "nvidia" ? "engineTerminalWhatNvidia"
-        : d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
+      terminalWhat.textContent = t(d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
       if (d.offer === "terminal-only") { delete terminalButton.dataset.variant; } else terminalButton.dataset.variant = "outline";
     }
     options.onUpdate?.(null, null);

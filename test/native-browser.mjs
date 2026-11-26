@@ -89,19 +89,27 @@ while True:
     const preview = page.locator("#install-preview");
     await preview.waitFor();
     assert.equal(await preview.getAttribute("aria-expanded"), "false");
+    const source = page.locator("#install a");
+    const copy = page.locator("#install-copy");
+    assert.ok(await source.isVisible());
+    assert.equal(await copy.isVisible(), false);
+    assert.match(await source.getAttribute("href"), /\/installer-source\/install\.sh\.html$/);
+    const sourcePage = await Promise.all([context.waitForEvent("page"), source.click()]).then(([p]) => p);
+    await sourcePage.waitForLoadState();
+    assert.equal(await sourcePage.locator("pre").textContent(), readFileSync(join(ROOT, "install.sh"), "utf8").replaceAll("\r\n", "\n"));
+    await sourcePage.close();
     for (const width of [1200, 320]) {
       await page.setViewportSize({ width, height: 900 });
-      const copyBox = await page.locator("#install-copy").boundingBox();
-      const previewBox = await preview.boundingBox();
-      assert.equal(copyBox.y + copyBox.height / 2, previewBox.y + previewBox.height / 2, "Copy and View share a row");
-      assert.ok(previewBox.x >= copyBox.x + copyBox.width);
-      assert.ok(previewBox.x + previewBox.width <= width);
+      await preview.press("Enter");
+      assert.equal(await preview.getAttribute("aria-expanded"), "true");
+      assert.ok(await copy.isVisible());
+      const box = await copy.boundingBox();
+      assert.ok(box.x >= 0 && box.x + box.width <= width);
+      await preview.press("Space");
+      assert.equal(await page.locator("#install-cmd").isVisible(), false);
+      assert.equal(await copy.isVisible(), false);
+      assert.ok(await source.isVisible());
     }
-    await preview.press("Enter");
-    await page.locator("#install a").waitFor();
-    assert.equal(await preview.getAttribute("aria-expanded"), "true");
-    await preview.press("Space");
-    assert.equal(await page.locator("#install-cmd").isVisible(), false);
     await page.setViewportSize({ width: 1200, height: 1000 });
     await preview.click();
     await page.locator("#install-cmd").waitFor();

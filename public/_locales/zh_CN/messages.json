@@ -426,7 +426,7 @@
     "message": "推荐"
   },
   "engineOneClickWhat": {
-    "message": "在浏览器内运行。"
+    "message": "Anagram 会把模型保存在当前浏览器的配置文件中。分析文本无需运行命令。"
   },
   "engineOneClickButton": {
     "message": "下载模型（$1）"
@@ -435,13 +435,10 @@
     "message": "终端"
   },
   "engineTerminalWhat": {
-    "message": "作为本地进程运行。"
+    "message": "通过终端安装一个单独的程序，供扩展连接使用。"
   },
   "engineTerminalWhatWindows": {
-    "message": "使用 PowerShell 安装本地引擎。"
-  },
-  "engineTerminalWhatNvidia": {
-    "message": "作为本地进程运行。"
+    "message": "通过 PowerShell 安装一个单独的程序，供扩展连接使用。"
   },
   "engineTerminalButton": {
     "message": "获取安装命令"
@@ -647,10 +644,10 @@
     "message": "无法移除扩展，请在浏览器的扩展管理页中移除。"
   },
   "componentInstallIntro": {
-    "message": "在终端中运行安装命令。"
+    "message": "这条终端命令会把引擎安装到 $1，并为当前用户在浏览器中注册该引擎。"
   },
   "componentInstallIntroWindows": {
-    "message": "在 PowerShell 中运行安装命令。"
+    "message": "这条 PowerShell 命令会把引擎安装到 $1，并为当前用户在浏览器中注册该引擎。"
   },
   "componentUnsupportedPlatform": {
     "message": "此平台没有可用的安装命令。"
@@ -680,7 +677,7 @@
     "message": "复制命令"
   },
   "componentViewScript": {
-    "message": "查看脚本"
+    "message": "阅读安装脚本源码"
   },
   "componentCopyFailed": {
     "message": "请手动复制已选中的命令。"

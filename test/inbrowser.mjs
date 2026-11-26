@@ -313,7 +313,7 @@ for (const [name, want] of [["linux-nvidia", "nvidia"], ["linux-2gb", "cannot"],
       const seen = await setup.evaluate(() => ({
         terminal: document.querySelector('.engine-choice-card[data-engine="native"]')?.innerText.replace(/\s+/g, " ").trim() ?? "",
         figures: [...document.querySelectorAll(".engine-choice > .engine-note")].filter((el) => !el.hidden).map((el) => el.textContent) }));
-      check("NVIDIA on Linux: the choice, the local engine said to run on the NVIDIA card, and no figures", seen.terminal.includes(w("engineTerminalWhatNvidia")) &&
+      check("NVIDIA on Linux: the choice, the local installation explained, and no figures", seen.terminal.includes(w("engineTerminalWhat")) &&
         seen.figures.length === 0 && server.requests.length === 0, JSON.stringify(seen));
     } else if (want === "cannot") {
       const said = await until(() => textOf(setup, ".engine-cannot"), 15000);
