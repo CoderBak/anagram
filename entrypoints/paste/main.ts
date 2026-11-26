@@ -23,6 +23,7 @@ adoptBandColorRules();
 const input = document.getElementById("text") as HTMLTextAreaElement;
 input.maxLength = MAX_UNIT_TEXT_CHARS;
 const fileInput = document.getElementById("file") as HTMLInputElement;
+const pick = document.getElementById("pick") as HTMLButtonElement;
 const analyze = document.getElementById("analyze") as HTMLButtonElement;
 const edit = document.getElementById("edit") as HTMLButtonElement;
 const status = document.getElementById("status")!;
@@ -60,7 +61,7 @@ function clearResult(): void {
   reading.replaceChildren();
 }
 function countShown(): void {
-  clear.hidden = input.value.length === 0 && fileInput.value === "";
+  clear.hidden = input.value.length === 0 && !status.textContent;
   const n = countWords(input.value);
   analyze.disabled = n < MIN_WORDS;
   wordCount.textContent = n === 0 ? t("pasteMinimum", MIN_WORDS)
@@ -73,30 +74,42 @@ function readout(r: ScoreResult): string {
 }
 function cancel(): void { ++generation; cancelDocumentSession(); }
 input.addEventListener("input", () => { cancel(); clearResult(); status.textContent = ""; countShown(); });
-document.getElementById("pick")!.addEventListener("click", () => fileInput.click());
+pick.addEventListener("click", () => fileInput.click());
 document.getElementById("settings")!.addEventListener("click", () => void browser.runtime.openOptionsPage());
 function clearDraft(): void {
   cancel(); input.value = ""; fileInput.value = ""; status.textContent = ""; clearResult(); countShown();
 }
 edit.addEventListener("click", () => {
+  cancel();
   clearResult();
+  countShown();
   status.textContent = "";
   input.focus();
 });
 clear.addEventListener("click", () => { clearDraft(); input.focus(); });
 window.addEventListener("pagehide", clearDraft);
 fileInput.addEventListener("change", async () => {
-  cancel(); countShown(); const seq = generation;
   const file = fileInput.files?.[0]; if (!file) return;
+  fileInput.value = ""; // The same file can be picked again after it has been corrected.
+  cancel();
+  const seq = generation;
+  analyze.disabled = true;
   clear.hidden = false;
-  clearResult();
-  if (file.size > 1024 ** 2) { status.textContent = t("pasteTooLarge"); return; }
   try {
+    if (file.size > 1024 ** 2) { status.textContent = t("pasteTooLarge"); return; }
+    status.textContent = "";
     const text = new TextDecoder("utf-8", {fatal: true}).decode(await file.arrayBuffer());
     if (seq !== generation) return;
     if (text.length > MAX_UNIT_TEXT_CHARS) { status.textContent = t("pasteTooLarge"); return; }
-    input.value = text; status.textContent = ""; countShown();
-  } catch { if (seq === generation) status.textContent = t("pasteFileFailed"); }
+    clearResult();
+    input.value = text;
+    status.textContent = "";
+    if (document.activeElement === pick) input.focus();
+  } catch {
+    if (seq === generation) status.textContent = t("pasteFileFailed");
+  } finally {
+    if (seq === generation) countShown();
+  }
 });
 
 analyze.addEventListener("click", async () => {

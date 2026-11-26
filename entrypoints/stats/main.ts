@@ -151,7 +151,7 @@ showLens();
 type Period = { kind: "today" } | { kind: "days"; days: 7 | 30 } | { kind: "month"; month: string } | { kind: "range"; from: string; to: string };
 let period: Period = location.hash === "#today" ? { kind: "today" } : { kind: "days", days: 7 };
 
-let previousRange: Period | null = null;
+let previousRange: { period: Period; tableDay?: string } | null = null;
 
 function bounds(p: Period, today: string): { from: string; to: string } {
   if (p.kind === "today") return { from: today, to: today };
@@ -186,9 +186,13 @@ presets.forEach((button, i) => {
 });
 $("returnRange").addEventListener("click", () => {
   if (!previousRange) return;
-  period = previousRange;
+  const { period: range, tableDay } = previousRange;
+  period = range;
   previousRange = null;
   void render().then(() => {
+    if (document.activeElement !== document.body && document.activeElement !== $("returnRange")) return;
+    const day = tableDay && $("trendTable").querySelector<HTMLButtonElement>(`button[value="${CSS.escape(tableDay)}"]`);
+    if (day && day.getClientRects().length) { day.focus(); return; }
     const current = presets.find((button) => button.getAttribute("aria-pressed") === "true");
     (current ?? more.querySelector("summary")!).focus();
   });
@@ -330,11 +334,15 @@ function empty(host: HTMLElement, key: MessageKey): void {
   host.replaceChildren(el("p", "empty", t(key)));
 }
 
-function selectDay(date: string): void {
-  previousRange = period;
+function selectDay(date: string, fromTable = false): void {
+  previousRange = { period, tableDay: fromTable ? date : undefined };
   period = { kind: "range", from: date, to: date };
   $("trendTip").hidden = true;
-  void render().then(() => { if (document.activeElement === document.body) $("returnRange").focus(); });
+  void render().then(() => {
+    const focused = document.activeElement;
+    const hiddenDay = $("trendCard").contains(focused) && focused?.closest("[hidden]");
+    if (focused === document.body || hiddenDay) $("returnRange").focus();
+  });
 }
 
 let shareChart = false;
@@ -425,7 +433,8 @@ function trendTable(days: { date: string; tally: Tally }[], series: StatsSeries[
     const r = body.insertRow();
     const button = el("button", "linkish", dayFormat.format(dateOf(d.date)));
     button.type = "button";
-    button.addEventListener("click", () => selectDay(d.date));
+    button.value = d.date;
+    button.addEventListener("click", () => selectDay(d.date, true));
     r.insertCell().append(button);
     Object.assign(r.insertCell(), { className: "num", textContent: quantity(viewedWords(d.tally)) });
     Object.assign(r.insertCell(), { className: "num", textContent: quantity(d.tally.scored) });
@@ -790,7 +799,11 @@ function bySite(range: LogRange, site: string): LogRange {
   }
   return { visits, units: range.units.filter((u) => ids.has(u.visit)), totals };
 }
-$("filterClear").addEventListener("click", () => { siteFilter = null; void render(); });
+$("filterClear").addEventListener("click", () => {
+  if (document.activeElement === $("filterClear")) more.querySelector("summary")!.focus();
+  siteFilter = null;
+  void render();
+});
 
 async function render(): Promise<void> {
   const ticket = ++rendering;

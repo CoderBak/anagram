@@ -33,6 +33,43 @@ async function analyze(page, text) {
   await page.locator("#results").waitFor({ state: "visible" });
 }
 
+test("opening a text file preserves the report until a replacement can be read", async ({ page, extension }) => {
+  await page.goto(extension.url("paste.html"));
+  await analyze(page, TEXT);
+  const file = page.locator("#file");
+  const verdict = await page.locator("#summary").innerText();
+  for (const buffer of [Buffer.from([0xff]), Buffer.alloc(1024 ** 2 + 1)]) {
+    await file.setInputFiles({ name: "draft.txt", mimeType: "text/plain", buffer });
+    await expect(page.locator("#status")).not.toBeEmpty();
+    await expect(page.locator("#results")).toBeVisible();
+    await expect(page.locator("#summary")).toHaveText(verdict);
+    await expect(page.locator("#text")).toHaveValue(TEXT);
+    await expect(file).toHaveValue("");
+  }
+  // Going back to edit the draft while a file is decoding wins over the late read.
+  await page.evaluate(() => {
+    const read = File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer = async function () {
+      File.prototype.arrayBuffer = read;
+      const bytes = await read.call(this);
+      await new Promise(resolve => { window.finishFileRead = resolve; });
+      return bytes;
+    };
+  });
+  await file.setInputFiles({ name: "draft.txt", mimeType: "text/plain", buffer: Buffer.from("Late file.") });
+  await page.waitForFunction(() => typeof window.finishFileRead === "function");
+  await page.locator("#edit").click();
+  await page.evaluate(() => window.finishFileRead());
+  await expect(page.locator("#text")).toHaveValue(TEXT);
+  await expect(page.locator("#analyze")).toBeEnabled();
+  await page.locator("#pick").focus();
+  await file.setInputFiles({ name: "draft.txt", mimeType: "text/plain", buffer: Buffer.from("A new draft.") });
+  await expect(page.locator("#text")).toHaveValue("A new draft.");
+  await expect(page.locator("#text")).toBeFocused();
+  await expect(page.locator("#results")).toBeHidden();
+  await expect(page.locator("#analyze")).toBeDisabled();
+});
+
 test("the result toolbar keeps its file action named and its controls on one row in narrow windows", async ({ page, extension }) => {
   await page.goto(extension.url("paste.html"));
   await analyze(page, TEXT);

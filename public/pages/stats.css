@@ -48,6 +48,7 @@ body { background: var(--background); }
 .record-tabs button { min-height: var(--control-height); padding: 4px 2px; border-bottom: 2px solid transparent; font-size: 13px; font-weight: 500; }
 .record-tabs button[aria-selected="true"] { color: var(--foreground); border-bottom-color: currentColor; font-weight: 600; }
 [role="tabpanel"]:focus-visible, .record-tabs button:focus-visible, .plot-controls button:focus-visible,
+.back-range:focus-visible, .site-pick:focus-visible, table.table button.linkish:focus-visible,
 .footer-action:focus-visible, .period-tabs button:focus-visible, #more summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
 #scoringDetails { font-size: 13px; }
 .legend:not([hidden]) + #scoringDetails { margin-top: 6px; }

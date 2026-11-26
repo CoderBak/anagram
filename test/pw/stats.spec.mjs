@@ -339,6 +339,7 @@ test("the statistics page shows what was kept: the share against before, the wor
   await expect(page.locator("#heroShare")).toHaveText("22%");
   await page.click("#filterClear");
   await expect(page.locator("#filter")).toBeHidden();
+  await expect(page.locator("#more summary")).toBeFocused();
   await expect(page.locator("#heroShare")).toHaveText("14%");
 
   // Seven days: a column a day, and a table that says the same; against the seven before, none.
@@ -384,6 +385,16 @@ test("the statistics page shows what was kept: the share against before, the wor
   await lastDay.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#trendCard")).toBeHidden();
+  await expect(page.locator("#returnRange")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(lastDay).toBeFocused();
+  const emptyDay = page.locator("#trendTable button").first();
+  await emptyDay.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#emptyCard")).toBeVisible();
+  await expect(page.locator("#returnRange")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(emptyDay).toBeFocused();
 });
 
 test("the weekly report switches between comparable shares and daily volume", async ({ page, extension, storage }) => {
