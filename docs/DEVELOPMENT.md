@@ -220,6 +220,8 @@ unsigned. On Linux or macOS with Python 3.11+, run
 `python3 test/packaged-install.py dist --previous /path/to/previous/release` to check
 a real archive upgrade, retained model data, removal and fresh installation in a temporary
 home. The test substitutes local Python provisioning and pauses model downloads.
+`node test/packaged-browser.mjs dist /path/to/previous/release` upgrades an unpacked Chrome
+installation in the same temporary profile and checks reading history, settings and retrying a model request.
 A release is published by `.github/workflows/release.yml`, dispatched by hand from
 its version tag, which first runs CI's macOS job (the gate; Linux, Windows and Firefox are
 CI's own runs and hold no release), builds the same assets, signs each with Sigstore

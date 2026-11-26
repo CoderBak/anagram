@@ -36,7 +36,7 @@ below, output/firefox-mv2/ holds the package's files, byte for byte.
    its postinstall step prepares the vendored files, checking each against its pinned hash.
    It downloads fastText's language identifier (lid.176.ftz) once, from
    dl.fbaipublicfiles.com, and takes no other bytes than the pinned ones.
-3. Run \`npm run build:firefox\`.
+3. Run \`VITE_ANAGRAM_RELEASE_BUILD=1 npm run build:firefox\` to build the same release installer controls as the packaged extension.
 4. The extension is in output/firefox-mv2/ (manifest.json at its root).
 
 The PDF reader's paragraph worker is committed prebuilt: vendor/document-worker/README.md

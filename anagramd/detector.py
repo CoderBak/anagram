@@ -140,7 +140,8 @@ class Detector:
 
     def __init__(self, root, pin, lid):
         import numpy as np
-        import onnxruntime as ort
+        from runtime_controller import import_onnxruntime
+        ort = import_onnxruntime()
         from tokenizers import Tokenizer
         from detector_graph import compile_graph
         from download_modelkit import plain_tree

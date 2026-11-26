@@ -356,7 +356,7 @@ async function statsPages(context, sw, extId, lang) {
     await page.click("#visitsTab");
     await page.click("#visitsTable button.linkish").catch(() => {});
     await page.locator("#replay:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
-    if (await up(page, "#visitTimeline summary")) await page.click("#visitTimeline summary");
+    if (await page.locator("#visitTimeline summary").isVisible()) await page.click("#visitTimeline summary");
     await check(page, lang, "statistics, a week");
     await page.click("#more summary").catch(() => {});
     await check(page, lang, "statistics, more");

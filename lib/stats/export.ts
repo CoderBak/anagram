@@ -15,7 +15,7 @@ import { coarseDur, coarseLang, coarseLen, coarseTime, retainedTitle, coarseVerd
 import { coarserPlaceLayer, groupTotals, projectTotal } from "./totals";
 import { TABLES } from "./dictionary";
 import { keyedHash } from "./hash";
-import { headlineOf, needsParagraphs, type Lens } from "./lens";
+import { headlineOf, isDefaultLens, needsParagraphs, type Lens } from "./lens";
 import {
   addTally, emptyTally, indexHashedPlaces, readFlagOnly, recordedRead, type HashedPlaces, type PlaceLayerKey, type Tally, ARRIVALS, INPUT_KINDS, STATE_KINDS, UI_EVENTS,
   type ContextRow, type EventChunk, type TabEvent, type TotalRow, type UnitRow, type VisitRow,
@@ -218,7 +218,8 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
   // ---- the lens ---------------------------------------------------------------------------------------
   const lensRange = source.lensRange ?? source;
   const recounted = needsParagraphs(opts.lens) && unitsKept && canApply(lensRange, opts.lens);
-  if (unitsKept) {
+  // Headline and estimator choices can be exported directly from retained daily totals.
+  if (unitsKept || (!isDefaultLens(opts.lens) && !needsParagraphs(opts.lens))) {
     const groups = new Map<string, Tally>();
     const addGroup = (date: string, kind: string, tally: Tally): void => {
       const id = date + "\t" + kind;

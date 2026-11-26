@@ -812,6 +812,14 @@ test("AI-assisted uses the reader's amber in current and mixed history", async (
   await expect(today.locator(".seg.b1")).toHaveCount(1);
   await today.locator(".hit").hover();
   await expect(page.locator("#trendTip .b1")).toContainText("AI-assisted 25%");
+  await page.selectOption("#lensHeadline", "assistedAndAi");
+  await page.click("#export");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#exportSave")]);
+  const file = JSON.parse(await readFile(await download.path(), "utf8"));
+  expect(file.manifest.lens.headline).toBe("assistedAndAi");
+  const rows = file.tables.lens;
+  expect(rows.rows.map(row => [row[rows.columns.indexOf("date")], row[rows.columns.indexOf("headline")]]))
+    .toEqual([[daysAgo(1), 0], [localDate(), .4]]);
 });
 
 test("visit facts survive event expiry and open inline with the keyboard at narrow widths", async ({ page, extension, storage }) => {
