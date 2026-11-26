@@ -36,20 +36,20 @@ test("as shipped, a page sees that chips are there and nothing of what they say"
 });
 
 test("Sentence labels opens and closes inside a pinned shipping chip", async ({ page, pages, extension, nativeHost }) => {
-  nativeHost.setState({ rules: [{ contains: "MIXED", result: {
+  nativeHost.setState({ model: { id: "fake-detector", ver: "test", calibration: "anagram-detector/1" }, rules: [{ contains: "MIXED", result: {
     bucket: 2, probs: [0.4, 0, 0.6], score: 0.6, sentenceLabels: [0, 2],
     lang: "en", lang_prob: 0.99, tokens: 200, truncated: false,
   } }] });
   pages.serve({ "/mixed.html": PAGE("Mixed verdict", `<p>${PARA("MIXED")} ${PARA("SECOND")}</p>`) });
   await page.goto(pages.url("/mixed.html"));
-  await page.locator('[data-anagram="host"]').click();
   const readCard = () => extension.worker().evaluate(async url => {
     const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
     const [frame] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => {
-        const root = chrome.dom.openOrClosedShadowRoot(document.querySelector('[data-anagram="host"]'));
-        const details = root.querySelector(".sentence-labels");
+        const host = document.querySelector('[data-anagram="host"]');
+        const root = host && chrome.dom.openOrClosedShadowRoot(host);
+        const details = root?.querySelector(".sentence-labels");
         if (!details) return null;
         const bounds = details.querySelector("summary").getBoundingClientRect();
         return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open,
@@ -58,7 +58,9 @@ test("Sentence labels opens and closes inside a pinned shipping chip", async ({ 
     });
     return frame.result;
   }, page.url());
-  await expect.poll(readCard).toMatchObject({ mode: "closed", pinned: true, open: false });
+  await expect.poll(readCard, {timeout: 20_000}).toMatchObject({ mode: "closed", open: false });
+  await page.locator('[data-anagram="host"]').click();
+  await expect.poll(readCard).toMatchObject({ pinned: true });
   for (const open of [true, false]) {
     const { x, y } = await readCard();
     await page.mouse.click(x, y);

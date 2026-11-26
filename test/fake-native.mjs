@@ -204,7 +204,8 @@ async function serveNative(stateFile, logFile) {
     if (request.op === "health") {
       if (component.state === "idle") return failed(request, 503, "engine_idle", "Fixture engine unloaded while idle");
       if (component.state !== "ready" || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");
-      return ok(request, { ok: true, contract: s.contract, model: s.model, n_buckets: 4, buckets: BUCKETS,
+      const buckets = s.model.calibration === "anagram-detector/1" ? ["human", "ai_assisted", "ai_generated"] : BUCKETS;
+      return ok(request, { ok: true, contract: s.contract, model: s.model, n_buckets: buckets.length, buckets,
         languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion });
     }
     if (request.op === "tokens") {
