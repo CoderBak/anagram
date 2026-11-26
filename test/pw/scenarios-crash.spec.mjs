@@ -176,7 +176,7 @@ test.describe("the engine dies on every batch", () => {
     await paste.goto(extension.url("paste.html"));
     await paste.locator("#text").fill(PASTE("PASTEALWAYS"));
     await paste.locator("#analyze").click();
-    await expect(paste.locator("#status"), `${others} (the paste page)`).toContainText("did not complete", { timeout: 30_000 });
+    await expect(paste.locator("#status"), `${others} (the paste page)`).toHaveText(await paste.evaluate(() => chrome.i18n.getMessage("pasteFailed")), { timeout: 30_000 });
     await expect(paste.locator("#analyze"), `${others} (the paste page)`).toBeEnabled();
     expect.soft(nativeHost.crashes(), `${others} (no host started)`).toBe(later);
 

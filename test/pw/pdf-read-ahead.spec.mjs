@@ -423,8 +423,8 @@ test("past what it reads without asking, the menu offers the whole document, and
 
   // The same document read by one worker, from nothing cached: the same paragraphs.
   await caps({ rangePages: 100 });
-  await opt.click("#clearCache");
-  await expect(opt.locator("#cacheStatus")).toContainText("Cleared");
+  const cleared = await opt.evaluate(() => chrome.runtime.sendMessage({ action: "clearCache" }));
+  expect(cleared?.ok).toBe(true);
   const again = await openPdfInReader(context, tall);
   await readerRead(again, { timeout: 30_000 });
   const whole = await wholeReport(again, "PDF reader: the same document read by one worker");

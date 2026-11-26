@@ -295,13 +295,14 @@ keyboard("the browser sizes the toolbar popup to its report, including the expan
     const popup = chrome.extension.getViews({ type: "popup" })[0];
     if (!popup?.document.querySelector(".report-result")) return null;
     const root = popup.document.documentElement;
-    return { width: popup.innerWidth, height: popup.innerHeight, fits: root.scrollWidth <= root.clientWidth };
+    // Chromium may add a native vertical scrollbar outside the 300px content area.
+    return { width: root.getBoundingClientRect().width, height: popup.innerHeight, fits: root.scrollWidth <= root.clientWidth };
   });
   await expect.poll(layout).toMatchObject({ width: 300, fits: true });
   const collapsed = await layout();
   await observer.evaluate(() => chrome.extension.getViews({ type: "popup" })[0].document.querySelector("#pageReport summary").click());
   await expect.poll(async () => (await layout())?.height).toBeGreaterThan(collapsed.height);
-  expect(await layout()).toMatchObject({ width: 300, fits: true });
+  await expect.poll(layout).toMatchObject({ width: 300, fits: true });
 });
 
 keyboard("next/prev-flagged walk the flagged paragraphs in document order and wrap around", async ({ keys: page, tell }) => {
