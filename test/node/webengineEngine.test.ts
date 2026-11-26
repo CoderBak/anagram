@@ -623,7 +623,9 @@ it("switches dated releases, reuses unchanged weights and restores the last work
     await engine.handle("models.select",{release:bad});
     await vi.waitFor(async()=>expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}}));
     const requests=server.requests.length;
-    await engine.close();engine=makeEngine();
+    await engine.close();
+    const writes = vi.spyOn(store, "writer").mockRejectedValue(new DOMException("Disk full", "QuotaExceededError"));
+    engine=makeEngine();
     expect((await ready(engine)).state).toBe("ready");
     expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}});
     expect(server.requests).toHaveLength(requests);
@@ -636,5 +638,6 @@ it("switches dated releases, reuses unchanged weights and restores the last work
     expect(warm.data).toMatchObject({ window: 512 });
     expect(engine.idle).toBe(true);
     expect(weights).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
   } finally { await engine.close(); }
 });

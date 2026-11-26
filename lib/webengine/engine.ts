@@ -186,8 +186,10 @@ export class Engine {
       if (this.cannotRun) { this.state = "error"; this.error = CANNOT_RUN; return; }
       if (this.gpuUnavailable()) return;
       if (await this.modelsPresent()) {
-        if (this.settings.download_pending) this.settings.download_pending = false;
-        await this.writeSettings();
+        if (this.settings.download_pending) {
+          this.settings.download_pending = false;
+          await this.writeSettings();
+        }
         if (this.init.idle && !this.settings.engine_stopped) { this.state = "idle"; return; }
         this.startRuntime();
         return;
@@ -481,15 +483,17 @@ export class Engine {
         if (release) {
           const previous = this.settings.release;
           const pending = this.settings.pending_release;
-          this.settings.release = release;
-          delete this.settings.pending_release;
-          try {
-            await this.writeSettings(true);
-          } catch (error) {
-            this.settings.release = previous;
-            this.settings.pending_release = pending;
-            await session.release();
-            throw error;
+          if (pending || previous !== release) {
+            this.settings.release = release;
+            delete this.settings.pending_release;
+            try {
+              await this.writeSettings(true);
+            } catch (error) {
+              this.settings.release = previous;
+              this.settings.pending_release = pending;
+              await session.release();
+              throw error;
+            }
           }
           await this.dropOtherFiles().catch(() => {});
         }
