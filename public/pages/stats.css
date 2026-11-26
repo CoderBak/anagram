@@ -48,7 +48,7 @@ body { background: var(--background); }
 .record-tabs button { min-height: var(--control-height); padding: 4px 2px; border-bottom: 2px solid transparent; font-size: 13px; font-weight: 500; }
 .record-tabs button[aria-selected="true"] { color: var(--foreground); border-bottom-color: currentColor; font-weight: 600; }
 [role="tabpanel"]:focus-visible, .record-tabs button:focus-visible, .plot-controls button:focus-visible,
-.back-range:focus-visible, .site-pick:focus-visible, table.table button.linkish:focus-visible,
+.back-range:focus, #trendTable button:focus, .site-pick:focus-visible, table.table button.linkish:focus-visible,
 .footer-action:focus-visible, .period-tabs button:focus-visible, #more summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
 #scoringDetails { font-size: 13px; }
 .legend:not([hidden]) + #scoringDetails { margin-top: 6px; }
@@ -111,7 +111,7 @@ table.table tr.pick:hover td, table.table tr[aria-current="true"] td { backgroun
 .back-range { min-height: 26px; background: transparent; border: 0; padding: 0; font: inherit; font-size: 13px; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 2px; color: var(--foreground); cursor: pointer; }
 #rangeForm { display: grid; gap: 10px; }
 #rangeForm button { justify-self: end; }
-details.more::details-content { transition: none; }
+details.more::details-content, details.table-view::details-content { transition: none; }
 details.more > summary { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 7px; border-radius: var(--radius); font-size: 13px; font-weight: 500; color: var(--muted-foreground); list-style: none; cursor: pointer; }
 details.more > summary:hover { color: var(--foreground); background: var(--accent); }
 details.more > summary::-webkit-details-marker { display: none; }

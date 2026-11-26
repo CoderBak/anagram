@@ -388,6 +388,7 @@ test("the statistics page shows what was kept: the share against before, the wor
   await expect(page.locator("#returnRange")).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(lastDay).toBeFocused();
+  await expect(lastDay).toHaveCSS("outline-style", "solid");
   const emptyDay = page.locator("#trendTable button").first();
   await emptyDay.focus();
   await page.keyboard.press("Enter");
