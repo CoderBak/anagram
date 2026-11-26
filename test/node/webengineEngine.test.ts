@@ -380,6 +380,30 @@ describe("the engine's lifecycle", () => {
     expect(next.log).toEqual(["create webgpu:fp32"]);
   });
 
+  it("shares the tokenizer read for idle counts and discards an answer after Stop", async () => {
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    const m = track(make({ store: first.store, idle: true }));
+    await m.engine.start();
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const read = m.store.read.bind(m.store);
+    const opened = vi.spyOn(m.store, "read").mockImplementation(async name => {
+      if (name === "tokenizer.json") { entered.resolve(); await resume.promise; }
+      return read(name);
+    });
+    const count = () => m.engine.handle("tokens", { v: "3.0", texts: ["the"] });
+    const one = count(), two = count();
+    await entered.promise;
+    await m.engine.handle("engine.stop", {});
+    resume.resolve();
+    await Promise.all([fails(one, "not_ready", 503), fails(two, "not_ready", 503)]);
+    expect(opened.mock.calls.filter(([name]) => name === "tokenizer.json")).toHaveLength(1);
+    expect(m.log).toEqual([]);
+  });
+
   it("starts idle in the worker that follows an idle one, and loads for the next score", async () => {
     const first = track(make());
     await first.engine.handle("models.download", {});
@@ -389,6 +413,9 @@ describe("the engine's lifecycle", () => {
     let { data } = await m.engine.handle("status", {});
     expect(data).toMatchObject({ state: "idle", runtime: { state: "idle", active_id: null } });
     await fails(m.engine.handle("health", {}), "engine_idle", 503);
+    const counts = await m.engine.handle("tokens", { v: "3.0", texts: ["the", ""] });
+    expect(counts.data).toMatchObject({ alone: [1, 0], following: [1, 0] });
+    expect(m.engine.idle).toBe(true);
     expect(m.log).toEqual([]);
     ({ data } = await m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] }));
     expect((data as { results: Array<{ lang: string }> }).results[0]!.lang).toBe("en");
@@ -585,7 +612,7 @@ it("switches dated releases, reuses unchanged weights and restores the last work
   const first=release("2026-12-01","1".repeat(40)),next=release("2026-12-02","2".repeat(40)),bad=release("2026-12-03","3".repeat(40),true);
   const store=new MemoryStore(),server=fakeServer(data);
   const initial={...releasePin(packaged(LID),"fp32",first),lid:pin().lid};
-  const makeEngine=()=>new Engine({pin:initial,store,assets:ASSETS,version:"test",probe:async()=>candidates(),
+  const makeEngine=(idle = false)=>new Engine({idle,pin:initial,store,assets:ASSETS,version:"test",probe:async()=>candidates(),
     transport:server.fetch,retryWaits:[],createSession:async(c)=>({device:"wasm",info:{candidate:c,createMs:0,firstRunMs:0},async logits(){throw new Error("unexpected legacy pass");},async release(){}})});
   let engine=makeEngine();
   try {
@@ -600,5 +627,14 @@ it("switches dated releases, reuses unchanged weights and restores the last work
     expect((await ready(engine)).state).toBe("ready");
     expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}});
     expect(server.requests).toHaveLength(requests);
+    const payload = { v: "3.0", texts: ["The", "the", ""] };
+    const warm = await engine.handle("tokens", payload);
+    await engine.close();
+    engine = makeEngine(true);
+    const weights = vi.spyOn(store, "file");
+    expect(await engine.handle("tokens", payload)).toEqual(warm);
+    expect(warm.data).toMatchObject({ window: 512 });
+    expect(engine.idle).toBe(true);
+    expect(weights).not.toHaveBeenCalled();
   } finally { await engine.close(); }
 });

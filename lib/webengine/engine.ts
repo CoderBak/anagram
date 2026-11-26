@@ -100,6 +100,13 @@ export interface EngineInit {
 /** What the engine needs of a session: the forward pass, its identity and a release. */
 export type LoadedSession = Pick<Session, "logits" | "info" | "device" | "release">;
 
+interface TextFiles {
+  tokenizer: Tokenizer;
+  bytes: Uint8Array;
+  meta?: DetectorMeta;
+  crf?: Crf;
+}
+
 interface Loaded { detector?: {meta:DetectorMeta;crf:Crf;session:Session}; session: LoadedSession; tokenizer: Tokenizer; lid: FastText; version: string }
 
 /** The FP16 model failed on this device and FP32 does not fit it: the setup page's "cannot run". */
@@ -126,6 +133,7 @@ export class Engine {
   private runtimeError: string | null = null;
   private activeId: string | null = null;
   private loaded: Loaded | null = null;
+  private readingText?: { pin: Pin; result: Promise<TextFiles> };
   private loading: Promise<void> | null = null;
   private loadAbort: AbortController | null = null;
   private storageBytes = 0;
@@ -391,6 +399,34 @@ export class Engine {
 
   // ---- the model ------------------------------------------------------------------------------
 
+  private async modelJson<T>(pin: Pin, path: string): Promise<T> {
+    const file = pin.files.find(f => f.path === path)!;
+    return JSON.parse(new TextDecoder().decode(await this.store.read(file.name))) as T;
+  }
+
+  /** Counts and a simultaneous model wake can share these reads. Idle counts keep no text cache. */
+  private textFiles(pin: Pin): Promise<TextFiles> {
+    if (this.readingText?.pin === pin) return this.readingText.result;
+    const read = async (): Promise<TextFiles> => {
+      const name = pin.release ? pin.files.find(f => f.path === "tokenizer/tokenizer.json")!.name : "tokenizer.json";
+      const [bytes, meta, crf] = await Promise.all([
+        this.store.read(name),
+        pin.release ? this.modelJson<DetectorMeta>(pin, "model.json") : undefined,
+        pin.release ? this.modelJson<Crf>(pin, "crf.json") : undefined,
+      ]);
+      if (pin.release) {
+        if (!meta || !crf) throw new Error("Missing detector metadata");
+        checkDetector(meta, crf, pin.release.release);
+      }
+      return { bytes, tokenizer: new Tokenizer(JSON.parse(new TextDecoder().decode(bytes))), meta, crf };
+    };
+    const result = read().finally(() => {
+      if (this.readingText?.result === result) this.readingText = undefined;
+    });
+    this.readingText = { pin, result };
+    return result;
+  }
+
   private startRuntime(): void {
     if (this.closed) return;
     if (this.settings.engine_stopped) { this.state = "stopped"; return; }
@@ -413,16 +449,12 @@ export class Engine {
       try {
         const files = new Map(this.pin.files.map((f) => [f.name, f]));
         const entryFor = (path:string) => this.pin.files.find(f=>f.path===path)!;
-        const json = async (path:string) => JSON.parse(new TextDecoder().decode(await this.store.read(entryFor(path).name)));
         const release = this.pin.release;
-        const tokenizerBytes = await this.store.read(release ? entryFor("tokenizer/tokenizer.json").name : "tokenizer.json");
-        const tokenizer = new Tokenizer(JSON.parse(new TextDecoder().decode(tokenizerBytes)));
-        const lidBytes = await readPackaged(this.init.pin.lid);
+        const [{ tokenizer, bytes, meta, crf }, lidBytes] = await Promise.all([
+          this.textFiles(this.pin), readPackaged(this.init.pin.lid),
+        ]);
         const lid = new FastText(lidBytes);
-        const meta:DetectorMeta | undefined = release ? await json("model.json") : undefined;
-        const crf:Crf | undefined = release ? await json("crf.json") : undefined;
-        if (meta && crf) checkDetector(meta,crf,release!.release);
-        const version = release ? release.revision+"-crf2" : this.modelVersion(files, tokenizerBytes, lidBytes);
+        const version = release ? release.revision+"-crf2" : this.modelVersion(files, bytes, lidBytes);
         const entry = release ? entryFor("backbone/model.safetensors") : files.get(modelFileName(this.tier))!;
         let session: LoadedSession | null = null;
         let lastError: unknown = null;
@@ -431,7 +463,7 @@ export class Engine {
           // The file itself, which the runtime reads from disk a tensor at a time.
           const model = await this.store.file(entry.name);
           try {
-            session = meta && !this.init.createSession ? await Session.detector(this.init.assets,candidate,await json("backbone/config.json"),meta.window,[
+            session = meta && !this.init.createSession ? await Session.detector(this.init.assets,candidate,await this.modelJson(this.pin, "backbone/config.json"),meta.window,[
               {path:"backbone/model.safetensors",data:model}, {path:"head.safetensors",data:await this.store.file(entryFor("head.safetensors").name)}
             ],abort.signal) : await (this.init.createSession ? this.init.createSession(candidate, model, abort.signal) : Session.create(this.init.assets, candidate, model, abort.signal));
             break;
@@ -653,16 +685,15 @@ export class Engine {
         return { status: 200, data: this.runtimeSnapshot() };
       }
       case "tokens": {
-        const request = parseTokensPayload(payload);
-        await this.wakeAndWait();
-        this.lastActivity = this.now();
-        const {detector,tokenizer} = this.loaded!;
-        if (detector) {
-          const clean = request.texts.map(normalizeDetector);
-          return {status:200,data:{alone:clean.map(t=>tokenizer.encode(t,false).length),
-            following:clean.map(t=>t ? tokenizer.encode(" "+t,false).length : 0),window:detector.meta.window}};
-        }
-        return { status: 200, data: countTokens(tokenizer, request.texts) };
+        const { texts } = parseTokensPayload(payload);
+        const { tokenizer, meta } = await this.countingTools();
+        if (!meta) return { status: 200, data: countTokens(tokenizer, texts) };
+        const clean = texts.map(normalizeDetector);
+        return { status: 200, data: {
+          alone: clean.map(t => tokenizer.encode(t, false).length),
+          following: clean.map(t => t ? tokenizer.encode(" " + t, false).length : 0),
+          window: meta.window,
+        } };
       }
       case "score":
         return { status: 200, data: await this.score(parseScorePayload(payload).blocks) };
@@ -795,6 +826,22 @@ export class Engine {
       throw new EngineError("internal_error", `Deleting the model files failed: ${asText(error)}`, 500);
     }
     return this.status();
+  }
+
+  private async countingTools(): Promise<{ tokenizer: Tokenizer; meta?: DetectorMeta }> {
+    if (this.idle) {
+      const pin = this.pin;
+      const tools = await this.textFiles(pin);
+      // A settings operation can stop or replace the engine while OPFS is being read.
+      if (this.closed || pin !== this.pin || this.selecting || this.settings.engine_stopped ||
+          this.operation?.status === "running" || !["idle", "loading", "ready"].includes(this.state)) {
+        throw new EngineError("not_ready", "The model changed while counting tokens", 503);
+      }
+      return tools;
+    }
+    await this.wakeAndWait();
+    this.lastActivity = this.now();
+    return { tokenizer: this.loaded!.tokenizer, meta: this.loaded!.detector?.meta };
   }
 
   private async score(blocks: Array<{ id: string; text: string }>) {
