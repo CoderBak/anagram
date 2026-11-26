@@ -29,7 +29,7 @@ function byteAlphabet(): string[] {
   return table;
 }
 
-interface AddedToken { id: number; content: string; lstrip: boolean; rstrip: boolean; single_word: boolean }
+interface AddedToken { id: number; content: string; lstrip: boolean; rstrip: boolean; single_word: boolean; normalized?: boolean }
 
 export interface TokenizerFile {
   normalizer?: {type:string} | null;
@@ -39,13 +39,23 @@ export interface TokenizerFile {
   model: { type: string; vocab: Record<string, number>; merges: Array<[string, string] | string> };
 }
 
+interface AddedMatcher { pattern: RegExp; tokens: Map<string, AddedToken> }
+
+function addedMatcher(tokens: AddedToken[]): AddedMatcher {
+  const bySpelling = new Map<string, AddedToken>();
+  for (const token of tokens.toSorted((x, y) => y.content.length - x.content.length)) {
+    if (!bySpelling.has(token.content)) bySpelling.set(token.content, token);
+  }
+  const spellings = [...bySpelling.keys()].map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return { pattern: new RegExp(spellings.join("|"), "g"), tokens: bySpelling };
+}
+
 export class Tokenizer {
   private readonly vocab: Map<string, number>;
   private readonly ranks = new Map<string, number>();
   private readonly bytes = byteAlphabet();
   private readonly encoder = new TextEncoder();
-  private readonly addedBySpelling = new Map<string, AddedToken>();
-  private readonly addedPattern: RegExp;
+  private readonly addedMatchers: AddedMatcher[];
   private readonly cache = new Map<string, number[]>();
   private readonly widths = new Map<number,number>();
   private readonly nfc: boolean;
@@ -63,13 +73,13 @@ export class Tokenizer {
       const [a, b] = Array.isArray(merge) ? merge : merge.split(" ");
       this.ranks.set(`${a}\u0000${b}`, rank);
     });
-    // Regex alternatives at the same position are tried in order. Escape each spelling
-    // as a literal so normal prose can skip straight to the next actual added token.
-    for (const token of file.added_tokens.toSorted((x, y) => y.content.length - x.content.length)) {
-      if (token.content && !this.addedBySpelling.has(token.content)) this.addedBySpelling.set(token.content, token);
-    }
-    const spellings = [...this.addedBySpelling.keys()].map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    this.addedPattern = new RegExp(spellings.join("|") || "(?!)", "g");
+    // Hugging Face extracts non-normalized tokens first. For example, [MASK] takes
+    // its leading whitespace before a normalized multi-space token can match it.
+    const added = file.added_tokens.filter(token => token.content.length > 0);
+    this.addedMatchers = [
+      added.filter(token => token.normalized === false),
+      added.filter(token => token.normalized !== false),
+    ].filter(group => group.length > 0).map(addedMatcher);
     const special = (name:string) => file.added_tokens.find(t=>t.content===name);
     this.clsId = file.post_processor?.cls?.[1] ?? special("[CLS]")?.id ?? -1;
     this.sepId = file.post_processor?.sep?.[1] ?? special("[SEP]")?.id ?? -1;
@@ -97,16 +107,23 @@ export class Tokenizer {
   private encodeIds(text: string, addSpecialTokens: boolean, consumed?: Map<number, number>): number[] {
     const ids: number[] = [];
     if (addSpecialTokens) ids.push(this.clsId);
+    this.encodeSpan(text, ids, 0, consumed);
+    if (addSpecialTokens) ids.push(this.sepId);
+    return ids;
+  }
+
+  private encodeSpan(text: string, ids: number[], stage: number, consumed?: Map<number, number>): void {
+    if (!text) return;
+    const matcher = this.addedMatchers[stage];
+    if (!matcher) { this.encodeText(text, ids); return; }
     let from = 0;
-    for (const match of this.addedMatches(text)) {
-      this.encodeText(text.slice(from, match.start), ids);
+    for (const match of this.addedMatches(text, matcher)) {
+      this.encodeSpan(text.slice(from, match.start), ids, stage + 1, consumed);
       if (consumed && match.stripped) consumed.set(ids.length, this.encoder.encode(text.slice(match.start, match.end)).length);
       ids.push(match.id);
       from = match.end;
     }
-    this.encodeText(text.slice(from), ids);
-    if (addSpecialTokens) ids.push(this.sepId);
-    return ids;
+    this.encodeSpan(text.slice(from), ids, stage + 1, consumed);
   }
 
   /** Character offsets for the release's byte-level vocabulary, including split Unicode scalars. */
@@ -129,25 +146,24 @@ export class Tokenizer {
   }
 
   /** Leftmost-longest occurrences of the added tokens, with their strip rules applied. */
-  private addedMatches(text: string): Array<{ start: number; end: number; id: number; stripped: boolean }> {
+  private addedMatches(text: string, matcher: AddedMatcher): Array<{ start: number; end: number; id: number; stripped: boolean }> {
     const out: Array<{ start: number; end: number; id: number; stripped: boolean }> = [];
-    this.addedPattern.lastIndex = 0;
+    matcher.pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = this.addedPattern.exec(text)) !== null) {
-      const found = this.addedBySpelling.get(match[0])!;
+    while ((match = matcher.pattern.exec(text)) !== null) {
+      const found = matcher.tokens.get(match[0])!;
       let start = match.index;
-      let end = this.addedPattern.lastIndex;
+      let end = matcher.pattern.lastIndex;
       if (found.single_word) {
         const before = start > 0 ? text[start - 1] : "";
         const after = end < text.length ? text[end] : "";
-        if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) { this.addedPattern.lastIndex = start + 1; continue; }
+        if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) { matcher.pattern.lastIndex = start + 1; continue; }
       }
-      if (found.lstrip) while (start > 0 && WHITESPACE.test(text[start - 1]!)) start--;
+      const previousEnd = out.at(-1)?.end ?? 0;
+      if (found.lstrip) while (start > previousEnd && WHITESPACE.test(text[start - 1]!)) start--;
       if (found.rstrip) while (end < text.length && WHITESPACE.test(text[end]!)) end++;
-      const previous = out[out.length - 1];
-      if (previous && previous.end > start) previous.end = start;
       out.push({ start, end, id: found.id, stripped: found.lstrip || found.rstrip });
-      this.addedPattern.lastIndex = end;
+      matcher.pattern.lastIndex = end;
     }
     return out;
   }

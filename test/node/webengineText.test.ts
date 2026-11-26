@@ -94,6 +94,16 @@ describe("byte-level BPE", () => {
       offsets: [[0, 3], [3, 11], [11, 18], [18, 19], [19, 20], [19, 20], [19, 20], [19, 20]],
     });
   });
+  it("extracts an unnormalized mask before normalized space tokens", () => {
+    const file = tinyTokenizerJson();
+    const mask = file.added_tokens.find(token => token.content === "<mask>")!;
+    mask.normalized = false;
+    file.added_tokens.push({ ...mask, content: "  ", id: 400, normalized: true, lstrip: false });
+    const t = new Tokenizer(file as never);
+    expect(t.encodeWithOffsets("the   <mask>  ")).toEqual({
+      ids: [id("the"), mask.id, 400], offsets: [[0, 3], [3, 12], [12, 14]],
+    });
+  });
   it("counts tokens alone and following a space", () => {
     const counts = countTokens(tokenizer(), ["The word", "", "  "]);
     expect(counts).toEqual({ alone: [2, 0, 0], following: [2, 0, 0], window: 510 });
