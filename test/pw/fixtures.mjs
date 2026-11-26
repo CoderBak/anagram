@@ -67,8 +67,9 @@ export const test = base.extend({
   offline: [false, { option: true }],
   tracing: [true, { option: true }],
 
-  nativeHost: async ({}, use) => {
-    const host = await createNativeFixture();
+  nativeFixtureOptions: [{}, { option: true }],
+  nativeHost: async ({nativeFixtureOptions}, use) => {
+    const host = await createNativeFixture(nativeFixtureOptions);
     await use(host);
     await host.close();
     host.dispose();

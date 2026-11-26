@@ -35,35 +35,41 @@ test("as shipped, a page sees that chips are there and nothing of what they say"
   await expect.poll(scored, { message: "every closed chip says its verdict", timeout: 20_000 }).toBe(3);
 });
 
-test("Sentence labels opens and closes inside a pinned shipping chip", async ({ page, pages, extension, nativeHost }) => {
-  nativeHost.setState({ model: { id: "fake-detector", ver: "test", calibration: "anagram-detector/1" }, rules: [{ contains: "MIXED", result: {
-    bucket: 2, probs: [0.4, 0, 0.6], score: 0.6, sentenceLabels: [0, 2],
-    lang: "en", lang_prob: 0.99, tokens: 200, truncated: false,
-  } }] });
-  pages.serve({ "/mixed.html": PAGE("Mixed verdict", `<p>${PARA("MIXED")} ${PARA("SECOND")}</p>`) });
-  await page.goto(pages.url("/mixed.html"));
-  const readCard = () => extension.worker().evaluate(async url => {
-    const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
-    const [frame] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => {
-        const host = document.querySelector('[data-anagram="host"]');
-        const root = host && chrome.dom.openOrClosedShadowRoot(host);
-        const details = root?.querySelector(".sentence-labels");
-        if (!details) return null;
-        const bounds = details.querySelector("summary").getBoundingClientRect();
-        return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open,
-          x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-      },
-    });
-    return frame.result;
-  }, page.url());
-  await expect.poll(readCard, {timeout: 20_000}).toMatchObject({ mode: "closed", open: false });
-  await page.locator('[data-anagram="host"]').click();
-  await expect.poll(readCard).toMatchObject({ pinned: true });
-  for (const open of [true, false]) {
-    const { x, y } = await readCard();
-    await page.mouse.click(x, y);
-    await expect.poll(readCard).toMatchObject({ pinned: true, open });
-  }
+test.describe("Sentence-level detector", () => {
+  test.use({ nativeFixtureOptions: {
+    model: { id: "fake-detector", ver: "test", calibration: "anagram-detector/1" },
+    rules: [{ contains: "MIXED", result: {
+      bucket: 2, probs: [0.4, 0, 0.6], score: 0.6, sentenceLabels: [0, 2],
+      lang: "en", lang_prob: 0.99, tokens: 200, truncated: false,
+    } }],
+  } });
+
+  test("Sentence labels opens and closes inside a pinned shipping chip", async ({ page, pages, extension }) => {
+    pages.serve({ "/mixed.html": PAGE("Mixed verdict", `<p>${PARA("MIXED")} ${PARA("SECOND")}</p>`) });
+    await page.goto(pages.url("/mixed.html"));
+    const readCard = () => extension.worker().evaluate(async url => {
+      const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const host = document.querySelector('[data-anagram="host"]');
+          const root = host && chrome.dom.openOrClosedShadowRoot(host);
+          const details = root?.querySelector(".sentence-labels");
+          if (!details) return null;
+          const bounds = details.querySelector("summary").getBoundingClientRect();
+          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open,
+            x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+        },
+      });
+      return frame.result;
+    }, page.url());
+    await expect.poll(readCard, {timeout: 20_000}).toMatchObject({ mode: "closed", open: false });
+    await page.locator('[data-anagram="host"]').click();
+    await expect.poll(readCard).toMatchObject({ pinned: true });
+    for (const open of [true, false]) {
+      const { x, y } = await readCard();
+      await page.mouse.click(x, y);
+      await expect.poll(readCard).toMatchObject({ pinned: true, open });
+    }
+  });
 });
