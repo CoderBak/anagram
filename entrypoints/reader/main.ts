@@ -840,20 +840,16 @@ window.addEventListener("pageshow", (event) => {
   resumeAfterPageShow = false;
 });
 
-const ownTab = browser.tabs.getCurrent();
-browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse): true | undefined => {
-  const msg = message as ControlMessage & { readerTabId?: number };
-  if (!msg || typeof msg !== "object" || sender.id !== browser.runtime.id) return;
-  if (sender.tab && sender.url?.split(/[?#]/, 1)[0] !== browser.runtime.getURL("/popup.html")) return;
-  // Runtime messages reach every extension page. Only the addressed reader may answer;
-  // cache invalidation is the one broadcast shared by all open readers.
-  if (msg.action === ACTIONS.CACHE_CLEARED) { orchestrator?.forgetCached(); return; }
-  if (!Number.isInteger(msg.readerTabId)) return;
-  void ownTab.then((tab) => {
-    if (tab?.id !== msg.readerTabId) return;
+void browser.tabs.getCurrent().then(tab => {
+  browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+    const msg = message as ControlMessage & { readerTabId?: number };
+    if (!msg || typeof msg !== "object" || sender.id !== browser.runtime.id) return;
+    if (sender.tab && sender.url?.split(/[?#]/, 1)[0] !== browser.runtime.getURL("/popup.html")) return;
+    if (msg.action === ACTIONS.CACHE_CLEARED) { orchestrator?.forgetCached(); return; }
+    // An unrelated reader must release the message channel so the popup can query the active tab.
+    if (tab?.id === undefined || tab.id !== msg.readerTabId) return;
     handleControl(msg, sendResponse);
   });
-  return true;
 });
 
 function handleControl(msg: ControlMessage, sendResponse: (response?: unknown) => void): void {
