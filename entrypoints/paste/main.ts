@@ -80,7 +80,7 @@ function clearDraft(): void {
   cancel(); input.value = ""; fileInput.value = ""; status.textContent = ""; clearResult(); countShown();
 }
 edit.addEventListener("click", () => {
-  cancel();
+  ++generation; // Abandon a pending file read. The draft and its cached verdict still match.
   clearResult();
   countShown();
   status.textContent = "";
@@ -91,8 +91,7 @@ window.addEventListener("pagehide", clearDraft);
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0]; if (!file) return;
   fileInput.value = ""; // The same file can be picked again after it has been corrected.
-  cancel();
-  const seq = generation;
+  const seq = ++generation;
   analyze.disabled = true;
   clear.hidden = false;
   try {
@@ -101,6 +100,7 @@ fileInput.addEventListener("change", async () => {
     const text = new TextDecoder("utf-8", {fatal: true}).decode(await file.arrayBuffer());
     if (seq !== generation) return;
     if (text.length > MAX_UNIT_TEXT_CHARS) { status.textContent = t("pasteTooLarge"); return; }
+    cancelDocumentSession();
     clearResult();
     input.value = text;
     status.textContent = "";

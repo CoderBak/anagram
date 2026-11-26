@@ -158,6 +158,8 @@ test("while the engine is idle, a cached verdict is shown without waking it, wit
   expect(status.server.ok).toBe(false);
   expect(status.model.id).toBe("fake-editlens");
   const beforeCached = nativeHost.stats.requests;
+  await page.locator("#file").setInputFiles({ name: "invalid.txt", mimeType: "text/plain", buffer: Buffer.from([0xff]) });
+  await expect(page.locator("#status")).not.toBeEmpty();
   await expect(page.locator("#text")).toBeHidden();
   await page.getByRole("button", { name: "Edit text" }).press("Enter");
   await expect(page.locator("#text")).toBeFocused();
