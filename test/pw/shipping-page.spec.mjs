@@ -47,29 +47,28 @@ test.describe("Sentence-level detector", () => {
   test("Sentence labels opens and closes inside a pinned shipping chip", async ({ page, pages, extension }) => {
     pages.serve({ "/mixed.html": PAGE("Mixed verdict", `<p>${PARA("MIXED")} ${PARA("SECOND")}</p>`) });
     await page.goto(pages.url("/mixed.html"));
-    const readCard = () => extension.worker().evaluate(async url => {
+    const readCard = (toggle = false) => extension.worker().evaluate(async ({url, toggle}) => {
       const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
       const [frame] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: () => {
+        args: [toggle],
+        func: toggle => {
           const host = document.querySelector('[data-anagram="host"]');
           const root = host && chrome.dom.openOrClosedShadowRoot(host);
           const details = root?.querySelector(".sentence-labels");
           if (!details) return null;
-          const bounds = details.querySelector("summary").getBoundingClientRect();
-          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open,
-            x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+          // The card repositions when it expands. Activate the summary at its current element.
+          if (toggle) details.querySelector("summary").click();
+          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open };
         },
       });
       return frame.result;
-    }, page.url());
-    await expect.poll(readCard, {timeout: 20_000}).toMatchObject({ mode: "closed", open: false });
+    }, {url: page.url(), toggle});
+    await expect.poll(() => readCard(), {timeout: 20_000}).toMatchObject({ mode: "closed", open: false });
     await page.locator('[data-anagram="host"]').click();
-    await expect.poll(readCard).toMatchObject({ pinned: true });
+    await expect.poll(() => readCard()).toMatchObject({ pinned: true });
     for (const open of [true, false]) {
-      const { x, y } = await readCard();
-      await page.mouse.click(x, y);
-      await expect.poll(readCard).toMatchObject({ pinned: true, open });
+      expect(await readCard(true)).toMatchObject({ pinned: true, open });
     }
   });
 });
