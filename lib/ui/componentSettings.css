@@ -7,7 +7,7 @@
   flex-direction: row; align-items: center; flex-wrap: wrap; gap: 6px 12px;
 }
 .component-install .component-command { flex: 1 1 100%; min-width: 0; }
-.component-settings .component-install > p:first-child { color: var(--foreground); }
+.component-settings .component-install > p:first-child { color: var(--foreground); overflow-wrap: anywhere; }
 .component-settings .component-command {
   margin: 0;
   padding: 12px 14px;

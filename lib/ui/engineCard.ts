@@ -86,7 +86,11 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")), oneClickTight, oneClickButton);
   const terminal = element("section", undefined, "engine-choice-card"); terminal.dataset.engine = "native";
   const terminalTitle = element("h3", t("engineTerminal")); terminalTitle.id = "engine-choice-native";
-  const terminalWhat = element("p", t("engineTerminalWhat"));
+  const terminalWhat = element("p");
+  const terminalInstructions = element("span");
+  const source = element("a", t("componentViewScript"), "installer-source");
+  source.target = "_blank"; source.rel = "noopener noreferrer";
+  terminalWhat.append(terminalInstructions, " ", source);
   const terminalButton = button("engineTerminalButton", "outline");
   terminalButton.id = "engine-pick-native";
   terminalButton.setAttribute("aria-describedby", "engine-choice-native");
@@ -181,7 +185,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
       oneClickTight.textContent = t("engineTight");
       oneClickTight.hidden = !d.tight;
-      terminalWhat.textContent = t(d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
+      source.href = nativePanel.installerSourceUrl(d.os === "windows");
+      terminalInstructions.textContent = t(d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
       if (d.offer === "terminal-only") { delete terminalButton.dataset.variant; } else terminalButton.dataset.variant = "outline";
     }
     options.onUpdate?.(null, null);

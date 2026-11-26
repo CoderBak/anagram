@@ -644,10 +644,10 @@
     "message": "无法移除扩展，请在浏览器的扩展管理页中移除。"
   },
   "componentInstallIntro": {
-    "message": "这条终端命令会把引擎安装到 $1，并为当前用户在浏览器中注册该引擎。"
+    "message": "这条终端命令会把引擎安装到 $1，下载模型，并为当前用户在浏览器中注册引擎。"
   },
   "componentInstallIntroWindows": {
-    "message": "这条 PowerShell 命令会把引擎安装到 $1，并为当前用户在浏览器中注册该引擎。"
+    "message": "这条 PowerShell 命令会把引擎安装到 $1，下载模型，并为当前用户在浏览器中注册引擎。"
   },
   "componentUnsupportedPlatform": {
     "message": "此平台没有可用的安装命令。"

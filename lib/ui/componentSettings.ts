@@ -27,6 +27,11 @@ const stateKeys: Record<ComponentSnapshot["state"], MessageKey> = {
   updating: "componentUpdating", uninstalling: "componentRemoving", error: "componentNeedsAttention",
 };
 
+/** Read-only source packaged with the same build that supplies the command's checksum. */
+export function installerSourceUrl(windows: boolean): string {
+  return browser.runtime.getURL((windows ? "/installer-source/install.ps1.html" : "/installer-source/install.sh.html") as PublicPath);
+}
+
 export function componentStateLabel(s: ComponentSnapshot): string {
   if (s.error?.code === "busy") return t("componentInUse");
   if (s.operation?.status === "scheduled") return t("componentSystemWindow");
@@ -212,7 +217,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     installIntro = t(windows ? "componentInstallIntroWindows" : "componentInstallIntro", folder);
     intro.textContent = installIntro;
     command.textContent = instruction.command;
-    script.href = browser.runtime.getURL((windows ? "/installer-source/install.ps1.html" : "/installer-source/install.sh.html") as PublicPath);
+    script.href = installerSourceUrl(windows);
     commandActions.hidden = false;
     copy.disabled = import.meta.env.VITE_ANAGRAM_RELEASE_BUILD !== "1";
   }).catch(() => { intro.textContent = t("componentUnsupportedPlatform"); commandActions.hidden = releaseNotice.hidden = true; });

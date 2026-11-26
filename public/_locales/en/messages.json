@@ -824,11 +824,11 @@
     "description": "Error after the engine was removed but the extension could not remove itself."
   },
   "componentInstallIntro": {
-    "message": "The Terminal command installs the engine in $1 and registers it with your browser for this user account.",
+    "message": "The Terminal command installs the engine in $1, downloads the model, and registers the engine with your browser for this account.",
     "description": "What the optional installer changes. $1 is the installation folder."
   },
   "componentInstallIntroWindows": {
-    "message": "The PowerShell command installs the engine in $1 and registers it with your browser for this user account.",
+    "message": "The PowerShell command installs the engine in $1, downloads the model, and registers the engine with your browser for this account.",
     "description": "What the optional installer changes. $1 is the installation folder."
   },
   "componentUnsupportedPlatform": {

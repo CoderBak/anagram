@@ -9,6 +9,7 @@
 // in order beside its section index with nothing folded; the popup carries the PDF reader and Analyze text. The engine's states are scripted into each
 // page (test/webengine/scripted-engine.mjs) on the device builds (test/pw/devices.mjs).
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { test, expect } from "./fixtures.mjs";
 import { scriptEngine } from "../webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS } from "../webengine/model-server.mjs";
@@ -111,6 +112,24 @@ test.describe("the setup page", () => {
     expect(await open()).toEqual([false, true, false]);
     await page.waitForTimeout(2500);
     expect(await open(), "the page's own checks change nothing chosen").toEqual([false, true, false]);
+  });
+
+  test("the installer can be read before granting Native Messaging or choosing an engine", async ({ extension }) => {
+    const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
+    const granted = () => page.evaluate(() => chrome.permissions.contains({ permissions: ["nativeMessaging"] }));
+    expect(await granted()).toBe(false);
+    const link = page.getByRole("link", { name: "Read installer source" });
+    await expect(link).toHaveAttribute("href", extension.url("installer-source/install.sh.html"));
+    const [source] = await Promise.all([extension.context.waitForEvent("page"), link.click()]);
+    for (const ext of ["sh", "ps1"]) {
+      if (ext === "ps1") await source.goto(extension.url("installer-source/install.ps1.html"));
+      const expected = readFileSync(join(import.meta.dirname, "..", "..", `install.${ext}`), "utf8").replaceAll("\r\n", "\n");
+      expect(await source.locator("pre").textContent()).toBe(expected);
+      await expect(source.locator("script")).toHaveCount(0);
+    }
+    await source.close();
+    expect(await granted()).toBe(false);
+    await expect(page.locator("#engine-pick-inbrowser")).toBeVisible();
   });
 
   test("the choice quotes no speed and no memory", async ({ extension }) => {

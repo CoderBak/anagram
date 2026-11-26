@@ -34,8 +34,8 @@ Step 1 decides how Anagram runs its model. Either way the model runs on this com
 - **On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card**, the
   page asks first, and nothing downloads until you pick:
   **One click** runs in the browser as above. **Terminal** asks the browser to let Anagram
-  talk to a local engine. Select **Copy command**, paste it into Terminal and press Enter.
-  **View command** shows the command and its installer script. Setup detects the engine when you return. The command runs the
+  talk to a local engine. Open **View command** to see what you would run. **Copy command** copies it to your clipboard.
+  **Read installer source** opens the script that ships with your extension. You can read it offline before granting permission. To install, paste the command into Terminal and press Enter. Setup detects the engine when you return. The command runs the
   installer only if it is the very file this extension was built with. No administrator
   password or system Python is needed. It installs the engine under `~/.anagram`, registers
   it for this exact extension, and downloads the model files with progress in the terminal
