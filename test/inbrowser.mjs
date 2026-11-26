@@ -51,6 +51,8 @@
 //   ANAGRAM_CHROME=<binary> npm run test:inbrowser   # the Native Messaging checks in that Chrome
 //                                      # too, e.g. Chrome for Testing 137, the manifest's minimum
 import { chromium } from "playwright";
+import { createHash } from "node:crypto";
+import release from "../anagramd/detector-release.json" with { type: "json" };
 import puppeteer from "puppeteer-core";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -67,6 +69,14 @@ import { LID } from "../scripts/webengine.mjs";
 const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
 const REAL = process.argv.includes("--real");
 const HUGGING_FACE = /^(huggingface\.co|[\w.-]+\.hf\.co)$/;
+
+// Setup reads these two catalog endpoints to label the recommended release and its size.
+const catalog = new Set(["refs", "revision/default"].map(path => `/api/models/${release.repository}/${path}`));
+const catalogRequest = request => request.host === "huggingface.co" && catalog.has(request.path);
+const onlyCatalogRequests = (server, since = 0) => server.requests.slice(since).every(catalogRequest);
+const installerDigest = createHash("sha256").update(readFileSync(new URL("../install.sh", import.meta.url))).digest("hex");
+const hasPinnedInstaller = command => !!command && command.endsWith(`install.sh' '${installerDigest}'`) &&
+  ["sha256sum -c", "shasum -a 256 -c"].some(check => command.includes(`${check} - && sh "$f"`));
 
 const results = [];
 const check = (name, ok, note = "") => {
@@ -242,7 +252,7 @@ for (const lang of ["en", "zh-CN"]) {
       seen.terminal.includes(w("engineTerminalButton")) && !/\bms\b|memory|faster|毫秒|内存|更快/i.test(`${seen.oneClick} ${seen.terminal}`) &&
       !(await setup.evaluate(() => !!document.querySelector(".engine-cost, .engine-choice > .engine-note"))), JSON.stringify(seen));
     await sleep(3000);
-    check(`${lang} choice: nothing downloads before a pick, and no engine is in use`, server.requests.length === 0 && (await engineOf(setup)) === null,
+    check(`${lang} choice: nothing downloads before a pick, and no engine is in use`, onlyCatalogRequests(server) && (await engineOf(setup)) === null,
       JSON.stringify(server.requests.slice(0, 3)));
     const popup = await extPage(context, extId, "popup.html", problems);
     await until(() => popup.evaluate((want) => !document.getElementById("action").disabled && document.getElementById("status").textContent === want, w("popupSetupNeeded")));
@@ -255,7 +265,7 @@ for (const lang of ["en", "zh-CN"]) {
     await refusing.click("#engine-pick-native");
     const reason = await until(() => textOf(refusing, ".engine-choice .engine-error"));
     check(`${lang} choice: a refused permission comes back to the choice with a line saying so`, reason === w("engineNativeRefused") &&
-      (await shown(refusing, "#engine-pick-inbrowser")) && (await engineOf(refusing)) === null && server.requests.length === 0, reason);
+      (await shown(refusing, "#engine-pick-inbrowser")) && (await engineOf(refusing)) === null && onlyCatalogRequests(server), reason);
     await refusing.close();
 
     // The in-browser engine: its download starts, and its panel follows it.
@@ -287,11 +297,11 @@ for (const lang of ["en", "zh-CN"]) {
     await grantInWorker(run.sw);
     await page.click("#engine-pick-native");
     const command = await until(() => textOf(page, "#install-cmd"), 15000);
-    check("choice: picking the local engine with the permission granted offers its verified install command", command?.includes("curl -fsSL") && /install\.sh' '[0-9a-f]{64}'$/.test(command) &&
+    check("choice: picking the local engine with the permission granted offers its verified install command", hasPinnedInstaller(command) &&
       (await engineOf(page)) === "native" && (await page.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("componentTitle") &&
       !(await shown(page, ".engine-choice")), command);
     await sleep(1000);
-    check("choice: and downloads nothing into the browser", server.requests.length === 0, JSON.stringify(server.requests.slice(0, 3)));
+    check("choice: and downloads nothing into the browser", onlyCatalogRequests(server), JSON.stringify(server.requests.slice(0, 3)));
   } finally {
     await run.close();
     await server.close();
@@ -314,13 +324,13 @@ for (const [name, want] of [["linux-nvidia", "nvidia"], ["linux-2gb", "cannot"],
         terminal: document.querySelector('.engine-choice-card[data-engine="native"]')?.innerText.replace(/\s+/g, " ").trim() ?? "",
         figures: [...document.querySelectorAll(".engine-choice > .engine-note")].filter((el) => !el.hidden).map((el) => el.textContent) }));
       check("NVIDIA on Linux: the choice, the local installation explained, and no figures", seen.terminal.includes(w("engineTerminalWhat")) &&
-        seen.figures.length === 0 && server.requests.length === 0, JSON.stringify(seen));
+        seen.figures.length === 0 && onlyCatalogRequests(server), JSON.stringify(seen));
     } else if (want === "cannot") {
       const said = await until(() => textOf(setup, ".engine-cannot"), 15000);
       await sleep(2000);
       check("too little memory: the setup page says so plainly and downloads nothing", said === w("engineCannotRun") &&
         (await setup.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("engineCannotTitle") &&
-        server.requests.length === 0 && (await engineOf(setup)) === null && !(await shown(setup, ".engine-choice")), said);
+        onlyCatalogRequests(server) && (await engineOf(setup)) === null && !(await shown(setup, ".engine-choice")), said);
     } else if (want === "tight") {
       const note = await until(() => textOf(setup, ".engine-tight"), 20000);
       check("4 GB: the in-browser engine sets up, with a line that the computer may slow down", note === w("engineTight") &&
@@ -432,7 +442,7 @@ if (process.env.ANAGRAM_CHROME) await nativeOptional("ANAGRAM_CHROME", process.e
     const command = await until(() => textOf(settings, "#install-cmd"), 15000);
     const left = await until(() => textOf(settings, "#engine-delete-leftover"), 10000);
     check("Settings: switching asks for the permission, then shows the install command, and the engine in use is the local one",
-      command?.includes("curl -fsSL") && (await engineOf(settings)) === "native" && (await textOf(settings, "#engineLabel")) === w("componentTitle"), command);
+      hasPinnedInstaller(command) && (await engineOf(settings)) === "native" && (await textOf(settings, "#engineLabel")) === w("componentTitle"), command);
     check("Settings: it offers to delete what the in-browser engine left, and deletes nothing by itself",
       /^Delete in-browser model \(\d+ MB\)$/.test(left ?? "") &&
       (await settings.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine"); return true; } catch { return false; } })), left);
@@ -492,8 +502,8 @@ for (const lang of ["en", "zh-CN"]) {
       (await textOf(setup, "#component-primary")) === w("componentPauseDownload") && (await textOf(setup, "#engine-cancel")) === w("engineCancelDownload"),
       `${await statusOf(setup)} · ${await textOf(setup, "#component-primary")} · ${await textOf(setup, "#engine-cancel")}`);
     check(`${lang}: its card is the in-browser engine's`, (await setup.evaluate(() => document.querySelector("#componentSettings")?.closest(".card")?.querySelector("h2")?.textContent)) === w("engineTitle"));
-    const first = server.requests.find((r) => !r.preflight);
-    check(`${lang}: the first request is the model, without a click`, first?.host === "huggingface.co" && first.file === "model.onnx", JSON.stringify(first));
+    const first = server.requests.find((r) => !r.preflight && !catalogRequest(r));
+    check(`${lang}: the first file requested is the model, without a click`, first?.host === "huggingface.co" && first.file === "model.onnx", JSON.stringify(first));
     const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === "model.onnx"));
     check(`${lang}: Hugging Face's redirect to its CDN is followed`, cdn, JSON.stringify(server.requests.slice(0, 4)));
     check(`${lang}: nothing is asked of any host but Hugging Face's`, server.requests.every((r) => HUGGING_FACE.test(r.host) && r.file !== "lid.176.ftz"),
@@ -599,7 +609,7 @@ for (const lang of ["en", "zh-CN"]) {
     await updated(sw);
     await sleep(3000);
     check(`${lang}: after Cancel, an update does not start the download again`,
-      server.requests.length === before && (await engine(setup, "status"))?.data?.state === "needs_models", JSON.stringify(server.requests.slice(before)));
+      onlyCatalogRequests(server, before) && (await engine(setup, "status"))?.data?.state === "needs_models", JSON.stringify(server.requests.slice(before)));
     await setup.close();
 
     // Not set up: the setup page and Settings show the in-browser block, what it needs, and no command.
@@ -673,7 +683,7 @@ for (const lang of ["en", "zh-CN"]) {
     await sleep(500);
     check(`${lang}: a disk too full to start says how much room to make, and downloads nothing`,
       fullText === w("engineDiskFull", size(DOWNLOAD_BYTES - 400e6)) && (lang !== "en" || fullText.endsWith("then click Retry.")) && (await textOf(full, "#component-primary")) === w("panelRetry") &&
-      (await textOf(full, "#componentSettings .component-error")) === fullText && server.requests.length === before, fullText);
+      (await textOf(full, "#componentSettings .component-error")) === fullText && onlyCatalogRequests(server, before), fullText);
     await full.close();
 
     // Set up against a server that fails: a failed setup, with what to do and Retry; Retry downloads.
@@ -707,7 +717,7 @@ for (const lang of ["en", "zh-CN"]) {
     await sleep(1500);
     const restartAt = server.requests.length;
     await sleep(2500);
-    check(`${lang}: with the engine gone mid-download, nothing starts it again by itself`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    check(`${lang}: with the engine gone mid-download, nothing starts it again by itself`, onlyCatalogRequests(server, restartAt), JSON.stringify(server.requests.slice(restartAt)));
     // Nor a page Anagram would read starting to open in the tab in front: the warm-up asks only
     // an engine that is running (lib/backend/warmup.ts). This one never arrives, so no content
     // script asks either.
@@ -715,12 +725,12 @@ for (const lang of ["en", "zh-CN"]) {
     await opening.bringToFront();
     await opening.goto("http://unreachable.test/").catch(() => {});
     await sleep(3000);
-    check(`${lang}: …nor a page starting to open in the tab in front`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    check(`${lang}: …nor a page starting to open in the tab in front`, onlyCatalogRequests(server, restartAt), JSON.stringify(server.requests.slice(restartAt)));
     await opening.close();
     await saveData(sw, true);
     await updated(sw);
     await sleep(3000);
-    check(`${lang}: an update while the browser asks to save data does not start the download`, server.requests.length === restartAt, JSON.stringify(server.requests.slice(restartAt)));
+    check(`${lang}: an update while the browser asks to save data does not start the download`, onlyCatalogRequests(server, restartAt), JSON.stringify(server.requests.slice(restartAt)));
     await saveData(sw, false);
     await updated(sw);
     const resumed = await until(async () => server.requests.slice(restartAt).find((r) => r.file === "model.onnx" && !r.preflight && r.range), 20000);
@@ -739,7 +749,7 @@ for (const lang of ["en", "zh-CN"]) {
     const last = await extPage(run.context, extId, "options.html", problems);
     const state = await until(async () => (await engine(last, "status"))?.data?.state);
     check(`${lang}: after a Cancel, a browser relaunch does not start the download again`,
-      state === "needs_models" && server.requests.length === lastAt, `${state} · ${JSON.stringify(server.requests.slice(lastAt))}`);
+      state === "needs_models" && onlyCatalogRequests(server, lastAt), `${state} · ${JSON.stringify(server.requests.slice(lastAt))}`);
     await last.close();
 
     // States the local server cannot reach quickly, in this language's words.
@@ -847,7 +857,7 @@ for (const lang of ["en", "zh-CN"]) {
       const received = Math.min(data.download.total_bytes, Math.max(data.download.bytes_received, data.storage.models_bytes));
       console.log(`full disk (${refusal}): stopped ${stoppedMs} ms after the disk filled, at ${data.storage.models_bytes} bytes; "${shown}"`);
       check(`full disk (${refusal}): a write that finds the disk full stops the download at once, without a retry`,
-        failed && stoppedMs < 2000 && server.requests.length === requests && data.download.error === "There is not enough free disk space for model.onnx",
+        failed && stoppedMs < 2000 && onlyCatalogRequests(server, requests) && data.download.error === "There is not enough free disk space for model.onnx",
         JSON.stringify({ stoppedMs, error: data.download.error, after: server.requests.slice(requests) }));
       check(`full disk (${refusal}): the setup page says how much room to make, from what is left to download, with Retry`,
         shown === w("engineDiskFull", size(DOWNLOAD_BYTES - received)) && (await textOf(setup, "#component-primary")) === w("panelRetry"), shown);
