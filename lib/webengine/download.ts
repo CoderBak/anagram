@@ -175,7 +175,12 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   // Already there, and the pinned bytes exactly.
   if ((await store.size(entry.name)) === entry.size_bytes) {
     onPhase?.("verifying");
-    if (await verifyFile(store, entry)) { onProgress(entry.size_bytes); return; }
+    if (await verifyFile(store, entry)) {
+      // A browser closed between finishing a fallback copy and removing its source.
+      await store.delete(part).catch(() => {});
+      onProgress(entry.size_bytes);
+      return;
+    }
     await store.delete(entry.name);
   }
   paused();

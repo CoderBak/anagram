@@ -157,22 +157,27 @@ export class OpfsStore implements FileStore {
     if (!file) throw new Error(`no such file: ${from}`);
     await this.delete(to);
     if (file.move) { await file.move(to); return; }
-    // No move(): copy through access handles, then drop the source.
-    const target = (await this.handle(to, true))!;
+    // The verified part stays available for Retry until the copy has flushed.
     const source = await file.createSyncAccessHandle();
-    const sink = await target.createSyncAccessHandle();
     try {
-      const size = source.getSize();
-      const chunk = new Uint8Array(CHUNK);
-      for (let at = 0; at < size; ) {
-        const got = source.read(chunk, { at });
-        if (got <= 0) throw new Error("short read from the origin-private file system");
-        const wrote = sink.write(chunk.subarray(0, got), { at });
-        if (wrote !== got) throw new DOMException(`The disk took ${wrote} of ${got} bytes`, "QuotaExceededError");
-        at += got;
-      }
-      sink.flush();
-    } finally { source.close(); sink.close(); }
+      const target = (await this.handle(to, true))!;
+      const sink = await target.createSyncAccessHandle();
+      try {
+        const size = source.getSize();
+        const chunk = new Uint8Array(Math.min(CHUNK, size));
+        for (let at = 0; at < size; ) {
+          const got = source.read(chunk, { at });
+          if (got <= 0) throw new Error("short read from the origin-private file system");
+          const wrote = sink.write(chunk.subarray(0, got), { at });
+          if (wrote !== got) throw new DOMException(`The disk took ${wrote} of ${got} bytes`, "QuotaExceededError");
+          at += got;
+        }
+        sink.flush();
+      } finally { sink.close(); }
+    } catch (error) {
+      await this.delete(to).catch(() => {});
+      throw error;
+    } finally { source.close(); }
     await this.delete(from);
   }
 

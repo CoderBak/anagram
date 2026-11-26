@@ -304,14 +304,14 @@ const NO_SPACE_COUNT = 2 ** 32 - 8;
 function fakeOpfs(room: number, full: "partial" | "code" = "partial") {
   const files = new Map<string, Uint8Array>();
   const open = new Set<string>();
-  const disk = { files, open, room, flushFails: false };
+  const disk = { files, open, room, flushFails: false, canMove: true, refuseOpen: "" };
   const used = () => [...files.values()].reduce((n, f) => n + f.length, 0);
   const handle = (name: string) => ({
     kind: "file",
     getFile: async () => new Blob([files.get(name)! as Uint8Array<ArrayBuffer>]),
-    move: async (to: string) => { files.set(to, files.get(name)!); files.delete(name); },
+    move: disk.canMove ? async (to: string) => { files.set(to, files.get(name)!); files.delete(name); } : undefined,
     createSyncAccessHandle: async () => {
-      if (open.has(name)) throw new DOMException("Access Handles cannot be created if there is another open Access Handle", "NoModificationAllowedError");
+      if (open.has(name) || disk.refuseOpen === name) throw new DOMException("Access Handles cannot be created if there is another open Access Handle", "NoModificationAllowedError");
       open.add(name);
       return {
         getSize: () => files.get(name)!.length,
@@ -355,6 +355,38 @@ function fakeOpfs(room: number, full: "partial" | "code" = "partial") {
 
 describe("the origin-private file system, full", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
+
+  it.each(["quota", "locked destination", "flush"])("reclaims a failed fallback copy (%s) and retries without downloading", async fault => {
+    const disk = fakeOpfs(Infinity);
+    disk.canMove = false;
+    const store = await OpfsStore.open();
+    disk.files.set("model.bin.part", FILE);
+    if (fault === "quota") disk.room = FILE.length + 300;
+    if (fault === "flush") disk.flushFails = true;
+    if (fault === "locked destination") disk.refuseOpen = "model.bin";
+    const transport = vi.fn();
+    await expect(downloadFile(store, entry(), { transport, retryWaits: [] })).rejects.toThrow();
+    expect([...disk.files.keys()]).toEqual(["model.bin.part"]);
+    expect(disk.open.size).toBe(0);
+    disk.room = Infinity;
+    disk.flushFails = false;
+    disk.refuseOpen = "";
+    await downloadFile(store, entry(), { transport });
+    expect(await store.list()).toEqual(["model.bin"]);
+    expect(await store.read("model.bin")).toEqual(FILE);
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("recovers the space of a fallback copy interrupted just before unlink", async () => {
+    const disk = fakeOpfs(Infinity);
+    disk.files.set("model.bin", FILE);
+    disk.files.set("model.bin.part", FILE);
+    const store = await OpfsStore.open();
+    const transport = vi.fn();
+    await downloadFile(store, entry(), { transport });
+    expect(await store.list()).toEqual(["model.bin"]);
+    expect(transport).not.toHaveBeenCalled();
+  });
 
   it("a write the disk takes only part of is a full disk, and the part keeps what it took", async () => {
     const disk = fakeOpfs(1000);
