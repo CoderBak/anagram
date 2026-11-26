@@ -32,11 +32,13 @@ if (TEST_GRANT_ALL && process.argv.slice(2).includes("zip")) {
 const ROOT = fileURLToPath(new URL(".", import.meta.url)).replace(/[/\\]$/, "");
 /** The installers this tree holds, which a release built from it serves unchanged
  *  (scripts/release.mjs): the setup page's command runs one only when it has this SHA-256. */
-const installerSources = (["sh", "ps1"] as const).map(ext => ({
-  name: `install.${ext}`, ext, contents: readFileSync(resolve(ROOT, `install.${ext}`), "utf8"),
-}));
-const INSTALLERS = Object.fromEntries(installerSources.map(({ ext, contents }) =>
-  [ext, createHash("sha256").update(contents).digest("hex")]));
+const installerSources = (["sh", "ps1"] as const).map(ext => {
+  const name = `install.${ext}`;
+  const bytes = readFileSync(resolve(ROOT, name));
+  const contents = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  return { ext, name, contents, digest: createHash("sha256").update(bytes).digest("hex") };
+});
+const INSTALLERS = Object.fromEntries(installerSources.map(({ ext, digest }) => [ext, digest]));
 const EN_MESSAGES = fileURLToPath(new URL("./public/_locales/en/messages.json", import.meta.url));
 const EN_MESSAGES_ID = "\0anagram:en-messages";
 
