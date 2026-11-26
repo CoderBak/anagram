@@ -49,7 +49,7 @@ const CARD_CSS = `
 .short, .unsure { color: #63636c; font-style: italic; margin-bottom: 4px; }
 .foot { margin-top: 6px; padding-top: 5px; border-top: 1px solid #f0f0f2; color: #63636c; font-size: 10.5px; }
 .close {
-  display: grid; place-items: center; width: 24px; height: 24px;
+  display: grid; place-items: center; width: 28px; height: 28px;
   border: 0; border-radius: 5px; padding: 0; background: transparent; color: #63636c; cursor: pointer;
 }
 .close svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }

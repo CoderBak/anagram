@@ -248,6 +248,7 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
 .disclosure-action::after {
   content: "";
   flex: none;
+  margin-inline-end: 2px;
   width: 5px;
   height: 5px;
   border: solid currentColor;
