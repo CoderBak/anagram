@@ -416,13 +416,9 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     // the card (Copy action) must not toggle the pin.
     host.addEventListener("click", (e) => {
       e.stopPropagation();
-      const card = cardOf(host);
-      const path = e.composedPath();
-      // A summary has its own activation behavior, even when the badge sits in a page link.
-      if (card && path.includes(card) && path.some((el) => el instanceof HTMLElement && el.tagName === "SUMMARY")) return;
       e.preventDefault();
+      const card = cardOf(host);
       if (!card) return;
-      if (path.includes(card)) return; // card-internal click (action button)
       const opening = !card.classList.contains("open");
       closeOpenCard();
       options.onCard?.(id, "chipClick");
@@ -466,6 +462,11 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const card = document.createElement("div");
     card.className = "card";
     card.lang = pill.lang;
+    // Inside the closed shadow root we can identify the summary and keep its native toggle.
+    card.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!(e.target instanceof Element && e.target.closest("summary"))) e.preventDefault();
+    });
     // Top layer where available (Chrome 114+, Firefox 125+): immune to clipping.
     if ("showPopover" in card) card.setAttribute("popover", "manual");
 

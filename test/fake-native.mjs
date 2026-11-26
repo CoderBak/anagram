@@ -107,7 +107,7 @@ export function readyComponent(home) {
 
 /** A filesystem control handle, not a server. Each browser starts the real stdio child.
  * close/resume simulate component loss/recovery without changing its registration.
- * Rules are plain test data: contains + delayMs / tokens.
+ * Rules are plain test data: contains + delayMs / tokens / result.
  * `crash` makes a host die the way an aborted engine does (an MLX Metal failure ends the
  * process in libc++abi): `{skip, times, delayMs}` lets `skip` score batches through, then
  * the next `times` ones (-1: every one) take their host down `delayMs` after they arrive,
@@ -227,7 +227,8 @@ async function serveNative(stateFile, logFile) {
         const rules = s.rules.filter((r) => b.text.includes(r.contains));
         for (const rule of rules) delay = Math.max(delay, rule.delayMs ?? 0);
         const tokens = rules.find((r) => r.tokens != null);
-        return { id: b.id, ...fakeScore(b.text, tokens?.tokens) };
+        const result = rules.find((r) => r.result)?.result ?? fakeScore(b.text, tokens?.tokens);
+        return { id: b.id, ...result };
       });
       await new Promise((r) => setTimeout(r, delay));
       if (!readState().enabled) process.exit(0);
