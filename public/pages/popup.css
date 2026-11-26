@@ -37,7 +37,8 @@ main { padding: 0 12px 8px; }
 
 .page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .page-actions:not(:has(> :not([hidden]))) { display: none; }
-.page-actions > .btn { min-height: var(--button-height); font-size: .78125rem; }
+/* Whole-pixel type metrics at the default zoom keep the label level with the status. */
+.page-actions > .btn { min-height: var(--button-height); font-size: .75rem; line-height: 1rem; }
 
 /* Page report: flagged list, then collapsible score breakdown. */
 .report { margin: 0; }
