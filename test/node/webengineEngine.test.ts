@@ -618,7 +618,7 @@ it("switches dated releases, reuses unchanged weights and restores the last work
   try {
     await engine.handle("models.download",{});expect((await ready(engine)).state).toBe("ready");
     await engine.handle("models.select",{release:next});expect((await ready(engine)).state).toBe("ready");
-    expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release},n_buckets:3});
+    expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release,ver:next.revision+"-crf3-wasm"},n_buckets:3});
     expect(server.requests.filter(r=>r.url.endsWith("/backbone/model.safetensors"))).toHaveLength(1);
     await engine.handle("models.select",{release:bad});
     await vi.waitFor(async()=>expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}}));

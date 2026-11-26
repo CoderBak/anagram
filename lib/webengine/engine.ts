@@ -456,7 +456,8 @@ export class Engine {
           this.textFiles(this.pin), readPackaged(this.init.pin.lid),
         ]);
         const lid = new FastText(lidBytes);
-        const version = release ? release.revision+"-crf2" : this.modelVersion(files, bytes, lidBytes);
+        // Tokenizer offsets and extraction order affect sentence labels in cached verdicts.
+        const version = release ? release.revision+"-crf3" : this.modelVersion(files, bytes, lidBytes);
         const entry = release ? entryFor("backbone/model.safetensors") : files.get(modelFileName(this.tier))!;
         let session: LoadedSession | null = null;
         let lastError: unknown = null;
