@@ -1142,19 +1142,14 @@ $("clearConfirm").addEventListener("click", () => {
 
 settings.statsConfig.watch((value) => { if (exportDialog.open) exportDialog.close(); config = configOf(value); void render(); });
 settings.statsClearedAt.watch(() => { if (exportDialog.open) exportDialog.close(); siteFilter = null; void render(); });
-let resized: ReturnType<typeof setTimeout> | undefined;
-let lastWidth = window.innerWidth;
-window.addEventListener("resize", () => {
-  if (window.innerWidth === lastWidth) return;
-  lastWidth = window.innerWidth;
-  clearTimeout(resized);
-  resized = setTimeout(() => {
-    if (shown && !$("sections").hidden && !$("trendChart").hidden) {
-      $("trendTip").hidden = true;
-      trendChart(shown.trend, shown.from, shown.to, shown.series);
-    }
-  }, 200);
-});
+const chartHost = $("trendChart");
+new ResizeObserver(() => {
+  const svg = chartHost.querySelector("svg");
+  const width = chartHost.clientWidth;
+  if (!shown || !svg || !width || svg.viewBox.baseVal.width === Math.max(300, width)) return;
+  $("trendTip").hidden = true;
+  trendChart(shown.trend, shown.from, shown.to, shown.series);
+}).observe(chartHost);
 // What was read in other tabs meanwhile: shown when this page is looked at again.
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void render(); });
 void render().then(() => { if (location.hash === "#export") openExport(); });

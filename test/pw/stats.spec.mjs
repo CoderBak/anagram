@@ -365,6 +365,11 @@ test("the statistics page shows what was kept: the share against before, the wor
   await page.click("#returnRange");
   await expect(page.locator('#ranges [data-range="7"]')).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#returnRange")).toBeHidden();
+  // A scrollbar or a change to the column can resize the chart without resizing the window.
+  const chart = page.locator("#trendChart");
+  await chart.evaluate(node => { node.style.maxWidth = "360px"; });
+  await expect(chart.locator("svg")).toHaveAttribute("width", "360");
+  await chart.evaluate(node => { node.style.removeProperty("max-width"); });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click('#ranges [data-range="30"]');
   await expect(page.locator("#trendChart g.col")).toHaveCount(30);
