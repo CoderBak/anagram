@@ -43,10 +43,10 @@ describe("model download", () => {
     let clock = 0;
     const now = vi.spyOn(performance, "now").mockImplementation(() => clock += 51);
     const resume = vi.fn(async () => signal.abort());
-    vi.stubGlobal("scheduler", { yield: resume });
+    vi.stubGlobal("scheduler", { postTask: resume });
     try {
       await expect(downloadFile(store, entry(), { signal: signal.signal, transport })).rejects.toBeInstanceOf(DownloadPaused);
-      expect(resume).toHaveBeenCalledOnce();
+      expect(resume).toHaveBeenCalledWith(expect.any(Function), { priority: "background" });
       expect(transport).not.toHaveBeenCalled();
       expect(await store.list()).toEqual([name]);
       expect(await store.read(name)).toEqual(FILE);
