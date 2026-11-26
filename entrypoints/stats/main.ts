@@ -248,7 +248,7 @@ interface StatsSeries { band: Band; slot: number; color: number }
 function statsBands(tallies: Tally[]): StatsSeries[] {
   const hasAssistedSlot = (tally: Tally) => tally.expected.length > 4 || tally.units.length > 4 || (tally.argmax?.length ?? 0) > 4;
   const current = tallies.some(hasAssistedSlot);
-  const legacy = tallies.some(tally => (tally.scored > 0 && !hasAssistedSlot(tally)) ||
+  const legacy = tallies.some(tally => (tally.scored > 0 && !tally.missingProbabilities && !hasAssistedSlot(tally)) ||
     [tally.expected, tally.units, tally.argmax].some(values => values?.[1] || values?.[2]));
   const slots = current ? (legacy ? [0, 1, 2, 4, 3] : [0, 4, 3]) : [0, 1, 2, 3];
   return slots.map(slot => ({
@@ -826,7 +826,10 @@ async function render(): Promise<void> {
   $("filterText").textContent = siteFilter === null ? "" : t("statsFilterSite", siteFilter || t("statsLocalFiles"));
 
   const summary = summarize(range, from, to, lens);
-  const series = statsBands([summary.total, ...summary.trend.map(day => day.tally)]);
+  // Categorical paragraph records can retain only the labels shared by both detectors.
+  // The original daily histograms still identify which classes were available.
+  const recordedDays = range.totals.filter(row => row.scope === "day").map(row => row.tally);
+  const series = statsBands([...recordedDays, summary.total, ...summary.trend.map(day => day.tally)]);
   if (summary.total.scored > 0) showHeadlineChoices(series);
   else if (!$<HTMLSelectElement>("lensHeadline").length) {
     // With no dated verdicts yet, show the current detector’s labels.

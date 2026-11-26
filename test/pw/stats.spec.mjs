@@ -822,6 +822,24 @@ test("AI-assisted uses the reader's amber in current and mixed history", async (
     .toEqual([[daysAgo(1), 0], [localDate(), .4]]);
 });
 
+test("a categorical recount keeps the current model’s labels when every retained label is human or generated", async ({page, extension, storage}) => {
+  const records = statsVisit();
+  const baseline = tally(200, [100, 0, 0, 100, 0], [1, 0, 0, 1, 0]);
+  for (const row of records.totals) row.tally = baseline;
+  records.visits[0].tally = baseline;
+  records.units.forEach((unit, i) => { unit.verdict = {band: i === 0 ? 3 : 0, argmax: i === 0 ? 3 : 0}; });
+  await storage.set({statsConfig: await presetConfig("paragraphs")});
+  await statsPage(page, extension, records);
+  await page.locator("#lens summary").click();
+  await page.selectOption("#lensHeadline", "assistedAndAi");
+  await page.selectOption("#lensEstimator", "chip");
+  await page.selectOption("#lensWeight", "paragraphs");
+  await expect(page.locator("#lensNote")).toHaveText("Calculated from recorded paragraphs.");
+  await expect(page.locator("#lensHeadline")).toHaveValue("assistedAndAi");
+  await expect(page.locator("#lensHeadline option")).toHaveCount(2);
+  await expect(page.locator("#heroLegend li", {hasText: "Heavily edited"})).toHaveCount(0);
+});
+
 test("visit facts survive event expiry and open inline with the keyboard at narrow widths", async ({ page, extension, storage }) => {
   const records = statsVisit();
   records.events = [];
