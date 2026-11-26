@@ -80,11 +80,19 @@ describe("byte-level BPE", () => {
   it("keeps scalar offsets when tokens split multibyte characters and surrogate pairs", () => {
     const t = tokenizer();
     const text = "theé中🙂\ud800z";
-    expect(t.offsets(text, t.encode(text, false))).toEqual([
+    expect(t.encodeWithOffsets(text).offsets).toEqual([
       [0, 3], [3, 4], [3, 4], [4, 5], [4, 5], [4, 5],
       [5, 6], [5, 6], [5, 6], [5, 6], [6, 7], [6, 7], [6, 7], [7, 8],
     ]);
-    expect(() => t.offsets("abc", [])).toThrow(/offsets/);
+    expect(t.encodeWithOffsets("")).toEqual({ ids: [], offsets: [] });
+  });
+  it("includes stripped whitespace in an added token’s offset", () => {
+    const t = tokenizer();
+    const text = "the  <mask>　<mask> 🙂";
+    expect(t.encodeWithOffsets(text)).toEqual({
+      ids: t.encode(text, false),
+      offsets: [[0, 3], [3, 11], [11, 18], [18, 19], [19, 20], [19, 20], [19, 20], [19, 20]],
+    });
   });
   it("counts tokens alone and following a space", () => {
     const counts = countTokens(tokenizer(), ["The word", "", "  "]);

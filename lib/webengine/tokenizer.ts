@@ -83,12 +83,24 @@ export class Tokenizer {
 
   /** The library's encode(text, add_special_tokens): token ids. */
   encode(text: string, addSpecialTokens: boolean): number[] {
+    return this.encodeIds(this.nfc ? text.normalize("NFC") : text, addSpecialTokens);
+  }
+
+  /** Token IDs and scalar offsets into the normalized text used by the detector. */
+  encodeWithOffsets(text: string) {
     if (this.nfc) text = text.normalize("NFC");
+    const consumed = new Map<number, number>();
+    const ids = this.encodeIds(text, false, consumed);
+    return { ids, offsets: this.offsets(text, ids, consumed) };
+  }
+
+  private encodeIds(text: string, addSpecialTokens: boolean, consumed?: Map<number, number>): number[] {
     const ids: number[] = [];
     if (addSpecialTokens) ids.push(this.clsId);
     let from = 0;
     for (const match of this.addedMatches(text)) {
       this.encodeText(text.slice(from, match.start), ids);
+      if (consumed && match.stripped) consumed.set(ids.length, this.encoder.encode(text.slice(match.start, match.end)).length);
       ids.push(match.id);
       from = match.end;
     }
@@ -98,12 +110,12 @@ export class Tokenizer {
   }
 
   /** Character offsets for the release's byte-level vocabulary, including split Unicode scalars. */
-  offsets(text: string, ids: number[]): [number,number][] {
+  private offsets(text: string, ids: number[], consumed: ReadonlyMap<number, number>): [number, number][] {
     let tokenEnd = 0, scalarEnd = 0, units = 0, scalars = 0;
-    const offsets = ids.map((id): [number, number] => {
+    const offsets = ids.map((id, index): [number, number] => {
       // If the previous token ended inside a scalar, this token shares its start.
       const start = tokenEnd < scalarEnd ? scalars - 1 : scalars;
-      tokenEnd += this.widths.get(id) ?? 0;
+      tokenEnd += consumed.get(index) ?? this.widths.get(id) ?? 0;
       while (scalarEnd < tokenEnd && units < text.length) {
         const cp = text.codePointAt(units)!;
         units += cp > 0xffff ? 2 : 1;
@@ -117,8 +129,8 @@ export class Tokenizer {
   }
 
   /** Leftmost-longest occurrences of the added tokens, with their strip rules applied. */
-  private addedMatches(text: string): Array<{ start: number; end: number; id: number }> {
-    const out: Array<{ start: number; end: number; id: number }> = [];
+  private addedMatches(text: string): Array<{ start: number; end: number; id: number; stripped: boolean }> {
+    const out: Array<{ start: number; end: number; id: number; stripped: boolean }> = [];
     this.addedPattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = this.addedPattern.exec(text)) !== null) {
@@ -134,7 +146,7 @@ export class Tokenizer {
       if (found.rstrip) while (end < text.length && WHITESPACE.test(text[end]!)) end++;
       const previous = out[out.length - 1];
       if (previous && previous.end > start) previous.end = start;
-      out.push({ start, end, id: found.id });
+      out.push({ start, end, id: found.id, stripped: found.lstrip || found.rstrip });
       this.addedPattern.lastIndex = end;
     }
     return out;

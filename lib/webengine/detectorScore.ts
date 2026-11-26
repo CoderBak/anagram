@@ -43,8 +43,7 @@ export async function detectorScore(
       insufficient: true,
     };
   const text = normalizeDetector(raw),
-    ids = tok.encode(text, false),
-    offsets = tok.offsets(text, ids);
+    { ids, offsets } = tok.encodeWithOffsets(text);
   const n = ids.length,
     last = Math.max(0, n - meta.window);
   const features = new Float64Array(n * 6),
