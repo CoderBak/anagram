@@ -29,7 +29,6 @@ const MAX_PENDING_SCORES = 8;
  *  until the load ends. The bound is for a load that hangs; the transport's own (lib/webengine/
  *  client.ts LOAD_WAIT_MS, 300 s) is a little longer, so the engine's answer is what arrives. */
 const WAKE_TIMEOUT_MS = 285_000;
-const IDLE_CHECK_MS = 1_000;
 
 type State = "starting" | "needs_models" | "downloading" | "paused" | "loading" | "ready" | "idle" | "stopped" | "error";
 type RuntimeState = "loading" | "ready" | "idle" | "error";
@@ -140,7 +139,7 @@ export class Engine {
   private lastActivity = 0;
   private pendingScores = 0;
   private scoreChain: Promise<unknown> = Promise.resolve();
-  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private idleTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
   private started: Promise<void> | null = null;
 
@@ -181,7 +180,6 @@ export class Engine {
       this.download.total_bytes = this.totals().total_bytes;
       if (this.tier === "fp16" && this.settings.fp16_failed) await this.leaveFp16();
       await this.refreshStorage();
-      this.idleTimer = setInterval(() => void this.unloadIfIdle(), IDLE_CHECK_MS);
       if (this.error) { this.state = "stopped"; return; }
       if (this.cannotRun) { this.state = "error"; this.error = CANNOT_RUN; return; }
       if (this.gpuUnavailable()) return;
@@ -215,7 +213,6 @@ export class Engine {
 
   async close(): Promise<void> {
     this.closed = true;
-    if (this.idleTimer) clearInterval(this.idleTimer);
     this.downloadAbort?.abort();
     this.loadAbort?.abort();
     await this.releaseModel();
@@ -505,6 +502,7 @@ export class Engine {
         this.runtimeState = "ready";
         this.lastActivity = this.now();
         if (this.state === "loading") this.state = "ready";
+        this.scheduleIdleUnload();
       } catch (error) {
         if (abort.signal.aborted) { this.runtimeState = "idle"; return; }
         if (await this.restoreRelease()) {
@@ -570,19 +568,34 @@ export class Engine {
   private async releaseModel(): Promise<void> {
     this.loadAbort?.abort();
     if (this.loading) await this.loading.catch(() => {});
+    this.clearIdleTimer();
     const loaded = this.loaded;
     this.loaded = null;
     this.activeId = null;
     if (loaded) await loaded.session.release().catch(() => {});
   }
 
-  private async unloadIfIdle(): Promise<void> {
-    if (this.closed || !this.settings.idle_unload_s || this.state !== "ready" || !this.loaded || this.pendingScores > 0 ||
-        this.now() - this.lastActivity < this.settings.idle_unload_s * 1000) return;
-    this.runtimeState = "idle";
-    this.state = "idle";
-    await this.releaseModel();
-    if (this.state === "idle") this.init.onIdle?.();
+  private clearIdleTimer(): void {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
+  }
+
+  /** Keep one deadline while a model is loaded. Reading more text moves the deadline out. */
+  private scheduleIdleUnload(): void {
+    if (this.idleTimer !== undefined || this.closed || !this.loaded || this.state !== "ready" ||
+        !this.settings.idle_unload_s || this.pendingScores) return;
+    const duration = this.settings.idle_unload_s * 1000;
+    const remaining = () => duration - Math.max(0, this.now() - this.lastActivity);
+    this.idleTimer = setTimeout(async () => {
+      this.idleTimer = undefined;
+      // A score in flight schedules its next idle check when the last queued score finishes.
+      if (this.pendingScores || this.closed || this.state !== "ready") return;
+      if (remaining() > 0) { this.scheduleIdleUnload(); return; }
+      this.runtimeState = "idle";
+      this.state = "idle";
+      await this.releaseModel();
+      if (this.state === "idle") this.init.onIdle?.();
+    }, Math.max(0, remaining()));
   }
 
   /** runtime_controller.wake_and_wait: an idle engine loads again; a score waits for it, bounded. */
@@ -590,8 +603,12 @@ export class Engine {
     if (this.loaded) return;
     if (this.state !== "idle" && this.state !== "loading") throw new EngineError("not_ready", "The local engine is not ready; open component settings", 503);
     if (this.state === "idle") { this.state = "loading"; }
-    const waited = Promise.race([this.load(), new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), this.init.wakeTimeoutMs ?? WAKE_TIMEOUT_MS))]);
-    if ((await waited) === "timeout" || !this.loaded) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<"timeout">(resolve => {
+      timer = setTimeout(() => resolve("timeout"), this.init.wakeTimeoutMs ?? WAKE_TIMEOUT_MS);
+    });
+    const result = await Promise.race([this.load(), timeout]).finally(() => clearTimeout(timer));
+    if (result === "timeout" || !this.loaded) {
       throw new EngineError("not_ready", "The idle engine is still loading or was stopped; retry when it is ready", 503);
     }
   }
@@ -781,6 +798,8 @@ export class Engine {
         const seconds = payload.idle_unload_s;
         if (!validIdleUnload(seconds)) throw new EngineError("invalid_request", IDLE_UNLOAD_RULE, 422);
         this.settings.idle_unload_s = seconds;
+        this.clearIdleTimer();
+        this.scheduleIdleUnload();
         await this.writeSettings();
         return { status: 200, data: this.status() };
       }
@@ -893,6 +912,6 @@ export class Engine {
     });
     this.scoreChain = turn.catch(() => {});
     try { return await turn; }
-    finally { this.pendingScores--; }
+    finally { this.pendingScores--; this.scheduleIdleUnload(); }
   }
 }

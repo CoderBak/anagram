@@ -38,13 +38,14 @@ const candidates = (): Candidate[] => [
   { id: "wasm:fp32", label: "CPU", device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: true, reason: null },
 ];
 
-async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Promise<LoadedSession> {
+async function fakeSession(candidate: Candidate, model: Blob, log: string[], holdScore?: Promise<void>): Promise<LoadedSession> {
   expect(new Uint8Array(await model.arrayBuffer())).toEqual(MODEL);
   log.push(`create ${candidate.id}`);
   return {
     info: { candidate, createMs: 5, firstRunMs: 1 },
     device: candidate.id === "webgpu:fp32" ? "webgpu" : "wasm",
     async logits(ids, mask) {
+      await holdScore;
       const out = new Float32Array(ids.length * 4);
       ids.forEach((r, i) => r.forEach((id, j) => { if (mask[i]![j]) row(id).forEach((v, k) => { out[i * 4 + k]! += v; }); }));
       return out;
@@ -53,36 +54,35 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[]): Pr
   };
 }
 
-interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer>; clock: { now: number } }
+interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer> }
 function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void>; wakeTimeoutMs?: number;
   /** Blocks a session's creation (which may honour the load's abort signal, as the real one does). */
-  gate?: (candidate: Candidate, signal: AbortSignal) => Promise<void> } = {}): Made {
+  gate?: (candidate: Candidate, signal: AbortSignal) => Promise<void>; holdScore?: Promise<void> } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
-  const clock = { now: 1_000_000 };
   const engine = new Engine({
     pin: pin(options.lid), assets: ASSETS, version: "9.9.9", store, transport: server.fetch, retryWaits: [0],
     createSession: async (candidate, model, signal) => {
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("no such device"); }
       await options.gate?.(candidate, signal);
       await options.hold; // a model that takes its time to load
-      return fakeSession(candidate, model, log);
+      return fakeSession(candidate, model, log, options.holdScore);
     },
     probe: async () => options.probe ?? candidates(),
-    now: () => clock.now,
     ...(options.wakeTimeoutMs ? { wakeTimeoutMs: options.wakeTimeoutMs } : {}),
     idle: options.idle,
     onIdle: () => log.push("idle"),
   });
-  return { engine, store, log, server, clock };
+  return { engine, store, log, server };
 }
 const ready = async (engine: Engine) => {
   for (let i = 0; i < 200; i++) {
     const { data } = await engine.handle("status", {});
     const state = (data as { state: string }).state;
     if (state === "ready" || state === "error") return data as { state: string; error: unknown };
-    await new Promise((r) => setTimeout(r, 5));
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(5);
+    else await new Promise((r) => setTimeout(r, 5));
   }
   throw new Error("never ready");
 };
@@ -90,7 +90,9 @@ const fails = (p: Promise<unknown>, code: string, status: number) => expect(p).r
 
 let engines: Engine[] = [];
 beforeEach(() => { engines = []; });
-afterEach(async () => { for (const e of engines) await e.close(); });
+afterEach(async () => {
+  try { for (const e of engines) await e.close(); } finally { vi.useRealTimers(); }
+});
 const track = (m: Made) => { engines.push(m.engine); return m; };
 
 describe("the engine's lifecycle", () => {
@@ -309,13 +311,52 @@ describe("the engine's lifecycle", () => {
     expect(next.server.requests).toEqual([]);
   });
 
+  it("keeps no idle timer before setup, while unloading is disabled, or after a stop", async () => {
+    vi.useFakeTimers();
+    const { engine } = track(make());
+    await engine.handle("status", {});
+    expect(vi.getTimerCount()).toBe(0);
+    await engine.handle("models.download", {});
+    await ready(engine);
+    expect(vi.getTimerCount()).toBe(1);
+    await engine.handle("engine.settings", { idle_unload_s: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+    await engine.handle("engine.settings", { idle_unload_s: 60 });
+    expect(vi.getTimerCount()).toBe(1);
+    await engine.handle("engine.stop", {});
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("extends the unload deadline for token counts and waits for an active score to finish", async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const m = track(make({ holdScore: new Promise<void>(resolve => { finish = resolve; }) }));
+    await m.engine.handle("models.download", {});
+    await ready(m.engine);
+    await m.engine.handle("engine.settings", { idle_unload_s: 60 });
+    await vi.advanceTimersByTimeAsync(55_000);
+    await m.engine.handle("tokens", { v: "3.0", texts: ["hello"] });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(m.log).toEqual(["create webgpu:fp32"]);
+    const score = m.engine.handle("score", { v: "3.0", blocks: [{ id: "a", text: "hello world" }] });
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(m.log).toEqual(["create webgpu:fp32"]);
+    finish();
+    await score;
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(m.engine.idle).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(m.engine.idle).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("lets the model go when idle and loads it again for the next score", async () => {
+    vi.useFakeTimers();
     const m = track(make());
     await m.engine.handle("models.download", {});
     await ready(m.engine);
     await m.engine.handle("engine.settings", { idle_unload_s: 60 });
-    m.clock.now += 61_000;
-    await new Promise((r) => setTimeout(r, 1100));
+    await vi.advanceTimersByTimeAsync(60_000);
     let { data } = await m.engine.handle("status", {});
     expect(data).toMatchObject({ state: "idle", runtime: { state: "idle", active_id: null } });
     expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle"]);
@@ -325,15 +366,16 @@ describe("the engine's lifecycle", () => {
     expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle", "create webgpu:fp32"]);
     ({ data } = await m.engine.handle("status", {}));
     expect((data as { state: string }).state).toBe("ready");
+    expect(vi.getTimerCount()).toBe(1);
   }, 10_000);
 
   it("warms an idle model on request, which the first score then finds loaded, and lets a warmed model go when nothing asks", async () => {
+    vi.useFakeTimers();
     const m = track(make());
     await m.engine.handle("models.download", {});
     await ready(m.engine);
     await m.engine.handle("engine.settings", { idle_unload_s: 60 });
-    m.clock.now += 61_000;
-    await new Promise((r) => setTimeout(r, 1100));
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32", "idle"]);
     // Warmed: it loads without a score, and answers one with the model already in.
     let { data } = await m.engine.handle("warm", {});
@@ -345,20 +387,18 @@ describe("the engine's lifecycle", () => {
     expect(m.log.filter((l) => l.startsWith("create"))).toHaveLength(2);
     // A warm-up of a loaded model changes nothing, not even the idle clock: sixty seconds
     // after the score, warmed again all along, the model is let go as it would be anyway.
-    for (let i = 0; i < 6; i++) {
-      m.clock.now += 10_000;
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(10_000);
       ({ data } = await m.engine.handle("warm", {}));
       expect(data).toEqual({ state: "ready" });
     }
-    m.clock.now += 1_000;
-    await new Promise((r) => setTimeout(r, 1100));
+    await vi.advanceTimersByTimeAsync(10_000);
     expect((await m.engine.handle("status", {})).data).toMatchObject({ state: "idle" });
     // Warmed and then never asked for: let go after the idle time too.
     await m.engine.handle("warm", {});
     expect((await ready(m.engine)).state).toBe("ready");
     const idles = m.log.filter((l) => l === "idle").length;
-    m.clock.now += 61_000;
-    await new Promise((r) => setTimeout(r, 1100));
+    await vi.advanceTimersByTimeAsync(60_000);
     expect((await m.engine.handle("status", {})).data).toMatchObject({ state: "idle" });
     expect(m.log.filter((l) => l === "idle")).toHaveLength(idles + 1);
   }, 15_000);
