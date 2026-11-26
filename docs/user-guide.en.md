@@ -46,9 +46,6 @@ Step 1 decides how Anagram runs its model. Either way the model runs on this com
   the mirror fails.
 - **A computer with less than 4 GB of memory**, or too little free disk space, is told so,
   and nothing is downloaded; with exactly 4 GB it runs, and may slow down while it scores.
-  Where the graphics card supports 16-bit maths, that computer, or one short of disk space
-  for the full model, gets a lighter version of the model instead (a 715 MB download), whose
-  verdicts match the full model's on 99.8% of texts; the setup page and Settings say so.
 
 The in-browser download shows a bar with the percentage, the bytes, time left and speed, with
 Pause, Resume and Cancel, and asks you to keep the browser open until it finishes (if the
@@ -179,8 +176,7 @@ Never kept, whatever you choose: anything in a private window, on a site you swi
 off for, or in Analyze text; what you type; what you select or copy.
 
 A paragraph counts as read once it has been on screen for a second with some of it in the
-middle of the window, and once per visit however often you scroll back to it. The share shown
-is expected words: a paragraph the model is unsure of counts partly on each side. Daily totals support changing the headline and choosing the chip or most likely verdict. Where
+middle of the window, and once per visit however often you scroll back to it. The share shown uses expected words. A passage with both human and AI-generated sentences contributes to each class in proportion to its labeled text. Daily totals support changing the headline and choosing the chip or most likely verdict. Where
 paragraphs are kept, **How it counts** on the statistics page counts them another way: after
 another time on screen, by how much of a paragraph was shown, in a focused window only, once a
 day or once ever, and by paragraphs or time. If some history has only totals, the page shows how many baseline words the new rule leaves out.

@@ -572,7 +572,7 @@
     "description": "Setup page: under the in-browser engine on a computer with 4 GB of memory, just enough for the model."
   },
   "engineLighter": {
-    "message": "Low memory here, so Anagram runs a lighter model. Its verdicts match the full one on 99.8% of texts.",
+    "message": "Using the installed FP16 model.",
     "description": "Setup page and Settings: the in-browser engine runs the FP16 model, because the full one does not fit this device. Half the download."
   },
   "engineNativeRefused": {

@@ -56,9 +56,8 @@ anything is chosen the setup page decides (`lib/device.ts`, `lib/ui/engineCard.t
 choice on Apple Silicon and on Linux beside an NVIDIA GPU, the in-browser engine by itself elsewhere
 (Windows beside an NVIDIA GPU included: PyPI's Windows Torch has no CUDA),
 nothing where the model does
-not fit (the local engine alone where it installs). Where FP32 does not fit but FP16 does (`TIERS`, `affordable()`), the in-browser engine
-runs the modelkit's FP16 model on WebGPU; the page's tier travels with `setEngine` into
-`local:engineTier` and to the engine in its pin (`lib/webengine/tier.ts`). Native Messaging is optional and asked for when the local engine is picked; where
+not fit (the local engine alone where it installs). The dated detector currently offers FP32 only. The setup checks available memory and disk space
+against that tier (`TIERS`, `affordable()`). Native Messaging is optional and asked for when the local engine is picked; where
 it is granted and nothing was chosen (an update from 0.7.0, which required it) the local
 engine is the one in use. The test build requires it, so the fake-host suites drive the
 local engine; the suites stand in for other devices with copies of the test build carrying

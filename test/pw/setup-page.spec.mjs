@@ -44,6 +44,25 @@ test.describe("the setup page", () => {
   });
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
+  test("the detector link follows the selected revision before installation", async ({ extension }) => {
+    const page = await openScripted(extension, "options.html", "ready");
+    const current = page.locator("#detectorPicker .detector-name");
+    const pin = await import("../../anagramd/detector-release.json", { with: { type: "json" } });
+    const {release, revision, repository} = pin.default;
+    const base = "https://huggingface.co/" + repository + "/tree/";
+    await expect(current).toHaveAttribute("href", base + revision);
+    const next = {release: "2026-12-01-400m", revision: "a".repeat(40)};
+    await page.evaluate(({next, release, revision}) => {
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+      chrome.runtime.sendMessage = (message, ...args) => message.action !== "detectorCatalog" ? send(message, ...args)
+        : Promise.resolve(message.ref ? {ok: false} : {ok: true, value: [next, {release, revision}]});
+    }, {next, release, revision});
+    await page.locator("#detectorPicker .check-models").click();
+    await expect(current).toHaveAttribute("href", base + next.revision);
+    await page.selectOption("#detector-release", release + "@" + revision);
+    await expect(current).toHaveAttribute("href", base + revision);
+  });
+
   test("teaches toolbar pinning in two short steps, which the toolbar menu's link opens", async ({ extension }) => {
     const page = await openScripted(extension, "onboarding.html", "needed", { engine: null });
     await expect(page.locator("#toolbarGuide li")).toHaveCount(2);

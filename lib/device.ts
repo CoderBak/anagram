@@ -86,18 +86,7 @@ function downloadBytes(tier: ModelTier): number {
   return pinnedFiles(tier).reduce((n, f) => n + f.size_bytes, 0);
 }
 
-/**
- * The in-browser model tiers, largest first, with what each takes: its download, the least
- * memory (Chrome's deviceMemory, a power of two) it runs in, and its largest single tensor (the
- * word embeddings, which the GPU binds as one buffer: 50 265 x 1024 values). FP32 peaks at
- * 2.8 GB while scoring on the graphics card and 1.9 GB on the processor (an M4), so it needs
- * 4 GB, and on exactly 4 GB the computer may slow down while it scores. FP16 peaks at 1.6 GB.
- *
- * FP32 is the automatic pick. The user decided (2026-09-29) that the modelkit's FP16 model
- * runs where FP32 does not fit, and only on WebGPU (on the processor ONNX Runtime upcasts it
- * and gains nothing): see affordable(). Its verdict word matches FP32's on 99.82% of the
- * EditLens test split. INT8 is never picked, and nothing here quantizes anything.
- */
+/** The current detector ships FP32 weights. Its pinned files determine the download size. */
 export const TIERS = [
   { id: "fp32", bytes: downloadBytes("fp32"), minMemoryGb: 4, maxTensorBytes: EMBEDDING_BYTES },
 ] as const;
@@ -158,19 +147,7 @@ function nativeInstalls(os: Os, machine: Machine, i: DeviceInputs): boolean {
   return os === "linux";
 }
 
-/**
- * The tier this device runs: FP32, unless FP32 does not fit and FP16 does; null with what fell
- * short when neither. Unknown memory (Firefox has no deviceMemory) and an unknown estimate run.
- *
- * FP32 does not fit when any of these holds: Chrome's deviceMemory is exactly 4 (FP32's
- * least, where it runs with a slow-down note); the free disk cannot take FP32 (its bytes not
- * yet stored plus DISK_MARGIN) but can take FP16 (likewise); the adapter's limits hold FP16's
- * largest tensor but not FP32's. FP16 is then picked when it can run: a real WebGPU adapter
- * exposing `shader-f16` whose limits hold its largest tensor, the memory (4 GB at least) and
- * the disk. Less than 4 GB of memory stays short: FP16's 1.6 GB peak is too much there too.
- * A complete FP32 model already in storage is kept. Where FP16 is wanted and cannot run, FP32
- * is as it always was: with the note on 4 GB, short on a full disk.
- */
+/** Check the detector's memory requirement and the remaining download against disk quota. */
 export function affordable(i: DeviceInputs): { tier: Tier | null; short: "memory" | "disk" | null; tight: boolean; fallback: { tight: boolean } | null } {
   const [fp32] = TIERS;
   const memoryFits = (tier: Tier): boolean => i.deviceMemory === undefined || i.deviceMemory >= tier.minMemoryGb;

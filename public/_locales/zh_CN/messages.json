@@ -450,7 +450,7 @@
     "message": "Anagram 评分时，这台电脑可能会变慢。"
   },
   "engineLighter": {
-    "message": "这里内存较小，因此 Anagram 运行较轻的模型，其结论与完整模型在 99.8% 的文本上一致。"
+    "message": "正在使用已安装的 FP16 模型。"
   },
   "engineNativeRefused": {
     "message": "请允许访问本地引擎后继续。"

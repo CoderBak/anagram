@@ -24,7 +24,7 @@ way. What is kept is one layer per dimension:
 | Titles | full · first 60 characters · none |
 | Paragraph text | full text · first 12 words · near-duplicate sketch · salted hash · none |
 | Lengths | every count (characters, words, model tokens, sentences, rendered lines, the words of each paragraph joined) · words and tokens · words to the nearest 5 · length bands (<50, 50–74, 75–149, 150–299, 300–599, 600+) · none |
-| Verdicts | the four probabilities as the engine gives them (4 decimals) · 2 decimals · the chip's word and the most likely band · flagged or not · none |
+| Verdicts | the three class shares (four probabilities for historical EditLens records), at four decimals · 2 decimals · the chip's word and the most likely band · flagged or not · none |
 | Languages | fastText label, its confidence and the writing system · label · English or not · none |
 | Page structure | everything (paragraph kind, element, role, landmark, post, thread depth, order, quoted; the page-kind rule's signals) · paragraph kind, post and order · page kind only · none |
 | Positions | boxes and every move · box when first seen · place as a share of the page · order only · none |
