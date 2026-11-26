@@ -75,3 +75,4 @@
 #engine-management .inline-field { flex: 0 1 auto; gap: 6px 8px; border: 0; padding: 0; justify-content: start; }
 #engine-management .btn[data-variant="outline"] { background: transparent; border-color: transparent; padding-inline: 8px; }
 #engine-management .btn[data-variant="outline"]:hover:not(:disabled) { background: var(--card); border-color: var(--border); }
+#engine-delete-leftover { max-width: 100%; white-space: normal; }

@@ -16,12 +16,6 @@ header.hdr h1 {
   letter-spacing: -0.02em;
 }
 header.hdr #gear {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  margin-inline-end: -4px;
   color: var(--muted-foreground);
 }
 header.hdr #gear:hover { color: var(--foreground); }
@@ -33,7 +27,7 @@ main { padding: 0 12px 8px; }
 .grp .field > label { font-size: 13px; font-weight: 450; color: var(--foreground); }
 #siteRuleNote { margin: 4px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 
-.act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; }
+.act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
 .act > .status { flex: 1 1 128px; }
 .act > :is(.report, .keepopen) { flex: 0 0 100%; min-width: 0; }
 .act:has(> .status[hidden]):has(> .report[hidden]):has(> .keepopen[hidden]):not(:has(.page-actions > :not([hidden]))) { display: none; }
@@ -43,7 +37,7 @@ main { padding: 0 12px 8px; }
 
 .page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .page-actions:not(:has(> :not([hidden]))) { display: none; }
-.page-actions > .btn { min-height: var(--control-height); font-size: .78125rem; }
+.page-actions > .btn { min-height: var(--button-height); font-size: .78125rem; }
 
 /* Page report: flagged list, then collapsible score breakdown. */
 .report { margin: 0; }
@@ -60,7 +54,6 @@ main { padding: 0 12px 8px; }
   width: auto;
   min-height: 26px;
   padding: 2px 7px;
-  margin-inline-end: -7px;
   color: var(--muted-foreground);
   font-size: 12px;
   font-weight: 500;
@@ -169,13 +162,13 @@ html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; co
   padding-top: 6px;
   border-top: 1px solid var(--border);
 }
-.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .tools .btn {
   max-width: 100%;
   min-width: 0;
-  min-height: var(--control-height);
+  min-height: var(--button-height);
   height: auto;
-  padding: 4px 7px;
+  padding: 2px 4px;
   white-space: nowrap;
   text-align: start;
   font-size: 12.5px;
@@ -183,7 +176,6 @@ html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; co
 }
 .tools .btn .action-icon { color: var(--muted-foreground); }
 .tools .btn:hover .action-icon { color: var(--foreground); }
-.tools .btn:first-child, .tools .btn[hidden] + .btn { margin-inline-start: -7px; }
 .engine { margin: 0; font-size: 12px; color: var(--muted-foreground); }
 .stats-today {
   display: flex;

@@ -60,6 +60,7 @@ body.drag-file::after {
 }
 body.drag-file #drop { border-color: var(--anagram-reader-primary); }
 #fileTools > .labeled { width: auto; min-height: 0; padding-inline: 7px; gap: 5px; white-space: nowrap; }
+#toolbarContainer .toolbarButton.labeled { font-size: 13px; line-height: 1.25; }
 #anagramOpenFile::before { mask-image: url("/vendor/pdfjs/web/images/toolbarButton-openFile.svg"); }
 @media (min-width: 981px) { #secondaryOpenFile { display: none; } }
 @media (max-width: 980px) {
@@ -74,16 +75,16 @@ body:has(#original:not([hidden])) #anagramReaderStatus:has(#drop:not([hidden])) 
 #dropLabel { margin: 0; color: var(--anagram-reader-fg); font: 600 17px/1.3 var(--anagram-ui-font); letter-spacing: -.025em; }
 #drop #dropNote { margin-top: 6px; color: var(--anagram-reader-muted); font-size: 13px; }
 /* The reader's one button, as the extension's pages draw a primary one. */
-#choose { margin: 0; min-height: 28px; padding: 4px 10px; border: 0; border-radius: 6px; background: var(--anagram-reader-primary); color: var(--anagram-reader-on-primary); font: 500 13px/1.4 var(--anagram-ui-font); cursor: pointer; }
+#choose { margin: 0; min-height: 26px; padding: 3px 8px; border: 0; border-radius: 6px; background: var(--anagram-reader-primary); color: var(--anagram-reader-on-primary); font: 500 13px/1.25 var(--anagram-ui-font); cursor: pointer; }
 #choose:hover { opacity: 0.88; }
 #choose:focus-visible { outline: 2px solid var(--anagram-reader-primary); outline-offset: 2px; }
 #anagramAnalyze, #original { width: auto; flex: none; padding-inline: 8px; }
 #anagramAnalyze { min-width: 72px; }
-#original { max-width: 120px; }
+#original > svg { display: none; }
 #anagramAnalyze::before, #original::before { display: none; }
 #anagramAnalyze > span, #original > span { margin-inline-start: 0; }
 #anagramAnalyze { display: inline-flex; align-items: center; gap: 6px; }
-#anagramAnalyze .logo { width: 20px; height: 20px; flex: none; }
+#anagramAnalyze .logo { width: 16px; height: 16px; flex: none; }
 #anagramAnalyze .logo-dark { display: none; }
 @media (max-width: 400px) {
   #mainContainer { min-width: 0; }
@@ -93,7 +94,11 @@ body:has(#original:not([hidden])) #anagramReaderStatus:has(#drop:not([hidden])) 
 @media (prefers-color-scheme: dark) { #anagramAnalyze .logo-light { display: none; } #anagramAnalyze .logo-dark { display: block; } }
 .anagramPdfChips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .anagramPdfChips > span { position: absolute; transform: translateY(-50%); pointer-events: auto; }
-@media (max-width: 800px) { #original { width: 32px; } #original > span { font-size: 0; } #original::after { content: "↗"; font-size: 18px; } }
+@media (max-width: 800px) {
+  #original { width: 28px; padding: 0; justify-content: center; }
+  #original > span { display: none; }
+  #original > svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+}
 @media print { #anagramReaderStatus, .anagramPdfChips { display: none !important; } }
 
 /* The page area takes keyboard focus to scroll; upstream draws no outline, so show one inside its edge. */

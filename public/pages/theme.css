@@ -40,6 +40,7 @@ html:root {
   --page-title-size: 1.1875rem;
   --section-title-size: .875rem;
   --control-height: 28px;
+  --button-height: 26px;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-popover: 0 6px 20px rgb(0 0 0 / 0.09), 0 1px 3px rgb(0 0 0 / 0.04);
 }
@@ -108,9 +109,13 @@ body :is(button, input, select, textarea) { font-family: inherit; }
 .btn {
   border-radius: var(--radius);
   font-weight: 500;
+  line-height: 1.25;
   letter-spacing: -0.005em;
 }
-.btn[data-size="sm"] { min-height: var(--control-height); height: auto; padding-block: 3px; font-size: .78125rem; }
+.btn[data-size="sm"] { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .78125rem; }
+.btn:has(> .action-icon) { align-items: center; column-gap: 6px; }
+/* Center the stroke against the printed label inside its line box. */
+.btn:not(.icon-action) > .action-icon { translate: 0 1px; }
 .btn[data-variant="outline"] {
   background-color: var(--card);
   border-color: var(--input);
@@ -188,8 +193,9 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
 }
 
 .action-icon {
-  width: 15px;
-  height: 15px;
+  display: block;
+  width: 14px;
+  height: 14px;
   flex: none;
   fill: none;
   stroke: currentColor;
@@ -212,8 +218,8 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: var(--control-height);
-  height: var(--control-height);
+  width: var(--button-height);
+  height: var(--button-height);
   padding: 0;
   color: var(--muted-foreground);
 }
@@ -223,9 +229,9 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 2px 7px;
+  gap: 6px;
+  min-height: var(--button-height);
+  padding: 2px 5px;
   border: 0;
   border-radius: var(--radius);
   color: var(--muted-foreground);
@@ -241,12 +247,12 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
 .text-action:focus-visible, .disclosure-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .disclosure-action::after {
   content: "";
+  flex: none;
   width: 5px;
   height: 5px;
   border: solid currentColor;
   border-width: 0 1.4px 1.4px 0;
   transform: translateY(-1px) rotate(45deg);
-  margin-inline: 2px;
 }
 .disclosure-action[aria-expanded="true"]::after { transform: translateY(2px) rotate(225deg); }
 [hidden] { display: none !important; }

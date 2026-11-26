@@ -35,8 +35,8 @@
   justify-self: end;
   white-space: nowrap;
   height: auto;
-  min-height: 32px;
-  padding-block: 5px;
+  min-height: var(--button-height);
+  padding: 3px 8px;
   text-align: center;
 }
 @media (max-width: 580px) {

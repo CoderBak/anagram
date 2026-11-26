@@ -33,17 +33,18 @@ textarea.textarea {
   line-height: 1.6;
 }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.actions .btn { min-height: var(--control-height); height: auto; padding-block: 3px; font-size: .8125rem; }
+.actions .btn { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .8125rem; }
 .actions .btn[data-variant="ghost"] .action-icon { color: var(--muted-foreground); }
 .actions .btn[data-variant="ghost"]:hover .action-icon { color: var(--foreground); }
 .editor-meta { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
 @media (max-width: 480px) {
   .editor, #results { padding: 14px; }
-  .actions, .editor-meta { gap: 4px; }
+  .actions { gap: 6px 8px; }
   .editor .btn[data-variant="ghost"] { padding-inline: 6px; }
 }
 @media (max-width: 384px) {
   .editor:has(#clear:not([hidden])) #pick { width: 32px; padding: 0; }
+  .editor:has(#clear:not([hidden])) #pick .action-icon { translate: none; }
   .editor:has(#clear:not([hidden])) #pick span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 #status { margin: 0; font-size: 13px; color: var(--muted-foreground); }

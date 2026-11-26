@@ -134,6 +134,15 @@ test.describe("with the browser's file access on", () => {
     });
     expect(page.url()).toContain(encodeURIComponent(localPdf));
     expect(await page.locator("#original").isVisible()).toBe(true);
+    await page.setViewportSize({ width: 320, height: 720 });
+    const original = page.getByRole("button", { name: "Open original", exact: true });
+    await expect(original.locator("span")).toBeHidden();
+    await expect(original.locator("svg")).toBeVisible();
+    const iconOffset = await original.evaluate(button => {
+      const control = button.getBoundingClientRect(), icon = button.querySelector("svg").getBoundingClientRect();
+      return Math.abs(icon.left + icon.width / 2 - control.left - control.width / 2);
+    });
+    expect(iconOffset).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath("local-file-reader.png") });
     expect(external, "Local PDF and packaged viewer assets need no internet requests").toEqual([]);
     await page.locator("#original").click();

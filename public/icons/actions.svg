@@ -17,6 +17,9 @@
   <symbol id="download" viewBox="0 0 24 24">
     <path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>
   </symbol>
+  <symbol id="external" viewBox="0 0 24 24">
+    <path d="M13 4h7v7m0-7-10 10M9 5H4v15h15v-5"/>
+  </symbol>
   <symbol id="previous" viewBox="0 0 24 24"><path d="m14.5 5-7 7 7 7"/></symbol>
   <symbol id="next" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></symbol>
   <symbol id="globe" viewBox="0 0 24 24">

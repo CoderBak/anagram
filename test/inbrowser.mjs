@@ -434,7 +434,7 @@ if (process.env.ANAGRAM_CHROME) await nativeOptional("ANAGRAM_CHROME", process.e
     check("Settings: switching asks for the permission, then shows the install command, and the engine in use is the local one",
       command?.includes("curl -fsSL") && (await engineOf(settings)) === "native" && (await textOf(settings, "#engineLabel")) === w("componentTitle"), command);
     check("Settings: it offers to delete what the in-browser engine left, and deletes nothing by itself",
-      /^Delete in-browser model files \(\d+ MB\)$/.test(left ?? "") &&
+      /^Delete in-browser model \(\d+ MB\)$/.test(left ?? "") &&
       (await settings.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine"); return true; } catch { return false; } })), left);
     await settings.click("#engine-manage");
     await settings.click("#engine-delete-leftover");

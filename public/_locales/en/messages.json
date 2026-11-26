@@ -600,7 +600,7 @@
     "description": "Settings: switching engines failed."
   },
   "engineLeftoverDelete": {
-    "message": "Delete in-browser model files ($1)",
+    "message": "Delete in-browser model ($1)",
     "description": "Settings: the local engine is in use and the in-browser engine left its model on disk; $1 is its size."
   },
   "componentNotInstalled": {

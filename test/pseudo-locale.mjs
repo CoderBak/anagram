@@ -9,7 +9,7 @@
 // the offer of the in-browser engine when the local one keeps crashing, and the in-browser
 // engine's setup page in each state on the way to Ready, its cancel confirmation and its toolbar
 // menu, and the reading statistics (off, a week of them, the export, Settings' group, the
-// toolbar menu's line) — at 1280 and 400 px (the menu at its own 300), three times: in a
+// toolbar menu's line) — at 1280, 400 and 320 px (the menu at its own 300), three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -157,6 +157,26 @@ function layoutFaults(scope) {
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
     const text = cs.display !== "inline" ? textBox(el) : null;
+    if (el.matches("button")) {
+      for (const sibling of el.parentElement?.children ?? []) {
+        if (!sibling.matches("p, label, h1, h2, h3, .count, [role=status]") || !shown(sibling)) continue;
+        const words = textBox(sibling);
+        if (words && Math.min(r.bottom, words.bottom) - Math.max(r.top, words.top) > 2 &&
+            Math.max(words.left - r.right, r.left - words.right) < 6)
+          faults.push(`${describe(el)}: crowds the adjacent text in ${describe(sibling)}`);
+      }
+      const icon = [...el.querySelectorAll(":scope > svg, :scope > img")].find(shown);
+      if (icon) {
+        const i = icon.getBoundingClientRect();
+        const target = text ?? r;
+        if ((!text || text.lines === 1) && Math.abs(i.top + i.height / 2 - (target.top + target.bottom) / 2) > 2)
+          faults.push(`${describe(el)}: its icon is off-center vertically`);
+        if (text && Math.max(text.left - i.right, i.left - text.right) < 3)
+          faults.push(`${describe(el)}: its icon crowds its label`);
+        if (!text && Math.abs(i.left + i.width / 2 - (r.left + r.right) / 2) > 1)
+          faults.push(`${describe(el)}: its icon is off-center horizontally`);
+      }
+    }
     if (text && (text.left < r.left - 1 || text.right > r.right + 1))
       faults.push(`${describe(el)}: its words run ${Math.round(Math.max(r.left - text.left, text.right - r.right))} px out of its box at the side`);
     if (text && text.lines > 1 && el.matches(ONE_LINE)) faults.push(`${describe(el)}: its label breaks onto ${text.lines} lines`);
@@ -240,8 +260,7 @@ ${["ITEM-16", "ITEM-111", "ITEM-149"].map((t) => `<p>${PARA(t)}</p>`).join("\n")
 <iframe src="https://disqus.com/embed/comments/?f=pseudo" width="600" height="120"></iframe></body></html>`,
 });
 
-const WIDE = { width: 1280, height: 900 };
-const NARROW = { width: 400, height: 800 };
+const VIEWPORTS = [{ width: 1280, height: 900 }, { width: 400, height: 800 }, { width: 320, height: 720 }];
 const POPUP = { width: 300, height: 600 };
 
 async function pages(context, extId, fixture, lang) {
@@ -256,7 +275,7 @@ async function pages(context, extId, fixture, lang) {
   await page.waitForFunction(() => document.getElementById("status")?.textContent !== "…", null, { timeout: 10000 }).catch(() => {});
   await check(page, lang, "popup");
 
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await page.goto(url("options.html"), { waitUntil: "load" });
     await componentReady();
@@ -277,14 +296,14 @@ async function pages(context, extId, fixture, lang) {
   await page.click("#analyze");
   await page.locator("#scoreToggle").waitFor();
   await page.click("#scoreToggle");
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await check(page, lang, "text analysis, score breakdown");
   }
 
   // Setup without an engine: the install command and its buttons.
   await fixture.close();
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await page.goto(url("onboarding.html"), { waitUntil: "load" });
     await page.locator("#install:not([hidden])").waitFor({ timeout: 15000 }).catch(() => {});
@@ -293,8 +312,8 @@ async function pages(context, extId, fixture, lang) {
   await fixture.resume();
 
   // The reader: its own controls in the upstream toolbar, the picker, and its chips.
-  const READER_OWN = '#anagramAnalyze, #original, #drop, #notice, [data-anagram]';
-  for (const size of [WIDE, NARROW]) {
+  const READER_OWN = '#anagramAnalyze, #original, #fileTools, #drop, #notice, [data-anagram]';
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await page.goto(url("reader.html"), { waitUntil: "load" });
     await page.locator("#drop:not([hidden])").waitFor({ timeout: 15000 }).catch(() => {});
@@ -308,7 +327,7 @@ async function pages(context, extId, fixture, lang) {
   // A web page with chips (all three AI-generated under the fixture's text-seeded scores), and a
   // chip's card pinned open.
   const OURS = "[data-anagram]";
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await page.goto(server.url("/article.html"), { waitUntil: "load" });
     await page.waitForFunction(
@@ -332,7 +351,7 @@ async function pages(context, extId, fixture, lang) {
 async function statsPages(context, sw, extId, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
   const page = await context.newPage();
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await page.goto(url("stats.html"), { waitUntil: "load" });
     await page.locator("#offCard:not([hidden])").waitFor({ timeout: 10000 }).catch(() => {});
@@ -343,7 +362,7 @@ async function statsPages(context, sw, extId, lang) {
   await sw.evaluate((config) => chrome.storage.local.set({ statsConfig: config }), full);
   await seedStats(sw, statsWeek());
   await seedStats(sw, statsVisit());
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     await page.setViewportSize(size);
     await page.goto(url("stats.html"), { waitUntil: "load" });
     await page.click('#ranges [data-range="7"]').catch(() => {});
@@ -394,7 +413,7 @@ async function enginePages(context, extId, lang) {
   const up = (page, selector) => page.waitForFunction((s) => { const el = document.querySelector(s); return !!el && el.getClientRects().length > 0; }, selector, { timeout: 15000 })
     .then(() => true, () => false);
   const faces = [["apple-silicon", "#engine-pick-inbrowser", "the choice of engines"], ["linux-2gb", ".engine-cannot", "a device that cannot run the model"]];
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     for (const [device, selector, what] of faces) {
       const page = await open("onboarding.html", size, async (p) => { await scriptEngine(p, "needed", { engine: null }); await scriptDevice(p, DEVICES[device]); });
       if (await up(page, selector)) await check(page, lang, `setup page, ${what}`);
@@ -458,7 +477,7 @@ async function inBrowserPages(context, extId, lang) {
     await page.goto(url(path), { waitUntil: "load" });
     return page;
   };
-  for (const size of [WIDE, NARROW]) {
+  for (const size of VIEWPORTS) {
     for (const state of ["needed", "downloading", "mirror", "paused", "network", "storage", "ready_gpu", "ready_cpu", "load_failed"]) {
       // Waiting for Set up, with Save-Data on and too little room, is the longest the needed
       // state gets: the reason and the error over the button.

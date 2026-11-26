@@ -200,6 +200,7 @@ table.table a:hover { text-decoration-color: currentColor; }
   .records .history-table td.num { grid-row: 2; text-align: start; }
   .mobile-label { display: block; color: var(--muted-foreground); font-size: 12px; }
   .cell-value { font-variant-numeric: tabular-nums; }
+  .records .history-table tr:has(.replay-action) { grid-template-columns: repeat(2, minmax(0, 1fr)) fit-content(48%); }
   .records .history-table tr:has(.replay-action) td.name { grid-row: 1 / span 2; }
   .records .history-table tr:has(.replay-action) td.num { grid-row: 3; }
   .replay-action { grid-area: 2 / 3; justify-self: end; }

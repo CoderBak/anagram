@@ -471,7 +471,7 @@
     "message": "无法切换引擎，请重试。"
   },
   "engineLeftoverDelete": {
-    "message": "删除浏览器内的模型文件（$1）"
+    "message": "删除浏览器内的模型（$1）"
   },
   "componentNotInstalled": {
     "message": "未安装"

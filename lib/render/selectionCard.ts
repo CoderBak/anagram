@@ -36,8 +36,7 @@ const CARD_CSS = `
   color: #18181b;
   z-index: 2147483647;
 }
-/* The ✕ sits in the corner: the head's score stops short of it. */
-.head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; padding-right: 22px; }
+.head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; margin-bottom: 4px; }
 .verdict { font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; }
 .verdict.band-unknown { color: #52525b; }
 .verdict.band-unsupported { color: #63636c; }
@@ -50,8 +49,7 @@ const CARD_CSS = `
 .short, .unsure { color: #63636c; font-style: italic; margin-bottom: 4px; }
 .foot { margin-top: 6px; padding-top: 5px; border-top: 1px solid #f0f0f2; color: #63636c; font-size: 10.5px; }
 .close {
-  position: absolute; top: 2px; right: 2px; z-index: 1;
-  display: grid; place-items: center; width: 28px; height: 28px;
+  display: grid; place-items: center; width: 24px; height: 24px;
   border: 0; border-radius: 5px; padding: 0; background: transparent; color: #63636c; cursor: pointer;
 }
 .close svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
@@ -197,16 +195,14 @@ export async function analyzeSelection(): Promise<void> {
   const floor = MIN_WORDS;
   if (words < floor) {
     card.innerHTML =
-      closeBtn +
-      `<div class="head"><span class="verdict band-unknown">${t("selTooShort")}</span><span class="big">—</span></div>` +
+      `<div class="head"><span class="verdict band-unknown">${t("selTooShort")}</span><span class="big">—</span>${closeBtn}</div>` +
       row(t("selWordsSelected"), String(words)) +
       row(t("selNeeded"), `${floor}+`) +
       `<div class="foot">${t("selFootTooShort")}</div>`;
     place();
   } else {
     card.innerHTML =
-      closeBtn +
-      `<div class="head"><span class="verdict band-unknown spin">${t("selAnalyzing")}</span><span class="big"></span></div>` +
+      `<div class="head"><span class="verdict band-unknown spin">${t("selAnalyzing")}</span><span class="big"></span>${closeBtn}</div>` +
       row(t("selWordsSelected"), String(words));
     place();
     // The selection's windows go straight to the worker: no page cache and no local
@@ -246,8 +242,7 @@ export async function analyzeSelection(): Promise<void> {
     const verdict = windows ? unitVerdict("sel", text.length, windows, text) : null;
     if (!verdict || verdict.result.degraded) {
       card.innerHTML =
-        closeBtn +
-        `<div class="head"><span class="verdict band-unknown">${bandLabel("unknown")}</span><span class="big">—</span></div>` +
+        `<div class="head"><span class="verdict band-unknown">${bandLabel("unknown")}</span><span class="big">—</span>${closeBtn}</div>` +
         `<div class="foot">${
           backend === "down"
             ? t("selFootDaemonDown")
@@ -267,9 +262,8 @@ export async function analyzeSelection(): Promise<void> {
       const short = isNoVerdict(b) || r.probs.length===3 ? "" : shortTextNote(words);
       const foot = b === "unknown" ? t("selFootUnavailable") : b === "unsupported" ? t("selFootUnsupported") : coverageNote(verdict, "selection", text).trim();
       card.innerHTML =
-        closeBtn +
         `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(r)}${bandLabel(b)}</span>` +
-        `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
+        `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span>${closeBtn}</div>` +
         (!isNoVerdict(b) && unsureNote(verdict) ? `<div class="unsure">${unsureNote(verdict)}</div>` : "") +
         (short ? `<div class="short">${short}</div>` : "") +
         (isNoVerdict(b) ? "" : distributionHtml(r)+sentenceDetailsHtml(verdict)) +

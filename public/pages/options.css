@@ -72,7 +72,8 @@
 .field > label { font-size: 12.5px; font-weight: 500; color: var(--muted-foreground); }
 .field > .select { width: 100%; min-width: 0; margin-block-start: auto; }
 .settings :is(.preference-row, .field) > .select { padding-inline: 10px 26px; background-position: right 7px center; }
-.setting-summary { display: flex; align-items: baseline; justify-content: space-between; gap: var(--field-gap); }
+.setting-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.setting-summary > p { flex: 1 1 19ch; }
 .setting-summary > button { flex: none; margin-inline-start: auto; }
 .setting-summary:not(:has(> :not([hidden]))), #cacheStatus:empty { display: none; }
 #cacheCount { font-variant-numeric: tabular-nums; }
@@ -232,6 +233,5 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   #engineGroup h2 { font-size: 13.5px; }
   #engineGroup .setting-identity { flex: 1 1 auto; column-gap: 5px; }
   #engineGroup .setting-identity .component-status { font-size: 12px; }
-  #engineGroup .component-status-row { column-gap: 4px; }
-  #engineGroup .engine-manage { padding-inline: 2px; font-size: 12px; }
+  #engineGroup .component-status-row { column-gap: 10px; }
 }
