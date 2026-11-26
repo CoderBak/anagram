@@ -35,6 +35,24 @@ describe("model download", () => {
     expect(server.requests).toEqual([{ url: "https://example.test/model.bin", range: null }]);
   });
 
+  it.each(["model.bin", "model.bin.part"])("can pause while verifying %s without touching the saved bytes", async name => {
+    const store = new MemoryStore();
+    store.files.set(name, FILE);
+    const signal = new AbortController();
+    const transport = vi.fn();
+    let clock = 0;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => clock += 51);
+    const resume = vi.fn(async () => signal.abort());
+    vi.stubGlobal("scheduler", { yield: resume });
+    try {
+      await expect(downloadFile(store, entry(), { signal: signal.signal, transport })).rejects.toBeInstanceOf(DownloadPaused);
+      expect(resume).toHaveBeenCalledOnce();
+      expect(transport).not.toHaveBeenCalled();
+      expect(await store.list()).toEqual([name]);
+      expect(await store.read(name)).toEqual(FILE);
+    } finally { now.mockRestore(); vi.unstubAllGlobals(); }
+  });
+
   it("resumes after a lost connection from the bytes on disk, with a Range request", async () => {
     const store = new MemoryStore();
     const server = fakeServer({ "/model.bin": FILE }, { cutAfter: 350 });

@@ -14,6 +14,7 @@
 // tried next (hf-mirror.com, for where Hugging Face is blocked), as download_modelkit.py does:
 // the part carries across the switch, the hash decides what is kept, and a mirror that worked
 // is tried first for the rest of the session's files.
+import { yieldToMain } from "../slices";
 import { Sha256 } from "./sha256";
 import type { FileStore } from "./storage";
 import { MIRROR_HOST, type PinnedFile } from "./pin";
@@ -104,12 +105,26 @@ export function secure(url: string): boolean {
   return parsed.protocol === "https:" || (parsed.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname));
 }
 
-/** Whether a file of the pinned size and hash is already at `name`; hashes it to say so. */
-export async function verifyFile(store: FileStore, entry: PinnedFile, name = entry.name): Promise<boolean> {
-  if ((await store.size(name)) !== entry.size_bytes) return false;
+/** OPFS reads on the worker are synchronous. Let pause and status messages run between slices. */
+async function hashStoredFile(store: FileStore, name: string, signal?: AbortSignal): Promise<Sha256> {
   const hasher = new Sha256();
-  for await (const chunk of store.stream(name)) hasher.update(chunk);
-  return hasher.digest() === entry.sha256;
+  let deadline = performance.now() + 50;
+  for await (const chunk of store.stream(name, 2 * 1024 * 1024)) {
+    if (signal?.aborted) throw new DownloadPaused();
+    hasher.update(chunk);
+    if (performance.now() >= deadline) {
+      await yieldToMain();
+      if (signal?.aborted) throw new DownloadPaused();
+      deadline = performance.now() + 50;
+    }
+  }
+  return hasher;
+}
+
+/** Whether a file of the pinned size and hash is already at `name`. */
+export async function verifyFile(store: FileStore, entry: PinnedFile, name = entry.name, signal?: AbortSignal): Promise<boolean> {
+  if ((await store.size(name)) !== entry.size_bytes) return false;
+  return (await hashStoredFile(store, name, signal)).digest() === entry.sha256;
 }
 
 /** A file the extension ships (lid.176.ftz), read from the package and checked against its pin. */
@@ -175,7 +190,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   // Already there, and the pinned bytes exactly.
   if ((await store.size(entry.name)) === entry.size_bytes) {
     onPhase?.("verifying");
-    if (await verifyFile(store, entry)) {
+    if (await verifyFile(store, entry, entry.name, signal)) {
       // A browser closed between finishing a fallback copy and removing its source.
       await store.delete(part).catch(() => {});
       onProgress(entry.size_bytes);
@@ -187,12 +202,10 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   // What an earlier attempt left: hash it to continue the digest, unless it is oversized.
   let offset = (await store.size(part)) ?? 0;
   if (offset > entry.size_bytes) { await store.delete(part); offset = 0; }
-  const hasher = new Sha256();
   onProgress(offset);
-  if (offset > 0) {
-    onPhase?.("verifying");
-    for await (const chunk of store.stream(part)) { hasher.update(chunk); paused(); }
-  }
+  if (offset > 0) onPhase?.("verifying");
+  const hasher = offset > 0 ? await hashStoredFile(store, part, signal) : new Sha256();
+  paused();
   if (offset === entry.size_bytes) return finish(store, entry, part, hasher);
   onPhase?.("downloading");
   // Aborted only while no answer has come: once it has, the body streams for as long as it takes.
