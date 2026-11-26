@@ -3,7 +3,7 @@
 }
 .settings {
   display: grid;
-  gap: 20px;
+  gap: 14px;
   min-width: 0;
   container-type: inline-size;
   --field-gap: 16px;
@@ -11,7 +11,7 @@
 }
 .settings-block {
   display: grid;
-  gap: 7px;
+  gap: 4px;
   min-width: 0;
 }
 .group-label {
@@ -36,9 +36,9 @@
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
-  padding: 16px 18px;
+  padding: 11px 14px;
   scroll-margin-top: 24px;
 }
 .panel .form-row { padding: 0; }
@@ -50,7 +50,7 @@
 }
 .panel h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--section-title-size);
   line-height: 1.4;
   font-weight: 600;
   letter-spacing: -0.015em;
@@ -60,14 +60,14 @@
 .panel:focus { outline: none; }
 .panel:focus-visible h2 { outline: 2px solid var(--ring); outline-offset: 2px; width: fit-content; border-radius: 3px; }
 /* Inside a panel, rows need no line between them. */
-.panel .row { min-height: 30px; padding: 1px 0; border-top: 0; }
-.panel .rows { gap: 6px; }
+.panel .row { min-height: var(--control-height); padding: 0; border-top: 0; }
+.panel .rows { gap: 2px; }
 .row > .row-body { justify-content: flex-end; }
 /* Standalone values use the same track as the last of the three related fields. */
 .fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px var(--field-gap); }
 .preference-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--value-width); align-items: center; gap: var(--field-gap); }
 .preference-row > select { width: 100%; min-width: 0; }
-.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .field[hidden] { display: none; }
 .field > label { font-size: 12.5px; font-weight: 500; color: var(--muted-foreground); }
 .field > .select { width: 100%; min-width: 0; margin-block-start: auto; }
@@ -115,7 +115,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 18px;
-  margin-top: 22px;
+  margin-top: 14px;
   padding-inline: 2px;
   font-size: 12.5px;
   line-height: 1.6;
@@ -131,9 +131,9 @@ input.input[type="checkbox"]:not([role="switch"])::before, input.input[type="rad
 dialog.stats-dialog {
   margin: auto;
   width: min(440px, calc(100vw - 32px));
-  padding: 22px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   color: var(--foreground);
   background: var(--card);
   box-shadow: var(--shadow-popover);
@@ -159,8 +159,7 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   .links .model-credit { grid-column: 1 / -1; }
 }
 @media (max-width: 480px) {
-  .settings { gap: 14px; }
-  .panel { padding: 14px 12px; }
+  .panel { padding: 10px 12px; }
 }
 @container (min-width: 661px) {
   #statsKeep:has(.field[hidden]) > .fields { grid-template-columns: minmax(0, 1fr); }
@@ -178,8 +177,10 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
 }
 @container (max-width: 360px) {
   .panel { --value-width: min(56%, 160px); --field-gap: 8px; }
-  .panel h2 { font-size: 14.5px; }
-  .field { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .fields { --value-width: min(61%, 200px); }
+}
+@container (max-width: 319px) {
+  .field { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 @media (max-width: 480px) {
   #addRule { display: grid; grid-template-columns: minmax(0, 1fr) auto; }

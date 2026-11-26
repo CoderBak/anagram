@@ -4,14 +4,14 @@ body { background: var(--card); }
 
 header.hdr {
   gap: 8px;
-  padding: 11px 14px 10px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
 }
 header.hdr img { width: 20px; height: 20px; border-radius: 5px; }
 header.hdr h1 {
   flex: 1;
   min-width: 0;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -26,14 +26,16 @@ header.hdr #gear {
 }
 header.hdr #gear:hover { color: var(--foreground); }
 
-main { padding: 0 14px 10px; }
-.grp { padding: 12px 0; }
+main { padding: 0 12px 8px; }
+.grp { padding: 8px 0; }
 .grp + .grp { border-top: 1px solid var(--border); }
 .grp .field { min-height: 28px; }
 .grp .field > label { font-size: 13px; font-weight: 450; color: var(--foreground); }
 #siteRuleNote { margin: 4px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 
-.act { display: flex; flex-direction: column; gap: 8px; }
+.act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; }
+.act > .status { flex: 1 1 128px; }
+.act > :is(.report, .keepopen) { flex: 0 0 100%; min-width: 0; }
 .act:has(> .status[hidden]):has(> .report[hidden]):has(> .keepopen[hidden]):not(:has(.page-actions > :not([hidden]))) { display: none; }
 .status { font-size: 13px; line-height: 1.45; margin: 0; color: var(--foreground); }
 .status.down { color: var(--destructive); font-weight: 500; }
@@ -41,8 +43,7 @@ main { padding: 0 14px 10px; }
 
 .page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .page-actions:not(:has(> :not([hidden]))) { display: none; }
-.page-actions > .btn { min-height: 32px; font-size: 13px; }
-.page-actions:not(:has(> .btn:not([hidden]) ~ .btn:not([hidden]))) > .btn:not([hidden]):not([data-variant]) { width: 100%; }
+.page-actions > .btn { min-height: var(--control-height); font-size: .78125rem; }
 
 /* Page report: flagged list, then collapsible score breakdown. */
 .report { margin: 0; }
@@ -88,8 +89,8 @@ main { padding: 0 14px 10px; }
   gap: 8px;
   align-items: flex-start;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: var(--control-height);
+  padding: 4px 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -165,14 +166,14 @@ html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; co
 .foot {
   display: grid;
   gap: 6px;
-  padding-top: 10px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
 }
 .tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .tools .btn {
   max-width: 100%;
   min-width: 0;
-  min-height: 30px;
+  min-height: var(--control-height);
   height: auto;
   padding: 4px 7px;
   white-space: nowrap;

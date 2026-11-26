@@ -2,8 +2,8 @@
 header.hdr #settings { align-self: center; }
 .stack, .editor, #results { display: flex; flex-direction: column; }
 .editor, #results {
-  gap: 12px;
-  padding: 18px 20px;
+  gap: 8px;
+  padding: 12px 14px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -23,16 +23,17 @@ header.hdr #settings { align-self: center; }
 textarea.textarea {
   width: 100%;
   box-sizing: border-box;
-  min-height: 140px;
+  min-height: 112px;
   max-height: 50vh;
   overflow-y: auto;
   resize: vertical;
-  padding: 12px 14px;
+  padding: 8px 10px;
   font: inherit;
-  font-size: 14.5px;
-  line-height: 1.65;
+  font-size: .875rem;
+  line-height: 1.6;
 }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.actions .btn { min-height: var(--control-height); height: auto; padding-block: 3px; font-size: .8125rem; }
 .actions .btn[data-variant="ghost"] .action-icon { color: var(--muted-foreground); }
 .actions .btn[data-variant="ghost"]:hover .action-icon { color: var(--foreground); }
 .editor-meta { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
@@ -52,7 +53,7 @@ textarea.textarea {
 /* The verdict header and collapsible class breakdown. */
 .result-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
 .verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
-.verdict h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+.verdict h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
 .chip {
   display: inline-flex;
   align-items: center;

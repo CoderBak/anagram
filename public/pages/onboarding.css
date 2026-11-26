@@ -1,20 +1,24 @@
 .page { max-width: 720px; }
-.stack { display: flex; flex-direction: column; gap: 10px; }
+.stack { display: flex; flex-direction: column; }
 .stack > .card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
+  gap: 8px;
+  padding: 9px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card);
   box-shadow: var(--shadow-card);
 }
+.stack > .step { border-radius: 0; box-shadow: none; }
+.stack > .step:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.stack > .step + .step { border-top: 0; }
+#pinCard { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 .stack > .card > header, .stack > .card > section { padding-inline: 0; }
-@media (min-width: 581px) { .stack > .step > section { padding-inline-start: 34px; } }
+@media (min-width: 581px) { .stack > .step > section { padding-inline-start: 26px; } }
 .stack > .card > header h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--section-title-size);
   line-height: 1.35;
   letter-spacing: -0.015em;
   font-weight: 600;
@@ -22,36 +26,26 @@
 .card > section { display: flex; flex-direction: column; gap: 8px; }
 #tryParagraph { flex: none; }
 
-/* The three steps: a circular badge whose number turns into a quiet checkmark once done. */
-.step > header { display: flex; align-items: center; gap: 11px; cursor: pointer; user-select: none; }
+/* Step numbers and completion marks share one narrow column. */
+.step > header { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .step > header h2 { flex: 1; min-width: 0; }
 .num {
   display: inline-grid;
   place-items: center;
-  width: 23px;
-  height: 23px;
+  width: 18px;
+  height: 18px;
   flex: none;
-  border-radius: 999px;
-  border: 1px solid var(--input);
-  background: transparent;
-  font-size: 11.5px;
+  font-family: var(--anagram-mono-font);
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
 }
-.step.open:not(.done) .num {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
+.step.open .num { color: var(--foreground); }
 .step.done .num {
-  border-color: color-mix(in srgb, #00a06a 32%, transparent);
-  background: color-mix(in srgb, #00a06a 12%, transparent);
   color: #007d52;
 }
 html.dark .step.done .num {
-  border-color: color-mix(in srgb, #33d996 35%, transparent);
-  background: color-mix(in srgb, #33d996 14%, transparent);
   color: #33d996;
 }
 .num svg { display: none; width: 12px; height: 12px; }
@@ -81,7 +75,7 @@ html.dark .step.done .num {
 @media (prefers-reduced-motion: reduce) { .step-toggle svg { transition: none; } }
 
 /* The reference card: quiet pills matching the in-page chips. */
-#verdictCard { gap: 10px; }
+#verdictCard { gap: 6px; margin-top: 12px; padding-block: 12px; }
 .marks-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; }
 .words { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
 .word { display: inline-flex; align-items: center; gap: 6px; color: var(--foreground); }
@@ -106,7 +100,7 @@ html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; co
   display: flex;
   flex-wrap: wrap;
   gap: 4px 18px;
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   padding-inline: 2px;
   font-size: 12.5px;
   color: var(--muted-foreground);

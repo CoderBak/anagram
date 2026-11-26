@@ -11,15 +11,15 @@
   z-index: 100;
   pointer-events: none;
   color: var(--anagram-reader-fg);
-  font: 14px/1.5 var(--anagram-ui-font);
+  font: 13px/1.5 var(--anagram-ui-font);
   text-align: center;
 }
 #anagramReaderStatus p { margin: 0; }
 #anagramReaderStatus #notice:not([hidden]):not(:empty) {
   display: inline-block;
-  padding: 12px 18px;
+  padding: 8px 12px;
   border: 1px solid var(--anagram-reader-border);
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--anagram-reader-card);
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.08);
   pointer-events: auto;
@@ -28,9 +28,9 @@
   display: block;
   max-width: 25rem;
   margin: 0 auto;
-  padding: 20px 22px;
+  padding: 14px 16px;
   border: 1px dashed var(--anagram-reader-border);
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--anagram-reader-card);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
   text-align: start;
@@ -71,10 +71,10 @@ body.drag-file #drop { border-color: var(--anagram-reader-primary); }
 @media (max-width: 479px) { #fileTools { display: none; } }
 .drop-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 body:has(#original:not([hidden])) #anagramReaderStatus:has(#drop:not([hidden])) { top: 52px; }
-#dropLabel { margin: 0; color: var(--anagram-reader-fg); font: 600 20px/1.3 var(--anagram-ui-font); letter-spacing: -.025em; }
+#dropLabel { margin: 0; color: var(--anagram-reader-fg); font: 600 17px/1.3 var(--anagram-ui-font); letter-spacing: -.025em; }
 #drop #dropNote { margin-top: 6px; color: var(--anagram-reader-muted); font-size: 13px; }
 /* The reader's one button, as the extension's pages draw a primary one. */
-#choose { margin: 0; padding: 6px 12px; border: 0; border-radius: 6px; background: var(--anagram-reader-primary); color: var(--anagram-reader-on-primary); font: 500 14px/1.4 var(--anagram-ui-font); cursor: pointer; }
+#choose { margin: 0; min-height: 28px; padding: 4px 10px; border: 0; border-radius: 6px; background: var(--anagram-reader-primary); color: var(--anagram-reader-on-primary); font: 500 13px/1.4 var(--anagram-ui-font); cursor: pointer; }
 #choose:hover { opacity: 0.88; }
 #choose:focus-visible { outline: 2px solid var(--anagram-reader-primary); outline-offset: 2px; }
 #anagramAnalyze, #original { width: auto; flex: none; padding-inline: 8px; }
