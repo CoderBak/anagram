@@ -14,6 +14,9 @@ import { countTokens, MAX_LENGTH, N_BUCKETS, pyRound, scoreTexts } from "./scori
 import { probeRuntimes, Session, type Candidate, type RuntimeAssets } from "./session";
 import { sha256Hex } from "./sha256";
 import { MemoryStore, type FileStore } from "./storage";
+import { pin as releasePin } from "./pin";
+import { validRelease, type DetectorRelease } from "../detectorReleases";
+import { checkDetector, detectorScore, normalizeDetector, type DetectorMeta, type Crf } from "./detectorScore";
 import { Tokenizer } from "./tokenizer";
 
 /** The preprocessing this engine performs, named in the model version. */
@@ -32,6 +35,8 @@ type State = "starting" | "needs_models" | "downloading" | "paused" | "loading" 
 type RuntimeState = "loading" | "ready" | "idle" | "error";
 
 interface Settings {
+  release?: DetectorRelease;
+  pending_release?: DetectorRelease;
   schema_version: 1;
   initialized: boolean;
   download_pending: boolean;
@@ -95,7 +100,7 @@ export interface EngineInit {
 /** What the engine needs of a session: the forward pass, its identity and a release. */
 export type LoadedSession = Pick<Session, "logits" | "info" | "device" | "release">;
 
-interface Loaded { session: LoadedSession; tokenizer: Tokenizer; lid: FastText; version: string }
+interface Loaded { detector?: {meta:DetectorMeta;crf:Crf;session:Session}; session: LoadedSession; tokenizer: Tokenizer; lid: FastText; version: string }
 
 /** The FP16 model failed on this device and FP32 does not fit it: the setup page's "cannot run". */
 const CANNOT_RUN = { code: "cannot_run", message: "This device cannot run the model: the lighter version failed and the full one does not fit" };
@@ -115,6 +120,7 @@ export class Engine {
   private download: Download = { status: "idle", bytes_received: 0, total_bytes: 0, file: null, error: null, phase: "detecting", detail: null };
   private downloadAbort: AbortController | null = null;
   private downloading: Promise<void> | null = null;
+  private selecting = false;
   private candidates: Candidate[] = [];
   private runtimeState: RuntimeState = "idle";
   private runtimeError: string | null = null;
@@ -162,6 +168,9 @@ export class Engine {
     return this.started ??= (async () => {
       this.candidates = await this.probeFor(this.tier);
       await this.readSettings();
+      const selected = this.settings.pending_release ?? this.settings.release;
+      if (this.init.pin.release && validRelease(selected)) this.pin = releasePin(this.init.pin.lid.url,"fp32",selected);
+      this.download.total_bytes = this.totals().total_bytes;
       if (this.tier === "fp16" && this.settings.fp16_failed) await this.leaveFp16();
       await this.refreshStorage();
       this.idleTimer = setInterval(() => void this.unloadIfIdle(), IDLE_CHECK_MS);
@@ -209,6 +218,7 @@ export class Engine {
       const seconds = saved.idle_unload_s ?? STATE_DEFAULT.idle_unload_s;
       const flags = ["initialized", "download_pending", "download_paused", "download_failed", "engine_stopped", "models_deleted"] as const;
       if (saved.schema_version !== 1 || !validIdleUnload(seconds) ||
+          (saved.release !== undefined && !validRelease(saved.release)) || (saved.pending_release !== undefined && !validRelease(saved.pending_release)) ||
           flags.some((key) => typeof saved[key] !== "boolean") || (saved.verified !== undefined && (typeof saved.verified !== "object" || saved.verified === null))) {
         throw new Error("damaged");
       }
@@ -223,14 +233,14 @@ export class Engine {
 
   /** Save the settings. A disk too full to take them leaves them as they are in memory, and
    *  the next save tries again: the model's own bytes then meet the full disk and say so. */
-  private async writeSettings(): Promise<void> {
+  private async writeSettings(required = false): Promise<void> {
     try {
       const writer = await this.store.writer(STATE_FILE, false);
       try { await writer.write(new TextEncoder().encode(JSON.stringify(this.settings))); }
       catch (error) { await writer.close().catch(() => {}); throw error; }
       await writer.close();
     } catch (error) {
-      if (!outOfSpace(error)) throw error;
+      if (required || !outOfSpace(error)) throw error;
     }
   }
 
@@ -275,9 +285,9 @@ export class Engine {
     const route: { mirror?: boolean } = {};
     let viaMirror: string | null = null;
     try {
-      await this.dropOtherFiles();
+      if (!this.pin.release) await this.dropOtherFiles();
       for (const file of this.pin.files) {
-        this.download = { ...this.download, phase: "downloading", file: file.name, detail: viaMirror };
+        this.download = { ...this.download, phase: "downloading", file: file.path ?? file.name, detail: viaMirror };
         if (this.settings.verified[file.name] === file.sha256 && (await this.store.size(file.name)) === file.size_bytes) {
           received += file.size_bytes;
           this.download = { ...this.download, bytes_received: received };
@@ -285,6 +295,7 @@ export class Engine {
         }
         await downloadFile(this.store, file, {
           signal, transport: this.init.transport, retryWaits: this.init.retryWaits, route,
+          onPhase: (phase) => { this.download.phase = phase; },
           onProgress: (bytes) => {
             const now = Math.min(total, received + bytes);
             // Bytes arriving again end a retry's notice.
@@ -323,7 +334,21 @@ export class Engine {
       this.error = { code: "download_failed", message };
       this.state = "error";
       await this.writeSettings().catch(() => {});
+      if(await this.restoreRelease()) this.startRuntime();
     }
+  }
+
+  private async restoreRelease():Promise<boolean> {
+    const previous=this.settings.release;
+    if(!this.settings.pending_release || !validRelease(previous) || previous.revision===this.pin.release?.revision) return false;
+    this.pin=releasePin(this.init.pin.lid.url,"fp32",previous);
+    delete this.settings.pending_release;
+    this.settings.download_pending=false;
+    this.settings.download_failed=false;
+    this.settings.download_paused=false;
+    await this.writeSettings();
+    this.candidates=await this.probeFor("fp32");
+    return this.modelsPresent();
   }
 
   /** Only one tier's model is stored at a time: what is not this pin's (the other tier's model,
@@ -387,12 +412,18 @@ export class Engine {
     this.loading = (async () => {
       try {
         const files = new Map(this.pin.files.map((f) => [f.name, f]));
-        const tokenizerBytes = await this.store.read("tokenizer.json");
+        const entryFor = (path:string) => this.pin.files.find(f=>f.path===path)!;
+        const json = async (path:string) => JSON.parse(new TextDecoder().decode(await this.store.read(entryFor(path).name)));
+        const release = this.pin.release;
+        const tokenizerBytes = await this.store.read(release ? entryFor("tokenizer/tokenizer.json").name : "tokenizer.json");
         const tokenizer = new Tokenizer(JSON.parse(new TextDecoder().decode(tokenizerBytes)));
         const lidBytes = await readPackaged(this.init.pin.lid);
         const lid = new FastText(lidBytes);
-        const version = this.modelVersion(files, tokenizerBytes, lidBytes);
-        const entry = files.get(modelFileName(this.tier))!;
+        const meta:DetectorMeta | undefined = release ? await json("model.json") : undefined;
+        const crf:Crf | undefined = release ? await json("crf.json") : undefined;
+        if (meta && crf) checkDetector(meta,crf,release!.release);
+        const version = release ? release.revision+"-crf2" : this.modelVersion(files, tokenizerBytes, lidBytes);
+        const entry = release ? entryFor("backbone/model.safetensors") : files.get(modelFileName(this.tier))!;
         let session: LoadedSession | null = null;
         let lastError: unknown = null;
         for (const candidate of this.candidateOrder()) {
@@ -400,7 +431,9 @@ export class Engine {
           // The file itself, which the runtime reads from disk a tensor at a time.
           const model = await this.store.file(entry.name);
           try {
-            session = await (this.init.createSession ? this.init.createSession(candidate, model, abort.signal) : Session.create(this.init.assets, candidate, model, abort.signal));
+            session = meta && !this.init.createSession ? await Session.detector(this.init.assets,candidate,await json("backbone/config.json"),meta.window,[
+              {path:"backbone/model.safetensors",data:model}, {path:"head.safetensors",data:await this.store.file(entryFor("head.safetensors").name)}
+            ],abort.signal) : await (this.init.createSession ? this.init.createSession(candidate, model, abort.signal) : Session.create(this.init.assets, candidate, model, abort.signal));
             break;
           } catch (error) {
             // A load that was cancelled (another runtime was chosen with runtime.config, or the
@@ -413,7 +446,23 @@ export class Engine {
         }
         if (!session) { modelFailed = true; throw lastError ?? new Error("No runtime can load the model here"); }
         if (abort.signal.aborted || this.closed) { await session.release(); throw new Error("cancelled"); }
-        this.loaded = { session, tokenizer, lid, version };
+        if (release) {
+          const previous = this.settings.release;
+          const pending = this.settings.pending_release;
+          this.settings.release = release;
+          delete this.settings.pending_release;
+          try {
+            await this.writeSettings(true);
+          } catch (error) {
+            this.settings.release = previous;
+            this.settings.pending_release = pending;
+            await session.release();
+            throw error;
+          }
+          await this.dropOtherFiles().catch(() => {});
+        }
+        this.loaded = {session, tokenizer, lid, version: release ? version+"-"+session.device : version,
+          detector: meta && crf ? {meta, crf, session:session as Session} : undefined};
         this.activeId = session.info.candidate.id;
         this.loadResult = { candidate_id: this.activeId, status: "ok", load_ms: Math.round(session.info.createMs), warmup_ms: Math.round(session.info.firstRunMs) };
         this.runtimeState = "ready";
@@ -421,6 +470,12 @@ export class Engine {
         if (this.state === "loading") this.state = "ready";
       } catch (error) {
         if (abort.signal.aborted) { this.runtimeState = "idle"; return; }
+        if (await this.restoreRelease()) {
+          this.download = {...this.download,status:"failed",error:asText(error)};
+          this.runtimeState = "idle";
+          queueMicrotask(()=>{ void Promise.resolve(this.loading).then(()=>this.startRuntime()); });
+          return;
+        }
         if (modelFailed && this.tier === "fp16" && !this.closed) {
           // The FP16 model's session or first pass failed on every runtime it may use.
           this.runtimeState = "idle";
@@ -537,7 +592,7 @@ export class Engine {
       runtime: this.state === "needs_models" || this.state === "downloading" || this.state === "paused" ? null : this.runtimeSnapshot(),
       storage: { models_bytes: this.storageBytes },
       error,
-      settings: { idle_unload_s: this.settings.idle_unload_s },
+      settings: { idle_unload_s: this.settings.idle_unload_s, release:this.pin.release?.release, revision:this.pin.release?.revision },
       operation: this.operation ? { ...this.operation } : null,
     };
   }
@@ -547,12 +602,12 @@ export class Engine {
       ok: true as const,
       contract: CONTRACT_VERSION,
       app_version: this.init.version,
-      model: { id: this.pin.model.id, ver: loaded.version, calibration: CALIBRATION },
-      n_buckets: N_BUCKETS,
-      buckets: BUCKET_LABELS,
+      model: { id: this.pin.model.id, ver: loaded.version, calibration: this.pin.model.calibration },
+      n_buckets: loaded.detector ? 3 : N_BUCKETS,
+      buckets: loaded.detector?.meta.classes ?? BUCKET_LABELS,
       languages: SUPPORTED_LANGUAGES,
       lid: "fasttext-lid.176",
-      max_tokens: MAX_LENGTH,
+      max_tokens: loaded.detector ? loaded.detector.meta.window+2 : MAX_LENGTH,
       device: loaded.session.device,
       dtype: this.tier,
     };
@@ -601,7 +656,13 @@ export class Engine {
         const request = parseTokensPayload(payload);
         await this.wakeAndWait();
         this.lastActivity = this.now();
-        return { status: 200, data: countTokens(this.loaded!.tokenizer, request.texts) };
+        const {detector,tokenizer} = this.loaded!;
+        if (detector) {
+          const clean = request.texts.map(normalizeDetector);
+          return {status:200,data:{alone:clean.map(t=>tokenizer.encode(t,false).length),
+            following:clean.map(t=>t ? tokenizer.encode(" "+t,false).length : 0),window:detector.meta.window}};
+        }
+        return { status: 200, data: countTokens(tokenizer, request.texts) };
       }
       case "score":
         return { status: 200, data: await this.score(parseScorePayload(payload).blocks) };
@@ -616,7 +677,19 @@ export class Engine {
           void this.load();
         }
         return { status: 200, data: { state: this.state } };
+      case "models.select":
+        checkPayloadKeys(payload,["release"]);
+        if (!validRelease(payload.release)) throw new EngineError("invalid_request","Invalid detector release",422);
+        if (this.selecting || this.downloading || this.loading || this.pendingScores) throw new EngineError("busy","The engine is busy",409);
+        this.selecting=true;
+        try {
+          this.candidates = await this.probeFor("fp32");
+          this.settings.pending_release = payload.release;
+          this.pin = releasePin(this.init.pin.lid.url,"fp32",payload.release);
+          return {status:200,data:await this.startDownload()};
+        } finally { this.selecting=false; }
       case "models.download":
+        if (this.selecting) throw new EngineError("busy","Model selection in progress",409);
         checkPayloadKeys(payload);
         return { status: 200, data: await this.startDownload() };
       case "models.pause": {
@@ -735,26 +808,35 @@ export class Engine {
       const todo: Array<{ id: string; text: string; lang: string; prob: number }> = [];
       const results = new Map<string, ScoreResult>();
       for (const block of blocks) {
+        if (loaded.detector && ((block.text.match(/[\p{L}\p{N}_]+(?:['’][\p{L}\p{N}_]+)*/gu)?.length ?? 0)<loaded.detector.meta.min_words || !/\p{L}/u.test(block.text))) {
+          results.set(block.id,{id:block.id,bucket:0,probs:[1/3,1/3,1/3],score:0,tokens:0,truncated:false,insufficient:true});
+          continue;
+        }
         if (!block.text.trim()) continue;
         const detected = loaded.lid.predict(block.text.replace(/\n/g, " ")) ?? { label: "und", prob: 0 };
         if (!SUPPORTED_LANGUAGES.includes(detected.label)) {
-          results.set(block.id, { id: block.id, bucket: 0, probs: new Array<number>(N_BUCKETS).fill(1 / N_BUCKETS), score: 0, tokens: 0, truncated: false,
+          results.set(block.id, { id: block.id, bucket: 0, probs: new Array<number>(loaded.detector ? 3 : N_BUCKETS).fill(1 / (loaded.detector ? 3 : N_BUCKETS)), score: 0, tokens: 0, truncated: false,
             lang: detected.label, lang_prob: pyRound(detected.prob, 3), unsupported: true });
           continue;
         }
         todo.push({ id: block.id, text: block.text, lang: detected.label, prob: detected.prob });
       }
-      const scored = todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text)) : [];
+      const detector = loaded.detector;
+      const scored = detector ? await (async () => {
+        const out = [];
+        for(const b of todo) out.push(await detectorScore(b.text,loaded.tokenizer,detector.meta,detector.crf,ids=>detector.session.heads(ids)));
+        return out;
+      })() : todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text)) : [];
       todo.forEach((block, i) => {
         const r = scored[i]!; // one result per text, in order (scoreTexts)
-        results.set(block.id, { id: block.id, bucket: r.bucket, probs: r.probs, score: r.score, tokens: r.tokens, truncated: r.truncated, lang: block.lang, lang_prob: pyRound(block.prob, 3) });
+        results.set(block.id, { id: block.id, ...r, lang: block.lang, lang_prob: pyRound(block.prob, 3) });
       });
       this.lastActivity = this.now();
       return {
         v: CONTRACT_VERSION,
-        model: { id: this.pin.model.id, ver: loaded.version, calibration: CALIBRATION },
+        model: { id: this.pin.model.id, ver: loaded.version, calibration: this.pin.model.calibration },
         results: blocks.map((block) => results.get(block.id) ??
-          { id: block.id, bucket: 0, probs: new Array<number>(N_BUCKETS).fill(1 / N_BUCKETS), score: 0, tokens: 0, truncated: false, degraded: true }),
+          { id: block.id, bucket: 0, probs: new Array<number>(loaded.detector ? 3 : N_BUCKETS).fill(1 / (loaded.detector ? 3 : N_BUCKETS)), score: 0, tokens: 0, truncated: false, degraded: true }),
       };
     });
     this.scoreChain = turn.catch(() => {});

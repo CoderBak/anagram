@@ -15,7 +15,7 @@ export { CONTRACT_VERSION };
  *  let go while idle starts loading; lib/backend/warmup.ts). */
 export const ENGINE_OPERATIONS = [
   "status", "health", "score", "tokens", "runtime", "runtime.config",
-  "models.download", "models.pause", "models.delete", "engine.stop", "engine.resume", "engine.settings", "warm",
+  "models.select", "models.download", "models.pause", "models.delete", "engine.stop", "engine.resume", "engine.settings", "warm",
 ] as const;
 export type EngineOperation = typeof ENGINE_OPERATIONS[number];
 /** The name of the runtime port between the background and the offscreen document. */

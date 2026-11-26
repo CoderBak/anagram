@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "repository": "CoderBak/anagram-detectors",
+  "release": "2026-11-14-400m-research",
+  "revision": "7ab191a18cd77354d0462d9ad2c1335d1ad1580e",
+  "files": [
+    {
+      "path": "model.json",
+      "size_bytes": 671,
+      "sha256": "a5c8127c3b6e46a8da1d745afa99af8c044a0ca6c7eb03e8486da2f6436b6b19"
+    },
+    {
+      "path": "backbone/config.json",
+      "size_bytes": 2090,
+      "sha256": "25660a443b23d46e2b5fa4dd16c0064eb6cbe74c83f03f1715aa0a9e44b707c8"
+    },
+    {
+      "path": "crf.json",
+      "size_bytes": 636,
+      "sha256": "eedc870bb84beb4bba10724742541a5af22e0d430cf6067d922ec09ec6604eca"
+    },
+    {
+      "path": "tokenizer/tokenizer.json",
+      "size_bytes": 3583228,
+      "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30"
+    },
+    {
+      "path": "head.safetensors",
+      "size_bytes": 82388,
+      "sha256": "d97a2e92ab59e4a3038564b54ae48f9b792d130761cfd6c71c55c95ee59bde9e"
+    },
+    {
+      "path": "backbone/model.safetensors",
+      "size_bytes": 1579143688,
+      "sha256": "aa252abcfaa50224707019a0149855a7944717eb7a4660d4070a1b346e5cc10e"
+    }
+  ]
+}

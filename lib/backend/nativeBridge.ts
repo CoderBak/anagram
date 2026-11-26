@@ -11,6 +11,7 @@ const REPLACES_ENGINE: Record<ComponentOperation, boolean> = {
   "status": false, "runtime": false, "models.pause": false, "engine.settings": false,
   "runtime.benchmark": true, // unloads it to compare configurations, then loads one again
   "runtime.config": true, "runtime.cancel": true, // loads another configuration, or restores one
+  "models.select": true,
   "models.download": true, // stops it while files are fetched, then starts it again
   "models.delete": true, "engine.stop": true, "engine.resume": true,
   "component.update": true, "component.uninstall": true,

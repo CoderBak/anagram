@@ -29,7 +29,7 @@ import { IS_SAFARI } from "../surface";
 import "./engineCard.css";
 
 export interface EngineCardOptions {
-  /** The card's title, renamed for what it shows; Settings has none. */
+  /** The card's heading, renamed for the engine or choice on display. */
   title?: HTMLElement;
   /** Where the engine's panel goes (#componentSettings). */
   panelHost: HTMLElement;
@@ -76,8 +76,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   const oneClick = element("section", undefined, "engine-choice-card"); oneClick.dataset.engine = "inbrowser"; oneClick.dataset.recommended = "";
   const oneClickTitle = element("h3", t("engineOneClick"));
   oneClickTitle.id = "engine-choice-inbrowser";
-  const badge = element("span", t("engineRecommended"), "badge"); badge.dataset.variant = "secondary";
-  const oneClickHead = element("div", undefined, "engine-choice-head"); oneClickHead.append(oneClickTitle, badge);
+  const recommendation = element("span", t("engineRecommended"), "engine-recommendation");
+  const oneClickHead = element("div", undefined, "engine-choice-head"); oneClickHead.append(oneClickTitle, recommendation);
   const oneClickTight = element("p", t("engineTight"), "engine-note"); oneClickTight.hidden = true;
   const oneClickButton = button("engineOneClickButton", undefined, formatSize(TIERS[0].bytes));
   oneClickButton.id = "engine-pick-inbrowser";
@@ -135,12 +135,19 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     panel?.destroy();
     panelHost.replaceChildren();
     panelHost.hidden = false;
-    const crashAction = !settings && next === "native" && decision && decision.path !== null ? fallback : undefined;
+    const switchAction = settings ? switchButton : next === "native" && decision && decision.path !== null ? fallback : undefined;
     engineTier = null;
     panel = (next === "native" ? nativePanel : inBrowserPanel).mountComponentSettings(panelHost, (reply, crashed) => {
       if (reply.kind === "ok" && next === "inbrowser") { const before = engineTier; engineTier = reply.snapshot.tier ?? null; if (engineTier !== before) paintTight(); }
       options.onUpdate?.(next, reply, crashed === true);
-    }, { crashAction, settings, extra: settings ? [switchButton, deleteLeftover] : [] });
+    }, { switchAction, settings, extra: settings ? [deleteLeftover] : [] });
+    if (settings && title) {
+      const status = panelHost.querySelector<HTMLElement>(".component-status")!;
+      const identity = element("div", undefined, "setting-identity");
+      const heading = title.closest<HTMLElement>(".panel-title") ?? title;
+      status.before(identity);
+      identity.append(heading, status);
+    }
     paintTight();
     void paintSwitch();
   }
@@ -149,14 +156,13 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
    *  lighter model, which says its own line (lib/ui/inBrowserEngine.ts); but a lighter model that
    *  did not run here leaves FP32 in its place, and on 4 GB that is the note again. */
   function paintTight(): void {
-    const lighter = engineTier === "fp16" || (engineTier === null && decision?.tier === "fp16");
-    const slow = decision?.tier === "fp16" ? engineTier === "fp32" && decision.fallback?.tight === true : decision?.tight === true;
-    tight.hidden = !(engine === "inbrowser" && !lighter && slow);
+    tight.hidden = !(engine === "inbrowser" && decision?.tight);
   }
 
   function showChoice(d: Decision): void {
     engine = null;
     safariNote.hidden = true;
+    if (settings && title) choice.before(title.closest<HTMLElement>(".panel-title") ?? title);
     panel?.destroy(); panel = undefined;
     panelHost.replaceChildren(); panelHost.hidden = true;
     tight.hidden = switchError.hidden = true;
@@ -173,8 +179,8 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       // The lighter model says so where it is offered; FP32 on 4 GB says the computer may slow down.
       const bytes = TIERS.find((tier) => tier.id === d.tier)?.bytes ?? TIERS[0].bytes;
       oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
-      oneClickTight.textContent = t(d.tier === "fp16" ? "engineLighter" : "engineTight");
-      oneClickTight.hidden = !(d.tight || d.tier === "fp16");
+      oneClickTight.textContent = t("engineTight");
+      oneClickTight.hidden = !d.tight;
       terminalWhat.textContent = t(d.reason === "nvidia" ? "engineTerminalWhatNvidia"
         : d.os === "windows" ? "engineTerminalWhatWindows" : "engineTerminalWhat");
       if (d.offer === "terminal-only") { delete terminalButton.dataset.variant; } else terminalButton.dataset.variant = "outline";
@@ -185,14 +191,18 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   async function pickInBrowser(setup: "now" | "auto"): Promise<void> {
     if (busy) return;
     busy = true; paintBusy();
+    const issue = choice.hidden && engine ? switchError : refused;
+    issue.hidden = true;
+    const source = engine ? (settings ? switchButton : fallback) : oneClickButton;
+    const label = source.textContent;
+    source.textContent = t("componentStarting");
     try {
       // The model tier this device gets goes with the pick: the engine starts on it.
       const d = decision ?? await device().catch(() => null);
       const reply = await chooseEngine("inbrowser", setup, d?.tier ? { tier: d.tier, fallback: d.fallback !== null } : undefined);
-      if (!reply.ok) { refused.textContent = t("engineSwitchFailed"); refused.hidden = false; return; }
-      refused.hidden = true;
+      if (!reply.ok) { issue.textContent = t("engineSwitchFailed"); issue.hidden = false; return; }
       show("inbrowser");
-    } finally { busy = false; paintBusy(); }
+    } finally { source.textContent = label; busy = false; paintBusy(); }
   }
 
   /** The local engine: Native Messaging first, asked inside this click; then its panel. */

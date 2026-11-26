@@ -3,7 +3,7 @@
 // Settings is a page of panels and the setup page one of steps (test/pw/setup-page.spec.mjs judges
 // them rendered); this
 // pins what was deleted so it stays deleted: the Scope setting with the code path for "main",
-// the shortcuts list, the report and debug switches, the folds, and the speed and memory
+// the shortcuts list, the report and debug switches, and the speed and memory
 // figures of the engine choice.
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -37,8 +37,12 @@ describe("the Scope setting is gone", () => {
 describe("Settings is a page of panels", () => {
   const html = read("entrypoints", "options", "index.html");
 
-  it("has no folds and no shortcuts", () => {
-    expect(html).not.toMatch(/<details|<summary/);
+  it("discloses retention periods and keeps recording choices and privacy warnings visible", () => {
+    const details = [...html.matchAll(/<details\b[\s\S]*?<\/details>/g)].map(match => match[0]);
+    expect(details).toHaveLength(1);
+    expect(details[0]).toContain('id="statsKeep"');
+    expect(details[0]).toContain('data-i18n="optStatsRetention"');
+    expect(details[0]).not.toMatch(/id="statsPresets"|id="statsWarnings"/);
     expect(html).not.toMatch(/kbd|shortcuts|cmdToggleOverlay/);
   });
 
@@ -47,9 +51,9 @@ describe("Settings is a page of panels", () => {
     for (const messages of LOCALES) expect(Object.keys(messages).filter((k) => /^(optReportText|optReportUrl|optDebug|optShortcuts)$/.test(k))).toEqual([]);
   });
 
-  it("names its panels: Engine, Sites, Marks, PDFs, Cache and Statistics", () => {
+  it("groups scan settings, local data and engine maintenance in that order", () => {
     const labels = [...html.matchAll(/<h2 [^>]*data-i18n="(\w+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["optEngine", "optSites", "optMarks", "optPdfs", "optCache", "optStats"]);
+    expect(labels).toEqual(["optSites", "optPdfs", "optMarks", "optStats", "optCache", "optEngine"]);
     expect([...html.matchAll(/<section class="panel/g)]).toHaveLength(6);
   });
 

@@ -483,28 +483,36 @@ export function createOrchestrator(
     let unavailable = 0;
     let lessReliable = 0;
     const bands = [0, 0, 0, 0];
+    let insufficient = 0;
+    function countBand(r: ScoreResult) {
+      if (r.probs.length===3) bands[4] ??= 0;
+      const slot=r.probs.length===3 ? [0,4,3][r.bucket]! : levelOf(r.score);
+      bands[slot]=(bands[slot] ?? 0)+1;
+    }
     for (const [id, v] of verdictsById) {
-      if (v.result.unsupported) notEnglish++;
+      if (v.result.insufficient) insufficient++;
+      else if (v.result.unsupported) notEnglish++;
       else if (v.result.degraded) unavailable++;
       else {
         read++;
-        bands[levelOf(v.result.score)]!++;
+        countBand(v.result);
         const unit = unitsById.get(id);
-        if (unit && isShortText(unit.wordCount)) lessReliable++;
+        if (v.result.probs.length===4 && unit && isShortText(unit.wordCount)) lessReliable++;
       }
     }
     for (const k of keptNow()) {
-      if (k.result.unsupported) notEnglish++;
+      if (k.result.insufficient) insufficient++;
+      else if (k.result.unsupported) notEnglish++;
       else if (k.result.degraded) unavailable++;
       else {
         read++;
-        bands[levelOf(k.result.score)]!++;
-        if (isShortText(k.wordCount)) lessReliable++;
+        countBand(k.result);
+        if (k.result.probs.length===4 && isShortText(k.wordCount)) lessReliable++;
       }
     }
     let pending = 0;
     for (const id of unitsById.keys()) if (!verdictsById.has(id)) pending++;
-    return { read, bands, short: shortTexts.size, notEnglish, pending, unavailable, lessReliable };
+    return { read, bands, short: shortTexts.size+insufficient, notEnglish, pending, unavailable, lessReliable };
   }
 
   /**
@@ -581,7 +589,7 @@ export function createOrchestrator(
   /** Whether a verdict has a chip: not on a paragraph in another language (only English is
    *  read; the toolbar menu counts the rest), and under "Flagged only" only on a flagged one. */
   function visibleUnderMode(v: UnitVerdict): boolean {
-    if (v.result.unsupported) return false;
+    if (v.result.unsupported || v.result.insufficient) return false;
     return displayMode === "all" || flagged(v.result);
   }
 
@@ -590,7 +598,7 @@ export function createOrchestrator(
    *  every paragraph or on none; hovering any chip shows the whole of what its verdict read. */
   function mark(unit: Unit, v: UnitVerdict): void {
     const every = underlineScope === "all";
-    setHighlight(unit, v, every ? 0 : flagLevel(flagFrom), highlightsEnabled && (every || flagged(v.result)));
+    setHighlight(unit, v, every ? 0 : flagLevel(flagFrom), highlightsEnabled && (every || flagged(v.result) || v.stretches.some(s=>flagged(s.result))));
   }
 
   // --- ownership / invalidation ----------------------------------------------------
@@ -752,6 +760,8 @@ export function createOrchestrator(
   function ingestUnits(units: Unit[]): void {
     for (const u of units) {
       if (unitsById.has(u.id)) continue;
+      // Let a restated passage take over its reading time before the old unit retires.
+      reading.track(u);
       // A node is one unit's: a unit minted on nodes another still holds (the PDF reader's,
       // its text restated by a page read since) retires that one, chip and all.
       for (const part of u.parts) {
@@ -768,7 +778,6 @@ export function createOrchestrator(
         }
       }
       observers.observeUnit(u);
-      reading.track(u);
     }
     if (pendingJump && Date.now() > pendingJump.until) pendingJump = null;
     if (pendingJump) {
@@ -871,7 +880,7 @@ export function createOrchestrator(
     const out: UnitVerdict[] = [];
     for (const unit of units) {
       const windows = read.get(unit.id);
-      if (windows) out.push(unitVerdict(unit.id, unit.text.length, windows));
+      if (windows) out.push(unitVerdict(unit.id, unit.text.length, windows, unit.text));
       // Hard transport failure (extension reloaded/updated mid-flight): some window of
       // this unit was never answered — retire its pending chip instead of leaving
       // "analyzing…" stuck on the page forever.
@@ -887,7 +896,7 @@ export function createOrchestrator(
     let sent = 0, chars = 0;
     for (const b of blocks) {
       const r = out.get(b.id);
-      if (!cached.has(b.id) && r && !r.cached && !r.unsupported && !r.degraded) { sent++; chars += b.text.length; }
+      if (!cached.has(b.id) && r && !r.cached && !r.unsupported && !r.insufficient && !r.degraded) { sent++; chars += b.text.length; }
     }
     return { sent, chars };
   }
@@ -918,7 +927,7 @@ export function createOrchestrator(
     for (const { id, text, p } of given) {
       const windows = read.get(id);
       if (!windows?.length) continue;
-      const verdict = unitVerdict(id, text.length, windows);
+      const verdict = unitVerdict(id, text.length, windows, text);
       if (verdict.result.degraded) continue;
       kept.keep(p, verdict.result);
       scored++;
@@ -1522,7 +1531,22 @@ export function createOrchestrator(
     statsView = location.origin + location.pathname;
     try {
       unwatchStats?.();
-      unwatchStats = settings.statsConfig.watch(applyStatsConfig);
+      const unwatchConfig = settings.statsConfig.watch(applyStatsConfig);
+      let restart: AbortController | undefined;
+      const unwatchClear = settings.statsClearedAt.watch(() => {
+        reading.stop(false);
+        restart?.abort();
+        restart = new AbortController();
+        const resume = (): void => {
+          if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+          restart?.abort();
+          void settings.statsConfig.getValue().then(applyStatsConfig).catch(() => undefined);
+        };
+        window.addEventListener("focus", resume, { signal: restart.signal });
+        document.addEventListener("visibilitychange", resume, { signal: restart.signal });
+        resume();
+      });
+      unwatchStats = () => { unwatchConfig(); unwatchClear(); restart?.abort(); };
       unwatchLeaving?.();
       unwatchLeaving = beforeDocumentLeaves(() => reading.leave());
       applyStatsConfig(statsValue);

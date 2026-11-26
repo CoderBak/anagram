@@ -563,3 +563,42 @@ describe("the runtimes a browser offers", () => {
     expect(threads(10, false)).toBe(1);
   });
 });
+
+it("switches dated releases, reuses unchanged weights and restores the last working release on failure", async () => {
+  const {pin: releasePin} = await import("../../lib/webengine/pin");
+  const {defaultRelease} = await import("../../lib/detectorReleases");
+  const json=(data:unknown)=>new TextEncoder().encode(JSON.stringify(data));
+  const data:Record<string,Uint8Array>={};
+  function release(day:string,revision:string,broken=false) {
+    const meta={format:"anagram-detector/1",classes:["human","ai_assisted","ai_generated"],heads:["token","segment","mixed"],
+      decoder:"linear_chain_crf",language:"en",release_date:day,size:"10m",window:512,stride:256,min_words:50};
+    const payloads:Record<string,Uint8Array>={
+      "model.json":json(meta),"backbone/config.json":json({}),"crf.json":json({W:[[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,0,0,0,0]],alpha:[0,0,0],delta:[0,0,0],lambda:1,gamma:1,l_min:1}),
+      "tokenizer/tokenizer.json":TOKENIZER,"backbone/model.safetensors":MODEL,"head.safetensors":Uint8Array.of(1,2),
+    };
+    const files=Object.entries(payloads).map(([path,bytes])=>{
+      if(!broken || path!=="model.json") data[`/${defaultRelease.repository}/resolve/${revision}/${path}`]=bytes;
+      return {path,sha256:sha256Hex(bytes),size_bytes:bytes.length};
+    });
+    return {...defaultRelease,release:day+"-10m",revision,files};
+  }
+  const first=release("2026-12-01","1".repeat(40)),next=release("2026-12-02","2".repeat(40)),bad=release("2026-12-03","3".repeat(40),true);
+  const store=new MemoryStore(),server=fakeServer(data);
+  const initial={...releasePin(packaged(LID),"fp32",first),lid:pin().lid};
+  const makeEngine=()=>new Engine({pin:initial,store,assets:ASSETS,version:"test",probe:async()=>candidates(),
+    transport:server.fetch,retryWaits:[],createSession:async(c)=>({device:"wasm",info:{candidate:c,createMs:0,firstRunMs:0},async logits(){throw new Error("unexpected legacy pass");},async release(){}})});
+  let engine=makeEngine();
+  try {
+    await engine.handle("models.download",{});expect((await ready(engine)).state).toBe("ready");
+    await engine.handle("models.select",{release:next});expect((await ready(engine)).state).toBe("ready");
+    expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release},n_buckets:3});
+    expect(server.requests.filter(r=>r.url.endsWith("/backbone/model.safetensors"))).toHaveLength(1);
+    await engine.handle("models.select",{release:bad});
+    await vi.waitFor(async()=>expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}}));
+    const requests=server.requests.length;
+    await engine.close();engine=makeEngine();
+    expect((await ready(engine)).state).toBe("ready");
+    expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}});
+    expect(server.requests).toHaveLength(requests);
+  } finally { await engine.close(); }
+});

@@ -8,7 +8,7 @@
 // with Hugging Face resolving to this machine, where nothing answers (--hf lets the one
 // download below reach Hugging Face for real, 20 MB, with no host permission):
 //
-//   - this machine as it is: the setup page offers the in-browser engine; picking the local one asks for
+//   - a device with a choice: the setup page offers the in-browser engine; picking the local one asks for
 //     Native Messaging, granted here without the prompt (the profile's
 //     extensions.webextOptionalPermissionPrompts), and the page shows the install command;
 //     runtime.connectNative is there once granted, with no reload, and reaches no host (none is
@@ -87,14 +87,14 @@ const shown = (page, selector) => page.evaluate((s) => { const el = document.que
 const text = (page, selector) => page.evaluate((s) => document.querySelector(s)?.textContent ?? null, selector);
 const engineOf = async (page) => (await page.evaluate(() => browser.runtime.sendMessage({ action: "getEngine" })))?.engine ?? null;
 
-// ---- this machine, as it is --------------------------------------------------------------------
+// ---- the local installation choice --------------------------------------------------------------------
 
-await withFirefox(deviceBuild("real", {}, { browser: "firefox" }), async (open) => {
+await withFirefox(deviceBuild("linux-nvidia", DEVICES["linux-nvidia"], { browser: "firefox" }), async (open) => {
   const setup = await open("onboarding.html");
   const offered = await until(async () => (await shown(setup, "#engine-pick-native")) || (await shown(setup, ".engine-cannot")));
   const seen = await setup.evaluate(() => ({ title: document.getElementById("engineTitle")?.textContent,
     oneClick: !!document.querySelector('.engine-choice-card[data-engine="inbrowser"]')?.getClientRects().length }));
-  check("this machine is offered the in-browser engine", offered && seen.oneClick, JSON.stringify(seen));
+  check("the in-browser engine is offered alongside terminal installation", offered && seen.oneClick, JSON.stringify(seen));
   check("nothing chosen, and Native Messaging not granted, before a pick",
     (await engineOf(setup)) === null && !(await setup.evaluate(() => browser.permissions.contains({ permissions: ["nativeMessaging"] }))));
   if (process.platform === "darwin" && existsSync(REAL_HOSTS)) {

@@ -19,9 +19,7 @@ export function workerInit(choice?: TierChoice | null): Omit<WorkerInit, "type">
   // An offscreen document has no getManifest: the background put the version in its address.
   version ??= typeof location === "undefined" ? null : new URLSearchParams(location.search).get("version");
   return {
-    pin: pin(url(LID_PATH), choice?.tier === "fp16" ? "fp16" : "fp32"),
-    // Where FP16 fails to run and FP32 fits the device, FP32 takes its place (lib/webengine/engine.ts).
-    ...(choice?.tier === "fp16" && choice.fallback && !IS_SAFARI ? { fallback: pin(url(LID_PATH), "fp32") } : {}),
+    pin: pin(url(LID_PATH)),
     ...(IS_SAFARI ? { gpuOnly: true } : {}),
     assets: {
       ort: url("/vendor/engine/ort.jspi.min.mjs"),

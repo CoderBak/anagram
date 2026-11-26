@@ -91,7 +91,7 @@ const short = v.pipe(v.string(), v.maxLength(STATS_LIMITS.string));
 const ms = int(0, STATS_LIMITS.ms);
 const offset = int(-STATS_LIMITS.ms, STATS_LIMITS.ms);
 const words = int(0, STATS_LIMITS.words);
-const probs = v.pipe(v.array(num(0, 1)), v.length(4), v.check((p) => Math.abs(p.reduce((a, b) => a + b, 0) - 1) <= 0.02, "probabilities do not sum to one"));
+const probs = v.pipe(v.array(num(0, 1)), v.check(p=>p.length===3 || p.length===4), v.check((p) => Math.abs(p.reduce((a, b) => a + b, 0) - 1) <= 0.02, "probabilities do not sum to one"));
 const exposure = v.pipe(v.array(ms), v.length(4)) as unknown as v.GenericSchema<Exposure>;
 const counts = (keys: readonly string[]) => v.pipe(v.record(v.picklist(keys as [string, ...string[]]), int(0, 1_000_000)));
 

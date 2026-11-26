@@ -133,7 +133,7 @@ function objectKey(key, objectNumber) {
  * about bytes on the wire, and a fifty-megabyte document made of real pages would take
  * minutes to open for a measurement that has nothing to do with its pages.
  */
-export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
+export function buildPdf(pages, { password = null, padBytes = 0, drawings = [], taggedRows = [] } = {}) {
   const esc = (s) => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const objects = [];
   const add = (body) => objects.push(body) && objects.length;
@@ -148,12 +148,19 @@ export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
   const mono = add("<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>");
 
   const pageIds = [];
+  const structRoot = taggedRows.length ? add(null) : null;
+  const tables = [], parentEntries = [];
   for (const lines of pages) {
-    const plain =
+    const pageIndex = pageIds.length, rows = taggedRows[pageIndex] ?? [];
+    const marked = new Set(rows.flat(2));
+    const plain = (drawings[pageIds.length] ?? "") +
       "BT\n" +
       lines
         // `up`: set bottom to top, as arXiv stamps its identifier up the first page's margin.
-        .map((l) => `/${l.mono ? "F3" : l.bold ? "F2" : "F1"} ${l.size} Tf\n${l.up ? "0 1 -1 0" : "1 0 0 1"} ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`)
+        .map((l, i) => {
+          const text = `/${l.mono ? "F3" : l.bold ? "F2" : "F1"} ${l.size} Tf\n${l.up ? "0 1 -1 0" : "1 0 0 1"} ${l.x} ${l.y} Tm\n(${esc(l.text)}) Tj`;
+          return marked.has(i) ? `/Span << /MCID ${i} >> BDC\n${text}\nEMC` : text;
+        })
         .join("\n") +
       "\nET\n";
     const contents = objects.length + 1; // the object number this stream is about to take
@@ -164,11 +171,29 @@ export function buildPdf(pages, { password = null, padBytes = 0 } = {}) {
     pageIds.push(
       add(
         `<< /Type /Page /Parent ${pageTree} 0 R /MediaBox [0 0 612 792] ` +
-          `/Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R /F3 ${mono} 0 R >> >> /Contents ${contents} 0 R >>`,
+          `${rows.length ? `/StructParents ${pageIndex} ` : ""}/Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R /F3 ${mono} 0 R >> >> /Contents ${contents} 0 R >>`,
       ),
     );
+    if (rows.length) {
+      const table = add(null), rowRefs = [], parents = Array(lines.length).fill("null");
+      for (const [r, cells] of rows.entries()) {
+        const row = add(null), cellRefs = [];
+        for (const indices of cells) {
+          const cell = add(`<< /Type /StructElem /S /${r ? "TD" : "TH"} /P ${row} 0 R /Pg ${pageIds[pageIndex]} 0 R /K [${indices.join(" ")}] >>`);
+          for (const i of indices) parents[i] = `${cell} 0 R`;
+          cellRefs.push(`${cell} 0 R`);
+        }
+        objects[row - 1] = `<< /Type /StructElem /S /TR /P ${table} 0 R /K [${cellRefs.join(" ")}] >>`;
+        rowRefs.push(`${row} 0 R`);
+      }
+      objects[table - 1] = `<< /Type /StructElem /S /Table /P ${structRoot} 0 R /K [${rowRefs.join(" ")}] >>`;
+      tables.push(`${table} 0 R`);
+      parentEntries.push(`${pageIndex} [${parents.join(" ")}]`);
+    }
   }
-  objects[catalog - 1] = `<< /Type /Catalog /Pages ${pageTree} 0 R >>`;
+  if (structRoot) objects[structRoot - 1] = `<< /Type /StructTreeRoot /K [${tables.join(" ")}] /ParentTree << /Nums [${parentEntries.join(" ")}] >> >>`;
+  const structure = structRoot ? ` /MarkInfo << /Marked true >> /StructTreeRoot ${structRoot} 0 R` : "";
+  objects[catalog - 1] = `<< /Type /Catalog /Pages ${pageTree} 0 R${structure} >>`;
   objects[pageTree - 1] = `<< /Type /Pages /Kids [${pageIds.map((n) => `${n} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
   if (padBytes > 0) add(`<< /Length ${padBytes} >>\nstream\n${"\n".repeat(padBytes)}endstream`);
   // The /Encrypt dictionary is itself never encrypted, which is why it comes last: its

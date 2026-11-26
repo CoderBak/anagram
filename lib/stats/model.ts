@@ -44,8 +44,10 @@ export const HEARTBEAT_MS = 60_000;
 export const LEFT_OUT = ["links", "symbols", "names", "code", "teaser", "chrome", "hidden"] as const;
 export type LeftOut = (typeof LEFT_OUT)[number];
 
-/** Four numbers, one per word, human first. */
-export type Bands = [number, number, number, number];
+/** Totals in historical band order, with an additional AI-assisted slot for current readings. */
+export type Bands = [number, number, number, number, ...number[]];
+// Preserve historical EditLens slots. New AI-assisted readings occupy slot four.
+const detectorSlots = [0,4,3] as const;
 
 /** What was read of some stretch of reading, in words, and the paragraphs the words were in. */
 export interface Tally {
@@ -53,6 +55,8 @@ export interface Tally {
   scored: number;
   /** Words expected in each band: Σ words × the model's probability of that band. */
   expected: Bands;
+  /** A recount includes scored paragraphs for which only verdict labels survived. */
+  missingProbabilities?: true;
   /** Paragraphs under each word, the word the chip showed. */
   units: Bands;
   /** Paragraphs under each band, the model's most likely one. */
@@ -70,24 +74,26 @@ export function emptyTally(): Tally {
 
 /** Everything read, scored or not. */
 export function viewedWords(t: Tally): number {
-  return t.scored + t.short + t.language + t.unavailable + t.removed;
+  return t.scored + t.short + t.language + t.unavailable + (t.removed ?? 0);
 }
 
 /** `into` plus `t`, in place. */
 export function addTally(into: Tally, t: Tally): Tally {
   into.scored += t.scored;
-  for (const why of SKIP_REASONS) into[why] += t[why] ?? 0;
-  for (let i = 0; i < BUCKET_COUNT; i++) {
-    into.expected[i]! += t.expected[i] ?? 0;
-    into.units[i]! += t.units[i] ?? 0;
-    into.argmax[i]! += t.argmax?.[i] ?? 0;
+  if (t.missingProbabilities) into.missingProbabilities = true;
+  for (const why of SKIP_REASONS) into[why] = (into[why] ?? 0) + (t[why] ?? 0);
+  into.argmax ??= [0, 0, 0, 0];
+  for (let i = 0; i < Math.max(t.expected.length,t.units.length,t.argmax?.length ?? 0); i++) {
+    into.expected[i] = (into.expected[i] ?? 0)+(t.expected[i] ?? 0);
+    into.units[i] = (into.units[i] ?? 0)+(t.units[i] ?? 0);
+    into.argmax[i] = (into.argmax[i] ?? 0)+(t.argmax?.[i] ?? 0);
   }
   return into;
 }
 
 /** The share of the scored words each band is expected to hold, or null with none scored. */
 export function shares(t: Tally): Bands | null {
-  if (!(t.scored > 0)) return null;
+  if (!(t.scored > 0) || t.missingProbabilities) return null;
   return t.expected.map((w) => w / t.scored) as Bands;
 }
 
@@ -99,32 +105,38 @@ export function aiShare(t: Tally): number | null {
 /** The score a chip shows: Σ pᵢ·i / 3. */
 export function scoreOf(probs: readonly number[]): number {
   let score = 0;
-  for (let i = 0; i < BUCKET_COUNT; i++) score += (probs[i] ?? 0) * i;
-  return score / (BUCKET_COUNT - 1);
+  for (let i = 0; i < probs.length; i++) score += (probs[i] ?? 0) * i;
+  return score / (probs.length - 1);
 }
 
 /** The word a chip shows for these probabilities: the score's slice of the scale
  *  (lib/render/scale.ts), not the most likely bucket. */
 export function bandOf(probs: readonly number[]): number {
-  return levelOf(scoreOf(probs));
+  return probs.length===3 ? argmaxOf(probs) : levelOf(scoreOf(probs));
 }
 
 /** The most likely band; the lower one on a tie. */
 export function argmaxOf(probs: readonly number[]): number {
   let best = 0;
   for (let i = 1; i < BUCKET_COUNT; i++) if ((probs[i] ?? 0) > (probs[best] ?? 0)) best = i;
-  return best;
+  return probs.length===3 ? detectorSlots[best]! : best;
 }
 
 /** One paragraph read, as a tally: its words in its verdict's bands, or under why it has none. */
 export function tallyOfRead(words: number, probs: readonly number[] | null, why: SkipReason | null): Tally {
-  const t = emptyTally();
+  return addRead(emptyTally(), words, probs, why);
+}
+
+export function addRead(t: Tally, words: number, probs: readonly number[] | null, why: SkipReason | null, verdict?: UnitRow["verdict"]): Tally {
   if (probs && !why) {
-    t.scored = words;
-    for (let i = 0; i < BUCKET_COUNT; i++) t.expected[i] = words * (probs[i] ?? 0);
-    t.units[bandOf(probs)]!++;
-    t.argmax[argmaxOf(probs)]!++;
-  } else if (why) t[why] = words;
+    t.scored += words;
+    if(probs.length===3) {
+      for(const a of [t.expected,t.units,t.argmax]) a[4] ??= 0;
+      probs.forEach((p,i)=>{ t.expected[detectorSlots[i]!]! += words*p; });
+    } else for(let i=0;i<BUCKET_COUNT;i++) t.expected[i]! += words*(probs[i] ?? 0);
+    t.units[verdict?.band ?? bandOf(probs)]!++;
+    t.argmax[verdict?.argmax ?? argmaxOf(probs)]!++;
+  } else if (why) t[why] += words;
   return t;
 }
 
@@ -185,6 +197,9 @@ export interface VisitRow {
   places?: Partial<Record<"url" | "nofragment" | "querynames" | "path" | "pattern" | "host" | "domain", string>>;
   url?: string;
   site?: string;
+  /** Site of the top page for grouping a frame with its page totals. */
+  pageSite?: string;
+  titleLayer?: import("./config").Layer<"title">;
   title?: string;
   kind: PageKind;
   signals?: KindSignals;
@@ -227,11 +242,26 @@ export type Exposure = [number, number, number, number];
 export const UNIT_KINDS = ["paragraph", "post", "joined", "pdf", "docs", "surface"] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
+export type HashedPlaces = Map<string, NonNullable<VisitRow["places"]>>;
+export type PlaceLayerKey = keyof NonNullable<VisitRow["places"]>;
+
+/** Link address hashes only to the layers actually retained with the visit. */
+export function indexHashedPlaces(index: HashedPlaces, visit: VisitRow, wanted?: ReadonlyMap<string, PlaceLayerKey>): void {
+  if (!visit.hashed?.includes("place") || !visit.places) return;
+  for (const address of Object.values(visit.places)) {
+    const layer = wanted?.get(address);
+    if (!wanted || (layer && visit.places[layer] !== undefined)) index.set(address, visit.places);
+  }
+}
+
 export interface UnitRow {
   visit: string;
   /** Its order of finding in the visit, from 0. */
   n: number;
+  /** Opening day of the parent visit, used to retrieve an entire visit for a raw export. */
   date: string;
+  /** Local day of the first recorded read, or of discovery while still unread. */
+  readDate?: string;
   status: UnitStatus;
   /** Salted hash of the text; a salted near-duplicate sketch; the first twelve words. The
    *  whole text, where kept, is in the texts table under `hash`. */
@@ -249,10 +279,34 @@ export interface UnitRow {
    *  Each as [all of it, in a focused window, while the page was flung past, both]. When it
    *  was first and last there, how many times it came on screen, and when it counted as read
    *  by the default rule (lib/stats/lens.ts DEFAULT_LENS). */
-  expo?: { any: Exposure; half: Exposure; band: Exposure; first?: number; last?: number; sightings: number; readAt?: number };
+  expo?: { any: Exposure; half: Exposure; band: Exposure; first?: number; last?: number; sightings: number; readAt?: number; read?: boolean };
   /** Offsets from the visit's start. */
   found: number;
   removedAt?: number;
+}
+
+/** The read-only layer stores the decision without exposure durations. Older rows used
+ *  zero-filled vectors and a read offset for the same representation. */
+export function readFlagOnly(e: NonNullable<UnitRow["expo"]>): boolean {
+  return e.read !== undefined || (e.first === undefined && e.last === undefined &&
+    e.any.every((n) => n === 0) && e.half.every((n) => n === 0) && e.band.every((n) => n === 0));
+}
+
+/** Older logs with sightings but no durations or flag lost the read decision. */
+export function recordedRead(e: NonNullable<UnitRow["expo"]>): boolean | undefined {
+  if (e.read !== undefined) return e.read;
+  if (e.readAt !== undefined) return true;
+  return e.sightings > 0 && readFlagOnly(e) ? undefined : false;
+}
+
+/** Best available reading day for a row written before its calendar day was recorded. */
+export function readingDay(u: UnitRow, visit?: VisitRow): string {
+  if (u.readDate) return u.readDate;
+  if (!u.expo || !visit || u.date !== visit.date) return u.date;
+  const date = localDate(new Date(visit.start + (u.expo.readAt ?? u.found)));
+  // If the opening instant falls on a different day here, the old record came
+  // from another time zone. Its original midnight cannot be recovered.
+  return date === u.date || localDate(new Date(visit.start)) === u.date ? date : u.date;
 }
 
 /** The streams of a visit's events, each a set of columns of equal length. Offsets are from
@@ -333,11 +387,18 @@ export interface TotalRow {
   /** A page's: its title, when it was first read that day (HH:MM) and how long it was shown. */
   title?: string;
   start?: string;
+  /** Opening day when a visit continued into this total's day. */
+  startDate?: string;
   dwell?: number;
   kind?: PageKind;
   models?: ModelInfo[];
   /** The key (a site or a page) and the title are salted hashes. */
   hashed?: boolean;
+  titleHashed?: boolean;
+  titleLayer?: import("./config").Layer<"title">;
+  placeLayer?: import("./config").Layer<"place">;
+  /** Host hash for a hashed web page. It lets a site filter work after visits expire. */
+  siteHash?: string;
 }
 
 // ---- dates ----------------------------------------------------------------------------
@@ -365,7 +426,12 @@ export function addDays(date: string, days: number): string {
 /** Every date from `from` to `to`, both included. */
 export function datesBetween(from: string, to: string): string[] {
   const out: string[] = [];
-  for (let d = from; d <= to && out.length < 400; d = addDays(d, 1)) out.push(d);
+  const day = new Date(`${from}T12:00:00`), end = new Date(`${to}T12:00:00`);
+  if (localDate(day) !== from || localDate(end) !== to) return out;
+  while (day <= end) {
+    out.push(localDate(day));
+    day.setDate(day.getDate() + 1);
+  }
   return out;
 }
 

@@ -22,7 +22,7 @@ function page(value: string | undefined, path: "/reader.html" | typeof LOADER_PA
   return !!value && value.split(/[?#]/)[0] === browser.runtime.getURL(path);
 }
 /** How far into the file the `%PDF-` header may sit. pdf.js itself looks this far. */
-const MAGIC_WINDOW = 1024;
+export const PDF_HEADER_BYTES = 1024;
 
 /**
  * Is this the start of a PDF? The content type is not evidence: a login page, an error
@@ -31,7 +31,7 @@ const MAGIC_WINDOW = 1024;
  * instead of at the sign-in form that is really in the way.
  */
 export function hasPdfMagic(head: Uint8Array): boolean {
-  return new TextDecoder("iso-8859-1").decode(head.subarray(0, MAGIC_WINDOW)).includes("%PDF-");
+  return new TextDecoder("iso-8859-1").decode(head.subarray(0, PDF_HEADER_BYTES)).includes("%PDF-");
 }
 interface Transfer {
   tabId: number; source: string; reader: string; navigating: boolean; loadingSeen: boolean; complete: boolean;

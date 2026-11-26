@@ -11,6 +11,7 @@
 // Benchmarks, updates and uninstalling belong to the local engine and are not here.
 // The setup page keeps it to a status line and the bar; Settings' row (`settings`) says the
 // status in words and puts Delete model files and the idle unload beside the engine switch.
+import { engineManagement } from "./disclosure";
 import { browser } from "#imports";
 import { t, type MessageKey } from "../i18n";
 import { formatSize, timeLeft } from "./size";
@@ -67,7 +68,7 @@ class Speedometer {
   }
 }
 
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply, crashed?: boolean) => void, options: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply, crashed?: boolean) => void, options: { switchAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
   const inSettings = options.settings === true;
   host.classList.add("component-settings");
   host.dataset.engine = "in-browser";
@@ -100,7 +101,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const source = element("span", "", "engine-source"); source.id = "engine-source"; source.hidden = true;
   progressText.append(progressLine, source);
   bar.el.setAttribute("aria-describedby", progressText.id);
-  const keepOpen = element("p", t("engineKeepOpen"), "engine-note engine-keepopen"); keepOpen.hidden = true;
+  const keepOpen = element("p", t("engineBackgroundDownload"), "engine-note engine-keepopen"); keepOpen.hidden = true;
   const where = element("p", "", "engine-where"); where.hidden = true;
   const error = element("p", undefined, "component-error"); error.setAttribute("role", "alert"); error.hidden = true;
   const details = element("p", undefined, "component-details"); details.hidden = true;
@@ -116,6 +117,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   idleSelect.addEventListener("change", () => run("engine.settings"));
   const idleField = element("span", undefined, "inline-field"); idleField.append(idleLabel, idleSelect);
   const removeModel = makeButton("componentDeleteModels", () => confirm("delete"), "outline"); removeModel.id = "engine-delete";
+  if (options.switchAction) { options.switchAction.dataset.variant = "outline"; controls.append(options.switchAction); }
   controls.append(...(options.extra ?? []), removeModel, idleField);
 
   const dialog = element("dialog", undefined, "component-dialog");
@@ -126,7 +128,10 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const keep = makeButton("buttonCancel", () => dialog.close(), "outline");
   const accept = makeButton("componentDeleteModels", () => { dialog.close(); if (confirming) run("models.delete"); }); accept.id = "engine-confirm";
   dialogActions.append(keep, accept); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, note, lighter, barRow, progressText, keepOpen, where, error, details, controls, dialog);
+  const statusRow = element("div", undefined, "component-status-row");
+  statusRow.append(summary);
+  const management = engineManagement(statusRow, controls, inSettings);
+  host.replaceChildren(statusRow, note, lighter, barRow, progressText, keepOpen, where, error, details, management, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let stage: SetupStage | undefined;
@@ -183,7 +188,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
    *  (or the browser gives no estimate). */
   async function roomNeeded(): Promise<number | null> {
     try {
-      return roomShort(await navigator.storage.estimate(), Math.max(0, downloadBytes() - (snapshot?.storage.models_bytes ?? 0)));
+      return roomShort(await navigator.storage.estimate(), Math.max(0, downloadBytes() - downloadedBytes()));
     } catch { return null; }
   }
 
@@ -194,6 +199,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     switch (s.failure) {
       case "network": return t("engineNetworkLost");
       case "storage": return t("engineDiskFull", formatSize(Math.max(0, s.total - s.received)));
+      case "access": return t("detectorAccess");
       case "server": return t("engineServerDown");
       case "damaged": return t("engineDamaged");
       default: return t("engineDownloadStopped");
@@ -231,16 +237,23 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     removeModel.hidden = idleField.hidden = crashed || !modelOnDisk;
     controls.hidden = !inSettings;
     primary.disabled = cancel.disabled = removeModel.disabled = idleSelect.disabled = acting || checking;
-    barRow.hidden = bar.el.hidden && primary.hidden && cancel.hidden;
+    const actionRow = bar.el.hidden ? statusRow : barRow;
+    if (actions.parentElement !== actionRow) {
+      const focus = document.activeElement;
+      actionRow.append(actions);
+      if (focus instanceof HTMLElement && actions.contains(focus) && !focus.hidden) focus.focus({ preventScroll: true });
+    }
+    barRow.hidden = actionRow === statusRow;
   }
 
-  /** What the status line says: the stage, and in Settings the engine and where it runs, in words. */
+  /** What the status line says: the stage and, in Settings, the device running the ready model. */
   function statusText(): string {
     if (crashed || !stage) return t("componentNeedsAttention");
-    const label = t(stageKeys[stage.stage]);
-    if (!inSettings) return label;
-    const where = stage.stage === "ready" ? (stage.device === "cpu" ? t("engineWordsCpu") : stage.device === "gpu" ? t("engineWordsGpu") : "") : "";
-    return [t("engineWordsBrowser"), where].filter(Boolean).join(t("listSeparator")) + t("engineStatusSeparator") + label;
+    const label = t(stage.stage === "downloading" && snapshot?.download.phase === "verifying" ? "componentVerifyingModels" : stageKeys[stage.stage]);
+    if (inSettings && stage.stage === "ready" && (stage.device === "cpu" || stage.device === "gpu")) {
+      return t("engineStatusDevice", label, stage.device.toUpperCase());
+    }
+    return label;
   }
 
   function repaint(): void {
@@ -256,10 +269,11 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     const barState = counting?.stage === "paused" ? "paused" : counting?.stage === "failed" ? "failed" : "running";
     if (counting) {
       const total = counting.total || downloadBytes();
-      bar.set(total > 0 ? Math.min(counting.received, total) / total : 0, barState, t("engineDownloading"));
+      const verifying = counting.stage === "downloading" && snapshot?.download.phase === "verifying";
+      bar.set(total > 0 ? Math.min(counting.received, total) / total : 0, barState, t(verifying ? "componentVerifyingModels" : "engineDownloading"));
       percent.textContent = `${percentOf(counting.received, total)}%`;
       const parts = [t("engineProgress", formatSize(counting.received), formatSize(total))];
-      if (counting.stage === "downloading") {
+      if (counting.stage === "downloading" && !verifying) {
         if (counting.mirror) parts.push(t("engineFromMirror", counting.mirror));
         if (counting.retrying) parts.push(t("engineRetrying"));
         else {
@@ -300,7 +314,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     }
     const s = reply.snapshot; snapshot = s; everConnected = true;
     stage = setupStage(s);
-    if (stage.stage === "downloading") speed.add(stage.received); else speed.reset();
+    if (stage.stage === "downloading" && s.download.phase !== "verifying") speed.add(stage.received); else speed.reset();
     if (stage.stage !== "needed" && stage.stage !== "paused" && stage.stage !== "failed") noRoom = null;
     if (stage.stage !== "needed") roomChecked = false;
     else if (!roomChecked) {

@@ -104,9 +104,9 @@ export function deviceBuild(name, device, { browser = "chrome", native = "option
  * required it): the suites that drive the fake host through the shipping pages. Nothing else
  * differs. output-test/shipping-native/chrome-mv3.
  */
-export function shippingWithNative() {
-  const from = join(ROOT, "output", "chrome-mv3");
-  return derivedBuild(from, join(TEST_OUT, "shipping-native", "chrome-mv3"), (manifest) => {
+export function shippingWithNative(target = "chrome-mv3") {
+  const from = join(ROOT, "output", target);
+  return derivedBuild(from, join(TEST_OUT, "shipping-native", target), (manifest) => {
     manifest.optional_permissions = (manifest.optional_permissions ?? []).filter((p) => p !== "nativeMessaging");
     manifest.permissions = [...manifest.permissions, "nativeMessaging"];
   });

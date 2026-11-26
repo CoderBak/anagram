@@ -3,7 +3,7 @@
 // A per-site rule covers a whole site (lib/settings/settings.ts), so the rule that decides
 // the open page may be stored on a PARENT domain: on zhuanlan.zhihu.com the switch can be
 // off because of a rule written for zhihu.com. Three things follow — the switch has to show
-// the rule that actually decides, the line under it has to name where that rule lives, and
+// the rule that actually decides, an inherited rule needs to name its parent, and
 // flipping it must not leave a rule behind that says the opposite of what the switch now
 // shows. The decision is a pure function so every combination is provable without a browser.
 import { normalizeRuleHost, type SiteMode, type SiteRule } from "../../lib/settings/settings";
@@ -15,10 +15,9 @@ export function isInherited(host: string, rule: SiteRule | null): boolean {
   return rule !== null && normalizeRuleHost(rule.host) !== normalizeRuleHost(host);
 }
 
-/** The small line under "This site": the site the rule belongs to — this host, unless a
- *  parent domain's rule is what decides it. */
-export function siteLine(host: string, rule: SiteRule | null): string {
-  return t("popupOn", isInherited(host, rule) ? rule!.host : host);
+/** Explain the wider scope only when another domain supplies the rule. */
+export function inheritedRuleNote(host: string, rule: SiteRule | null): string {
+  return rule && isInherited(host, rule) ? t("popupInheritedRule", rule.host) : "";
 }
 
 /** What flipping the switch does to the stored rules. */

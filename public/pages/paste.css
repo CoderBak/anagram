@@ -1,57 +1,118 @@
-/* Layout only; colours, type and controls come from Basecoat (Vega). */
-body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.55; }
-.page { max-width: 760px; margin: 0 auto; padding: 24px 20px 32px; }
-header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-header.hdr img { width: 48px; height: 48px; margin: -2px; }
-header.hdr .logo-dark { display: none; }
-html.dark header.hdr .logo-light { display: none; }
-html.dark header.hdr .logo-dark { display: block; }
-header.hdr > div { flex: 1; min-width: 0; }
-header.hdr #settings { align-self: flex-start; }
-header.hdr h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
-header.hdr p { margin: 3px 0 0; color: var(--muted-foreground); }
-.stack { display: flex; flex-direction: column; gap: 12px; }
-.card > section { display: flex; flex-direction: column; gap: 10px; }
-.field-label { font-size: 13px; font-weight: 500; }
-/* Grows with the text up to half the window, then scrolls: a long text must not push the
-   verdict off the bottom of the page. */
-textarea { width: 100%; box-sizing: border-box; min-height: 220px; max-height: 50vh; overflow-y: auto; resize: vertical; padding: 10px 12px; font: inherit; line-height: 1.55; }
+.page { max-width: 760px; }
+header.hdr #settings { align-self: center; }
+.stack, .editor, #results { display: flex; flex-direction: column; }
+.editor, #results {
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.editor:has(#text[hidden]) {
+  padding-block: 10px;
+  border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: none;
+}
+#results { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.reading-title { font-size: 13px; font-weight: 600; color: var(--muted-foreground); margin: 4px 0 0; }
+.count { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+
+/* Grows with the text up to half the window, then scrolls so the verdict stays in view. */
+textarea.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 140px;
+  max-height: 50vh;
+  overflow-y: auto;
+  resize: vertical;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.65;
+}
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.actions .count { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
-#status { margin: 0; font-size: 13px; }
+.actions .btn[data-variant="ghost"] .action-icon { color: var(--muted-foreground); }
+.actions .btn[data-variant="ghost"]:hover .action-icon { color: var(--foreground); }
+.editor-meta { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+@media (max-width: 480px) {
+  .editor, #results { padding: 14px; }
+  .actions, .editor-meta { gap: 4px; }
+  .editor .btn[data-variant="ghost"] { padding-inline: 6px; }
+}
+@media (max-width: 384px) {
+  .editor:has(#clear:not([hidden])) #pick { width: 32px; padding: 0; }
+  .editor:has(#clear:not([hidden])) #pick span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+#status { margin: 0; font-size: 13px; color: var(--muted-foreground); }
 #status:empty { display: none; }
 .muted { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
-/* The verdict: its word in its colour, the score, and how the four words shared it. */
-.verdict { display: flex; align-items: center; gap: 10px; }
-.verdict h2 { margin: 0; font-size: 18px; font-weight: 600; }
-.verdict .chip { font-size: 15px; padding: 3px 8px; }
+
+/* The verdict header and collapsible class breakdown. */
+.result-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.verdict h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1.5px 7px;
+  border-radius: 999px;
+  border: 1px solid rgb(0 0 0 / 0.06);
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; color: #e4e6eb; }
+.chip::before, .dot { content: ""; width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--c); }
+.verdict .chip { font-size: 13.5px; padding: 2px 9px; font-weight: 600; }
 .verdict .chip:empty { display: none; }
-.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--c); }
-/* A verdict's chip as the page shows it (lib/render/badge.css.ts): the word's colour, the
-   number in the ink that reads on it; human's a tint with an edge. */
-.chip { display: inline-block; padding: 2px 6px; border: 1px solid var(--c); border-radius: 5px; background: var(--c); color: #141414; font-size: 11px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; }
-.chip.b3 { color: #ffffff; }
-html.dark .chip.b3 { color: #141414; }
-.chip.b0 { background: color-mix(in oklab, var(--c) 22%, var(--card)); border-color: color-mix(in oklab, var(--c) 70%, var(--card)); color: var(--foreground); }
-.mix { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--muted); }
+
+
+#scoreDetails { display: grid; gap: 8px; }
+.mix { display: flex; height: 5px; border-radius: 999px; overflow: hidden; background: var(--muted); }
 .mix > span { background: var(--c); }
 .mix > span + span { border-inline-start: 1.5px solid var(--card); }
-.legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
 .legend li { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.legend .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend .lbl { min-width: 0; }
+@media (max-width: 480px) {
+  .legend { display: grid; }
+  .legend .n { margin-inline-start: auto; }
+}
 .legend .n { font-variant-numeric: tabular-nums; font-weight: 600; }
-.export { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.export label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
-/* The text as given, a chip after each paragraph read and the flagged ones underlined in
-   their word's colour, as on a page; what was not read is set in muted ink. */
-.reading-title { margin: 6px 0 0; font-size: 13px; font-weight: 600; }
-#reading { display: flex; flex-direction: column; gap: 10px; }
-#reading p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The text as given, set cleanly for reading with chips and underlines. */
+#reading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+#reading p { margin: 0; font-size: 15px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 #reading .read + .read { padding-top: 0; }
-#reading .read > p + p { margin-top: 6px; }
-#reading .marked > p { text-decoration: underline 2px var(--c); text-underline-offset: 3px; text-decoration-skip-ink: auto; }
+#reading .read > p + p { margin-top: 8px; }
+#reading .marked { text-decoration: underline 1.8px var(--c); text-underline-offset: 4px; text-decoration-skip-ink: auto; }
+#reading .marked.b0 { text-decoration-color: color-mix(in srgb, var(--c) 50%, transparent); }
 #reading .unread > p { color: var(--muted-foreground); }
 #reading .chip { vertical-align: 1px; }
 #reading .note { display: inline-block; font-size: 12px; color: var(--muted-foreground); margin-inline-start: 4px; }
-@media (max-width: 560px) { .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.export {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.export #copy { margin-inline-start: auto; }
+.export #copyStatus:empty { display: none; }
+.export label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted-foreground); cursor: pointer; }
+.export label:hover { color: var(--foreground); }
 [hidden] { display: none !important; }

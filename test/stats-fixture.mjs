@@ -77,15 +77,17 @@ export function statsWeek(days = [0, 1, 2, 4, 6]) {
 
 /** Put `records` into the extension's database from its worker (`worker.evaluate`), making the
  *  database as lib/stats/store.ts does when it is not there yet. */
-export function seedStats(worker, records) {
-  return worker.evaluate(async (records) => {
+export function seedStats(worker, records, version = 4) {
+  return worker.evaluate(async ({ records, version }) => {
     const db = await new Promise((resolve, reject) => {
-      const open = indexedDB.open("anagram-stats", 2);
+      const open = indexedDB.open("anagram-stats", version);
       open.onupgradeneeded = () => {
         const made = open.result;
         for (const name of [...made.objectStoreNames]) made.deleteObjectStore(name);
         made.createObjectStore("visits", { keyPath: "id" }).createIndex("date", "date");
-        made.createObjectStore("units", { keyPath: ["visit", "n"] }).createIndex("date", "date");
+        const units = made.createObjectStore("units", { keyPath: ["visit", "n"] });
+        units.createIndex("date", "date");
+        if (version >= 3) units.createIndex("readDate", "readDate");
         made.createObjectStore("events", { keyPath: ["visit", "seq"] }).createIndex("date", "date");
         made.createObjectStore("texts", { keyPath: "hash" }).createIndex("last", "last");
         made.createObjectStore("totals", { keyPath: ["date", "scope", "key"] });
@@ -96,12 +98,12 @@ export function seedStats(worker, records) {
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);
     });
-    const stores = ["totals", "visits", "units", "events"];
+    const stores = ["totals", "visits", "units", "events", "texts"];
     const tx = db.transaction(stores, "readwrite");
-    for (const store of stores) for (const record of records[store] ?? []) tx.objectStore(store).put(record);
+    for (const store of stores) for (const record of records[store] ?? []) tx.objectStore(store).put(store === "units" && version >= 3 ? { readDate: record.date, ...record } : record);
     await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
     db.close();
-  }, records);
+  }, { records, version });
 }
 
 /** lib/stats/config.ts, bundled for the suites (it is pure: it imports nothing). */
@@ -122,3 +124,21 @@ export async function presetConfig(name, over = {}) {
   const c = make(name);
   return normalize({ ...c, ...over, layers: { ...c.layers, ...(over.layers ?? {}) } }).config;
 }
+
+/** What the extension's database holds, from its worker; null while there is no database. */
+export const statsDb = (extension) =>
+  extension.worker().evaluate(async () => {
+    const db = await new Promise((resolve) => {
+      const open = indexedDB.open("anagram-stats");
+      // No database yet: none is made here, or the extension's own would find it empty.
+      open.onupgradeneeded = () => open.transaction.abort();
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => resolve(null);
+    });
+    if (!db) return null;
+    const all = (store) => new Promise((resolve) => { const r = db.transaction(store).objectStore(store).getAll(); r.onsuccess = () => resolve(r.result); });
+    const out = {};
+    for (const store of ["visits", "units", "events", "texts", "totals", "tabs", "context"]) out[store] = await all(store);
+    db.close();
+    return out;
+  });

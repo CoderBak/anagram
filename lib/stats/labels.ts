@@ -3,20 +3,20 @@
 // Generated with the strings; keep it in step with lib/stats/config.ts.
 import type { MessageKey } from "../i18n";
 
-export const DIMENSION_KEYS: Record<string, [MessageKey, MessageKey]> = {
-  rows: ["statsDim_rows", "statsDimHint_rows"],
-  time: ["statsDim_time", "statsDimHint_time"],
+export const DIMENSION_KEYS: Record<string, [MessageKey, MessageKey?]> = {
+  rows: ["statsDim_rows"],
+  time: ["statsDim_time"],
   dur: ["statsDim_dur", "statsDimHint_dur"],
   place: ["statsDim_place", "statsDimHint_place"],
-  title: ["statsDim_title", "statsDimHint_title"],
-  text: ["statsDim_text", "statsDimHint_text"],
-  len: ["statsDim_len", "statsDimHint_len"],
-  verdict: ["statsDim_verdict", "statsDimHint_verdict"],
-  lang: ["statsDim_lang", "statsDimHint_lang"],
+  title: ["statsDim_title"],
+  text: ["statsDim_text"],
+  len: ["statsDim_len"],
+  verdict: ["statsDim_verdict"],
+  lang: ["statsDim_lang"],
   struct: ["statsDim_struct", "statsDimHint_struct"],
   geom: ["statsDim_geom", "statsDimHint_geom"],
   expo: ["statsDim_expo", "statsDimHint_expo"],
-  scroll: ["statsDim_scroll", "statsDimHint_scroll"],
+  scroll: ["statsDim_scroll"],
   input: ["statsDim_input", "statsDimHint_input"],
   state: ["statsDim_state", "statsDimHint_state"],
   tabs: ["statsDim_tabs", "statsDimHint_tabs"],

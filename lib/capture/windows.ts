@@ -1,3 +1,4 @@
+import {normalizeDetector} from "../webengine/detectorScore";
 // lib/capture/windows.ts — reading a long text completely, in passes that overlap by half.
 //
 // EditLens reads 512 tokens and the engine cuts whatever is longer, so a long paragraph
@@ -381,7 +382,7 @@ export interface UnitVerdict {
 
 /** Was this window actually scored? Not when the daemon failed or the language gate refused it. */
 export function isScoredWindow(w: WindowVerdict): boolean {
-  return !w.result.degraded && !w.result.unsupported;
+  return !w.result.degraded && !w.result.unsupported && !w.result.insufficient;
 }
 
 /** A probability vector in wire shape: bucket = its argmax, score = Σ pᵢ·i / 3. */
@@ -391,18 +392,49 @@ export function isScoredWindow(w: WindowVerdict): boolean {
  * languages are left out; null where nothing is left.
  */
 export function meanVerdict(id: string, parts: readonly { result: ScoreResult; chars: number }[]): ScoreResult | null {
-  const scored = parts.filter((p) => !p.result.degraded && !p.result.unsupported && p.chars > 0);
+  const scored = parts.filter((p) => !p.result.degraded && !p.result.unsupported && !p.result.insufficient && p.chars > 0);
   const weight = scored.reduce((n, p) => n + p.chars, 0);
   if (weight === 0) return null;
-  const probs = new Array<number>(BUCKET_COUNT).fill(0);
-  for (const p of scored) for (let i = 0; i < BUCKET_COUNT; i++) probs[i]! += (p.result.probs[i] ?? 0) * p.chars / weight;
+  const probs = new Array<number>(scored[0]!.result.probs.length).fill(0);
+  for (const p of scored) for (let i = 0; i < probs.length; i++) probs[i]! += (p.result.probs[i] ?? 0) * p.chars / weight;
   return resultOf(id, probs);
 }
 
 function resultOf(id: string, probs: number[]): ScoreResult {
   let bucket = 0;
-  for (let i = 1; i < BUCKET_COUNT; i++) if (probs[i]! > probs[bucket]!) bucket = i;
-  return { id, bucket, probs, score: probs.reduce((acc, p, i) => acc + p * i, 0) / (BUCKET_COUNT - 1) };
+  for (let i = 1; i < probs.length; i++) if (probs[i]! > probs[bucket]!) bucket = i;
+  return { id, bucket, probs, score: probs.reduce((acc, p, i) => acc + p * i, 0) / (probs.length - 1) };
+}
+
+function sentenceSpans(text:string):TextSpan[] {
+  const spans:TextSpan[]=[];
+  let start=0;
+  const add=(end:number)=>{
+    if (text.slice(start,end).trim()) spans.push({start,end});
+    start=end;
+  };
+  for(const match of text.matchAll(/[.!?…]+["'“”‘’)\]]*(?=\s|$)|\n\s*\n/gu)) add(match.index+match[0].length);
+  add(text.length);
+  return spans;
+}
+
+/** Place decoded sentences on the original passage only when the text of every sentence aligns. */
+function sentenceStretches(source:string,pass:WindowVerdict):WindowVerdict[] {
+  const labels=pass.result.sentenceLabels;
+  if(!labels || labels.length<2 || labels.every(l=>l===labels[0])) return [pass];
+  const raw=source.slice(pass.start,pass.end);
+  const analyzed=normalizeDetector(blockText(source,pass));
+  const spans=sentenceSpans(raw), decoded=sentenceSpans(analyzed);
+  if(spans.length!==labels.length || decoded.length!==labels.length) return [pass];
+  for(let i=0;i<spans.length;i++) {
+    const s=spans[i]!,d=decoded[i]!;
+    if(normalizeDetector(modelText(raw.slice(s.start,s.end)))!==analyzed.slice(d.start,d.end).trim()) return [pass];
+  }
+  return spans.map((span,i)=>{
+    const bucket=labels[i]!;
+    const probs=[0,0,0];probs[bucket]=1;
+    return {start:pass.start+span.start,end:pass.start+span.end,result:{id:pass.result.id,bucket,probs,score:bucket/2}};
+  });
 }
 
 /**
@@ -424,8 +456,8 @@ function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
       out.push(over[0]!);
       continue;
     }
-    const probs = new Array<number>(BUCKET_COUNT).fill(0);
-    for (const p of over) for (let j = 0; j < BUCKET_COUNT; j++) probs[j]! += (p.result.probs[j] ?? 0) / over.length;
+    const probs = new Array<number>(over[0]!.result.probs.length).fill(0);
+    for (const p of over) for (let j = 0; j < probs.length; j++) probs[j]! += (p.result.probs[j] ?? 0) / over.length;
     const result = resultOf(`${start}-${end}`, probs);
     if (over.some((p) => p.result.truncated)) result.truncated = true;
     out.push({ start, end, result });
@@ -456,10 +488,16 @@ function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
  *   left out of the mean and of the marks, and the card says so. All refused → the unit is
  *   "Unsupported language".
  */
-export function unitVerdict(id: string, textLength: number, windows: WindowVerdict[]): UnitVerdict {
+export function unitVerdict(id: string, textLength: number, windows: WindowVerdict[], source?:string): UnitVerdict {
   const unreadChars = Math.max(0, textLength - windows.reduce((end, w) => Math.max(end, w.end), 0));
-  const done = (result: ScoreResult, stretches: WindowVerdict[] = []): UnitVerdict =>
-    ({ id, result, windows, stretches, unreadChars });
+  const done = (result: ScoreResult, stretches: WindowVerdict[] = []): UnitVerdict => {
+    if (source && stretches.length && windows.some(w=>w.result.sentenceLabels?.length)) {
+      const scored=windows.filter(isScoredWindow);
+      const decoded=scored.flatMap(w=>sentenceStretches(source,w));
+      if(decoded.length>scored.length) stretches=combineStretches(decoded);
+    }
+    return {id,result,windows,stretches,unreadChars};
+  };
 
   if (windows.length === 1) return done({ ...windows[0]!.result, id }, windows.filter(isScoredWindow));
   if (windows.length === 0 || windows.some((w) => w.result.degraded)) return done(unavailableResult(id));
@@ -470,14 +508,14 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
   }
 
   const stretches = combineStretches(windows);
-  const probs = new Array<number>(BUCKET_COUNT).fill(0);
+  const probs = new Array<number>(scored[0]!.result.probs.length).fill(0);
   let weight = 0;
   for (const st of stretches) {
     const len = st.end - st.start;
     weight += len;
-    for (let i = 0; i < BUCKET_COUNT; i++) probs[i]! += (st.result.probs[i] ?? 0) * len;
+    for (let i = 0; i < probs.length; i++) probs[i]! += (st.result.probs[i] ?? 0) * len;
   }
-  for (let i = 0; i < BUCKET_COUNT; i++) probs[i]! /= weight;
+  for (let i = 0; i < probs.length; i++) probs[i]! /= weight;
   const result = resultOf(id, probs);
   if (scored.every((w) => typeof w.result.tokens === "number")) {
     result.tokens = scored.reduce((n, w) => n + (w.result.tokens ?? 0), 0);

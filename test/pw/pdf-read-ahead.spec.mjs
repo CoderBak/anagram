@@ -3,12 +3,13 @@
 // nearest first and paced by how fast the engine is (lib/pdf/readAhead.ts). The toolbar menu
 // says how much of the document's paragraphs it has read, and where the engine is slow it reads
 // only around the page being read and offers the rest. Without Zotero's structure the reader
-// reads only what is drawn, and the menu counts pages. Nothing is scrolled here unless a test
+// reads what is drawn until the menu requests the entire document. Nothing is scrolled here unless a test
 // says so.
 //
 //   npx playwright test pdf-read-ahead
 import { test as base, expect, BADGE_SEL, popupOver, menuReport } from "./kit.mjs";
-import { TALL_PDF, TALL_WORDS, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
+import { presetConfig, statsDb } from "../stats-fixture.mjs";
+import { buildPdf, pdfColumn, PDF_PARAS, TALL_PDF, TALL_WORDS, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
 
 const test = base.extend({
   /** The thirty-page document, served as application/pdf. */
@@ -26,8 +27,8 @@ const PER_PAGE = 4;
 const READING = /^Reading the whole document: (\d+)% so far\.$/;
 const SHARE = /^(\d+)% of the document read; the rest is read as you scroll to it\.$/;
 /** The reflow's, with no structure: pages. */
-const SCOPED = /^Covers the (\d+) pages loaded now, of 30; the others are read as you scroll to them\.$/;
-const NOTE = /so far|read as you scroll/;
+const SCOPED = /^Covers (\d+) of 30 pages\. Scroll to read more\.$/;
+const NOTE = /so far|^Covers |read as you scroll|^Prepared |^Could not read /;
 
 /** The menu's report, its note on how much of the document is read, and its page action. */
 async function menuState(menu) {
@@ -216,7 +217,7 @@ test("with the read-ahead off in Settings, only the pages drawn are read", async
   expect.soft(state.action, `${off} (and nothing is offered)`).toBeNull();
 });
 
-test("without Zotero's structure the reader reads only the pages drawn, and the menu counts pages", async ({ context, tall, nativeHost, storage }) => {
+test("without Zotero the menu reads unseen pages on request and later places cached chips", async ({ context, tall, nativeHost, storage }) => {
   test.setTimeout(90_000);
   await storage.set({ pdfStructure: false });
   const mark = nativeHost.textMark();
@@ -231,8 +232,114 @@ test("without Zotero's structure the reader reads only the pages drawn, and the 
   let state;
   await expect.poll(async () => (state = await menuState(menu)).scope, { message: reflow }).toMatch(SCOPED);
   expect.soft(Number(state.scope.match(SCOPED)[1]), reflow).toBeLessThanOrEqual(drawn.length);
-  expect.soft(state.action, `${reflow} (and nothing is offered)`).toBeNull();
+  expect(state.action).toBe("Read the whole document");
+  const worker = page.waitForEvent("worker", {predicate: (w) => /scan\.worker/.test(w.url())});
+  await menu.locator("#pageAction").click();
+  await worker;
+  await expect.poll(() => menu.isClosed()).toBe(true);
+  const report = await popupOver(page);
+  await expect.poll(async () => {
+    state = await menuState(report);
+    return state.scope === null && state.read >= PAGES * 3;
+  }, { message: "fallback covers the whole document", timeout: 75_000, intervals: [250] }).toBe(true);
+  expect(state.action).toBeNull();
+  expect(await drawnPages(page)).not.toContain(25);
+  expect(await page.locator("#pageNumber").inputValue()).toBe("1");
+  const beforeVisit = nativeHost.textMark();
+  await report.close();
+  await visitPdfPage(page, 25);
+  await expect.poll(() => pageRead(page, 25), { timeout: 15_000 }).toBe(true);
+  expect(nativeHost.textsSince(beforeVisit)).toEqual([]);
 });
+
+test("a later spelling replaces a provisional verdict and the toolbar counts the corrected passage once", async ({context, pages, storage, nativeHost, extension}) => {
+  await storage.set({pdfStructure: false, statsConfig: await presetConfig("fullText")});
+  const broken = ["The researchers took their observations outdoors during the long dry-", "season that followed the spring rains.", ...PDF_PARAS[0]];
+  const evidence = ["Later in the report the dry-season measurements are compared again.", ...PDF_PARAS[0]];
+  const doc = [pdfColumn(broken, 680), ...Array.from({length: 15}, () => []), pdfColumn(evidence, 680)];
+  pages.serve({"/rainfall.pdf": buildPdf(doc)});
+  const mark = nativeHost.textMark();
+  const page = await openPdfInReader(context, pages.url("/rainfall.pdf"));
+  const saw = (needle) => nativeHost.textsSince(mark).some((text) => text.includes(needle));
+  await expect.poll(() => saw("long dryseason"), {timeout: 25_000}).toBe(true);
+  const visit = async () => (await statsDb(extension))?.visits.find((v) => v.surface === "pdf");
+  await expect.poll(async () => (await visit())?.tally.scored, {timeout: 20_000}).toBeGreaterThan(0);
+  const original = (await visit()).tally;
+  const menu = await popupOver(page);
+  await menu.locator("#pageAction").click();
+  const report = await popupOver(page);
+  await expect.poll(() => saw("long dry-season"), {timeout: 35_000}).toBe(true);
+  await expect.poll(async () => {
+    const {scope, read} = await menuState(report);
+    return {scope, read};
+  }, {timeout: 20_000}).toEqual({scope: null, read: 2});
+  expect(await page.locator("#pageNumber").inputValue()).toBe("1");
+  await report.close();
+  await page.bringToFront();
+  await page.waitForTimeout(1800); // Keep the corrected passage in view past the reading threshold.
+  await page.goto("about:blank");
+  await expect.poll(async () => (await visit())?.ended, {timeout: 15_000}).toBeTruthy();
+  const db = await statsDb(extension);
+  expect(db.visits.find((v) => v.surface === "pdf").tally).toEqual(original);
+  expect(db.totals.find((t) => t.scope === "day").tally).toEqual(original);
+  expect(db.units.filter((u) => u.readDate)).toHaveLength(1);
+});
+
+test("an unreadable fallback page is reported and can be retried without reopening any other page", async ({ context, tall, storage }) => {
+  test.setTimeout(90_000);
+  await storage.set({ pdfStructure: false, pdfReadAhead: false });
+  const page = await openPdfInReader(context, tall);
+  await expect.poll(() => pageRead(page, 1), { timeout: 20_000 }).toBe(true);
+  const menu = await popupOver(page);
+  await expect.poll(async () => (await menuState(menu)).scope).toMatch(SCOPED);
+  expect((await menuState(menu)).action).toBeNull();
+  await page.evaluate(() => {
+    const doc = window.PDFViewerApplication.pdfDocument;
+    const get = doc.getPage.bind(doc);
+    window.attemptedPages = [];
+    let once = true;
+    doc.getPage = (n) => {
+      window.attemptedPages.push(n);
+      if (once && n === 26) { once = false; return Promise.reject(new Error("Page unavailable")); }
+      return get(n);
+    };
+  });
+  await storage.set({ pdfReadAhead: true });
+  await expect(menu.locator("#pageAction")).toHaveText("Read the whole document");
+  await menu.locator("#pageAction").click();
+  await expect.poll(() => menu.isClosed()).toBe(true);
+  const retry = await popupOver(page);
+  await expect.poll(async () => (await menuState(retry)).scope, { timeout: 55_000 }).toBe("Could not read 1 of 30 pages.");
+  await expect(retry.locator("#pageAction")).toHaveText("Retry unread pages");
+  await page.evaluate(() => { window.attemptedPages.length = 0; });
+  await retry.locator("#pageAction").click();
+  await expect.poll(() => retry.isClosed()).toBe(true);
+  const final = await popupOver(page);
+  await expect.poll(async () => {
+    const state = await menuState(final);
+    return state.scope === null && state.read >= PAGES * 3;
+  }, { timeout: 20_000 }).toBe(true);
+  expect(await page.evaluate(() => window.attemptedPages)).toEqual([26]);
+});
+
+for (const structured of [false, true]) {
+  test(`a PDF with image covers reads the later text without scrolling, structure ${structured}`, async ({ context, pages, storage, nativeHost }) => {
+    await storage.set({pdfStructure: structured});
+    const doc = buildPdf([[], [], [], pdfColumn(PDF_PARAS[0], 680)], {drawings: ["60 100 470 510 re f", "80 100 400 510 re f"]});
+    pages.serve({"/covers.pdf": doc});
+    const mark = nativeHost.textMark();
+    const page = await openPdfInReader(context, pages.url("/covers.pdf"));
+    if (!structured) {
+      const menu = await popupOver(page);
+      await expect(menu.locator("#pageAction")).toHaveText("Read the whole document");
+      await menu.locator("#pageAction").click();
+    }
+    await expect.poll(() => nativeHost.textsSince(mark).length, {timeout: 20_000}).toBeGreaterThan(0);
+    await expect(page.locator("#notice")).toBeHidden();
+    expect(await page.locator("#pageNumber").inputValue()).toBe("1");
+    expect(await drawnPages(page)).not.toContain(4);
+  });
+}
 
 test("a hidden reader asks the engine for nothing in the background, and picks up when it is shown", async ({ context, tall, nativeHost }) => {
   test.setTimeout(120_000);

@@ -5,6 +5,7 @@
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Anagram</title>
+    <link rel="stylesheet" href="/pages/theme.css" />
     <link rel="stylesheet" href="/pages/onboarding.css" />
   </head>
   <body>
@@ -14,16 +15,17 @@
         <img class="logo-dark" src="/icons/icon-96.png" alt="" />
         <div>
           <h1>Anagram</h1>
-          <p class="tag" data-i18n="onbTagline">Marks AI-written paragraphs as you read. Everything runs on this computer.</p>
+          <p class="tag" data-i18n="onbTagline">Highlights likely AI-edited paragraphs.</p>
         </div>
-        <span class="ver" id="version"></span>
       </header>
+      <div class="extension-update" id="extensionUpdate" hidden></div>
 
       <div class="stack">
         <section class="card step" data-size="sm" id="engineCard" aria-labelledby="engineTitle">
           <header>
             <span class="num" aria-hidden="true"><span>1</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
             <h2 id="engineTitle" data-i18n="engineChooseTitle">Choose how Anagram runs</h2>
+            <a id="tryParagraph" class="text-action" href="/paste.html" data-i18n="onbTryParagraph" hidden>Try a paragraph</a>
             <button type="button" class="step-toggle" aria-controls="engineBody" aria-labelledby="engineTitle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button>
           </header>
           <section id="engineBody">
@@ -34,7 +36,7 @@
         <section class="card step" data-size="sm" id="whereCard" aria-labelledby="whereTitle">
           <header>
             <span class="num" aria-hidden="true"><span>2</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
-            <h2 id="whereTitle" data-i18n="onbWhere">Where it reads</h2>
+            <h2 id="whereTitle" data-i18n="onbWhere">Automatic site access (optional)</h2>
             <button type="button" class="step-toggle" aria-controls="whereBody" aria-labelledby="whereTitle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button>
           </header>
           <section id="whereBody">
@@ -45,25 +47,24 @@
         <section class="card step" data-size="sm" id="pinCard" aria-labelledby="toolbarGuideTitle">
           <header>
             <span class="num" aria-hidden="true"><span>3</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>
-            <h2 id="toolbarGuideTitle" data-i18n="toolbarPinTitle">Keep Anagram in your toolbar</h2>
+            <h2 id="toolbarGuideTitle" data-i18n="toolbarPinTitle">Pin to toolbar (optional)</h2>
             <button type="button" class="step-toggle" aria-controls="toolbarGuide" aria-labelledby="toolbarGuideTitle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button>
           </header>
           <section id="toolbarGuide"></section>
         </section>
 
         <section class="card" data-size="sm" id="verdictCard" aria-labelledby="verdictTitle">
-          <header><h2 id="verdictTitle" data-i18n="onbVerdictTitle">Reading the marks</h2></header>
-          <section>
+          <header class="marks-heading">
+            <h2 id="verdictTitle" data-i18n="onbVerdictTitle">Reading the marks</h2>
             <div class="words">
               <span class="word"><span class="chip b0"><span class="dot"></span>.05</span><span data-i18n="bandHuman">Human</span></span>
-              <span class="word"><span class="chip b1"><span class="dot"></span>.30</span><span data-i18n="bandLight">Lightly edited</span></span>
-              <span class="word"><span class="chip b2"><span class="dot"></span>.64</span><span data-i18n="bandHeavy">Heavily edited</span></span>
+              <span class="word"><span class="chip b1"><span class="dot"></span>.50</span><span data-i18n="bandAssisted">AI-assisted</span></span>
               <span class="word"><span class="chip b3"><span class="dot"></span>.95</span><span data-i18n="bandAi">AI-generated</span></span>
             </div>
-            <div class="bar" aria-hidden="true"><span class="b0"></span><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
-            <div class="ends" aria-hidden="true"><span>.00</span><span>1.0</span></div>
-            <p class="step-note" data-i18n="onbScoreLine">Hover a chip for details. English text only.</p>
-            <p class="note" data-i18n="onbModelNotice">Model: Pangram's EditLens (CC BY-NC-SA 4.0). Not for commercial use, nor to enforce AI-use policies at school or work.</p>
+          </header>
+          <section>
+            <p class="step-note" data-i18n="onbScoreLine">Hover over a score to see its sentence labels.</p>
+            <p class="note" data-i18n="onbModelNotice">English passages of 50 words or more.</p>
           </section>
         </section>
 
@@ -71,6 +72,7 @@
           <a href="/options.html" data-i18n="onbOpenSettings">Open Settings</a>
           <a id="guide" href="https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md" target="_blank" rel="noopener noreferrer" data-i18n="onbUserGuide">User guide</a>
           <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a>
+          <span class="ver" id="version"></span>
         </nav>
       </div>
     </main>

@@ -1,12 +1,10 @@
 // lib/stats/lens.ts — the choices made when the log is looked at, not when it is recorded:
 // what counts as read, what is counted once, which estimator, weighted by what.
 //
-// The recorder keeps each paragraph's time on screen under every rule a lens can ask for
-// (UnitRow.expo), so any of them can be applied to what was recorded at paragraph rows or
-// finer. Totals, and visits, hold the default lens's numbers alone: there the lens is the
-// default and nothing else. Pure.
+// A recount uses the exposure and verdict detail retained with each paragraph.
+// The default eligibility rule and weights are also available in saved totals.
 import {
-  addTally, emptyTally, tallyOfRead, viewedWords, type Exposure, type PageKind, type SkipReason, type Tally, type UnitRow,
+  readFlagOnly, recordedRead, addRead, emptyTally, viewedWords, type Bands, type Exposure, type PageKind, type SkipReason, type Tally, type UnitRow,
 } from "./model";
 import { MIN_WORDS } from "../dom/text";
 
@@ -26,8 +24,8 @@ export interface Lens {
   excludeFling: boolean;
   /** A paragraph read again counts again per visit (the default), per day, or once ever. */
   once: "visit" | "day" | "ever";
-  /** The headline: the AI-generated band, or heavily edited and AI-generated. */
-  headline: "ai" | "heavyAndAi";
+  /** The selected verdict classes. Historical heavy editing and current AI assistance have separate bins. */
+  headline: "ai" | "assistedAndAi" | "heavyAndAi";
   /** How the shares are estimated: expected words (Σ words × p); paragraphs under the word
    *  their chip showed; paragraphs under their most likely band. */
   estimator: "expected" | "chip" | "argmax";
@@ -48,6 +46,11 @@ export function isDefaultLens(lens: Lens): boolean {
   return (Object.keys(DEFAULT_LENS) as (keyof Lens)[]).every((k) => lens[k] === DEFAULT_LENS[k]);
 }
 
+/** Presentation changes can use the histograms already stored in daily totals. */
+export function needsParagraphs(lens: Lens): boolean {
+  return !isDefaultLens({ ...lens, estimator: DEFAULT_LENS.estimator, headline: DEFAULT_LENS.headline });
+}
+
 /** The milliseconds of `e` a lens counts. */
 export function countedMs(e: Exposure, lens: Pick<Lens, "focusedOnly" | "excludeFling">): number {
   const [all, focused, flung, focusedFlung] = e;
@@ -57,16 +60,29 @@ export function countedMs(e: Exposure, lens: Pick<Lens, "focusedOnly" | "exclude
 
 /** How long `unit` was on screen by `lens`, or null where its exposure was not kept. */
 export function readTime(unit: UnitRow, lens: Lens): number | null {
-  if (!unit.expo) return null;
+  if (!unit.expo || readFlagOnly(unit.expo)) return null;
   return Math.max(0, countedMs(unit.expo[lens.visibility], lens));
 }
 
-/** Whether `unit` was read by `lens`. Without its exposure, what the recorder decided by the
- *  default rule. */
+/** A read flag describes the default visibility rule only. Durations are required for
+ *  a different rule or a weight measured in seconds. */
+export function supportsReadRule(unit: UnitRow, lens: Lens): boolean {
+  if (!unit.expo) return false;
+  return !readFlagOnly(unit.expo) || (lens.weight !== "time" && lens.readMs === DEFAULT_LENS.readMs &&
+    lens.visibility === DEFAULT_LENS.visibility && lens.focusedOnly === DEFAULT_LENS.focusedOnly &&
+    lens.excludeFling === DEFAULT_LENS.excludeFling && recordedRead(unit.expo) !== undefined);
+}
+
 export function wasRead(unit: UnitRow, lens: Lens): boolean {
   const ms = readTime(unit, lens);
-  if (ms === null) return unit.expo?.readAt !== undefined || unit.status !== "pending";
-  return ms >= lens.readMs;
+  if (ms !== null) return ms >= lens.readMs;
+  return !!unit.expo && supportsReadRule(unit, lens) && recordedRead(unit.expo) === true;
+}
+
+/** A categorical verdict retains both labels but cannot reconstruct expected shares. */
+export function supportsRecount(unit: UnitRow, lens: Lens): boolean {
+  return supportsReadRule(unit, lens) && (skipOf(unit, lens) !== null || !!unit.verdict?.p ||
+    (lens.estimator !== "expected" && unit.verdict?.band !== undefined && unit.verdict.argmax !== undefined));
 }
 
 /** Why a read paragraph has no verdict under `lens`, or null when it is scored. */
@@ -94,33 +110,57 @@ export function tallyUnder(units: readonly UnitRow[], lens: Lens): Tally {
   const out = emptyTally();
   const seen = new Set<string>();
   for (const unit of units) {
-    if (!wasRead(unit, lens)) continue;
-    if (lens.once !== "visit" && unit.hash) {
-      const key = lens.once === "day" ? `${unit.date} ${unit.hash}` : unit.hash;
-      if (seen.has(key)) continue;
-      seen.add(key);
-    }
-    const why = skipOf(unit, lens);
-    const probs = why ? null : unit.verdict?.p ?? null;
-    addTally(out, tallyOfRead(weightOf(unit, lens), probs, probs ? null : why ?? "unavailable"));
+    const key = lens.once === "visit" || !unit.hash ? undefined :
+      lens.once === "day" ? `${unit.readDate ?? unit.date} ${unit.hash}` : unit.hash;
+    if (key !== undefined && seen.has(key)) continue;
+    if (countUnit(out, unit, lens) && key !== undefined) seen.add(key);
   }
   return out;
 }
 
-/** The headline share of `t` under `lens`, or null with nothing scored. */
-export function headlineOf(t: Tally, lens: Pick<Lens, "headline" | "estimator">): number | null {
-  const bands = lens.estimator === "expected" ? t.expected : lens.estimator === "chip" ? t.units : t.argmax;
-  const whole = lens.estimator === "expected" ? t.scored : bands.reduce((a, b) => a + b, 0);
-  if (!(whole > 0)) return null;
-  return (lens.headline === "ai" ? bands[3] : bands[2] + bands[3]) / whole;
+/** Accumulate directly into the group so a long history needs no tally allocation per paragraph. */
+export function countUnit(out: Tally, unit: UnitRow, lens: Lens): boolean {
+  if (!wasRead(unit, lens)) return false;
+  const why = skipOf(unit, lens);
+  const weight = weightOf(unit, lens);
+  const verdict = unit.verdict;
+  if (why || verdict?.p) addRead(out, weight, verdict?.p ?? null, why, verdict);
+  else if (lens.estimator !== "expected" && verdict?.band !== undefined && verdict.argmax !== undefined) {
+    out.scored += weight;
+    out.units[verdict.band] = (out.units[verdict.band] ?? 0)+1;
+    out.argmax[verdict.argmax] = (out.argmax[verdict.argmax] ?? 0)+1;
+    out.missingProbabilities = true;
+  } else return false;
+  return weight > 0;
 }
 
-/** The four shares of `t` under `lens`'s estimator, or null with nothing scored. */
-export function sharesUnder(t: Tally, lens: Pick<Lens, "estimator">): [number, number, number, number] | null {
-  const bands = lens.estimator === "expected" ? t.expected : lens.estimator === "chip" ? t.units : t.argmax;
-  const whole = lens.estimator === "expected" ? t.scored : bands.reduce((a, b) => a + b, 0);
+/** The quantities shown by a verdict chart. Older records can lack the argmax histogram. */
+export function verdictBands(t: Tally, lens: Pick<Lens, "estimator">): Bands {
+  if (lens.estimator === "expected") return t.expected;
+  if (lens.estimator === "chip") return t.units;
+  return t.argmax ?? [0, 0, 0, 0];
+}
+
+export function verdictDenominator(t: Tally, lens: Pick<Lens, "estimator">): number {
+  if (lens.estimator === "expected") return t.missingProbabilities ? 0 : t.scored;
+  return verdictBands(t, lens).reduce((a, b) => a + b, 0);
+}
+
+/** The headline share of `t` under `lens`, or null with nothing scored. */
+export function headlineOf(t: Tally, lens: Pick<Lens, "headline" | "estimator">): number | null {
+  const bands = verdictBands(t, lens);
+  const whole = verdictDenominator(t, lens);
   if (!(whole > 0)) return null;
-  return bands.map((b) => b / whole) as [number, number, number, number];
+  const extra = lens.headline === "assistedAndAi" ? bands[4] ?? 0 : lens.headline === "heavyAndAi" ? bands[2] : 0;
+  return (bands[3] + extra) / whole;
+}
+
+/** Shares in stored band order, or null with nothing scored. */
+export function sharesUnder(t: Tally, lens: Pick<Lens, "estimator">): Bands | null {
+  const bands = verdictBands(t, lens);
+  const whole = verdictDenominator(t, lens);
+  if (!(whole > 0)) return null;
+  return bands.map((b) => b / whole) as Bands;
 }
 
 export { viewedWords };

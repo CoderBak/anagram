@@ -1,9 +1,11 @@
 import type { PDFPageProxy } from "pdfjs-dist";
+import { taggedTableRows } from "./taggedTables";
+import { pageTableRows } from "./tableGrid";
 import { loadPdfjs } from "../lazy";
 import { isRotated, type PdfPageText, type PdfTextItem } from "./reflow";
 
 /** Match the upstream TextLayerBuilder options so item offsets refer to the same text. */
-export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> {
+export async function extractPageText(page: PDFPageProxy, readTables = true): Promise<PdfPageText> {
   const [pdfjs, content] = await Promise.all([
     loadPdfjs(), page.getTextContent({ includeMarkedContent: true, disableNormalization: true }),
   ]);
@@ -23,7 +25,12 @@ export async function extractPageText(page: PDFPageProxy): Promise<PdfPageText> 
     // simply not named, and nothing set in it is taken for mathematics.
     if (item.fontName && !(item.fontName in fonts)) fonts[item.fontName] = fontNameOf(page, item.fontName);
   }
-  return {page: page.pageNumber, width: viewport.width, height: viewport.height, items, transform: [...viewport.transform], fonts};
+  const taggedRows = readTables ? await taggedTableRows(page, content).catch(() => []) : [];
+  const tagged = taggedRows.length ? new Set(taggedRows.flat(2)) : null;
+  const tables = readTables ? await pageTableRows(page, viewport.transform,
+    tagged ? items.filter((_, i) => !tagged.has(i)) : items).catch(() => []) : [];
+  return { ...(taggedRows.length ? {taggedRows} : {}), ...(tables.length ? {tables} : {}),
+    page: page.pageNumber, width: viewport.width, height: viewport.height, items, transform: [...viewport.transform], fonts };
 }
 
 /** Name the fonts of a page's text that were not loaded when it was read: a page not drawn

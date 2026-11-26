@@ -1,15 +1,50 @@
 /* The engine card's choice, its notes and Settings' switch row (lib/ui/engineCard.ts). */
-.engine-choice { display:flex; flex-direction:column; gap:12px; min-width:0; }
-.engine-choice p, .engine-cannot, .engine-tight { margin:0; font-size:13px; line-height:1.55; color:var(--muted-foreground); }
-.engine-cannot { color:var(--foreground); }
-.engine-choice-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap:12px; }
-.engine-choice-card { display:flex; flex-direction:column; gap:8px; min-width:0; padding:14px; border:1px solid var(--border); border-radius:10px; background:var(--card); }
-.engine-choice-card[hidden] { display:none; }
-.engine-choice-card[data-recommended] { border:2px solid var(--primary); padding:13px; }
-.engine-choice-card h3 { margin:0; font-size:15px; font-weight:600; color:var(--foreground); }
-.engine-choice-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
-.engine-choice-card .btn { margin-top:auto; width:100%; white-space:normal; height:auto; min-height:36px; padding-block:6px; text-align:center; }
-.engine-choice .engine-note, .engine-tight { font-size:12.5px; }
-.engine-choice .engine-error { color:var(--destructive); }
-.engine-error { margin:0; font-size:13px; color:var(--destructive); }
-.engine-choice[hidden], .engine-cannot[hidden], .engine-tight[hidden], .engine-error[hidden] { display:none !important; }
+.engine-choice { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.engine-choice p, .engine-cannot, .engine-tight { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted-foreground); }
+.engine-cannot { color: var(--foreground); }
+.engine-choice-cards { display: grid; gap: 0; }
+.engine-choice-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(46%);
+  align-items: center;
+  gap: 3px 18px;
+  min-width: 0;
+  padding-block: 10px;
+}
+.engine-choice-card:first-child { padding-top: 2px; }
+.engine-choice-card:last-child { padding-bottom: 2px; }
+.engine-choice-card + .engine-choice-card { border-top: 1px solid var(--border); }
+.engine-choice-card[hidden] { display: none; }
+.engine-choice-card h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--foreground); letter-spacing: -0.01em; }
+.engine-choice-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.engine-recommendation {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.engine-choice-card > :not(.btn) { grid-column: 1; }
+.engine-choice-card .btn {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  justify-self: end;
+  white-space: nowrap;
+  height: auto;
+  min-height: 32px;
+  padding-block: 5px;
+  text-align: center;
+}
+@media (max-width: 580px) {
+  .engine-choice-card { grid-template-columns: minmax(0, 1fr) fit-content(52%); gap: 5px 10px; }
+  .engine-choice-card .btn { grid-column: 2; grid-row: 1; }
+  .engine-choice-card > p { grid-column: 1 / -1; }
+}
+.engine-choice .engine-note, .engine-tight { font-size: 12.5px; }
+.engine-choice .engine-error { color: var(--destructive); }
+.engine-error { margin: 0; font-size: 13px; color: var(--destructive); }
+.engine-choice[hidden], .engine-cannot[hidden], .engine-tight[hidden], .engine-error[hidden] { display: none !important; }

@@ -1,9 +1,9 @@
 {
   "name": "anagram-extension",
-  "description": "Local AI-editing estimates for Chrome, Firefox and Safari, powered by EditLens.",
+  "description": "Local AI-editing estimates for Chrome, Firefox and Safari, using the selected Anagram detector.",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "type": "module",
   "scripts": {
     "dev": "node scripts/vendor.mjs && wxt",

@@ -136,6 +136,50 @@ test("find, zoom, rotation, download, print and thumbnails work with Anagram's l
   await page.screenshot({ path: testInfo.outputPath("full-viewer.png") });
 });
 
+test("open, drop and save preserve the current document and its filename", async ({ page, extension }, testInfo) => {
+  await page.goto(extension.url("reader.html"));
+  await expect(page.locator("#choose")).toBeVisible();
+  await expect(page.locator("#toolbarViewer")).toBeHidden();
+  const openChooser = async (id) => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.locator(id).click();
+    return chooser;
+  };
+  await (await openChooser("#choose")).setFiles(input("first.pdf", TEST_PDF));
+  await readerReady(page);
+  const name = "Harbor #3 (50%) – notes.pdf";
+  await (await openChooser("#anagramOpenFile")).setFiles(input(name, TEST_PDF));
+  await expect(page).toHaveTitle(new RegExp("Harbor #3"));
+  await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(["other file"], "not a PDF.pdf", { type: "application/pdf" }));
+    document.dispatchEvent(new DragEvent("dragenter", { dataTransfer: data, bubbles: true }));
+    if (!document.body.classList.contains("drag-file")) throw new Error("The reader did not highlight the drop target");
+    document.dispatchEvent(new DragEvent("drop", { dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  await expect(page.locator("#notice")).toHaveText("This file could not be read as a PDF.");
+  await expect(page.locator("#drop")).toBeHidden();
+  await expect(page.locator("body")).not.toHaveClass(/drag-file/);
+  await page.setViewportSize({ width: 600, height: 750 });
+  const download = page.waitForEvent("download");
+  await page.locator("#downloadButton").click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(name);
+  const path = testInfo.outputPath("saved.pdf");
+  await file.saveAs(path);
+  expect(digest(readFileSync(path))).toBe(digest(TEST_PDF));
+  await page.setViewportSize({ width: 320, height: 650 });
+  await page.locator("#secondaryToolbarToggleButton").click();
+  await expect(page.locator("#secondaryOpenFile")).toBeVisible();
+  const mobileDownload = page.waitForEvent("download");
+  await page.locator("#secondaryDownload").click();
+  expect((await mobileDownload).suggestedFilename()).toBe(name);
+  await expect(page.locator("#notice")).toHaveText("This file could not be read as a PDF.");
+  await page.locator("#file").setInputFiles(input("replacement.pdf", TEST_PDF));
+  await expect(page).toHaveTitle(/replacement\.pdf/);
+  await expect(page.locator("#notice")).not.toHaveText("This file could not be read as a PDF.");
+});
+
 test("a file over the cap is refused, and the password dialog works offline", async ({ page, extension }, testInfo) => {
   await openReader(page, extension.extId);
   // Over the direct-file cap: refused before the open document is closed.
@@ -152,10 +196,13 @@ test("a file over the cap is refused, and the password dialog works offline", as
   await page.locator("#password").fill("wrong");
   await page.locator("#passwordSubmit").click();
   await page.waitForFunction(() => document.querySelector("#passwordDialog")?.open && /invalid/i.test(document.querySelector("#passwordText")?.textContent ?? ""));
+  await page.evaluate(() => performance.clearMeasures("anagram-structured"));
   await page.locator("#password").fill(PDF_PASSWORD);
   await page.locator("#passwordSubmit").click();
   await readerReady(page, { timeout: 20000 });
   expect(await page.locator("#passwordDialog").evaluate((el) => el.open)).toBe(false);
+
+  await page.waitForFunction(() => performance.getEntriesByName("anagram-structured").length > 0);
 
   // A new choice while a password is pending supersedes the old load and its dialog.
   await page.locator("#file").setInputFiles(input("pending-password.pdf", LOCKED_PDF));

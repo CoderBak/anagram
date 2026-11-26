@@ -1,73 +1,236 @@
-/* Layout only; colours, type and controls come from Basecoat (Vega). */
-body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
-.page { max-width: 1040px; margin: 0 auto; padding: 24px 24px 32px; }
-header.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-header.hdr img { width: 44px; height: 44px; margin: -2px; }
-header.hdr .logo-dark { display: none; }
-html.dark header.hdr .logo-light { display: none; }
-html.dark header.hdr .logo-dark { display: block; }
-header.hdr h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
-header.hdr .ver { margin-inline-start: auto; font-size: 12px; color: var(--muted-foreground); }
-/* Two columns of panels, a wide panel across both; one column on a narrow window. One spacing
-   scale throughout: 16 between panels, 12 inside them, 8 between controls. */
-.settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.page {
+  max-width: 760px;
+}
+.settings {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  container-type: inline-size;
+  --field-gap: 16px;
+  --value-width: calc((100% - 2 * var(--field-gap)) / 3);
+}
+.settings-block {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.group-label {
+  margin: 0;
+  padding-inline: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+:lang(zh) .group-label { letter-spacing: 0.02em; text-transform: none; font-size: 12px; }
+.settings-group {
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.settings-group > .panel + .panel { border-top: 1px solid var(--border); }
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px 18px;
+  scroll-margin-top: 24px;
+}
 .panel .form-row { padding: 0; }
-.span-2 { grid-column: 1 / -1; }
-.panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--card, var(--background)); }
-.panel > h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted-foreground); }
+.panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.panel h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.panel-note { margin: 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+.panel > h2 + .panel-note { margin-top: -2px; }
 .panel:focus { outline: none; }
+.panel:focus-visible h2 { outline: 2px solid var(--ring); outline-offset: 2px; width: fit-content; border-radius: 3px; }
 /* Inside a panel, rows need no line between them. */
-.panel .row { min-height: 34px; padding: 0; border-top: 0; }
-.panel .rows { gap: 8px; }
+.panel .row { min-height: 30px; padding: 1px 0; border-top: 0; }
+.panel .rows { gap: 6px; }
 .row > .row-body { justify-content: flex-end; }
-/* Related settings side by side, each label over its menu. */
-.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
-.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* Standalone values use the same track as the last of the three related fields. */
+.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px var(--field-gap); }
+.preference-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--value-width); align-items: center; gap: var(--field-gap); }
+.preference-row > select { width: 100%; min-width: 0; }
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .field[hidden] { display: none; }
 .field > label { font-size: 12.5px; font-weight: 500; color: var(--muted-foreground); }
-.field > .select { width: 100%; }
-/* The reading log's presets, each a tile: its name and one line of what it keeps. */
-.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
-.preset { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
-.preset:hover { background: var(--muted); }
-.preset input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-.preset:has(input:checked) { border-color: var(--foreground); box-shadow: inset 0 0 0 1px var(--foreground); }
-.preset:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
-.preset .name { font-size: 13px; font-weight: 600; }
-.preset .what { font-size: 12px; line-height: 1.4; color: var(--muted-foreground); }
+.field > .select { width: 100%; min-width: 0; margin-block-start: auto; }
+.settings :is(.preference-row, .field) > .select { padding-inline: 10px 26px; background-position: right 7px center; }
+.setting-summary { display: flex; align-items: baseline; justify-content: space-between; gap: var(--field-gap); }
+.setting-summary > button { flex: none; margin-inline-start: auto; }
+.setting-summary:not(:has(> :not([hidden]))), #cacheStatus:empty { display: none; }
+#cacheCount { font-variant-numeric: tabular-nums; }
+/* A heading and its current value are read together. Longer states can wrap within the group. */
+.setting-identity { display: flex; flex: 1 1 9rem; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-width: 0; }
+.setting-identity h2 { min-width: 0; }
+#engineGroup .setting-identity .component-status {
+  flex: 0 1 auto;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
 .actions-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.actions-row .muted { margin-inline-end: auto; font-size: 13px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.actions-row .muted { margin-inline-end: auto; font-size: 12.5px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.actions-row .row-note:empty { display: none; }
 .actions-row .row-note { flex: 1 0 100%; margin: 0; font-size: 12px; color: var(--muted-foreground); }
-.stats-warn { font-size: 12.5px; }
+.stats-warn {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--muted);
+  display: grid;
+  gap: 2px;
+}
 .stats-warn p { margin: 0; }
 .stats-warn:empty { display: none; }
+#statsKeep[open] > .fields { margin-top: 8px; }
 #statsKeep[hidden], #statsActions[hidden] { display: none; }
-.field-count { color: var(--muted-foreground); font-size: 13px; font-variant-numeric: tabular-nums; }
 .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 0 2px; }
-.form-row .input { flex: 1 1 200px; }
-.form-row .select { width: 150px; }
+.form-row .input { min-width: 0; flex: 1 1 180px; }
+.form-row .select { width: auto; min-width: 120px; }
 .form-error { margin: 6px 0 0; font-size: 12.5px; color: var(--destructive); flex: 1 0 100%; }
 .form-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted-foreground); flex: 1 0 100%; }
 .empty { margin: 0; padding: 2px 0; color: var(--muted-foreground); font-size: 13px; }
-.mode-on { color: oklch(0.55 0.15 150); font-weight: 500; }
-html.dark .mode-on { color: oklch(0.76 0.15 150); }
+.mode-on { color: var(--primary); font-weight: 600; }
 .mode-off { color: var(--muted-foreground); }
-.links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted-foreground); }
-.links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 22px;
+  padding-inline: 2px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.links a { display: inline-block; min-height: 24px; line-height: 24px; }
 .links span { line-height: 24px; }
-/* Hit areas, not paint: an invisible 24x24 box centred on each small box and dot (the
-   tick is Basecoat's ::after of a checkbox, the dot its ::before of a radio). */
+/* Hit areas, not paint: an invisible 24x24 box centred on each small box and dot. */
 input.input[type="checkbox"]:not([role="switch"]), input.input[type="radio"] { position: relative; }
 input.input[type="checkbox"]:not([role="switch"])::before, input.input[type="radio"]::after {
   content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: 24px; min-height: 24px;
 }
-dialog.stats-dialog { margin: auto; width: min(440px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: 12px; color: var(--foreground); background: var(--card, var(--background)); }
-dialog.stats-dialog::backdrop { background: rgb(0 0 0 / .4); }
+dialog.stats-dialog {
+  margin: auto;
+  width: min(440px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--foreground);
+  background: var(--card);
+  box-shadow: var(--shadow-popover);
+}
+dialog.stats-dialog::backdrop { background: rgb(0 0 0 / 0.42); }
 dialog.stats-dialog .dialog-title { margin: 0; font-size: 16px; font-weight: 600; }
-dialog.stats-dialog p { margin: 10px 0 0; overflow-wrap: anywhere; }
+dialog.stats-dialog p { margin: 10px 0 0; overflow-wrap: anywhere; font-size: 13.5px; color: var(--muted-foreground); }
+dialog.stats-dialog .dialog-title { color: var(--foreground); }
 dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 /* Out of the page, still in the accessibility tree. */
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (max-width: 760px) {
-  .settings, .fields { grid-template-columns: minmax(0, 1fr); }
+
+/* Pair the two places Anagram can scan. Give the site-rule editor the full width when open. */
+@media (min-width: 720px) {
+  .scan-settings:has(#siteRules[hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .scan-settings:has(#siteRules[hidden]) #pdfs { border-top: 0; border-inline-start: 1px solid var(--border); }
+  .scan-settings #reading { grid-column: 1 / -1; }
+  .scan-settings:has(#siteRules[hidden]) :is(.section-heading, #pdfs > .panel-title) { display: flex; align-items: center; min-height: 28px; }
+}
+@media (max-width: 600px) {
+  .links { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; column-gap: 14px; }
+  .links .ver { grid-column: 3; grid-row: 1; }
+  .links .model-credit { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .settings { gap: 14px; }
+  .panel { padding: 14px 12px; }
+}
+@container (min-width: 661px) {
+  #statsKeep:has(.field[hidden]) > .fields { grid-template-columns: minmax(0, 1fr); }
+  #statsKeep:has(.field[hidden]) > .fields > .field:not([hidden]) {
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--value-width); align-items: center; gap: var(--field-gap);
+  }
+}
+@container (max-width: 660px) {
+  .panel { --value-width: clamp(192px, 49%, 220px); --field-gap: 10px; }
+  .panel-title { gap: 6px; }
+  .settings :is(.preference-row, .field) > .select { padding-inline: 8px 23px; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .field { display: grid; grid-template-columns: minmax(0, 1fr) var(--value-width); align-items: center; gap: var(--field-gap); }
+  .field > .select { margin: 0; }
+}
+@container (max-width: 360px) {
+  .panel { --value-width: min(56%, 160px); --field-gap: 8px; }
+  .panel h2 { font-size: 14.5px; }
+  .field { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+}
+@media (max-width: 480px) {
+  #addRule { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  #addHost, #addRule > p { grid-column: 1 / -1; }
+  #addRule .select { width: 100%; min-width: 0; }
+}
+
+.section-heading, .detector-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.section-heading { justify-content: space-between; }
+#siteRules { padding-top: 6px; border-top: 1px solid var(--border); }
+#siteRules .table-container { margin-bottom: 8px; }
+#ruleCount:not(:empty) { font-variant-numeric: tabular-nums; }
+.detector-picker {
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+.detector-picker label { font-size: 13px; font-weight: 500; color: var(--muted-foreground); }
+.detector-name {
+  font: 12px/1.4 var(--anagram-mono-font);
+  color: var(--foreground);
+  background: var(--muted);
+  padding: 4px 8px;
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.detector-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.detector-name { text-underline-offset: 2px; }
+.detector-picker select { min-width: 0; max-width: 100%; }
+.detector-picker .check-models { margin-inline-start: auto; }
+.detector-picker [role=status] { flex-basis: 100%; font-size: 12px; color: var(--muted-foreground); }
+.detector-picker [role=status]:empty, .detector-picker [hidden] { display: none; }
+@media (max-width: 460px) {
+  .detector-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
+  .detector-picker > label { grid-area: 1 / 1; }
+  .detector-choice { grid-area: 2 / 1 / auto / -1; justify-self: start; }
+  .detector-picker .check-models { grid-area: 1 / 2; }
+  .detector-picker:has(.btn:not(.check-models):not([hidden])) .detector-choice { grid-column: 1; }
+  .detector-picker .btn:not(.check-models) { grid-area: 2 / 2; }
+  .detector-picker [role=status] { grid-column: 1 / -1; }
+  .detector-picker:has(select[hidden]) { grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px; }
+  .detector-picker:has(select[hidden]) .detector-choice { grid-area: 1 / 2; }
+  .detector-picker:has(select[hidden]) .check-models { grid-area: 1 / 3; }
+}
+@media (max-width: 360px) {
+  .page { padding-inline: 10px; }
+  .panel { padding: 12px 10px; }
+  .panel-title .section-icon { display: none; }
+  #engineGroup h2 { font-size: 13.5px; }
+  #engineGroup .setting-identity { flex: 1 1 auto; column-gap: 5px; }
+  #engineGroup .setting-identity .component-status { font-size: 12px; }
+  #engineGroup .component-status-row { column-gap: 4px; }
+  #engineGroup .engine-manage { padding-inline: 2px; font-size: 12px; }
 }

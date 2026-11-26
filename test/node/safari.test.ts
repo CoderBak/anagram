@@ -39,13 +39,13 @@ describe("Safari setup", () => {
     expect(decide({ ...mac, navigatorPlatform: "iPhone" })).toMatchObject({ offer: "cannot-run", reason: "browser" });
   });
 
-  it("selects FP16 when only its tensors fit the GPU, with no CPU fallback", () => {
+  it("requires a GPU that fits the release weights", () => {
     expect(decide({ ...mac, gpu: { fits: false, fitsFp16: true, f16: true } }))
-      .toMatchObject({ offer: "auto-inbrowser", path: "webgpu", tier: "fp16", fallback: null });
+      .toMatchObject({ offer: "cannot-run", reason:"webgpu" });
   });
 
   it("requires room for the model even when WebGPU is available", () => {
-    expect(decide({ ...mac, storage: { quota: TIERS[1].bytes + DISK_MARGIN - 1, usage: 0 } }))
+    expect(decide({ ...mac, storage: { quota: TIERS[0].bytes + DISK_MARGIN - 1, usage: 0 } }))
       .toMatchObject({ offer: "cannot-run", reason: "disk", native: false });
   });
 });

@@ -284,6 +284,19 @@ test.describe("reading mode on", () => {
     expect(await shown()).toEqual({ ...before, drop: false, ticket: false });
   });
 
+  test("choosing a local file replaces the web source and its refresh target", async ({ context, extension, files }) => {
+    const page = await visit(context, files.url("/replace.pdf"));
+    await readerReady(page);
+    await expect(page.locator("#original")).toBeVisible();
+    await page.setInputFiles("#file", { name: "Meeting notes.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
+    await page.waitForFunction(() => window.PDFViewerApplication._docFilename === "Meeting notes.pdf" && window.PDFViewerApplication.pdfDocument);
+    await expect(page).toHaveURL(READER(extension));
+    await expect(page.locator("#original")).toBeHidden();
+    await page.reload();
+    await expect(page.locator("#choose")).toBeVisible();
+    await expect(page).toHaveURL(READER(extension));
+  });
+
   test("on: a local PDF without its separate authorization remains in the native viewer", async ({ context, extension }, testInfo) => {
     const path = testInfo.outputPath("paper.pdf");
     writeFileSync(path, TEST_PDF);
@@ -500,11 +513,7 @@ test.describe("the reader's site rule", () => {
       chrome.tabs.query = (info, ...rest) => (info?.active ? Promise.resolve([{ id: tabId, active: true, windowId: -1, index: 0 }]) : query(info, ...rest));
     }, tabId);
     await menu.goto(extension.url("popup.html"), { waitUntil: "load" });
-    await menu.waitForFunction(() => !document.getElementById("pageReport").hidden, null, { timeout: 10000 }).catch(() => {});
-    const seen = await menu.evaluate(() => ({
-      report: !document.getElementById("pageReport").hidden,
-      siteSwitch: !document.getElementById("siteEnabled").closest(".field").hidden,
-    }));
-    expect(seen, JSON.stringify(await readerState(local))).toEqual({ report: true, siteSwitch: false });
+    await expect(menu.locator("#pageReport")).toBeVisible();
+    await expect(menu.locator("#siteEnabled")).toBeHidden();
   });
 });

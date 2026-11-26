@@ -80,7 +80,7 @@ export interface Decision {
 }
 
 /** The word-embedding matrix in FP32, the largest single tensor the GPU binds. */
-export const EMBEDDING_BYTES = 50265 * 1024 * 4;
+export const EMBEDDING_BYTES = 50368 * 1024 * 4;
 /** What a tier downloads, from the pin (anagramd/modelkit.json). */
 function downloadBytes(tier: ModelTier): number {
   return pinnedFiles(tier).reduce((n, f) => n + f.size_bytes, 0);
@@ -100,7 +100,6 @@ function downloadBytes(tier: ModelTier): number {
  */
 export const TIERS = [
   { id: "fp32", bytes: downloadBytes("fp32"), minMemoryGb: 4, maxTensorBytes: EMBEDDING_BYTES },
-  { id: "fp16", bytes: downloadBytes("fp16"), minMemoryGb: 4, maxTensorBytes: EMBEDDING_BYTES / 2 },
 ] as const;
 export type Tier = typeof TIERS[number];
 
@@ -173,22 +172,13 @@ function nativeInstalls(os: Os, machine: Machine, i: DeviceInputs): boolean {
  * is as it always was: with the note on 4 GB, short on a full disk.
  */
 export function affordable(i: DeviceInputs): { tier: Tier | null; short: "memory" | "disk" | null; tight: boolean; fallback: { tight: boolean } | null } {
-  const [fp32, fp16] = TIERS;
+  const [fp32] = TIERS;
   const memoryFits = (tier: Tier): boolean => i.deviceMemory === undefined || i.deviceMemory >= tier.minMemoryGb;
   const diskFits = (tier: Tier): boolean => {
     const { quota, usage } = i.storage ?? {};
     const needed = Math.max(0, tier.bytes - (i.stored ?? 0)) + DISK_MARGIN;
     return quota === undefined || usage === undefined || quota - usage >= needed;
   };
-  const gpu = i.gpu;
-  const holds32 = !gpu || gpu.fits !== false;
-  const holds16 = !!gpu && (gpu.fitsFp16 ?? gpu.fits) !== false;
-  const roomy = memoryFits(fp32) && diskFits(fp32) && i.deviceMemory !== fp32.minMemoryGb && holds32;
-  const storedFp32 = (i.stored ?? 0) >= fp32.bytes;
-  if (!roomy && !storedFp32 && gpu?.f16 === true && holds16 && memoryFits(fp16) && diskFits(fp16)) {
-    const fits32 = memoryFits(fp32) && diskFits(fp32);
-    return { tier: fp16, short: null, tight: false, fallback: fits32 ? { tight: i.deviceMemory === fp32.minMemoryGb } : null };
-  }
   if (!memoryFits(fp32)) return { tier: null, short: "memory", tight: false, fallback: null };
   if (!diskFits(fp32)) return { tier: null, short: "disk", tight: false, fallback: null };
   return { tier: fp32, short: null, tight: i.deviceMemory === fp32.minMemoryGb, fallback: null };
@@ -209,11 +199,11 @@ export function decide(i: DeviceInputs): Decision {
     const choiceDevice = native && (machine === "apple-silicon" || cuda(os, machine));
     return { ...base, offer: choiceDevice ? "terminal-only" : "cannot-run", reason: fits.short ?? "memory" };
   }
-  if (i.browser === "safari" && (fits.tier.id === "fp32" ? i.gpu?.fits !== true : i.gpu?.fitsFp16 !== true || i.gpu?.f16 !== true)) {
+  if (i.browser === "safari" && i.gpu?.fits !== true) {
     return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "webgpu" };
   }
   // FP16 runs on the graphics card only; FP32 there when the adapter can bind it, else on the processor.
-  const path: "webgpu" | "cpu" = fits.tier.id === "fp16" || (i.gpu && i.gpu.fits !== false) ? "webgpu" : "cpu";
+  const path: "webgpu" | "cpu" = (i.gpu && i.gpu.fits !== false) ? "webgpu" : "cpu";
   const inBrowser = { ...base, path, tight: fits.tight, tier: fits.tier.id, fallback: i.browser === "safari" ? null : fits.fallback };
   if (native && machine === "apple-silicon") return { ...inBrowser, offer: "choice", reason: "apple-silicon" };
   if (native && cuda(os, machine)) return { ...inBrowser, offer: "choice", reason: "nvidia" };

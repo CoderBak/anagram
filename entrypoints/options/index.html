@@ -8,6 +8,7 @@
          embedded chrome://extensions iframe. -->
     <meta name="manifest.open_in_tab" content="true" />
     <title data-i18n="optionsTitle">Anagram settings</title>
+    <link rel="stylesheet" href="/pages/theme.css" />
     <link rel="stylesheet" href="/pages/options.css" />
   </head>
   <body>
@@ -15,127 +16,149 @@
       <header class="hdr">
         <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
         <img class="logo-dark" src="/icons/icon-96.png" alt="" />
-        <h1 data-i18n="optionsTitle">Anagram settings</h1>
-        <span class="ver" id="version"></span>
+        <h1 data-i18n="popupSettings">Settings</h1>
       </header>
+      <div class="extension-update" id="extensionUpdate" hidden></div>
 
       <div class="settings">
-        <section class="panel" id="engineGroup" aria-labelledby="engineLabel">
-          <h2 id="engineLabel" data-i18n="optEngine">Engine</h2>
-          <div id="componentSettings"></div>
-        </section>
-
-        <section class="panel" aria-labelledby="sitesLabel">
-          <h2 id="sitesLabel" data-i18n="optSites">Sites</h2>
-          <div class="rows" id="siteRows">
-            <div class="row" id="comments" hidden>
-              <p id="commentsState" role="status" aria-live="polite"></p>
-              <span class="row-body">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
-              </span>
-            </div>
-            <div class="row">
-              <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
-              <span class="row-body"><input id="enabled" class="input" type="checkbox" role="switch" /></span>
-            </div>
-            <div id="sites"></div>
-            <form class="form-row" id="addRule">
-              <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
-                data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
-              <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
-                <option value="on" data-i18n="optAlwaysOn">Always on</option>
-                <option value="off" data-i18n="optAlwaysOff">Always off</option>
-              </select>
-              <button type="submit" class="btn" data-size="sm" data-i18n="optAdd">Add</button>
-              <p class="form-error" id="addError" hidden></p>
-              <p class="form-note" id="addNote" hidden></p>
-            </form>
+        <div class="settings-block">
+          <p class="group-label" data-i18n="optReadingGroup">Reading</p>
+          <div class="settings-group scan-settings">
+            <section class="panel" id="websites" tabindex="-1" aria-labelledby="sitesLabel">
+              <div class="section-heading">
+                <span class="panel-title"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#globe"></use></svg><h2 id="sitesLabel" data-i18n="optSites">Websites</h2></span>
+                <button type="button" class="disclosure-action" id="siteRulesToggle" aria-controls="siteRules" aria-expanded="false"><span data-i18n="optSiteRules">Site rules</span><span id="ruleCount"></span></button>
+              </div>
+              <div class="rows" id="siteRows">
+                <div class="row" id="comments" hidden>
+                  <p id="commentsState" role="status" aria-live="polite"></p>
+                  <span class="row-body">
+                    <button type="button" class="btn" data-variant="outline" data-size="sm" id="commentsAllow" aria-describedby="commentsState"></button>
+                  </span>
+                </div>
+                <div class="row">
+                  <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
+                  <span class="row-body"><input id="enabled" class="input" type="checkbox" role="switch" /></span>
+                </div>
+              </div>
+              <div id="siteRules" hidden>
+                <div id="sites"></div>
+                <form class="form-row" id="addRule">
+                  <input id="addHost" class="input" type="text" placeholder="example.com" aria-label="Site"
+                    data-i18n-aria-label="optColSite" autocomplete="off" spellcheck="false" />
+                  <select id="addMode" class="select" aria-label="Rule" data-i18n-aria-label="optColRule">
+                    <option value="on" data-i18n="optAlwaysOn">Always on</option>
+                    <option value="off" data-i18n="optAlwaysOff">Always off</option>
+                  </select>
+                  <button type="submit" class="btn" data-size="sm" data-i18n="optAdd">Add</button>
+                  <p class="form-error" id="addError" hidden></p>
+                  <p class="form-note" id="addNote" hidden></p>
+                </form>
+              </div>
+            </section>
+            <section class="panel" id="pdfs" tabindex="-1" aria-labelledby="pdfsLabel">
+              <span class="panel-title"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#file"></use></svg><h2 id="pdfsLabel" data-i18n="optPdfs">PDFs</h2></span>
+              <div class="rows" id="pdfRows"></div>
+            </section>
+            <section class="panel" id="reading" tabindex="-1" aria-labelledby="marksLabel">
+              <span class="panel-title"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#marks"></use></svg><h2 id="marksLabel" data-i18n="optMarks">Paragraph marks</h2></span>
+              <div class="fields">
+                <div class="field">
+                  <label for="flagFrom" data-i18n="optFlagFrom">Flag paragraphs</label>
+                  <select id="flagFrom" class="select">
+                    <option value="light" data-i18n="optFlagLight">AI-assisted or AI-generated</option>
+                    <option value="ai" data-i18n="optFlagAi">AI-generated only</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="displayMode" data-i18n="optChips">Score labels</label>
+                  <select id="displayMode" class="select">
+                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                    <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="underline" data-i18n="optUnderline">Underlines</label>
+                  <select id="underline" class="select">
+                    <option value="flagged" data-i18n="optUnderlineFlagged">Flagged paragraphs</option>
+                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
+                    <option value="off" data-i18n="optUnderlineOff">Off</option>
+                  </select>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
 
-        <section class="panel span-2" aria-labelledby="marksLabel">
-          <h2 id="marksLabel" data-i18n="optMarks">Marks</h2>
-          <div class="fields">
-            <div class="field">
-              <label for="flagFrom" data-i18n="optFlagFrom">Flag</label>
-              <select id="flagFrom" class="select">
-                <option value="light" data-i18n="optFlagLight">Lightly edited and above</option>
-                <option value="heavy" data-i18n="optFlagHeavy">Heavily edited and above</option>
-                <option value="ai" data-i18n="optFlagAi">AI-generated only</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="displayMode" data-i18n="optChips">Chips</label>
-              <select id="displayMode" class="select">
-                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="underline" data-i18n="optUnderline">Underlines</label>
-              <select id="underline" class="select">
-                <option value="flagged" data-i18n="optUnderlineFlagged">Flagged paragraphs</option>
-                <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                <option value="off" data-i18n="optUnderlineOff">Off</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel" aria-labelledby="pdfsLabel">
-          <h2 id="pdfsLabel" data-i18n="optPdfs">PDFs</h2>
-          <div class="rows" id="pdfRows"></div>
-        </section>
-
-        <section class="panel" aria-labelledby="cacheLabel">
-          <h2 id="cacheLabel" data-i18n="optCache">Cache</h2>
-          <div class="rows">
-            <div class="row">
-              <span id="cacheCount" class="row-label"></span>
-              <span class="row-body">
-                <select id="cacheMode" class="select" aria-label="Verdict cache" data-i18n-aria-label="optCacheMode">
-                  <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
+        <div class="settings-block">
+          <p class="group-label" data-i18n="optDataGroup">Local data</p>
+          <div class="settings-group">
+            <section class="panel" id="statistics" tabindex="-1" aria-labelledby="statsLabel">
+              <div class="preference-row">
+                <span class="panel-title"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#chart"></use></svg><h2 id="statsLabel" data-i18n="optStats">Reading history</h2></span>
+                <label class="vh" for="statsPresets" data-i18n="optStatsRecord">What to record</label>
+                <select class="select" id="statsPresets" aria-describedby="statsPresetHint statsWarnings" disabled></select>
+              </div>
+              <div class="setting-summary">
+                <p class="panel-note" id="statsPresetHint" role="status" hidden></p>
+                <button type="button" class="text-action" id="openStats" hidden data-i18n="optStatsOpen">Open statistics</button>
+              </div>
+              <div id="statsWarnings" class="stats-warn"></div>
+              <details class="breakdown" id="statsKeep" hidden>
+                <summary data-i18n="optStatsRetention">Retention periods</summary>
+                <div class="fields">
+                  <div class="field">
+                    <label for="statsFine" data-i18n="optStatsFine">Detailed events</label>
+                    <select id="statsFine" class="select"></select>
+                  </div>
+                  <div class="field">
+                    <label for="statsDetailDays" data-i18n="optStatsDetailKeep">Paragraphs and visits</label>
+                    <select id="statsDetailDays" class="select"></select>
+                  </div>
+                  <div class="field">
+                    <label for="statsTotals" data-i18n="optStatsTotalsKeep">Daily totals</label>
+                    <select id="statsTotals" class="select"></select>
+                  </div>
+                </div>
+              </details>
+              <div class="actions-row" id="statsActions">
+                <span id="statsSize" class="muted"></span>
+                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="exportStats" data-i18n="statsExport">Export…</button>
+                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clearStats" data-i18n="statsClear">Clear statistics</button>
+                <p id="statsStatus" class="row-note" role="status"></p>
+              </div>
+            </section>
+            <section class="panel" id="cache" tabindex="-1" aria-labelledby="cacheLabel">
+              <div class="preference-row">
+                <span class="panel-title"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#archive"></use></svg><h2 id="cacheLabel" data-i18n="optCache">Saved scores</h2></span>
+                <select id="cacheMode" class="select" aria-labelledby="cacheLabel">
                   <option value="session" data-i18n="optCacheSession">Memory only</option>
+                  <option value="persistent" data-i18n="optCachePersistent">Keep 30 days</option>
                 </select>
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCache" data-i18n="optClearCache">Clear</button>
-              </span>
-              <p id="cacheStatus" class="row-note" role="status"></p>
-            </div>
+              </div>
+              <div class="setting-summary">
+                <span id="cacheCount" class="panel-note" hidden></span>
+                <button type="button" class="text-action" id="clearCache" hidden data-i18n="optClearCache">Clear</button>
+              </div>
+              <p id="cacheStatus" class="panel-note" role="status"></p>
+            </section>
           </div>
-        </section>
+        </div>
 
-        <section class="panel span-2" id="statistics" tabindex="-1" aria-labelledby="statsLabel">
-          <h2 id="statsLabel" data-i18n="optStats">Statistics</h2>
-          <!-- What the reading log keeps: a preset each, said in a line; filled by main.ts. -->
-          <div class="presets" id="statsPresets" role="radiogroup" aria-labelledby="statsLabel"></div>
-          <div id="statsWarnings" class="stats-warn"></div>
-          <div class="fields" id="statsKeep">
-            <div class="field">
-              <label for="statsFine" data-i18n="optStatsFine">Keep every step for</label>
-              <select id="statsFine" class="select"></select>
-            </div>
-            <div class="field">
-              <label for="statsDetailDays" data-i18n="optStatsDetailKeep">Keep paragraphs and visits for</label>
-              <select id="statsDetailDays" class="select"></select>
-            </div>
-            <div class="field">
-              <label for="statsTotals" data-i18n="optStatsTotalsKeep">Keep daily totals for</label>
-              <select id="statsTotals" class="select"></select>
-            </div>
+        <div class="settings-block">
+          <div class="settings-group">
+            <section class="panel" id="engineGroup" tabindex="-1" aria-labelledby="engineLabel">
+              <span class="panel-title" id="engineTitleWrap"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#cpu"></use></svg><h2 id="engineLabel" data-i18n="optEngine">Engine and models</h2></span>
+              <div id="componentSettings"></div>
+              <div class="detector-picker" id="detectorPicker"></div>
+            </section>
           </div>
-          <div class="actions-row" id="statsActions">
-            <span id="statsSize" class="muted"></span>
-            <button type="button" class="btn" data-variant="outline" data-size="sm" id="openStats" data-i18n="optStatsOpen">Open statistics</button>
-            <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportStats" data-i18n="statsExport">Export…</button>
-            <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clearStats" data-i18n="statsClear">Clear statistics</button>
-            <p id="statsStatus" class="row-note" role="status"></p>
-          </div>
-        </section>
+        </div>
       </div>
 
       <dialog class="stats-dialog" id="clearStatsDialog" aria-labelledby="clearStatsTitle" aria-describedby="clearStatsText">
         <p class="dialog-title" id="clearStatsTitle" data-i18n="statsClearTitle">Clear statistics?</p>
-        <p id="clearStatsText" data-i18n="statsClearConfirm">Every day recorded is deleted from this computer. This can't be undone.</p>
+        <p id="clearStatsText" data-i18n="statsClearConfirm">Permanently deletes all recorded statistics.</p>
         <div class="actions">
           <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearStatsCancel" data-i18n="buttonCancel">Cancel</button>
           <button type="button" class="btn" data-variant="destructive" data-size="sm" id="clearStatsConfirm" data-i18n="statsClear">Clear statistics</button>
@@ -153,8 +176,9 @@
 
       <footer class="links">
         <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
-        <span data-i18n="modelLine">Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).</span>
         <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a>
+        <span class="model-credit" data-i18n="modelLine">Models from CoderBak/anagram-detectors.</span>
+        <span class="ver" id="version"></span>
       </footer>
     </main>
     <script type="module" src="./main.ts"></script>

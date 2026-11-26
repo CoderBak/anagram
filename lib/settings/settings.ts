@@ -5,7 +5,8 @@ import { DEFAULT_FLAG_FROM, type FlagFrom } from "../render/flagLevel";
 import { PUBLIC_SUFFIXES } from "../publicSuffixes";
 export type { ScoreCacheMode } from "../cachePolicy";
 
-export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "persistent" });
+export const cacheModeStorage = storage.defineItem<ScoreCacheMode>("local:cacheMode", { fallback: "session" });
+export const scoreCacheSecret = storage.defineItem<string | null>("local:scoreCacheSecret", { fallback: null });
 
 /** Settings that no longer exist, removed from storage on update: the minimum length and
  *  merging short paragraphs are fixed (lib/dom/text.ts MIN_WORDS) since 2026-10-05. */
@@ -39,6 +40,7 @@ export const settings = {
   // Personal reading statistics (lib/stats/): off until the reader chooses what to keep, and
   // kept on this computer only. Read through configOf (lib/stats/config.ts), which answers
   // anything that is not a configuration with "off".
+  statsClearedAt: storage.defineItem<number>("local:statsClearedAt", { fallback: 0 }),
   statsConfig: storage.defineItem<unknown>("local:statsConfig", { fallback: null }),
   // The key the log's hashes and sketches are made with (lib/stats/hash.ts): made here, never
   // exported, and made anew when the statistics are cleared.

@@ -9,7 +9,7 @@
 import { test as base, expect, BADGE_SEL, ABSENCE_MS, popupOver, menuReport } from "./kit.mjs";
 import {
   BROKEN_PDF, GROUPED_PARAS, GROUPED_PDF, GROUPED_UNIT_TEXT, PDF_HEAD, PDF_HEADING, PDF_PARAS, SCANNED_PDF, TALL_PDF, TEST_PDF,
-  handOverPdf, openPdfInReader, pdfTabChip, readerRead, readerReady,
+  buildPdf, handOverPdf, openPdfInReader, pdfTabChip, readerRead, readerReady,
 } from "../pdf-fixture.mjs";
 
 const test = base.extend({
@@ -231,7 +231,7 @@ test("a thirty-page document read to the end: the menu counts every page read, n
   // Every page read, the note that says how much of the document is goes (the last of the
   // background reading may still be landing).
   await expect.poll(async () => { shown = await menuReport(menu); return shown?.notes.join(" ") ?? ""; }, { message: `${keeps}: every page is read, so no scope note` })
-    .not.toMatch(/Reading the whole document|of the document read|Covers the \d+ pages/);
+    .not.toMatch(/Reading the whole document|of the document read|Covers \d+ of \d+ pages/);
   // The list and the icon are told apart, and a verdict read in the background can land
   // between the two readings: they agree once it has.
   const tabId = await page.evaluate(async () => (await chrome.tabs.getCurrent())?.id);
@@ -300,9 +300,32 @@ test("PDF reader: a scan is still shown and says it has no text; a corrupt file 
     }));
   const refuses = "PDF reader: a scan is still shown and says it has no text; a corrupt file says so instead";
   const scanned = await openPdfInReader(context, pdfs.url("/scanned.pdf"));
-  await expect.poll(() => stateOf(scanned), { message: `${refuses} (the scan)` }).toEqual({ notice: "This PDF's pages are images, with no text to read.", pages: 1, drawn: 1 });
+  await expect.poll(() => stateOf(scanned), { message: `${refuses} (the scan)` }).toEqual({ notice: "This PDF has no selectable text. For a scan, open a copy saved with text recognition (OCR).", pages: 1, drawn: 1 });
+  await scanned.setViewportSize({ width: 320, height: 650 });
+  await expect.poll(() => scanned.evaluate(() => {
+    const note = document.getElementById("notice").getBoundingClientRect();
+    const viewer = document.getElementById("viewerContainer").getBoundingClientRect();
+    const controls = ["anagramAnalyze", "original", "secondaryToolbarToggleButton"].map((id) => document.getElementById(id).getBoundingClientRect());
+    return note.top >= viewer.bottom - 1 && note.left >= 0 && note.right <= innerWidth &&
+      controls.every((r) => r.width > 0 && r.left >= 0 && r.right <= innerWidth);
+  })).toBe(true);
   const broken = await openPdfInReader(context, pdfs.url("/broken.pdf"));
   await expect.poll(() => stateOf(broken), { message: `${refuses} (the corrupt file)` }).toMatchObject({ notice: "This file could not be read as a PDF.", pages: 0 });
+});
+
+test("a visible page whose text fails to extract offers to reopen the PDF", async ({ page, extension, storage }) => {
+  await storage.set({ pdfStructure: false, pdfReadAhead: false });
+  await page.goto(extension.url("reader.html"));
+  await page.locator("#drop:not([hidden])").waitFor();
+  await page.evaluate(() => {
+    window.PDFViewerApplication.eventBus.on("pagerender", ({ source }) => {
+      source.pdfPage.getTextContent = async () => { throw new Error("Unavailable text layer"); };
+    }, { once: true });
+  });
+  const file = buildPdf([[{ text: "Field notes from the river survey", x: 60, y: 600, size: 14 }]]);
+  await page.setInputFiles("#file", { name: "text-layer.pdf", mimeType: "application/pdf", buffer: file });
+  await expect(page.locator("#notice")).toHaveText("This page’s text could not be read. Try reopening the PDF.");
+  await expect(page.locator(".page canvas").first()).toBeVisible();
 });
 
 // Chrome wraps its viewer in an outer document that content scripts do run in, so the page

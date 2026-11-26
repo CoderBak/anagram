@@ -15,13 +15,13 @@
 //   context  what the log was recorded under    key auto
 //   meta     the hash secret's place, retention's last run
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import { addTally, emptyTally, type ContextRow, type EventChunk, type TabEvent, type Tally, type TotalRow, type UnitRow, type VisitRow } from "./model";
+import { addTally, emptyTally, indexHashedPlaces, readingDay, type HashedPlaces, type PlaceLayerKey, type ContextRow, type EventChunk, type TabEvent, type Tally, type TotalRow, type UnitRow, type VisitRow } from "./model";
 
 export interface TextRow { hash: string; text: string; first: string; last: string }
 
 interface LogDB extends DBSchema {
   visits: { key: string; value: VisitRow; indexes: { date: string } };
-  units: { key: [string, number]; value: UnitRow; indexes: { date: string } };
+  units: { key: [string, number]; value: UnitRow; indexes: { date: string; readDate: string } };
   events: { key: [string, number]; value: EventChunk; indexes: { date: string } };
   texts: { key: string; value: TextRow; indexes: { last: string } };
   totals: { key: [string, string, string]; value: TotalRow };
@@ -31,8 +31,24 @@ interface LogDB extends DBSchema {
 }
 
 export const STATS_DB = "anagram-stats";
-const VERSION = 2;
+const VERSION = 4;
+const CLEARED = "clearedAt";
+const REWRITTEN = "rewrittenAt";
+function stale(time: number | undefined, cutoff: unknown): boolean {
+  return time !== undefined && typeof cutoff === "number" && time <= cutoff;
+}
 const STORES = ["visits", "units", "events", "texts", "totals", "tabs", "context", "meta"] as const;
+
+interface Rewrite {
+  visit(v: VisitRow): VisitRow | null;
+  unit(u: UnitRow): UnitRow | null;
+  /** Called after visit() has seen every original visit, in the same transaction. */
+  totals(rows: TotalRow[]): TotalRow[];
+  events(e: EventChunk): EventChunk | null;
+  tabs(e: TabEvent): TabEvent | null;
+  context(c: ContextRow): ContextRow | null;
+  texts: boolean;
+}
 
 /** Everything recorded from one date to another, both included. */
 export interface LogRange {
@@ -43,25 +59,31 @@ export interface LogRange {
 
 /** One message's writes, made together. */
 export interface LogWrite {
+  started?: number;
+  preparedAt?: number;
   visit?: VisitRow;
   units?: UnitRow[];
+  /** Default reads delivered after the visit's opening day, sometimes in a separate packet. */
+  counted?: { visit: string; date: string; units: number[] };
   events?: EventChunk;
   texts?: { hash: string; text: string; date: string }[];
   /** Tallies to add to totals, with what a page's total also notes. */
-  totals?: { date: string; scope: TotalRow["scope"]; key: string; tally: Tally; title?: string; start?: string; dwell?: number; kind?: TotalRow["kind"]; models?: TotalRow["models"]; hashed?: boolean }[];
+  totals?: TotalRow[];
 }
 
 export interface LogStore {
   visit(id: string): Promise<VisitRow | undefined>;
   write(w: LogWrite): Promise<void>;
-  tab(event: TabEvent): Promise<void>;
-  context(row: ContextRow): Promise<void>;
+  tab(event: TabEvent, observedAt?: number): Promise<void>;
+  context(row: ContextRow, fingerprint?: string, observedAt?: number): Promise<void>;
   /** Visits, paragraphs and totals from `from` to `to`; paragraphs only when asked. */
-  read(from: string, to: string, opts?: { units?: boolean }): Promise<LogRange>;
+  read(from: string, to: string, opts?: { units?: boolean; visits?: boolean; byReadDate?: boolean }): Promise<LogRange>;
   /** The events of some visits, the texts of some hashes, the tab events and context of a range. */
   events(visits: readonly string[]): Promise<EventChunk[]>;
+  hasEvents(visit: string): Promise<boolean>;
   /** One visit's paragraphs. */
   unitsOf(visit: string): Promise<UnitRow[]>;
+  hashedPlaces(keys: ReadonlyMap<string, PlaceLayerKey>): Promise<HashedPlaces>;
   texts(hashes: readonly string[]): Promise<TextRow[]>;
   tabs(from: string, to: string): Promise<TabEvent[]>;
   contexts(from: string, to: string): Promise<ContextRow[]>;
@@ -72,11 +94,11 @@ export interface LogStore {
   /** Delete, before each date: events and tab events; visits and paragraphs (and texts no
    *  longer read since); totals and context (null keeps them). */
   prune(before: { fine: string; detail: string; totals: string | null }): Promise<void>;
-  /** How much the log holds, in rows by store, and roughly in bytes. */
-  size(): Promise<{ rows: Record<string, number>; bytes: number | null }>;
+  /** Counts of reading-log rows only, excluding housekeeping metadata. */
+  size(): Promise<{ rows: Record<string, number> }>;
   /** Strip what a coarser configuration would not hold from what is kept (`strip` returns the
    *  row as that configuration would have it, or null to delete it). */
-  rewrite(strip: { visit(v: VisitRow): VisitRow | null; unit(u: UnitRow): UnitRow | null; events: boolean; texts: boolean; tabs: boolean }): Promise<void>;
+  rewrite(strip: Rewrite): Promise<void>;
   clear(): Promise<void>;
   getMeta(key: string): Promise<unknown>;
   setMeta(key: string, value: unknown): Promise<void>;
@@ -85,17 +107,56 @@ export interface LogStore {
 let opened: Promise<IDBPDatabase<LogDB>> | null = null;
 function database(): Promise<IDBPDatabase<LogDB>> {
   opened ??= openDB<LogDB>(STATS_DB, VERSION, {
-    upgrade(db, from) {
-      // Version 1 (days, sites, pages) was never released: it gives way to the log.
-      if (from < 2) for (const name of [...db.objectStoreNames]) db.deleteObjectStore(name as never);
-      db.createObjectStore("visits", { keyPath: "id" }).createIndex("date", "date");
-      db.createObjectStore("units", { keyPath: ["visit", "n"] }).createIndex("date", "date");
-      db.createObjectStore("events", { keyPath: ["visit", "seq"] }).createIndex("date", "date");
-      db.createObjectStore("texts", { keyPath: "hash" }).createIndex("last", "last");
-      db.createObjectStore("totals", { keyPath: ["date", "scope", "key"] });
-      db.createObjectStore("tabs", { autoIncrement: true }).createIndex("date", "date");
-      db.createObjectStore("context", { autoIncrement: true }).createIndex("date", "date");
-      db.createObjectStore("meta");
+    upgrade(db, from, _to, tx) {
+      if (from < 2) {
+        // Version 1 was the unreleased, aggregate-only prototype.
+        for (const name of [...db.objectStoreNames]) db.deleteObjectStore(name as never);
+        db.createObjectStore("visits", { keyPath: "id" }).createIndex("date", "date");
+        db.createObjectStore("units", { keyPath: ["visit", "n"] }).createIndex("date", "date");
+        db.createObjectStore("events", { keyPath: ["visit", "seq"] }).createIndex("date", "date");
+        db.createObjectStore("texts", { keyPath: "hash" }).createIndex("last", "last");
+        db.createObjectStore("totals", { keyPath: ["date", "scope", "key"] });
+        db.createObjectStore("tabs", { autoIncrement: true }).createIndex("date", "date");
+        db.createObjectStore("context", { autoIncrement: true }).createIndex("date", "date");
+        db.createObjectStore("meta");
+      }
+      const units = tx.objectStore("units");
+      if (from < 3) units.createIndex("readDate", "readDate");
+      if (from === 2) {
+        // Unit keys group a visit's paragraphs together. Read its timing once, and
+        // backfill in the upgrade transaction so a failed upgrade leaves v2 intact.
+        void (async () => {
+          let visit: VisitRow | undefined;
+          for (let cursor = await units.openCursor(); cursor; cursor = await cursor.continue()) {
+            const u = cursor.value;
+            if (visit?.id !== u.visit) visit = await tx.objectStore("visits").get(u.visit);
+            await cursor.update({ ...u, readDate: readingDay(u, visit) });
+          }
+        })().catch(() => { try { tx.abort(); } catch { /* the failed request already aborted it */ } });
+      }
+      if (from >= 2 && from < 4) {
+        // A visit that supplies an older page's host may have opened before the
+        // selected period. Recover that link while its retained hashes still exist.
+        void (async () => {
+          let hosts: Map<string, string> | undefined;
+          for (let c = await tx.objectStore("totals").openCursor(); c; c = await c.continue()) {
+            const t = c.value;
+            if (t.scope !== "page" || !t.hashed || t.siteHash !== undefined || t.key.startsWith("file:")) continue;
+            if (!hosts) {
+              hosts = new Map();
+              for (let v = await tx.objectStore("visits").openCursor(); v; v = await v.continue()) {
+                const visit = v.value, host = visit.places?.host ?? visit.site;
+                if (!host || !visit.hashed?.includes("place")) continue;
+                if (visit.url) hosts.set(visit.url, host);
+                for (const address of Object.values(visit.places ?? {})) hosts.set(address, host);
+              }
+              if (!hosts.size) break;
+            }
+            const siteHash = hosts.get(t.key);
+            if (siteHash !== undefined) await c.update({ ...t, siteHash });
+          }
+        })().catch(() => { try { tx.abort(); } catch { /* the failed request already aborted it */ } });
+      }
     },
     // Another page of the extension holds an older version open: let go, and open afresh next time.
     blocking() {
@@ -133,12 +194,21 @@ export function openStatsStore(): LogStore {
     },
     async write(w) {
       const db = await database();
-      const tx = db.transaction(["visits", "units", "events", "texts", "totals"], "readwrite");
+      const tx = db.transaction(["meta", "visits", "units", "events", "texts", "totals"], "readwrite");
+      const meta = tx.objectStore("meta");
+      if (stale(w.started, await meta.get(CLEARED)) || stale(w.preparedAt, await meta.get(REWRITTEN))) { await tx.done; return; }
       const ops: Promise<unknown>[] = [];
       if (w.visit) ops.push(tx.objectStore("visits").put(w.visit));
+      const units = tx.objectStore("units");
+      const counted = new Set(w.counted?.units);
       for (const u of w.units ?? []) {
-        const store = tx.objectStore("units");
-        ops.push(store.get([u.visit, u.n]).then((had) => store.put(mergeUnit(had, u))));
+        const reported = counted.delete(u.n) ? w.counted?.date : undefined;
+        ops.push(units.get([u.visit, u.n]).then((had) =>
+          units.put(mergeUnit(had, { ...u, readDate: readingDay(u, w.visit) }, reported))));
+      }
+      if (w.counted) for (const n of counted) {
+        const { visit, date } = w.counted;
+        ops.push(units.get([visit, n]).then((u) => u && units.put({ ...u, readDate: date })));
       }
       if (w.events) ops.push(tx.objectStore("events").put(w.events));
       for (const t of w.texts ?? []) {
@@ -151,21 +221,37 @@ export function openStatsStore(): LogStore {
       }
       await Promise.all([...ops, tx.done]);
     },
-    async tab(event) {
-      await (await database()).add("tabs", event);
+    async tab(event, observedAt = event.at) {
+      const tx = (await database()).transaction(["meta", "tabs"], "readwrite");
+      if (!stale(observedAt, await tx.objectStore("meta").get(CLEARED)) && !stale(observedAt, await tx.objectStore("meta").get(REWRITTEN))) await tx.objectStore("tabs").add(event);
+      await tx.done;
     },
-    async context(row) {
-      await (await database()).add("context", row);
+    async context(row, fingerprint, observedAt = row.at) {
+      const tx = (await database()).transaction(["meta", "context"], "readwrite");
+      const meta = tx.objectStore("meta");
+      if (!stale(observedAt, await meta.get(CLEARED)) && !stale(observedAt, await meta.get(REWRITTEN)) &&
+          (fingerprint === undefined || await meta.get("context") !== fingerprint)) {
+        await tx.objectStore("context").add(row);
+        if (fingerprint !== undefined) await meta.put(fingerprint, "context");
+      }
+      await tx.done;
     },
     async read(from, to, opts = {}) {
       const db = await existing();
       if (!db) return { visits: [], units: [], totals: [] };
       const tx = db.transaction(["visits", "units", "totals"], "readonly");
       const [visits, units, totals] = await Promise.all([
-        tx.objectStore("visits").index("date").getAll(dates(from, to)),
-        opts.units ? tx.objectStore("units").index("date").getAll(dates(from, to)) : Promise.resolve([]),
+        opts.visits === false ? [] as VisitRow[] : tx.objectStore("visits").index("date").getAll(dates(from, to)),
+        opts.units ? tx.objectStore("units").index(opts.byReadDate ? "readDate" : "date").getAll(dates(from, to)) : Promise.resolve([]),
         tx.objectStore("totals").getAll(totalsOf(from, to)),
       ]);
+      if (opts.byReadDate && opts.visits !== false) {
+        const present = new Set(visits.map((v) => v.id));
+        const extra = new Set(units.filter((u) => !present.has(u.visit)).map((u) => u.visit));
+        for (const v of await Promise.all([...extra].map((id) => tx.objectStore("visits").get(id)))) {
+          if (v) visits.push(v);
+        }
+      }
       return { visits, units, totals };
     },
     async events(visits) {
@@ -175,8 +261,23 @@ export function openStatsStore(): LogStore {
       const all = await Promise.all(visits.map((id) => tx.store.getAll(IDBKeyRange.bound([id, 0], [id, Infinity]))));
       return all.flat();
     },
+    async hasEvents(visit) {
+      const db = await existing();
+      return !!db && (await db.getKey("events", IDBKeyRange.bound([visit, 0], [visit, Infinity]))) !== undefined;
+    },
     async unitsOf(visit) {
       return (await existing())?.getAll("units", IDBKeyRange.bound([visit, 0], [visit, Infinity])) ?? [];
+    },
+    async hashedPlaces(keys) {
+      const found: HashedPlaces = new Map();
+      if (!keys.size) return found;
+      const db = await existing();
+      if (!db) return found;
+      for (let c = await db.transaction("visits").store.openCursor(); c; c = await c.continue()) {
+        indexHashedPlaces(found, c.value, keys);
+        if (found.size === keys.size) break;
+      }
+      return found;
     },
     async texts(hashes) {
       const db = await existing();
@@ -217,40 +318,53 @@ export function openStatsStore(): LogStore {
     },
     async size() {
       const db = await existing();
-      if (!db) return { rows: {}, bytes: 0 };
+      if (!db) return { rows: {} };
       const rows: Record<string, number> = {};
-      for (const name of STORES) rows[name] = await db.count(name);
-      let bytes: number | null = null;
-      try { bytes = (await navigator.storage.estimate()).usage ?? null; } catch { /* unknown */ }
-      return { rows, bytes };
+      for (const name of STORES) if (name !== "meta") rows[name] = await db.count(name);
+      return { rows };
     },
     async rewrite(strip) {
       const db = await existing();
       if (!db) return;
-      const tx = db.transaction(["visits", "units", "events", "texts", "tabs"], "readwrite");
+      const tx = db.transaction([...STORES], "readwrite");
       const ops: Promise<unknown>[] = [];
-      ops.push((async () => {
+      const visitsRewritten = (async () => {
         for (let c = await tx.objectStore("visits").openCursor(); c; c = await c.continue()) {
           const next = strip.visit(c.value);
           if (next) await c.update(next); else await c.delete();
         }
-      })());
+      })();
       ops.push((async () => {
         for (let c = await tx.objectStore("units").openCursor(); c; c = await c.continue()) {
           const next = strip.unit(c.value);
           if (next) await c.update(next); else await c.delete();
         }
       })());
-      if (strip.events) ops.push(tx.objectStore("events").clear());
+      for (const name of ["events", "tabs", "context"] as const) ops.push((async () => {
+        const store = tx.objectStore(name);
+        for (let c = await store.openCursor(); c; c = await c.continue()) {
+          const next = name === "events" ? strip.events(c.value as EventChunk)
+            : name === "tabs" ? strip.tabs(c.value as TabEvent) : strip.context(c.value as ContextRow);
+          if (next) await c.update(next); else await c.delete();
+        }
+      })());
+      ops.push((async () => {
+        const store = tx.objectStore("totals");
+        const [original] = await Promise.all([store.getAll(), visitsRewritten]);
+        const rows = strip.totals(original);
+        await store.clear();
+        await Promise.all(rows.map((r) => store.put(r)));
+      })());
+      ops.push(tx.objectStore("meta").delete("context"), tx.objectStore("meta").put(Date.now(), REWRITTEN));
       if (strip.texts) ops.push(tx.objectStore("texts").clear());
-      if (strip.tabs) ops.push(tx.objectStore("tabs").clear());
       await Promise.all([...ops, tx.done]);
     },
     async clear() {
-      const db = await existing();
-      if (!db) return;
+      const db = await database();
       const tx = db.transaction([...STORES], "readwrite");
-      await Promise.all([...STORES.map((name) => tx.objectStore(name).clear()), tx.done]);
+      await Promise.all(STORES.map((name) => tx.objectStore(name).clear()));
+      await tx.objectStore("meta").put(Date.now(), CLEARED);
+      await tx.done;
     },
     async getMeta(key) {
       return (await existing())?.get("meta", key);
@@ -263,17 +377,24 @@ export function openStatsStore(): LogStore {
 
 /** A paragraph's row again: what only its first snapshot carried (its text, and so its hash,
  *  sketch and first words) stays. */
-export function mergeUnit(had: UnitRow | undefined, u: UnitRow): UnitRow {
-  if (!had) return u;
-  return { ...u, hash: u.hash ?? had.hash, sketch: u.sketch ?? had.sketch, head: u.head ?? had.head };
+export function mergeUnit(had: UnitRow | undefined, u: UnitRow, reported?: string): UnitRow {
+  const readDate = reported ?? ((had?.expo?.read || had?.expo?.readAt !== undefined) ? had.readDate : undefined) ?? u.readDate;
+  if (!had) return { ...u, readDate };
+  return { ...u, readDate, hash: u.hash ?? had.hash, sketch: u.sketch ?? had.sketch, head: u.head ?? had.head };
 }
 
 /** A total with a tally added: a page's keeps its first start and title, and adds its dwell. */
 export function mergeTotal(had: TotalRow | undefined, t: NonNullable<LogWrite["totals"]>[number]): TotalRow {
   const row: TotalRow = had ? structuredClone(had) : { date: t.date, scope: t.scope, key: t.key, tally: emptyTally() };
   addTally(row.tally, t.tally);
-  if (t.title !== undefined) row.title = t.title;
-  if (t.start !== undefined) row.start ??= t.start;
+  if (t.title !== undefined) { row.title = t.title; row.titleHashed = t.titleHashed; row.titleLayer = t.titleLayer; }
+  if (t.placeLayer) row.placeLayer = t.placeLayer;
+  if (t.siteHash !== undefined) row.siteHash = t.siteHash;
+  if (t.start !== undefined && (row.start === undefined ||
+      (t.startDate ?? t.date) + t.start < (row.startDate ?? row.date) + row.start)) {
+    row.start = t.start;
+    row.startDate = t.startDate;
+  }
   if (t.dwell !== undefined) row.dwell = (row.dwell ?? 0) + t.dwell;
   if (t.kind !== undefined) row.kind ??= t.kind;
   if (t.hashed) row.hashed = true;
@@ -294,8 +415,17 @@ export function memoryStatsStore(): LogStore & { dump(): { visits: VisitRow[]; u
   return {
     async visit(id) { return structuredClone(visits.get(id)); },
     async write(w) {
+      if (stale(w.started, meta.get(CLEARED)) || stale(w.preparedAt, meta.get(REWRITTEN))) return;
       if (w.visit) visits.set(w.visit.id, structuredClone(w.visit));
-      for (const u of w.units ?? []) units.set(`${u.visit} ${u.n}`, mergeUnit(units.get(`${u.visit} ${u.n}`), structuredClone(u)));
+      const counted = new Set(w.counted?.units);
+      for (const u of w.units ?? []) {
+        const key = `${u.visit} ${u.n}`, reported = counted.delete(u.n) ? w.counted?.date : undefined;
+        units.set(key, mergeUnit(units.get(key), { ...structuredClone(u), readDate: readingDay(u, w.visit) }, reported));
+      }
+      if (w.counted) for (const n of counted) {
+        const u = units.get(`${w.counted.visit} ${n}`);
+        if (u) u.readDate = w.counted.date;
+      }
       if (w.events) events.set(`${w.events.visit} ${w.events.seq}`, structuredClone(w.events));
       for (const t of w.texts ?? []) texts.set(t.hash, { hash: t.hash, text: t.text, first: texts.get(t.hash)?.first ?? t.date, last: t.date });
       for (const t of w.totals ?? []) {
@@ -303,17 +433,33 @@ export function memoryStatsStore(): LogStore & { dump(): { visits: VisitRow[]; u
         totals.set(key, mergeTotal(totals.get(key), t));
       }
     },
-    async tab(event) { tabs.push(structuredClone(event)); },
-    async context(row) { context.push(structuredClone(row)); },
+    async tab(event, observedAt = event.at) { if (!stale(observedAt, meta.get(CLEARED)) && !stale(observedAt, meta.get(REWRITTEN))) tabs.push(structuredClone(event)); },
+    async context(row, fingerprint, observedAt = row.at) {
+      if (stale(observedAt, meta.get(CLEARED)) || stale(observedAt, meta.get(REWRITTEN)) || (fingerprint !== undefined && fingerprint === meta.get("context"))) return;
+      context.push(structuredClone(row));
+      if (fingerprint !== undefined) meta.set("context", fingerprint);
+    },
     async read(from, to, opts = {}) {
+      const selected = opts.units ? [...units.values()].filter((u) =>
+        inRange(opts.byReadDate ? readingDay(u, visits.get(u.visit)) : u.date, from, to)) : [];
+      const parents = new Set(opts.byReadDate ? selected.map((u) => u.visit) : []);
       return {
-        visits: [...visits.values()].filter((v) => inRange(v.date, from, to)),
-        units: opts.units ? [...units.values()].filter((u) => inRange(u.date, from, to)) : [],
+        visits: opts.visits === false ? [] : [...visits.values()].filter((v) => inRange(v.date, from, to) || parents.has(v.id)),
+        units: selected,
         totals: [...totals.values()].filter((t) => inRange(t.date, from, to)),
       };
     },
     async events(ids) { return [...events.values()].filter((e) => ids.includes(e.visit)).sort((a, b) => a.seq - b.seq); },
+    async hasEvents(visit) { return [...events.values()].some(chunk => chunk.visit === visit); },
     async unitsOf(visit) { return [...units.values()].filter((u) => u.visit === visit).sort((a, b) => a.n - b.n); },
+    async hashedPlaces(keys) {
+      const found: HashedPlaces = new Map();
+      for (const v of visits.values()) {
+        if (found.size === keys.size) break;
+        indexHashedPlaces(found, v, keys);
+      }
+      return found;
+    },
     async texts(hashes) { return hashes.map((h) => texts.get(h)).filter((t): t is TextRow => t !== undefined); },
     async tabs(from, to) { return tabs.filter((t) => inRange(t.date, from, to)); },
     async contexts(from, to) { return context.filter((c) => inRange(c.date, from, to)); },
@@ -330,15 +476,23 @@ export function memoryStatsStore(): LogStore & { dump(): { visits: VisitRow[]; u
         for (let i = context.length - 1; i >= 0; i--) if (context[i]!.date < before.totals) context.splice(i, 1);
       }
     },
-    async size() { return { rows: { visits: visits.size, units: units.size, events: events.size, texts: texts.size, totals: totals.size, tabs: tabs.length, context: context.length }, bytes: null }; },
+    async size() { return { rows: { visits: visits.size, units: units.size, events: events.size, texts: texts.size, totals: totals.size, tabs: tabs.length, context: context.length } }; },
     async rewrite(strip) {
       for (const [k, v] of visits) { const next = strip.visit(v); if (next) visits.set(k, next); else visits.delete(k); }
       for (const [k, u] of units) { const next = strip.unit(u); if (next) units.set(k, next); else units.delete(k); }
-      if (strip.events) events.clear();
+      const grouped = strip.totals([...totals.values()]);
+      totals.clear();
+      for (const t of grouped) totals.set(`${t.date} ${t.scope} ${t.key}`, t);
+      for (const [k, e] of events) { const next = strip.events(e); if (next) events.set(k, next); else events.delete(k); }
+      const rewriteList = <T>(rows: T[], apply: (row: T) => T | null): void => {
+        for (let i = rows.length - 1; i >= 0; i--) { const next = apply(rows[i]!); if (next) rows[i] = next; else rows.splice(i, 1); }
+      };
+      rewriteList(tabs, strip.tabs);
+      rewriteList(context, strip.context);
+      meta.delete("context"); meta.set(REWRITTEN, Date.now());
       if (strip.texts) texts.clear();
-      if (strip.tabs) tabs.length = 0;
     },
-    async clear() { visits.clear(); units.clear(); events.clear(); texts.clear(); totals.clear(); tabs.length = 0; context.length = 0; meta.clear(); },
+    async clear() { visits.clear(); units.clear(); events.clear(); texts.clear(); totals.clear(); tabs.length = 0; context.length = 0; meta.clear(); meta.set(CLEARED, Date.now()); },
     async getMeta(key) { return meta.get(key); },
     async setMeta(key, value) { meta.set(key, value); },
     dump: () => ({ visits: [...visits.values()], units: [...units.values()], events: [...events.values()], texts: [...texts.values()], totals: [...totals.values()], tabs: [...tabs], context: [...context] }),

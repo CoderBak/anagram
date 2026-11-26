@@ -57,7 +57,7 @@ export async function popupOver(page, { setup } = {}) {
 
 /**
  * What the toolbar menu (opened with popupOver) says about its page: the report's title,
- * its notes (the coverage line, then the scope note), the four counts under the bar, each
+ * its notes (coverage and scope), the four counts under the bar, each
  * flagged row's spoken name, and the comment sites it offers; null while it shows none.
  */
 export const menuReport = (popup) =>
@@ -65,7 +65,7 @@ export const menuReport = (popup) =>
     const report = document.getElementById("pageReport");
     if (!report || report.hidden) return null;
     return {
-      title: report.querySelector("#reportTitle")?.textContent ?? null,
+      title: report.querySelector(".report-heading:not([hidden]) #reportTitle")?.textContent ?? null,
       notes: [...report.querySelectorAll(".report-coverage")].filter((p) => !p.hidden).map((p) => p.textContent),
       bands: [...report.querySelectorAll(".legend li .n")].map((n) => Number(n.textContent)),
       rows: [...report.querySelectorAll(".report-result")].map((b) => b.getAttribute("aria-label")),
@@ -124,6 +124,7 @@ const ENV_ARGS = (process.env.ANAGRAM_CHROMIUM_ARGS ?? "").split(/\s+/).filter(B
 export async function launchExtension({
   nativeFixture,
   extDir,
+  incognitoAccess = false,
   testPort = process.platform === "win32",
   headless = !HEADED,
   viewport = { width: 1280, height: 850 },
@@ -153,6 +154,18 @@ export async function launchExtension({
   const extId = sw ? new URL(sw.url()).host : null;
   let detach;
   if (sw && extId) {
+    if (incognitoAccess) {
+      // Chromium reloads the unpacked extension when its private-window switch changes.
+      // Set it before connecting the fixture host to the worker that will score the page.
+      const manager = await context.newPage();
+      await manager.goto(`chrome://extensions/?id=${extId}`);
+      await manager.evaluate(() => chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true }));
+      [sw] = await Promise.all([
+        context.waitForEvent("serviceworker", { predicate: (w) => new URL(w.url()).host === extId, timeout: 15_000 }),
+        manager.evaluate((id) => chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, incognitoAccess: true }), extId),
+      ]);
+      await manager.close();
+    }
     if (testPort) detach = await attachTestPort(sw, fixture);
     else registerTestHost(join(profile, "NativeMessagingHosts", HOST_NAME + ".json"), fixture, "chrome", extId);
     if (!extDir) await waitForRegistration(sw);

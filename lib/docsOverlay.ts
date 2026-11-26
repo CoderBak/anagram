@@ -103,15 +103,15 @@ const OVERLAY_CSS = `
 }
 .bar .titles { flex: 1 1 auto; min-width: 0; }
 .bar .t {
-  font: 600 14px/1.3 ui-sans-serif, system-ui, sans-serif;
+  font: 600 14px/1.3 Arial, "Liberation Sans", Helvetica, sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bar .s { font: 400 11px/1.3 ui-sans-serif, system-ui, sans-serif; color: #656d76; }
+.bar .s { font: 400 11px/1.3 Arial, "Liberation Sans", Helvetica, sans-serif; color: #656d76; }
 .bar button {
   flex: 0 0 auto;
-  font: 600 12px/1 ui-sans-serif, system-ui, sans-serif;
+  font: 600 12px/1 Arial, "Liberation Sans", Helvetica, sans-serif;
   border-radius: 8px;
   padding: 7px 13px;
   cursor: pointer;
@@ -150,7 +150,7 @@ const OVERLAY_CSS = `
 .notice {
   max-width: 760px;
   margin: 0 auto 14px;
-  font: 400 12px/1.5 ui-sans-serif, system-ui, sans-serif;
+  font: 400 12px/1.5 Arial, "Liberation Sans", Helvetica, sans-serif;
   color: #656d76;
   text-align: center;
 }

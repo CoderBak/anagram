@@ -34,13 +34,13 @@ import type { Unit } from "../types";
 import { MARK_ATTR } from "../types";
 import type { UnitVerdict } from "../capture/windows";
 import { messageLocale, t } from "../i18n";
-import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
+import { resultLevel, band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { clearActiveUnit, setActiveUnit } from "./highlight";
 import { countWords, hasLetters, unitParagraphs } from "../dom/text";
 import { CLIP_MAX_VIEWPORT_SHARE, CLIP_MIN_HIDDEN_PX, NEVER_CLIPPED_TAGS } from "../dom/style";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
-import { distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
+import { sentenceDetailsHtml, distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
 import { levelOf } from "./scale";
 import { BADGE_CSS, FLASH_PULSE_MS, FLASH_PULSES } from "./badge.css";
 import { isDarkContext } from "./theme";
@@ -380,12 +380,12 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 
     // The pill is the word's colour (lib/render/scale.ts), its number in the ink that reads
     // on it (badge.css.ts).
-    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : ` scored b${levelOf(result.score)}`}`;
+    pill.className = `pill band-${b}${isNoVerdict(b) ? "" : ` scored b${resultLevel(result)}`}`;
     // The bare number (".38"), and nothing else: what it means is in the card, and how much
     // text it covers shows when the chip is hovered (every paragraph it read is tinted) and
     // in the card ("Paragraphs read together").
     // Unsupported language → the detected code ("zh"), never a number.
-    num.textContent = b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : score;
+    num.textContent = b === "short" ? "—" : b === "unknown" ? "?" : b === "unsupported" ? (result.lang ?? "n/a") : score;
 
     renderCard(root.querySelector(".card") as HTMLElement, unit, verdict, b, score);
   }
@@ -409,17 +409,20 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     host.setAttribute(MARK_ATTR, "host");
     host.setAttribute("aria-hidden", "true");
     // Inline styles back up the !important :host rules against page CSS.
-    host.style.cssText = "display:inline-block;position:relative;margin-inline-start:6px;";
+    host.style.cssText = "display:inline-block;position:relative;margin-inline-start:4px;";
     // A badge can legitimately sit inside an <a>; a click on it must never
     // navigate or trigger page handlers. A click/tap also PINS the card open
     // (the hover story for touch devices); a second tap unpins. Clicks INSIDE
     // the card (Copy action) must not toggle the pin.
     host.addEventListener("click", (e) => {
-      e.preventDefault();
       e.stopPropagation();
       const card = cardOf(host);
+      const path = e.composedPath();
+      // A summary has its own activation behavior, even when the badge sits in a page link.
+      if (card && path.includes(card) && path.some((el) => el instanceof HTMLElement && el.tagName === "SUMMARY")) return;
+      e.preventDefault();
       if (!card) return;
-      if (e.composedPath().includes(card)) return; // card-internal click (action button)
+      if (path.includes(card)) return; // card-internal click (action button)
       const opening = !card.classList.contains("open");
       closeOpenCard();
       options.onCard?.(id, "chipClick");
@@ -485,7 +488,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 
     // The model's whole 4-way distribution is the honest part of the readout. Skip
     // it for "unknown" — a flat gray bar reads as data when the message is "no answer".
-    const dist = isNoVerdict(b) ? "" : distributionHtml(result);
+    const dist = isNoVerdict(b) ? "" : distributionHtml(result)+sentenceDetailsHtml(verdict);
     // Coverage, honestly. "Words" is the whole unit. A unit read in one pass says nothing
     // more; one read in several passes shows each pass's own number, in reading order, next to
     // the aggregate above; and "Scored: first N words" is left for the one case in which
@@ -512,7 +515,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
         : b === "unsupported"
           ? t("cardFootUnsupported")
           : coverageNote(verdict, "paragraph", unit.text).trim();
-    const short = isNoVerdict(b) ? "" : shortTextNote(unit.wordCount);
+    const short = isNoVerdict(b) || result.probs.length===3 ? "" : shortTextNote(unit.wordCount);
     const unsure = isNoVerdict(b) ? "" : unsureNote(verdict);
     card.innerHTML =
       `<div class="head"><span class="verdict band-${b}">${isNoVerdict(b) ? "" : swatchHtml(result)}${bandLabel(b)}</span>` +
@@ -522,24 +525,41 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       dist +
       langRow +
       partsRow +
-      row(t("cardWords"), `${unit.wordCount}`) +
       coverageRows +
       formulaRow +
       // tabindex="-1": the chip host is aria-hidden on purpose (see the header), so a
       // focusable button inside it would be a tab stop that announces nothing at all —
-      // one per pinned card. This action is a pointer affordance; the keyboard route to
-      `<div class="actions"><button type="button" tabindex="-1" class="act copy">${t("cardCopyText")}</button></div>` +
+      // one per pinned card. The page's own text remains selectable with the keyboard.
+      `<div class="actions">` + row(t("cardWords"), `${unit.wordCount}`) +
+      `<button type="button" tabindex="-1" class="act copy"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g class="sheets"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/></g><path class="check" d="m4 12 5 5L20 6"/></svg><span hidden></span></button></div>` +
       (foot ? `<div class="foot">${foot}</div>` : "") +
       `<span class="caret"></span>`;
     placeMarkers(card);
 
     const copy = card.querySelector(".act.copy") as HTMLButtonElement;
+    const label = t("cardCopyText");
+    copy.setAttribute("aria-label", label);
+    copy.title = label;
+    const feedback = copy.querySelector("span")!;
+    let reset: ReturnType<typeof setTimeout>;
     // tabindex="-1" keeps the keyboard out; a press would still focus the button in Chrome,
     // which then un-hides the host and warns "Blocked aria-hidden on an element…".
     copy.addEventListener("mousedown", (e) => e.preventDefault());
-    copy.addEventListener("click", (e) => {
+    copy.addEventListener("click", async (e) => {
       e.stopPropagation();
-      copyText(unit.text, copy);
+      clearTimeout(reset);
+      copy.disabled = true;
+      const copied = await copyText(unit.text);
+      copy.disabled = false;
+      copy.classList.toggle("done", copied);
+      copy.title = copied ? t("copied") : t("reportCopyFailed");
+      feedback.textContent = copied ? "" : copy.title;
+      feedback.hidden = copied;
+      reset = setTimeout(() => {
+        copy.title = label;
+        copy.classList.remove("done");
+        feedback.hidden = true;
+      }, 1600);
     });
   }
 
@@ -602,31 +622,24 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 }
 
 /** Copy with execCommand fallback (Clipboard API can be permission-blocked). */
-function copyText(text: string, button: HTMLElement): void {
-  const flash = (text: string, cls: string) => {
-    const prev = button.textContent;
-    button.textContent = text;
-    button.classList.add(cls);
-    setTimeout(() => {
-      button.textContent = prev;
-      button.classList.remove(cls);
-    }, 1400);
-  };
-  const done = () => flash(t("copied"), "done");
-  const failed = () => flash(t("reportCopyFailed"), "failed");
-  navigator.clipboard.writeText(text).then(done, () => {
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
     const ta = document.createElement("textarea");
     ta.value = text;
     ta.style.cssText = "position:fixed;opacity:0";
-    document.body.appendChild(ta);
-    ta.select();
     try {
-      if (document.execCommand("copy")) done();
-      else failed();
+      document.body.appendChild(ta);
+      ta.select();
+      return document.execCommand("copy");
+    } catch {
+      return false;
     } finally {
       ta.remove();
     }
-  });
+  }
 }
 
 // One pinned card at a time; tapping anywhere else (or Escape) closes it.

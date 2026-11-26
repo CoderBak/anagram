@@ -1,13 +1,15 @@
-// entrypoints/options/main.ts — the settings surface, one list of rows.
+// entrypoints/options/main.ts — reading preferences, site access and engine settings.
 // Global toggles bind straight to storage-backed settings (content scripts watch
 // them live); the sites row manages siteOverrides (add form + Remove
 // buttons). All rendering is DOM construction, never innerHTML with stored
 // strings (hostnames are user data).
+import { bindDisclosure } from "../../lib/ui/disclosure";
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import "../../lib/ui/rows.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
+import { mountExtensionUpdate } from "../../lib/ui/extensionUpdate";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
 import { t } from "../../lib/i18n";
 import {
@@ -22,18 +24,18 @@ import { hasAccess, requestAccess } from "../../lib/access/grant";
 import { commentOriginOfHost } from "../../lib/access/commentFrames";
 import { ACTIONS } from "../../lib/messaging/protocol";
 import type { CacheCountReply } from "../../lib/messaging/protocol";
+import { mountDetectorPicker } from "../../lib/ui/detectorPicker";
 import { mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
 import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
 import { createLogger } from "../../lib/log";
-import { configOf, normalize, presetConfig, presetOf, retained, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
+import { rank, configOf, normalize, presetConfig, presetOf, retained, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
 import { openStatsStore } from "../../lib/stats/store";
-import { forgetStatsSecret, readStatsConfig, saveStatsConfig, statsSecret } from "../../lib/stats/settings";
+import { clearStatistics, readStatsConfig, saveStatsConfig, statsSecret } from "../../lib/stats/settings";
 import { presetHint, presetLabel, PRESET_IDS, warningsOf } from "../../lib/stats/ui";
 import { keepsLess, stripTo } from "../../lib/stats/strip";
 import { formatWords } from "../../lib/stats/format";
-import { formatSize } from "../../lib/ui/size";
 
 const log = createLogger("options");
 
@@ -51,10 +53,13 @@ const addNoteEl = document.getElementById("addNote") as HTMLElement;
 const clearCacheEl = document.getElementById("clearCache") as HTMLButtonElement;
 const cacheCountEl = document.getElementById("cacheCount") as HTMLElement;
 
+bindDisclosure(document.querySelector<HTMLButtonElement>("#siteRulesToggle")!, document.getElementById("siteRules")!);
+
 async function renderSites(): Promise<void> {
   const overrides = await settings.siteOverrides.getValue();
   const hosts = Object.keys(overrides).sort();
   sitesEl.textContent = "";
+  document.getElementById("ruleCount")!.textContent = hosts.length ? String(hosts.length) : "";
 
   if (hosts.length === 0) return;
 
@@ -163,6 +168,7 @@ addHostEl.addEventListener("input", () => {
 });
 
 localizePage();
+mountExtensionUpdate(document.getElementById("extensionUpdate")!);
 followSystemTheme();
 linkSourceCode();
 bindToggle(enabledEl, settings.enabled);
@@ -174,7 +180,10 @@ bindToggle(enabledEl, settings.enabled);
 }
 mountPdfRows(document.getElementById("pdfRows")!, { readAhead: true });
 bindSelect(displayModeEl, settings.displayMode);
-bindSelect(flagFromEl, settings.flagFrom);
+bindSelect(flagFromEl, {
+  getValue: async () => {const value=await settings.flagFrom.getValue();return value==="heavy" ? "ai" : value;},
+  setValue: (value:"light"|"ai") => settings.flagFrom.setValue(value),
+});
 bindSelect<"flagged" | "all" | "off">(underlineEl, {
   getValue: async () => (await settings.showHighlights.getValue()) ? await settings.underlineScope.getValue() : "off",
   setValue: async (v) => {
@@ -220,7 +229,10 @@ void renderComments().then(() => {
   if (!commentsAllowEl.hidden) commentsAllowEl.focus({ preventScroll: true });
 });
 
+const updateDetector = mountDetectorPicker(document.getElementById("detectorPicker")!);
 mountEngineCard({
+  title: document.getElementById("engineLabel")!,
+  onUpdate: (_engine, reply) => { if (reply) updateDetector(reply); },
   panelHost: document.getElementById("componentSettings")!,
   settings: true,
 });
@@ -252,29 +264,32 @@ cacheMode.addEventListener("change", () => {
 /** How many verdicts are on the disk. A number and its unit, nothing else: it is there to
  *  be glanced at before clearing, and the row's own text says what they are. */
 async function refreshCacheCount(): Promise<void> {
+  let count: CacheCountReply["entries"] | undefined;
   try {
     const reply = (await browser.runtime.sendMessage({ action: ACTIONS.GET_CACHE_COUNT })) as
       | CacheCountReply
       | undefined;
-    const n = reply?.entries;
-    if (typeof n !== "number") { cacheCountEl.textContent = ""; return; }
-    // The number is grouped for the reader's locale before it goes in ("1,284"), so the
-    // plural is chosen here: tn() would substitute the bare count as $1.
-    cacheCountEl.textContent = t(n === 1 ? "optCacheEntries_one" : "optCacheEntries_other", n.toLocaleString());
+    count = reply?.entries;
   } catch {
-    cacheCountEl.textContent = ""; // no worker to ask — the row still works
+    // Clearing remains available when the worker cannot report a count.
   }
+  clearCacheEl.hidden = count === 0;
+  cacheCountEl.hidden = !count;
+  cacheCountEl.textContent = typeof count === "number"
+    ? t(count === 1 ? "optCacheEntries_one" : "optCacheEntries_other", count.toLocaleString())
+    : "";
 }
 
 // --- statistics ------------------------------------------------------------------------------
-// What the reading log keeps (lib/stats/config.ts): a preset, shown as a tile with a line of
+// What the reading log keeps (lib/stats/config.ts): a preset, shown in a menu with a line of
 // what it keeps, and for how long. Off by default; what someone else using this browser profile
-// could read is said plainly. A setting made field by field before shows as its own tile. The
+// could read is said plainly. A setting made field by field before shows as its own option. The
 // log itself is this extension's own IndexedDB, opened here to size it, coarsen it and clear it.
 void (async () => {
-  const presetsEl = document.getElementById("statsPresets") as HTMLElement;
+  const presetsEl = document.getElementById("statsPresets") as HTMLSelectElement;
+  const presetHintEl = document.getElementById("statsPresetHint")!;
   const warnEl = document.getElementById("statsWarnings") as HTMLElement;
-  const keepEl = document.getElementById("statsKeep") as HTMLElement;
+  const keepEl = document.getElementById("statsKeep") as HTMLDetailsElement;
   const fineEl = document.getElementById("statsFine") as HTMLSelectElement;
   const detailEl = document.getElementById("statsDetailDays") as HTMLSelectElement;
   const totalsEl = document.getElementById("statsTotals") as HTMLSelectElement;
@@ -286,37 +301,41 @@ void (async () => {
   const store = openStatsStore();
   let config: RecordingConfig = await readStatsConfig();
 
-  const tiles = new Map<string, { tile: HTMLElement; input: HTMLInputElement }>();
-  for (const p of ["off", ...PRESET_IDS, "custom"] as const) {
-    const tile = document.createElement("label");
-    tile.className = "preset";
-    const input = Object.assign(document.createElement("input"), { type: "radio", name: "statsPreset", value: p });
-    const name = Object.assign(document.createElement("span"), { className: "name", textContent: presetLabel(p) });
-    const what = Object.assign(document.createElement("span"), { className: "what", textContent: presetHint(p) });
-    tile.append(input, name, what);
-    presetsEl.append(tile);
-    tiles.set(p, { tile, input });
-    input.addEventListener("change", () => {
-      if (!input.checked || p === "custom") return;
-      void choose(p === "off" ? { ...config, on: false } : presetConfig(p as Preset, config.retention));
-    });
-  }
+  for (const p of ["off", ...PRESET_IDS] as const) presetsEl.add(new Option(presetLabel(p), p));
+  presetsEl.disabled = false;
+  presetsEl.addEventListener("change", () => {
+    const p = presetsEl.value;
+    if (p === "custom") return;
+    statusEl.textContent = "";
+    void choose(p === "off" ? { ...config, on: false } : presetConfig(p as Preset, config.retention))
+      .catch(() => { statusEl.textContent = t("optSaveFailed"); paint(); actionsEl.hidden = false; });
+  });
   for (const days of RETENTION.fine) fineEl.add(new Option(t("optStatsDays", days), String(days)));
   for (const days of RETENTION.detail) detailEl.add(new Option(t("optStatsDays", days), String(days)));
   for (const days of RETENTION.totals) totalsEl.add(new Option(days ? t("optStatsDays", days) : t("optStatsUntilCleared"), String(days)));
 
+  const openStats = document.getElementById("openStats")!;
+  function updateActions(): void {
+    openStats.hidden = !config.on && kept === 0;
+    presetHintEl.hidden = !config.on && kept === 0;
+    actionsEl.hidden = kept === 0 && !statusEl.textContent;
+    document.getElementById("exportStats")!.hidden = kept === 0;
+    document.getElementById("clearStats")!.hidden = kept === 0;
+  }
   function paint(): void {
     const preset = config.on ? presetOf(config) ?? "custom" : "off";
-    for (const [p, { tile, input }] of tiles) {
-      input.checked = p === preset;
-      if (p === "custom") tile.hidden = preset !== "custom";
-    }
+    const custom = presetsEl.querySelector('option[value="custom"]');
+    if (preset === "custom" && !custom) presetsEl.add(new Option(presetLabel("custom"), "custom"));
+    else if (preset !== "custom") custom?.remove();
+    presetsEl.value = preset;
+    presetHintEl.textContent = presetHint(preset);
     keepEl.hidden = !config.on;
+    if (!config.on) keepEl.open = false;
     // Only the lengths of what this choice keeps.
     const has = retained(config.layers);
     fineEl.closest<HTMLElement>(".field")!.hidden = !has.fine;
     detailEl.closest<HTMLElement>(".field")!.hidden = !has.detail;
-    actionsEl.hidden = !config.on && kept === 0;
+    updateActions();
     warnEl.replaceChildren(...warningsOf(config).map((key) => Object.assign(document.createElement("p"), { textContent: t(key) })));
     fineEl.value = String(config.retention.fine);
     detailEl.value = String(config.retention.detail);
@@ -324,11 +343,11 @@ void (async () => {
   }
 
   async function paintSize(): Promise<void> {
-    const { rows, bytes } = await store.size().catch(() => ({ rows: {} as Record<string, number>, bytes: null }));
+    const { rows } = await store.size().catch(() => ({ rows: {} as Record<string, number> }));
     const count = Object.values(rows).reduce((a, b) => a + b, 0);
-    sizeEl.textContent = t("optStatsSizeValue", formatSize(bytes ?? 0), formatWords(count));
+    sizeEl.textContent = t("optStatsSizeValue", formatWords(count));
     kept = count;
-    actionsEl.hidden = !config.on && kept === 0;
+    updateActions();
   }
 
   /** Keep `next` from now on; where it keeps less than before, offer to delete what it would
@@ -341,7 +360,12 @@ void (async () => {
     paint();
     if (keepsLess(before, config)) {
       const kept = await store.size().catch(() => null);
-      if (kept && (kept.rows.visits ?? 0) + (kept.rows.units ?? 0) + (kept.rows.events ?? 0) > 0) offerToStrip(config);
+      if (!kept) return;
+      const details = ["visits", "units", "events", "texts", "tabs"].some((name) => (kept.rows[name] ?? 0) > 0);
+      const totals = !details && kept.rows.totals ? (await store.read("", "\uffff", { visits: false })).totals : [];
+      const context = kept.rows.context && (rank("device", config.layers.device) > rank("device", before.layers.device)
+        || rank("engine", config.layers.engine) > rank("engine", before.layers.engine));
+      if (details || context || totals.some((row) => row.scope === "site" || row.scope === "page")) offerToStrip(config);
     }
   }
 
@@ -383,7 +407,7 @@ void (async () => {
   document.getElementById("clearStatsCancel")!.addEventListener("click", () => dialog.close());
   document.getElementById("clearStatsConfirm")!.addEventListener("click", () => {
     // What is recorded from now on cannot be matched with what was cleared.
-    void Promise.all([store.clear(), forgetStatsSecret()]).then(
+    void clearStatistics(store).then(
       () => { statusEl.textContent = t("statsCleared"); void paintSize(); },
       () => { statusEl.textContent = t("optSaveFailed"); },
     ).finally(() => dialog.close());
@@ -391,7 +415,7 @@ void (async () => {
   // Opened from the statistics page's link: the group in view.
   if (location.hash === "#statistics") {
     const group = document.getElementById("statistics")!;
-    group.scrollIntoView({ block: "center" });
+    group.scrollIntoView({ block: "start" });
     group.focus({ preventScroll: true });
   }
 })();
@@ -407,4 +431,9 @@ clearCacheEl.addEventListener("click", () => {
     }).catch(() => { cacheStatus.textContent = t("optSaveFailed"); })
     .finally(() => { clearCacheEl.disabled = false; clearCacheEl.textContent = CLEAR_LABEL; });
 });
+// Returning from a reading tab can make a previously empty cache clearable.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void refreshCacheCount();
+});
+document.getElementById("cache")!.addEventListener("pointerenter", () => void refreshCacheCount());
 void refreshCacheCount();

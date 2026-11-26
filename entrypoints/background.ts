@@ -1,3 +1,5 @@
+import { toolbarBadge, type BadgeApi } from "../lib/ui/toolbarBadge";
+import {listDetectorReleases,resolveDetectorRelease} from "../lib/detectorReleases";
 // entrypoints/background.ts — MV3 service worker.
 // Registers a SINGLE runtime.onMessage listener SYNCHRONOUSLY at top level (MV3 wakes the
 // worker by re-running this registration). It routes SCORE_BATCH → router.handle, answers
@@ -6,9 +8,11 @@
 // toolbar icon (UPDATE_BADGE). Popup control actions (RESCAN / SET_ENABLED / GET_TAB_STATE /
 // RETRY_BACKEND) are addressed straight to the active tab's content script via
 // tabs.sendMessage, so they do not pass through here.
+import { projectTab } from "../lib/stats/coarsen";
 import { defineBackground, browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import { createRouter } from "../lib/backend/router";
+import { upgradeScoreCache } from "../lib/backend/swCache";
 import { getScoreClient } from "../lib/backend/getScoreClient";
 import { engineChoice, engineTransport, nativeGranted, transportOf } from "../lib/backend/engines";
 import type { SetEngineReply } from "../lib/backend/engineChoice";
@@ -62,7 +66,8 @@ const EXTENSION_UPDATE_KEY = "extensionUpdatePending";
  *  window apart from the rest — the way the browser partitions a page's own storage. */
 /** Where a document's text was read: its partition (RequestOrigin.partition), and the registered
  *  domain of the tab's page, which shares a site's part of the router's limits. */
-async function placeOf(sender: Pick<AccessSender, "tab">, document: { origin: string }): Promise<{ partition: string; site?: string }> {
+async function placeOf(sender: Pick<AccessSender, "tab">, document: { origin: string; documentKey: string }, paste: boolean): Promise<{ partition: string; site?: string }> {
+  if (paste) return { partition: `paste ${document.documentKey}` };
   let top = "?";
   try { const url = await topUrlOf(sender); if (url) top = new URL(url).host; } catch { /* no address: its own partition */ }
   return { partition: `${sender.tab?.incognito ? "private" : "normal"} ${top} ${document.origin}`, site: top === "?" || top === "" ? undefined : registrableDomain(top) };
@@ -92,33 +97,17 @@ export default defineBackground(() => {
   const cacheModes=createCacheModeController((mode,restored)=>applyCacheMode(router,mode,restored),cacheModeStorage);
   // Do not dispatch scoring until persisted privacy preferences have been applied.
   const cacheModeReady=cacheModes.restore();
+  if (typeof globalThis.indexedDB?.databases === "function") {
+    void upgradeScoreCache().catch(() => console.warn("Could not upgrade the score cache"));
+  }
   void cacheModeReady.catch(()=>console.warn("Anagram could not clear stored verdicts; disk writes remain disabled"));
   cacheModeStorage.watch(()=>{void cacheModes.restore().catch(()=>console.warn("Anagram cache mode change failed"));});
   // Site access is optional: the content script is registered for the origins the user has
   // granted and injected on demand where only activeTab applies (lib/access/worker.ts).
   installAccess();
-  // Chrome MV3 exposes `action`; Firefox MV2 exposes `browserAction`. We only
-  // need the two badge setters, so type just those.
-  interface BadgeApi {
-    setBadgeText(details: { tabId: number; text: string }): Promise<void> | void;
-    setBadgeBackgroundColor(details: { tabId: number; color: string }): Promise<void> | void;
-  }
-  const b = browser as unknown as { action?: BadgeApi; browserAction?: BadgeApi };
-  const actionApi: BadgeApi | undefined = b.action ?? b.browserAction;
-
-  /** What each tab's badge is showing, so a transient flash can put back exactly that.
-   *  The badge itself is the only other store, and reading it back races the scan that
-   *  may write a new count while the tick is up. */
-  const badgeText = new Map<number, string>();
-  const COUNT_COLOR = "#dc2626";
-  /** The copy said yes: a tick, on the green the chips already use for "human" — the
-   *  badge's red is the chips' "AI generated" red for the same reason. */
-  const FLASH_OK = { text: "✓", color: "#1a7f37" };
-  /** And when nothing reached the clipboard, the same gesture says so instead of lying. */
-  const FLASH_FAIL = { text: "!", color: COUNT_COLOR };
-  const FLASH_MS = 1500;
+  const badge = toolbarBadge(browser.action ?? (browser as unknown as { browserAction?: BadgeApi }).browserAction);
   browser.tabs.onRemoved.addListener((tabId) => {
-    badgeText.delete(tabId);
+    badge.forget(tabId);
     pdfNavigation.forget(tabId);
     setupFeed.forget(tabId);
     wants.delete(tabId);
@@ -200,8 +189,11 @@ export default defineBackground(() => {
     const { device, dtype } = getScoreClient().runtime();
     return kind ? { kind, backend: device, tier: dtype } : null;
   };
-  const statsTabs = createTabTracker({ store: statsStore, config: readStatsConfig });
+  let tabConfig = readStatsConfig();
+  settings.statsConfig.watch(() => { tabConfig = readStatsConfig(); });
+  const statsTabs = createTabTracker({ store: statsStore, config: () => tabConfig });
   statsTabs.install();
+  settings.statsClearedAt.watch((at) => statsTabs.reset(at));
   const stats = createStatsKeeper({
     store: statsStore,
     config: readStatsConfig,
@@ -234,7 +226,11 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install" || details.reason === "update") {
       void browser.storage.local.remove(EXTENSION_UPDATE_KEY);
-      if (details.reason === "update") void browser.storage.local.remove(RETIRED_SETTINGS);
+      if (details.reason === "update") {
+        void browser.storage.local.remove(RETIRED_SETTINGS);
+        if (typeof globalThis.indexedDB?.databases !== "function")
+          void upgradeScoreCache().catch(() => console.warn("Could not upgrade the score cache"));
+      }
     }
     void browser.contextMenus.removeAll().then(() => {
       browser.contextMenus.create({
@@ -323,28 +319,9 @@ export default defineBackground(() => {
         // The tick is for the clipboard, not for the report: a page that built one and
         // could not copy it has to say so, or the reader pastes the last thing they cut.
         const r = reply as CopyDiagnosticsReply | undefined;
-        flashBadge(tabId, r?.ok === true && r.via !== "none");
+        badge.feedback(tabId, r?.ok === true && r.via !== "none");
       })
-      .catch(() => flashBadge(tabId, false));
-  };
-
-  /**
-   * The only feedback this feature has: the toolbar badge shows a tick for a moment and
-   * then goes back to the flagged count. Nothing new is drawn on the page, nothing is said
-   * out loud, and the badge is already where a reader looks for this extension's state.
-   */
-  const flashBadge = (tabId: number, copied: boolean): void => {
-    if (!actionApi) return;
-    const flash = copied ? FLASH_OK : FLASH_FAIL;
-    void actionApi.setBadgeBackgroundColor({ tabId, color: flash.color });
-    void actionApi.setBadgeText({ tabId, text: flash.text });
-    setTimeout(() => {
-      // Whatever the tab is showing NOW, not what it showed when the tick went up: a scan
-      // that finished during the flash has already sent its count, and that is the number
-      // the reader must be left looking at.
-      void actionApi.setBadgeBackgroundColor({ tabId, color: COUNT_COLOR });
-      void actionApi.setBadgeText({ tabId, text: badgeText.get(tabId) ?? "" });
-    }, FLASH_MS);
+      .catch(() => badge.feedback(tabId, false));
   };
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
@@ -383,9 +360,9 @@ export default defineBackground(() => {
         (granted) => {
           clipboardGranted = granted;
           if (granted) copyDiagnostics(tabId, frameId);
-          else flashBadge(tabId, false);
+          else badge.feedback(tabId, false);
         },
-        () => flashBadge(tabId, false),
+        () => badge.feedback(tabId, false),
       );
       return;
     }
@@ -425,6 +402,14 @@ export default defineBackground(() => {
 
   async function handleMessage(message: unknown, sender: AccessSender): Promise<unknown> {
     const raw=message as {action?:unknown}|null;
+    if (raw?.action === "detectorCatalog") {
+      if (callerRole(sender,browser.runtime.id,browser.runtime.getURL("/")) !== "options") return {ok:false};
+      const ref=(message as {ref?:{release:string;revision:string}}).ref;
+      try {
+        const signal=AbortSignal.timeout(30000);
+        return {ok:true,value:ref ? await resolveDetectorRelease(ref,signal) : await listDetectorReleases(signal)};
+      } catch {return {ok:false};}
+    }
     if (raw?.action === NATIVE_MESSAGE || raw?.action === NATIVE_UNINSTALL) {
       return handleNativePageMessage(message,sender,{invalidate:()=>getScoreClient().invalidate(),clear:()=>invalidateAndNotify(()=>router.clear())});
     }
@@ -481,13 +466,7 @@ export default defineBackground(() => {
         try {return {entries:await router.count()} satisfies CacheCountReply;}
         catch {return {entries:null,error:"count_failed"} satisfies CacheCountReply;}
       case ACTIONS.UPDATE_BADGE: {
-        const tabId=sender.tab!.id!;
-        if(actionApi) {
-          const text=msg.flagged>0 ? String(msg.flagged) : "";
-          badgeText.set(tabId,text);
-          void actionApi.setBadgeText({tabId,text});
-          void actionApi.setBadgeBackgroundColor({tabId,color:COUNT_COLOR});
-        }
+        badge.count(sender.tab!.id!, msg.flagged);
         return {ok:true};
       }
       case ACTIONS.GET_TOP_HOST: {
@@ -546,23 +525,27 @@ export default defineBackground(() => {
         await stats.record(msg.wire,sender,role === "reader" ? "reader" : "content").catch(()=>false);
         return {ok:true};
       case ACTIONS.STATS_UI: {
+        const at=Date.now();
         const config=await readStatsConfig();
         if (!config.on || config.layers.rows !== "event" || config.layers.ui !== "events") return {ok:true};
         const tab=msg.tabId ?? sender.tab?.id;
-        const at=Date.now();
-        await statsStore.tab({at,date:localDate(new Date(at)),kind:"ui",ui:msg.kind,
-          ...(tab !== undefined && config.layers.tabs !== "none" ? {tab:statsTabs.tabId(tab),visit:statsTabs.topVisit(tab)} : {})}).catch(()=>undefined);
+        if (sender.tab?.incognito || (tab !== undefined && (await browser.tabs.get(tab).catch(() => null))?.incognito !== false)) return {ok:true};
+        if (tab === undefined && role === "popup") return {ok:true};
+        const row = projectTab({at,date:localDate(new Date(at)),kind:"ui",ui:msg.kind,
+          ...(tab !== undefined && config.layers.tabs !== "none" ? {tab:statsTabs.tabId(tab),visit:statsTabs.topVisit(tab)} : {})}, config.layers);
+        if (row) await statsStore.tab(row, at).catch(()=>undefined);
         return {ok:true};
       }
       case ACTIONS.COUNT_TOKENS: {
-        const counts=await tokenCounter.count(msg.texts,document!.signal,(await placeOf(sender,document!)).partition).catch(()=>null);
+        const counts=await tokenCounter.count(msg.texts,document!.signal,(await placeOf(sender,document!,role === "paste")).partition).catch(()=>null);
         return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
         try {
           await cacheModeReady.catch(()=>undefined);
-          const place=await placeOf(sender,document!);
-          const resp=await router.handle(msg.req,{private:sender.tab?.incognito===true,partition:place.partition,site:place.site,documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
+          const paste = role === "paste";
+          const place=await placeOf(sender,document!,paste);
+          const resp=await router.handle(msg.req,{private:paste || sender.tab?.incognito===true,partition:place.partition,site:place.site,documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
           if(document!.signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.

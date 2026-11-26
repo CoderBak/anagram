@@ -159,7 +159,6 @@ case "$OS/$ARCH" in
   Darwin/arm64)
     MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
     [ "$MACOS_MAJOR" -ge 14 ] || die "the locked MLX and ONNX Runtime packages require macOS 14 or newer"
-    RUNTIMES="MLX"
     UV_TARGET="aarch64-apple-darwin"; UV_SHA="1a7adf8dadae3b55853115d13a8bf564d219597ad13824b93b213706933863e5" ;;
   Darwin/x86_64) die "the locked model runtimes do not provide Intel macOS wheels; use macOS 14+ on Apple Silicon or Linux glibc 2.28+" ;;
   Linux/x86_64|Linux/aarch64)
@@ -167,7 +166,6 @@ case "$OS/$ARCH" in
       die "the locked model runtimes require glibc 2.28+; musl Linux is not supported"
     fi
     LIBC=gnu
-    RUNTIMES=""
     GLIBC_VERSION="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')" || true
     printf '%s\n' "$GLIBC_VERSION" | awk -F. 'NF >= 2 && ($1 > 2 || ($1 == 2 && $2 >= 28)) {ok=1} END {exit !ok}' \
       || die "the locked model runtimes require glibc 2.28+ (found ${GLIBC_VERSION:-unknown})"
@@ -177,15 +175,6 @@ case "$OS/$ARCH" in
     esac ;;
   *) die "unsupported platform: $OS $ARCH (macOS 14+ Apple Silicon or glibc Linux x86_64/arm64)" ;;
 esac
-# PyPI's Linux PyTorch is the CUDA build, about 5 GB with its libraries, and serves only an
-# NVIDIA GPU; ONNX Runtime runs the CPU. WSL2 has no /proc driver and keeps nvidia-smi out
-# of the PATH `anagram update` runs with. ANAGRAM_TEST_ROOT stands in for / in the tests.
-CUDA=""
-if [ "$OS" = Linux ] && { [ -r "${ANAGRAM_TEST_ROOT:-}/proc/driver/nvidia/version" ] || nvidia-smi -L >/dev/null 2>&1 \
-    || "${ANAGRAM_TEST_ROOT:-}/usr/lib/wsl/lib/nvidia-smi" -L >/dev/null 2>&1; }; then
-  CUDA=1; RUNTIMES="PyTorch"
-fi
-
 # Where PyPI, GitHub or the Python builds are slow or blocked (mainland China, a company
 # network), people point pip and uv at a mirror; the installer takes the same one. The
 # lock's hashes, uv's checksums for Python and the pinned checksum of uv still decide every
@@ -592,10 +581,7 @@ install_ours "$TMP/VERSION" "$ANAGRAM_HOME/VERSION"
 VERSION_WRITTEN=1
 
 step 4 "$(tr_msg 'Installing locked runtime packages' '正在安装版本锁定的运行依赖')"
-note "$(tr_msg "Downloading and installing ${RUNTIMES:+$RUNTIMES, }ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES:+${RUNTIMES}、}ONNX Runtime 等依赖；具体进度显示在下方。")"
-if [ "$OS" = Linux ] && [ -z "$CUDA" ] && ls -d "$ANAGRAM_HOME"/venv/lib/python*/site-packages/torch >/dev/null 2>&1; then
-  note "$(tr_msg 'No NVIDIA GPU: PyTorch and its CUDA libraries (about 5 GB) are removed; ONNX Runtime runs on the CPU.' '未检测到 NVIDIA GPU：移除 PyTorch 及其 CUDA 库（约 5 GB），由 ONNX Runtime 在 CPU 上运行。')"
-fi
+note "$(tr_msg "Downloading and installing ONNX Runtime and other dependencies; progress appears below." "正在下载并安装 ${RUNTIMES:+${RUNTIMES}、}ONNX Runtime 等依赖；具体进度显示在下方。")"
 note "$(tr_msg 'Device-selected model weights will download here after registration.' '注册完成后，将在此下载适合本机设备的模型权重。')"
 CREATED_VENV=1
 # --no-build everywhere: every locked package resolves to a wheel on each supported
@@ -603,7 +589,7 @@ CREATED_VENV=1
 # uv sync --frozen fetches the lock's own files.pythonhosted.org addresses whatever index is
 # set, so from a mirror the lock is exported with its hashes and every one is required.
 from_index() {
-  ( cd "$ANAGRAM_HOME/app" && run_uv export --frozen --no-dev --no-emit-project --no-header ${CUDA:+--extra cuda} \
+  ( cd "$ANAGRAM_HOME/app" && run_uv export --frozen --no-dev --no-emit-project --no-header \
       --format requirements-txt --quiet --output-file "$TMP/requirements.txt" ) \
     && run_uv venv --quiet --python "$PYTHON_VERSION" "$ANAGRAM_HOME/venv.next" \
     && run_uv pip sync --python "$ANAGRAM_HOME/venv.next/bin/python" --require-hashes --no-build \
@@ -614,7 +600,7 @@ if [ -z "$PYPI_INDEX" ] || ! { note "$(tr_msg 'from your package index,' '来自
     mirror_failed "$PYPI_INDEX"
     [ ! -e "$ANAGRAM_HOME/venv.next" ] || remove_ours "$ANAGRAM_HOME/venv.next"
   fi
-  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build ${CUDA:+--extra cuda} --python "$PYTHON_VERSION" )
+  ( cd "$ANAGRAM_HOME/app" && run_uv sync --frozen --no-dev --no-build --python "$PYTHON_VERSION" )
 fi
 [ -x "$ANAGRAM_HOME/venv.next/bin/python" ] || die "staged virtual environment was not created"
 # Python discovers its venv relative to the executable. The component invokes this
@@ -641,10 +627,13 @@ for sub in $SWAPPED; do remove_ours "$ANAGRAM_HOME/$sub.old"; done
 # another dependency installation. Retain the installer lock during preparation.
 step 7 "$(tr_msg 'Preparing model files with Hugging Face' '正在使用 Hugging Face 准备模型文件')"
 clean_env PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$PY" -I "$ANAGRAM_HOME/app/prepare_models.py" \
-  --home "$ANAGRAM_HOME" --installer --language "$INSTALL_LANG"
+  --home "$ANAGRAM_HOME" --installer --language "$INSTALL_LANG" || {
+    status=$?
+    note "$(tr_msg 'The local engine is installed. Return to Anagram setup to retry the model download.' '本地引擎已安装。请返回 Anagram 设置页面重试模型下载。')" >&2
+    exit "$status"
+  }
 
 # Installation complete.
 say "$(tr_msg 'Installed Anagram local component' 'Anagram 本地组件安装完成') $VERSION: $ANAGRAM_HOME"
-note "$(tr_msg 'Model files are ready; the browser finishes setup automatically.' '模型文件已准备就绪，浏览器将自动完成剩余设置。')"
-note "$(tr_msg 'EditLens models are licensed CC BY-NC-SA 4.0, for noncommercial use only.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。')"
+note "$(tr_msg 'Return to Anagram setup in your browser to see the engine status.' '请返回浏览器中的 Anagram 设置页面查看引擎状态。')"
 note "$(tr_msg 'The browser manages the component; no login startup, system Python, or PATH changes were installed.' '本地组件由浏览器管理，未添加开机自启，也未修改系统 Python 或 PATH。')"

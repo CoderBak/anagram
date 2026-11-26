@@ -7,7 +7,7 @@
 // where the document spells the word with it, and what is no one's prose left out — the
 // glyphs of a formula, a citation mark, an accent set apart from its letter.
 import { skipGap } from "../dom/text";
-import { SENTENCE_END, SPACE_GAP, bracketCitations, dehyphenates, lastToken, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary } from "./reflow";
+import { SENTENCE_END, SPACE_GAP, bracketCitations, dehyphenates, lastToken, reflowPdf, type PdfPageText, type PdfTextItem, type ReflowBlock, type SourceRun, type Vocabulary, type ReflowTypography, type BatchSpellings } from "./reflow";
 import { append, most } from "./arrays";
 
 /** One glyph: its rect on a 0-based page, in the space its reader measures in (Zotero's
@@ -867,9 +867,9 @@ function reflowPieces(block: ReflowBlock, pages: ReadonlyMap<number, PdfPageText
  * (ReflowBlock.runsOn), and the one after it that carries the sentence on in lower case is
  * read as one with it.
  */
-export function readReflowed(pages: PdfPageText[]): ReflowBlock[] {
-  const blocks = reflowPdf(pages);
-  if (blocks.length === 0) return blocks;
+export function readReflowed(pages: PdfPageText[], compoundHeads: readonly string[] = [], typography?: ReflowTypography, spellings?: BatchSpellings): ReflowBlock[] {
+  const blocks = reflowPdf(pages, compoundHeads, typography, spellings);
+  if (blocks.every((b) => b.kind === "table")) return blocks;
   const byNumber = new Map(pages.map((p) => [p.page, p]));
   const indexes = new Map<number, PageIndex>();
   for (const p of pages) indexes.set(p.page, indexPage(p));
@@ -881,6 +881,12 @@ export function readReflowed(pages: PdfPageText[]): ReflowBlock[] {
   /** A block passed over opened a column or a page. */
   let broken = false;
   for (const block of blocks) {
+    if (block.kind === "table") {
+      out.push(block);
+      display = false;
+      broken = false;
+      continue;
+    }
     const { pieces, located } = reflowPieces(block, byNumber, boxes);
     const { text, runs } = assemble(pieces, located, null, kinds, { keepOpening: true });
     const prev = out.at(-1);

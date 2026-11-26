@@ -1,15 +1,16 @@
-// Focused macOS Firefox full-viewer check; no installed profile/component is used.
+// Full-viewer check with the user's local-engine grant in a temporary Firefox profile.
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {mkdirSync} from "node:fs";
 import {dirname, join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {launchFirefox, until} from "./firefox-harness.mjs";
+import {shippingWithNative} from "./test-build.mjs";
 import {TEST_PDF, LOCKED_PDF, PDF_PASSWORD} from "./pdf-fixture.mjs";
 const ROOT=join(dirname(fileURLToPath(import.meta.url)),"..");
 const artifacts=join(ROOT,"test-results/pdf-viewer");mkdirSync(artifacts,{recursive:true});
 
-const {browser,extUrl,fixture,firefox}=await launchFirefox({extDir:join(ROOT,"output/firefox-mv2")});
+const {browser,extUrl,fixture,firefox}=await launchFirefox({extDir:shippingWithNative("firefox-mv2")});
 const page=await browser.newPage();const external=[],errors=[];
 page.on("request",(r)=>{if(/^https?:/.test(r.url()))external.push(r.url());});
 page.on("pageerror",(e)=>errors.push(e.message));
@@ -22,7 +23,7 @@ const choose=(name,bytes)=>page.evaluate((name,data)=>{
 const click=(id)=>page.evaluate(id=>document.getElementById(id).click(),id);
 const fill=(id,value)=>page.evaluate((id,value)=>{const el=document.getElementById(id);el.value=value;el.dispatchEvent(new Event("input",{bubbles:true}));},id,value);
 const ready=()=>until(page,()=>!!window.PDFViewerApplication?.pdfDocument && document.querySelectorAll("#viewer .textLayer span").length>5,{timeout:20000});
-const chipped=()=>until(page,()=>[...document.querySelectorAll('.anagramPdfChips [data-anagram="host"]')].some(el=>el.shadowRoot?.querySelector(".pill")),{timeout:15000});
+const chipped=()=>until(page,()=>[...document.querySelectorAll('.anagramPdfChips [data-anagram="host"]')].some(el=>el.shadowRoot?.querySelector(".pill.scored")),{timeout:15000});
 try{
   // An older Firefox's BiDi has no emulation.setNetworkConditions; the request log below still holds.
   const offline=await page.setOfflineMode(true).then(()=>true,()=>false);
@@ -47,7 +48,10 @@ try{
   await page.screenshot({path:join(artifacts,"firefox-viewer.png")}).catch(()=>{});
   await choose("password.pdf",LOCKED_PDF);await until(page,()=>!!document.querySelector("#passwordDialog[open]"));
   await fill("password",PDF_PASSWORD);await click("passwordSubmit");await ready();
-  fixture.close();await choose("offline.pdf",TEST_PDF);await ready();
+  fixture.close();await choose("offline.pdf",TEST_PDF);
+  // The previous document remains readable while the new file is checked.
+  await until(page,()=>PDFViewerApplication._docFilename==="offline.pdf" && PDFViewerApplication.pdfDocument?.numPages===2);
+  await ready();
   assert.equal(await page.evaluate(()=>PDFViewerApplication.pdfDocument.numPages),2);
   assert.equal(await page.evaluate(async()=>{try{await PDFViewerApplication.open({url:"https://must-not-load.invalid/x.pdf"});return false;}catch{return true;}}),true);
   assert.deepEqual(external,[]);assert.deepEqual(errors,[]);

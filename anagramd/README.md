@@ -3,14 +3,10 @@
 The browser launches `native_host.py --home INSTALLATION_DIRECTORY` through Native
 Messaging: length-prefixed JSON on stdin/stdout, no HTTP server or separate daemon. One
 host owns one installation. The installer registers `dev.coderbak.anagram`
-for the exact extension ID and prepares the pinned
-[EditLens modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit) plus the
-fastText language model in the terminal (`prepare_models.py`, also `bin/anagram download`).
-When the browser reconnects, the component verifies the files, picks the best available
-FP32 configuration itself (Torch CUDA, MLX, Torch MPS, ONNX CUDA, ONNX CPU, then Torch
-CPU), loads it and becomes ready; Apple silicon installs MLX, Windows Torch, and Linux Torch
-only beside an NVIDIA GPU (the `cuda` extra). The
-choice is saved in `runtime.json` and reused; switching it or measuring candidates is optional. Inference is offline; Pangram's **CC BY-NC-SA 4.0** applies.
+for the exact extension ID and prepares the selected [Anagram detector](https://huggingface.co/CoderBak/anagram-detectors)
+and fastText language identifier. The component runs the FP32 encoder and CRF locally using ONNX Runtime on the CPU.
+The terminal command `anagram download` resumes preparation for the selected commit.
+Settings can switch the model independently of the component version.
 
 ## Operations
 
@@ -22,6 +18,7 @@ choice is saved in `runtime.json` and reused; switching it or measuring candidat
 | `runtime.config {id}` | Switch to an available candidate and persist it |
 | `runtime.benchmark {budget_s}` | Measure available candidates in isolated processes; keeps the selection |
 | `runtime.cancel` | Cancel the running load or measurement |
+| `models.select {release}` | Install a dated release pinned to its commit and file hashes |
 | `models.download`, `models.pause`, `models.delete {confirm}` | Prepare, pause or remove model files |
 | `engine.stop`, `engine.resume`, `engine.settings {idle_unload_s}` | Persistent stop/resume and idle unloading |
 | `component.update {version?}`, `component.uninstall {confirm}` | Maintenance through the trusted helper; an update names the extension's release |

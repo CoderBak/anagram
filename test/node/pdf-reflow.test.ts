@@ -7,6 +7,8 @@
 // test reads as the page it describes.
 import { describe, expect, it } from "vitest";
 import { isRotated, reflowPdf, type PdfPageText, type PdfTextItem, type SourceRun } from "../../lib/pdf/reflow";
+import { prepareBatch, ReflowScan } from "../../lib/pdf/reflowScan";
+import { documentParagraphs } from "../../lib/pdf/units";
 import { readReflowed } from "../../lib/pdf/reading";
 import { looksLikePdfUrl, pdfNameFromUrl, readerQuery } from "../../lib/pdf/source";
 
@@ -574,14 +576,80 @@ describe("reflowPdf — three columns", () => {
     expect(texts(blocks)).toContain(prose.join(" "));
   });
 
-  // A table that fills a page on its own — three columns of cells, nothing else on the
-  // page — is read down its columns rather than across its rows: the gaps between its
-  // cells are clear, with text on both sides, in every band of the page, which is the
-  // definition of a gutter and is indistinguishable from one by geometry alone. Seen on
-  // page 14 of RFC 9110 (the table of obsoleted documents). Telling the two apart needs
-  // something the reflow does not have — the ruled lines, which are graphics, not text —
-  // and the cost is small: a table row is not prose and the walker never scores one.
-  it.todo("reads a page that is nothing but a wide table across its rows");
+  it("reads a page filled by a cell grid across each row, preserving source locations", () => {
+    const rows = Array.from({ length: 15 }, (_, i) => ["Alpha", "Bravo", "Charlie"].map((word, c) =>
+      ({ text: `${word} ${i + 1}`, x: 66 + c * 160, y: 100 + i * 28, width: 50 })));
+    const p = page(1, rows.flat());
+    p.tables = rows.map((_, i) => ({ top: 80 + i * 28, bottom: 108 + i * 28, edges: [60, 220, 380, 540] }));
+    const blocks = reflowPdf([p]);
+    expect(blocks.map((b) => b.text)).toEqual(rows.map((r) => r.map((it) => it.text).join(" ")));
+    expect(blocks.every((b) => b.kind === "table")).toBe(true);
+    for (const b of blocks) for (const r of b.runs) {
+      expect(b.text.slice(r.at, r.at + r.length)).toBe(p.items[r.item]!.str.slice(r.from, r.from + r.length));
+    }
+  });
+
+  it("keeps a wrapped cell's continuation ahead of the next cell", () => {
+    const p = page(1, [
+      { text: "First part", x: 65, y: 100 }, { text: "Right one", x: 225, y: 100 },
+      { text: "continues here", x: 65, y: 114 },
+      { text: "Second row", x: 65, y: 141 }, { text: "Right two", x: 225, y: 141 },
+    ]);
+    p.tables = [{ top: 81, bottom: 122, edges: [60, 220, 380] }, { top: 122, bottom: 151, edges: [60, 220, 380] }];
+    expect(texts(reflowPdf([p]))).toEqual(["First part continues here Right one", "Second row Right two"]);
+  });
+
+  for (const source of ["boxes", "tags"]) for (const side of ["left", "right"]) {
+    it(`keeps a paragraph scorable beside a ${side}-hand table with ${source}`, () => {
+      const body = [
+        "The gardener walked down to the old river after the rain",
+        "to find out how far the water had climbed during the night.",
+        "Along the bank she could see leaves caught in the branches",
+        "and little piles of sand where the current had slowed down.",
+        "She wrote each observation in her notebook before turning",
+        "toward the bridge to check the mark on the stone wall.",
+        "The river had already fallen by the time she arrived.",
+      ];
+      const rows = [["Plant", "Season"], ["Crocus", "Spring"], ["Aster", "Autumn"], ["Iris", "Summer"]];
+      const x = side === "left" ? 60 : 350;
+      const p = page(2, [
+        ...rows.flatMap((row, i) => row.map((text, j) => ({ text, x: x + 5 + 76 * j, y: 120 + (i + 1) * PITCH }))),
+        ...column(body, 120, side === "left" ? 300 : 45, 245),
+      ]);
+      if (source === "tags") p.taggedRows = rows.map((_, i) => [[2 * i], [2 * i + 1]]);
+      else p.tables = rows.map((_, i) => ({
+        top: 126 + i * PITCH, bottom: 126 + (i + 1) * PITCH, edges: [x, x + 76, x + 165],
+      }));
+      const blocks = reflowPdf([p]);
+      const table = rows.map((row) => row.join(" "));
+      expect(texts(blocks)).toEqual(side === "left" ? [...table, body.join(" ")] : [body.join(" "), ...table]);
+      expect(blocks.filter((b) => b.kind === "table")).toHaveLength(rows.length);
+      expect(documentParagraphs(blocks, () => [2]).map((b) => b.text)).toEqual([body.join(" ")]);
+      for (const b of blocks) for (const r of b.runs) {
+        expect(b.text.slice(r.at, r.at + r.length)).toBe(p.items[r.item]!.str.slice(r.from, r.from + r.length));
+      }
+    });
+  }
+
+  it("keeps aligned short identifiers and measurements in unruled table rows", () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ["Subject " + (i + 1), "Reference " + (i + 1), String(i + 1)]);
+    const p = page(1, rows.flatMap((row, i) => row.map((text, j) => ({ text, x: [65, 270, 455][j]!, y: 65 + i * 28 }))));
+    const blocks = reflowPdf([p]);
+    expect(blocks.map((b) => [b.kind, b.text])).toEqual(rows.map((row) => ["table", row.join(" ")]));
+    for (const b of blocks) for (const run of b.runs) {
+      expect(b.text.slice(run.at, run.at + run.length)).toBe(p.items[run.item]!.str.slice(run.from, run.from + run.length));
+    }
+  });
+
+  it("keeps genuine prose columns separate when their short lines share baselines", () => {
+    const p = page(1, Array.from({ length: 16 }, (_, i) => [
+      { text: "Words on the left", x: 65, y: 65 + i * 28 },
+      { text: "Words on the right", x: 305, y: 65 + i * 28 },
+    ]).flat());
+    const blocks = reflowPdf([p]);
+    expect(blocks.every((b) => b.kind !== "table")).toBe(true);
+    expect(blocks.some((b) => b.text.includes("left") && b.text.includes("right"))).toBe(false);
+  });
 
   it("does not take the wide word spaces of justified text for a gutter", () => {
     // Every line is set with one space stretched wider than the type, near the middle of
@@ -727,6 +795,19 @@ describe("reflowPdf — furniture", () => {
       page(n, [{ text: `Section ${n} of the report`, y: 40, size: 9, width: 140 }, ...column(body(n), 120)]);
     const blocks = reflowPdf([head(1), head(2), head(3)]);
     expect(texts(blocks)).toEqual([1, 2, 3].map((n) => body(n).join(" ")));
+  });
+
+  it("recognizes a repeated multi-part footer whose baseline lies just inside the body", () => {
+    const pages = [1, 2, 3, 4].map((n) => page(n, [
+      ...column(body(n), 120),
+      { text: "Study results continued", x: 65, y: 675 },
+      { text: "Editorial group", x: 60, y: 690, size: 10 },
+      { text: "Working paper", x: 255, y: 690, size: 10 },
+      { text: "Page " + n, x: 490, y: 690, size: 10 },
+    ]));
+    const blocks = reflowPdf(pages);
+    expect(texts(blocks).join(" ")).not.toContain("Editorial group");
+    expect(texts(blocks).join(" ").split("Study results continued")).toHaveLength(5);
   });
 
   it("drops a page number written out, and a rule around it", () => {
@@ -1318,5 +1399,181 @@ describe("recognising a PDF and naming it", () => {
     expect(readerQuery("https://x.test/a b.pdf?v=1&w=2")).toBe(
       "?src=https%3A%2F%2Fx.test%2Fa%20b.pdf%3Fv%3D1%26w%3D2",
     );
+  });
+});
+
+describe("formal grammar in specifications", () => {
+  it("omits related ABNF definitions and keeps the explanation immediately after them", () => {
+    const p = page(39, [
+      ...column(['IMF-fixdate = day-name "," SP date1 SP time-of-day SP GMT', '; a fixed-format calendar date',
+        'day-name = %s"Mon" / %s"Tue"', '/ %s"Wed"', 'year = 4DIGIT'], 100),
+      ...column(["A sender must not generate additional whitespace in the date."], 220),
+    ]);
+    expect(texts(readReflowed([p]))).toEqual(["A sender must not generate additional whitespace in the date."]);
+  });
+  it("keeps isolated assignments and prose that discusses the grammar", () => {
+    const p = page(2, column(["The paper uses two definitions.", "balance = deposits minus withdrawals",
+      "and neither definition describes a date or a protocol."], 150));
+    expect(texts(readReflowed([p])).join(" ")).toContain("balance = deposits minus withdrawals");
+  });
+});
+
+describe("whole-document fallback", () => {
+  const line = (n: number, i: number) => `the reader compares the shape of each printed letter in sample ${n} line ${i}`;
+  const lines = (n: number, end: boolean) => Array.from({length: 6}, (_, i) => line(n, i) + (i === 5 && end ? "." : ""));
+  const plan = (blocks: ReturnType<typeof readReflowed>) => documentParagraphs(blocks, (b) => [...new Set(b.runs.map((r) => r.page))]);
+  it("remembers a compound from an earlier batch when its next occurrence wraps", async () => {
+    const pages = Array.from({ length: 18 }, (_, i) => page(i + 1, column(lines(i + 1, true), 150)));
+    pages[0]!.items[0]!.str += " Our general-purpose instruments work in rain.";
+    const later = pages[16]!;
+    later.items[2]!.str += " A general-";
+    later.items[3]!.str = "purpose instrument works here. " + later.items[3]!.str;
+    const scan = new ReflowScan(pages.length);
+    for (const p of pages) await scan.add(p);
+    expect(scan.plan.find((p) => p.text.includes("instrument works here"))?.text).toContain("general-purpose instrument");
+    expect(plan(scan.visible([later])).map((p) => p.text)).toEqual(scan.plan.filter((p) => p.pages.includes(17)).map((p) => p.text));
+  });
+
+  it("restores two printed hyphens when a later page supplies the spelling, including their highlight offsets", async () => {
+    const pages = Array.from({length: 18}, (_, i) => page(i + 1, column(lines(i + 1, true), 150)));
+    const early = pages[1]!;
+    early.items[1]!.str += " dry-";
+    early.items[2]!.str = "season measurements use quiet‐";
+    early.items[3]!.str = "room instruments. " + early.items[3]!.str;
+    pages[16]!.items[0]!.str += " The quiet‐room instruments are stored until the dry-season measurements begin.";
+    const scan = new ReflowScan(pages.length);
+    for (const p of pages.slice(0, 8)) await scan.add(p);
+    const before = scan.plan.find((p) => p.pages.includes(2))!.text;
+    expect(before).toContain("dryseason measurements use quietroom");
+    for (const p of pages.slice(8)) await scan.add(p);
+    expect(scan.texts.has(before)).toBe(false);
+    const visible = scan.visible([early]);
+    expect(plan(visible)).toMatchObject([{text: expect.stringContaining("dry-season measurements use quiet‐room")}]);
+    expect(scan.plan).toEqual(plan(readReflowed(pages)));
+    for (const block of visible) for (const r of block.runs) {
+      expect(block.text.slice(r.at, r.at + r.length)).toBe(early.items[r.item]!.str.slice(r.from, r.from + r.length));
+    }
+  });
+
+  it("removes a provisional hyphen when the document later writes the fused word", async () => {
+    const pages = Array.from({length: 17}, (_, i) => page(i + 1, column(lines(i + 1, true), 150)));
+    pages[1]!.items[2]!.str += " We ex-";
+    pages[1]!.items[3]!.str = "clude the earlier dates. " + pages[1]!.items[3]!.str;
+    pages[16]!.items[0]!.str += " A second analysis excluded the weeks of heavy rainfall.";
+    const scan = new ReflowScan(pages.length);
+    for (const p of pages.slice(0, 8)) await scan.add(p);
+    expect(scan.plan.find((p) => p.pages.includes(2))!.text).toContain("ex-clude");
+    for (const p of pages.slice(8)) await scan.add(p);
+    expect(scan.plan.find((p) => p.pages.includes(2))!.text).toContain("We exclude");
+    expect(scan.plan).toEqual(plan(readReflowed(pages)));
+    for (const b of scan.visible([pages[1]!])) for (const r of b.runs) {
+      expect(b.text.slice(r.at, r.at + r.length)).toBe(pages[1]!.items[r.item]!.str.slice(r.from, r.from + r.length));
+    }
+  });
+
+  it("preserves a hyphen drawn as its own glyph when the paragraph crosses the batch frontier", async () => {
+    const pages = Array.from({length: 17}, (_, i) => page(i + 1, column(lines(i + 1, i !== 6), 150)));
+    const early = pages[6]!, left = early.items[2]!;
+    left.str += " We recorded dry";
+    const dash = {...left, str: "-", x: left.x + left.width, width: CHAR};
+    early.items[3]!.str = "season measurements. " + early.items[3]!.str;
+    early.items.splice(3, 0, dash);
+    pages[16]!.items[0]!.str += " The dry-season measurements were published in the autumn.";
+    const scan = new ReflowScan(pages.length);
+    for (const p of pages) await scan.add(p);
+    const b = scan.visible([early]).find((b) => b.text.includes("We recorded"))!;
+    expect(b.text).toContain("dry-season measurements");
+    const at = b.text.indexOf("dry-season") + 3;
+    expect(b.runs.find((r) => r.at === at)).toMatchObject({page: 7, item: 3, from: 0, length: 1});
+    expect(scan.plan).toEqual(plan(readReflowed(pages)));
+  });
+
+  it("revisits eligibility when a later spelling brings an isolated paragraph to the word floor", async () => {
+    const first = page(1, column([
+      "the reader considers each printed word and follows its place in the dry-",
+      "season report where the original spelling matters for an accurate reading of the page",
+      "and the remaining lines describe how the sample was collected over many days",
+      "while the team continued to observe each instrument very closely.",
+    ], 150));
+    const pages = Array.from({length: 17}, (_, i) => page(i + 1, []));
+    pages[0] = first;
+    const scan = new ReflowScan(pages.length);
+    for (const p of pages) await scan.add(p.page === 17 ? null : p);
+    expect(scan.plan).toHaveLength(0);
+    const evidence = page(17, column(["We measured the dry-season rainfall."], 150));
+    scan.recover(evidence);
+    expect(scan.plan).toMatchObject([{words: 50, pages: [1], text: expect.stringContaining("dry-season report")}]);
+    expect(plan(scan.visible([first]))).toEqual(scan.plan);
+  });
+
+  it("keeps the document's body size when the appendix is set entirely in small type", () => {
+    const body = Array.from({length: 8}, (_, i) => page(i + 1, column(lines(i + 1, true), 150)));
+    const first = prepareBatch(body);
+    const appendix = page(9, [
+      {text: "The editors retained this observation.", y: 110, size: SIZE},
+      ...column(lines(9, true), 160).map((p) => ({...p, size: 7})),
+    ]);
+    const note = (blocks: ReturnType<typeof readReflowed>) => blocks.find((b) => b.text.startsWith("The editors"));
+    expect(note(readReflowed([appendix]))?.kind).toBe("heading");
+    const withHistory = prepareBatch([body.at(-1)!, appendix], [], first.typography);
+    expect(note(withHistory.blocks)?.kind).toBe("paragraph");
+    expect(withHistory.typography).toEqual(prepareBatch([...body, appendix]).typography);
+    expect(first.typography.through).toBe(8);
+  });
+
+  it("preserves each group, its page and original glyphs across two batch boundaries", async () => {
+    const pdf = Array.from({length: 21}, (_, at) => page(at + 1, [
+      ...column(lines(at + 1, at !== 6 && at !== 14), 150),
+    ]));
+    const scan = new ReflowScan(pdf.length);
+    for (const p of pdf) await scan.add(p);
+    const expected = plan(readReflowed(pdf));
+    expect(expected.filter((g) => g.pages.length > 1).map((g) => g.pages)).toEqual([[7, 8], [15, 16]]);
+    expect(scan.plan).toEqual(expected);
+    for (const n of [1, 7, 8, 15, 16, 21]) {
+      const visible = scan.visible([pdf[n - 1]!]);
+      expect(texts(plan(visible))).toEqual(texts(expected.filter((p) => p.pages.includes(n))));
+      for (const b of visible) for (const r of b.runs) {
+        expect(r.page).toBe(n);
+        expect(b.text.slice(r.at, r.at + r.length)).toBe(pdf[n - 1]!.items[r.item]!.str.slice(r.from, r.from + r.length));
+      }
+    }
+  });
+
+  it("reads a single paragraph crossing many batches exactly once", async () => {
+    const pdf = Array.from({length: 27}, (_, n) => page(n + 1, column(lines(n + 1, n === 26), 150)));
+    const scan = new ReflowScan(pdf.length);
+    for (const p of pdf) await scan.add(p);
+    expect(scan.plan).toHaveLength(1);
+    expect(scan.plan).toEqual(plan(readReflowed(pdf)));
+  });
+
+  it("keeps empty pages apart and can recover a failed page after completing the scan", async () => {
+    const first = page(1, column(lines(1, false), 150)), third = page(3, column(lines(3, true), 150));
+    const scan = new ReflowScan(3);
+    for (const p of [first, null, third]) await scan.add(p);
+    expect(scan.plan.map((p) => p.pages)).toEqual([[1], [3]]);
+    const recovered = page(2, column(lines(2, true), 150));
+    scan.recover(recovered);
+    expect(texts(scan.visible([recovered]))).toEqual(texts(plan(readReflowed([recovered]))));
+    scan.recover(recovered);
+    expect(scan.plan.map((p) => p.pages)).toEqual([[1], [2], [3]]);
+    expect(plan(scan.visible([first, recovered, third]))).toEqual(scan.plan);
+  });
+
+  it("uses a page recovered while its batch is in the worker exactly once", async () => {
+    const first = page(1, column(lines(1, true), 150));
+    const recovered = page(2, column(lines(2, true), 150));
+    const scan = new ReflowScan(2);
+    await scan.add(first);
+    let attempts = 0;
+    await scan.add(null, async (...args) => {
+      const batch = prepareBatch(...args);
+      if (++attempts === 1) scan.recover(recovered);
+      return batch;
+    });
+    expect(attempts).toBe(2);
+    expect(scan.plan).toEqual(plan(readReflowed([first, recovered])));
+    expect(plan(scan.visible([first, recovered]))).toEqual(scan.plan);
   });
 });

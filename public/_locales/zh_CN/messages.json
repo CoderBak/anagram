@@ -245,7 +245,7 @@
     "message": "文档的静态快照，点“刷新”可重新读取。"
   },
   "reportEstimate": {
-    "message": "分数为 EditLens 四类预测的 (p1 + 2p2 + 3p3) / 3，用于概括类别分布。它不是 AI 撰写的字数占比、实际修改距离，也不能证明作者身份。"
+    "message": "按字符统计占比。分数 = AI 生成占比 + AI 辅助占比的一半。"
   },
   "reportUnread": {
     "message": "；段落末尾未被读取"
@@ -255,7 +255,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportCaveat": {
-    "message": "分数只是估计，不能证明作者身份。请勿将其用于纪律处分或其他重大决定。"
+    "message": "评分为研究估计值，请勿用于纪律处分或其他重大决策。"
   },
   "reportCopyFailed": {
     "message": "无法复制报告。",
@@ -265,14 +265,17 @@
     "message": "打开原文件"
   },
   "readerDrop": {
-    "message": "把 PDF 拖到这里"
+    "message": "打开 PDF"
   },
   "readerDropNote": {
-    "message": "Anagram 会在本机读取它，并标出每个段落中 AI 撰写或编辑的程度。",
-    "description": "PDF reader's empty state, under \"Drop a PDF here\": what happens to a file once opened."
+    "message": "也可将文件拖到这里（最大 $1 MB）。",
+    "description": "File drop hint. $1 is the local file size limit in MiB."
+  },
+  "readerDropOne": {
+    "message": "请每次拖入一个 PDF。"
   },
   "readerChoose": {
-    "message": "选择文件"
+    "message": "选择文件…"
   },
   "readerPages": {
     "message": "文档页面"
@@ -280,8 +283,15 @@
   "readerLoading": {
     "message": "载入中…"
   },
+  "readerNoPageText": {
+    "message": "当前显示的页面没有可选取的文字。",
+    "description": "A PDF cover or other drawn page has no text. Later pages have not been checked."
+  },
   "readerNoText": {
-    "message": "这个 PDF 的页面是图片，没有可读取的文字。"
+    "message": "这个 PDF 没有可选取的文字。如果是扫描件，请打开经过文字识别（OCR）处理的副本。"
+  },
+  "readerPageReadFailed": {
+    "message": "无法读取这一页的文字。请尝试重新打开 PDF。"
   },
   "readerTooLarge": {
     "message": "这个 PDF 太大，无法在这里阅读。"
@@ -317,23 +327,35 @@
     "message": "读取全文"
   },
   "readerReportScope": {
-    "message": "仅涵盖当前已加载的 $1 页（共 $2 页），其余页面会在你滚动到时读取。",
+    "message": "已覆盖 $2 页中的 $1 页。滚动可读取更多页面。",
     "description": "Popup report over the PDF reader where the document's paragraphs are not known (a very long document, or the structure setting off): only the pages loaded now are covered. $1 = pages loaded now, $2 = pages in the document."
   },
   "readerOpenMenu": {
     "message": "Anagram：本文档的结果与控制"
+  },
+  "scoreBreakdown": {
+    "message": "评分明细"
+  },
+  "statsCoverageDetails": {
+    "message": "评分明细"
+  },
+  "pastePlaceholder": {
+    "message": "粘贴英文文本…"
   },
   "pasteTitle": {
     "message": "分析文本",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteInput": {
-    "message": "待分析文本",
+    "message": "待分析的英文文本",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFile": {
-    "message": "打开文本文件…",
+    "message": "打开文件…",
     "description": "Text analysis page action, status, or limit."
+  },
+  "pasteEdit": {
+    "message": "编辑文本"
   },
   "pasteAnalyze": {
     "message": "开始分析",
@@ -356,7 +378,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFailed": {
-    "message": "分析未完成。请在设置中检查本地引擎，再重试。",
+    "message": "分析失败。请在设置中检查引擎，然后重试。",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteWords_one": {
@@ -366,7 +388,7 @@
     "message": "$1 个词"
   },
   "pasteFileFailed": {
-    "message": "无法以 UTF-8 文本读取该文件。",
+    "message": "请选择 UTF-8 编码的文本文件（.txt）。",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteExportText": {
@@ -374,16 +396,13 @@
     "description": "Text analysis page action, status, or limit."
   },
   "modelLine": {
-    "message": "模型：pangram/editlens_roberta-large（CC BY-NC-SA 4.0，非商业用途）。"
+    "message": "模型来自 CoderBak/anagram-detectors。"
   },
   "sourceCodeLink": {
     "message": "源代码（AGPL-3.0）"
   },
   "cmdToggleOverlay": {
     "message": "显示或隐藏本页的标记"
-  },
-  "pasteIntro": {
-    "message": "粘贴英文文本或打开文本文件，在本机进行分析。"
   },
   "onbOpenSettings": {
     "message": "打开设置"
@@ -407,25 +426,25 @@
     "message": "推荐"
   },
   "engineOneClickWhat": {
-    "message": "在浏览器内运行，无需安装其他程序。"
+    "message": "在浏览器内运行。"
   },
   "engineOneClickButton": {
-    "message": "开始设置（下载 $1）"
+    "message": "下载模型（$1）"
   },
   "engineTerminal": {
     "message": "终端"
   },
   "engineTerminalWhat": {
-    "message": "在终端中运行一条命令安装本地引擎。"
+    "message": "作为本地进程运行。"
   },
   "engineTerminalWhatWindows": {
-    "message": "在 PowerShell 中运行一条命令安装本地引擎。"
+    "message": "使用 PowerShell 安装本地引擎。"
   },
   "engineTerminalWhatNvidia": {
-    "message": "在终端中运行一条命令安装本地引擎，它在你的 NVIDIA 显卡上运行。"
+    "message": "作为本地进程运行。"
   },
   "engineTerminalButton": {
-    "message": "使用本地引擎"
+    "message": "获取安装命令"
   },
   "engineTight": {
     "message": "Anagram 评分时，这台电脑可能会变慢。"
@@ -434,19 +453,19 @@
     "message": "这里内存较小，因此 Anagram 运行较轻的模型，其结论与完整模型在 99.8% 的文本上一致。"
   },
   "engineNativeRefused": {
-    "message": "Anagram 未获准与本地引擎通信，因此没有任何改动。准备好后请重新选择。"
+    "message": "请允许访问本地引擎后继续。"
   },
   "engineCannotTitle": {
     "message": "Anagram 无法在此运行"
   },
   "engineCannotRun": {
-    "message": "这台设备的内存或可用磁盘空间不足以运行 Anagram 的模型，因此没有下载任何内容。Anagram 从不把你的文字发往别处评分。"
+    "message": "内存或磁盘空间不足，无法运行模型。"
   },
   "engineSwitchToInBrowser": {
-    "message": "切换到浏览器内引擎"
+    "message": "使用浏览器内引擎"
   },
   "engineSwitchToNative": {
-    "message": "切换到本地引擎"
+    "message": "使用本地引擎"
   },
   "engineSwitchFailed": {
     "message": "无法切换引擎，请重试。"
@@ -461,7 +480,7 @@
     "message": "浏览器开启了省流量模式，下载会等你手动开始。"
   },
   "engineSetUpButton": {
-    "message": "开始设置（一次性下载 $1）"
+    "message": "下载模型（$1）"
   },
   "engineNotSetUp": {
     "message": "尚未设置"
@@ -628,16 +647,34 @@
     "message": "无法移除扩展，请在浏览器的扩展管理页中移除。"
   },
   "componentInstallIntro": {
-    "message": "在终端中运行一次这条命令。它会安装本地引擎并下载约 1.4 GB 的模型文件。"
+    "message": "在终端中运行安装命令。"
   },
   "componentInstallIntroWindows": {
-    "message": "在 PowerShell 中运行一次这条命令。它会安装本地引擎并下载约 1.4 GB 的模型文件。"
+    "message": "在 PowerShell 中运行安装命令。"
   },
   "componentUnsupportedPlatform": {
     "message": "此平台没有可用的安装命令。"
   },
   "componentUnreleased": {
-    "message": "开发版本：尚无对应的发布版本，命令已禁用。"
+    "message": "终端安装程序仅在发布版中可用。"
+  },
+  "componentCopiedPosix": {
+    "message": "命令已复制。请粘贴到终端并按回车。"
+  },
+  "componentCopiedWindows": {
+    "message": "命令已复制。请粘贴到 PowerShell 并按回车。"
+  },
+  "componentShowCommand": {
+    "message": "查看命令"
+  },
+  "componentHideCommand": {
+    "message": "收起命令"
+  },
+  "componentVersionUpdate": {
+    "message": "已安装 $1，可更新至 $2。"
+  },
+  "componentVersionUpdated": {
+    "message": "已更新至 $1"
   },
   "componentCopyInstall": {
     "message": "复制命令"
@@ -646,7 +683,7 @@
     "message": "查看脚本"
   },
   "componentCopyFailed": {
-    "message": "复制失败，请手动选中命令并复制。"
+    "message": "请手动复制已选中的命令。"
   },
   "componentDownloadBytes": {
     "message": "$1 / $2"
@@ -703,7 +740,7 @@
     "message": "扩展版本 $1 已可安装。"
   },
   "componentReloadExtension": {
-    "message": "重新加载扩展"
+    "message": "应用扩展更新"
   },
   "popupTitle": {
     "message": "Anagram"
@@ -721,19 +758,14 @@
     "message": "在 Anagram 中阅读"
   },
   "popupOpenReader": {
-    "message": "阅读本机 PDF…"
+    "message": "打开 PDF…",
+    "description": "Button that opens the empty reader for a local PDF file."
   },
   "popupThisSite": {
-    "message": "在此网站运行"
+    "message": "自动分析此网站"
   },
-  "popupOn": {
-    "message": "适用于 $1"
-  },
-  "popupShow": {
-    "message": "显示"
-  },
-  "popupAllChips": {
-    "message": "全部标签"
+  "popupInheritedRule": {
+    "message": "沿用 $1 的网站设置。"
   },
   "popupFlaggedOnly": {
     "message": "仅存疑"
@@ -771,12 +803,6 @@
   "popupPdfOpenFailed": {
     "message": "无法打开此 PDF。"
   },
-  "popupEngine": {
-    "message": "本地引擎：$1"
-  },
-  "popupEngineInBrowser": {
-    "message": "浏览器内引擎：$1"
-  },
   "popupEngineDown": {
     "message": "本地引擎未就绪"
   },
@@ -802,10 +828,12 @@
     "message": "Anagram 设置"
   },
   "optMarks": {
-    "message": "标记"
+    "message": "段落标记",
+    "description": "Heading of the settings panel for paragraph marks."
   },
   "optChips": {
-    "message": "标签"
+    "message": "评分标签",
+    "description": "Label of the menu choosing which paragraphs get a score label."
   },
   "optEveryParagraph": {
     "message": "每一段"
@@ -823,7 +851,8 @@
     "message": "在 Firefox 中打开 about:addons，选择 Anagram → 权限与数据，然后允许访问本地文件。"
   },
   "optSites": {
-    "message": "网站"
+    "message": "网站",
+    "description": "Heading of the site access and rules settings panel."
   },
   "accessNone": {
     "message": "无"
@@ -876,9 +905,6 @@
   "optAlreadyCovered": {
     "message": "已被 $1 的规则覆盖。"
   },
-  "optCacheMode": {
-    "message": "结果缓存"
-  },
   "optCachePersistent": {
     "message": "保留 30 天"
   },
@@ -906,24 +932,24 @@
   "listSeparator": {
     "message": "，"
   },
-  "engineStatusSeparator": {
-    "message": "：",
-    "description": "Between an engine's name and its state in Settings' status line: \"Local engine: Ready\"."
+  "engineStatusDevice": {
+    "message": "$1（$2）",
+    "description": "Ready status followed by the processor used (GPU or CPU) in Settings."
   },
   "onbTagline": {
-    "message": "阅读时标出 AI 写的段落。一切都在这台电脑上运行。"
+    "message": "标出可能经 AI 编辑的段落。"
   },
   "onbWhere": {
-    "message": "阅读范围"
+    "message": "自动读取网站（可选）"
   },
   "onbVerdictTitle": {
     "message": "怎么看标记"
   },
   "onbScoreLine": {
-    "message": "将鼠标悬停在标签上查看详情。仅分析英文。"
+    "message": "将鼠标悬停在分数上可查看各句的标签。"
   },
   "onbModelNotice": {
-    "message": "模型：Pangram 的 EditLens（CC BY-NC-SA 4.0）。不得用于商业用途，也不得用于在学校或工作中执行 AI 使用规定。"
+    "message": "支持至少 50 个单词的英文段落。"
   },
   "accessHint": {
     "message": "或点工具栏图标，按网站单独开启"
@@ -940,32 +966,27 @@
   "engineKeepOpen": {
     "message": "下载完成前请保持浏览器开启。"
   },
-  "engineWordsBrowser": {
-    "message": "在浏览器中"
-  },
-  "engineWordsGpu": {
-    "message": "使用显卡"
-  },
-  "engineWordsCpu": {
-    "message": "使用处理器"
+  "engineBackgroundDownload": {
+    "message": "浏览器下载模型时可以关闭此页面。"
   },
   "optEngine": {
-    "message": "引擎"
+    "message": "引擎与模型"
   },
   "optPdfs": {
     "message": "PDF"
   },
   "optCache": {
-    "message": "缓存"
+    "message": "已保存的评分",
+    "description": "Heading of the verdict cache settings panel."
   },
   "safariEngineTitle": {
     "message": "Anagram Safari 版"
   },
   "safariEngineTabNote": {
-    "message": "分析网页时请保持 Anagram 引擎标签页打开。Safari 在此固定标签页中运行 WebGPU 引擎。关闭它会中断分析；下次请求时会重新打开。"
+    "message": "分析网页时，请保持此固定标签页打开。"
   },
   "safariEnginePrivacy": {
-    "message": "文本在此 Mac 上评分。模型只需下载一次，网页文本绝不会发送到服务器。引擎闲置时会释放模型占用的内存。"
+    "message": "模型在这台 Mac 上本地运行。"
   },
   "safariEngineSetup": {
     "message": "设置 Anagram"
@@ -986,10 +1007,7 @@
     "message": "选择 PDF"
   },
   "toolbarPinTitle": {
-    "message": "将 Anagram 固定到工具栏"
-  },
-  "toolbarPinHelp": {
-    "message": "如何将 Anagram 固定到工具栏"
+    "message": "固定到工具栏（可选）"
   },
   "toolbarExtensionsMenu": {
     "message": "点击地址栏旁的拼图按钮。"
@@ -1022,19 +1040,20 @@
     "message": "页面已更改或无法访问。请重新打开 Anagram 后重试。"
   },
   "optFlagFrom": {
-    "message": "标为存疑"
+    "message": "标记段落",
+    "description": "Label of the minimum verdict to flag."
   },
   "optFlagLight": {
-    "message": "轻度 AI 编辑及以上"
-  },
-  "optFlagHeavy": {
-    "message": "重度 AI 编辑及以上"
+    "message": "AI 辅助或 AI 生成"
   },
   "optFlagAi": {
     "message": "仅 AI 生成"
   },
   "optUnderlineFlagged": {
     "message": "存疑段落"
+  },
+  "pasteOneRead": {
+    "message": "已分析一个段落"
   },
   "pasteCoverageRead": {
     "message": "已读取 $1/$2 段"
@@ -1054,9 +1073,6 @@
   "pasteTooShortToRead": {
     "message": "过短，未读取"
   },
-  "pasteShareHint": {
-    "message": "色条表示文本中有多少字数属于各类判断。"
-  },
   "pasteByParagraph": {
     "message": "逐段结果"
   },
@@ -1064,13 +1080,7 @@
     "message": "阅读统计"
   },
   "statsOffTitle": {
-    "message": "统计已关闭"
-  },
-  "statsOffLead": {
-    "message": "记录你读过的内容，仅保存在本机。"
-  },
-  "statsNeverNote": {
-    "message": "从不记录：无痕窗口、关闭了 Anagram 的网站、“分析文本”，以及你输入、选中或复制的内容。"
+    "message": "阅读记录已关闭"
   },
   "optStatsLevel": {
     "message": "记录"
@@ -1079,7 +1089,7 @@
     "message": "开启"
   },
   "statsPagesWarning": {
-    "message": "这会保留一份你读过的每个页面的清单，包括地址和标题。它只保存在这台电脑上，但任何使用这个浏览器配置文件的人都可能看到。"
+    "message": "将页面地址和标题保存在此浏览器配置文件中。"
   },
   "statsPeriod": {
     "message": "时间段"
@@ -1106,28 +1116,22 @@
     "message": "清除统计"
   },
   "statsNothing": {
-    "message": "这段时间没有记录。"
-  },
-  "statsHeadline": {
-    "message": "你读到的内容"
+    "message": "此时间段没有记录。"
   },
   "statsExpectedNote": {
-    "message": "占比按期望词数计算：每段的词数按模型给出的各类判断的概率分摊，因此拿不准的段落会部分计入两边。"
+    "message": "字词占比按各类判断的概率计算。"
   },
   "statsTrend": {
-    "message": "逐日"
+    "message": "阅读活动"
   },
   "statsShowTable": {
-    "message": "以表格显示"
+    "message": "查看表格"
   },
   "statsByKind": {
-    "message": "按页面类型"
+    "message": "页面类型"
   },
   "statsBySite": {
-    "message": "按网站"
-  },
-  "statsCoverage": {
-    "message": "可评分的部分"
+    "message": "网站"
   },
   "statsPages": {
     "message": "页面"
@@ -1145,10 +1149,7 @@
     "message": "JSON"
   },
   "statsExportCsv": {
-    "message": "CSV，每个表一个文件，打包为 .zip"
-  },
-  "statsExportNote": {
-    "message": "文件保存在这台电脑上。Anagram 从不上传它，是否分享由你决定。你可以打开它，查看其中的全部内容。"
+    "message": "CSV 表格（.zip）"
   },
   "statsExportSave": {
     "message": "保存文件"
@@ -1160,7 +1161,7 @@
     "message": "清除统计？"
   },
   "statsClearConfirm": {
-    "message": "所有已记录的数据都会从这台电脑上删除，且无法撤销。"
+    "message": "永久删除所有已记录的统计数据。"
   },
   "statsCleared": {
     "message": "统计已清除。"
@@ -1193,13 +1194,19 @@
     "message": "其他页面"
   },
   "statsHeroLine": {
-    "message": "预计为 AI 生成"
+    "message": "AI 生成占比估计"
   },
   "statsHeroNone": {
-    "message": "这段时间读到的内容都无法评分。"
+    "message": "暂无数据"
+  },
+  "statsHeroParagraphsAi": {
+    "message": "AI 生成段落占比"
+  },
+  "statsHeroParagraphsHeavy": {
+    "message": "大幅编辑或 AI 生成段落占比"
   },
   "statsCompare30": {
-    "message": "最近 30 天（含今天）：$1。"
+    "message": "近 30 天：$1"
   },
   "statsColWords": {
     "message": "读到的词"
@@ -1229,25 +1236,22 @@
     "message": "停留时长"
   },
   "statsTrendAria": {
-    "message": "$1每天读到并评分的词数，按四类判断分开。下方表格列出了具体数字。"
+    "message": "$1 的每日统计（$2），按四类判断分组。下方表格列出了具体数字。"
   },
   "statsTrendTip": {
-    "message": "评分 $1 个词，其中 $2 为 AI 生成"
+    "message": "已评分 $1，$3 占 $2"
   },
   "statsCoverageLine": {
-    "message": "你读到的 $2 个词中，有 $1 个可以评分（$3）。"
-  },
-  "statsCovScored": {
-    "message": "已评分：$1 个词"
+    "message": "已评分 $1，共 $2（$3）。"
   },
   "statsCovShort": {
-    "message": "太短无法评分：$1 个词"
+    "message": "太短无法评分：$1"
   },
   "statsCovLanguage": {
-    "message": "非英语：$1 个词"
+    "message": "非英语：$1"
   },
   "statsCovUnavailable": {
-    "message": "引擎不可用：$1 个词"
+    "message": "引擎不可用：$1"
   },
   "statsNoPages": {
     "message": "这段时间没有记录页面。"
@@ -1271,7 +1275,7 @@
     "message": "正在记录：$1。"
   },
   "optStats": {
-    "message": "统计"
+    "message": "阅读记录"
   },
   "optStatsDays": {
     "message": "$1 天"
@@ -1292,58 +1296,37 @@
     "message": "今天：$1 为 AI 生成，共评分 $2 个词。"
   },
   "statsDim_rows": {
-    "message": "每行记录"
-  },
-  "statsDimHint_rows": {
-    "message": "保存的每一行代表什么：一个事件、一个段落、一次访问，或一项合计。"
+    "message": "每行的粒度"
   },
   "statsDim_time": {
     "message": "时刻"
-  },
-  "statsDimHint_time": {
-    "message": "事情发生的时间。"
   },
   "statsDim_dur": {
     "message": "时长"
   },
   "statsDimHint_dur": {
-    "message": "持续多久，以及距访问开始多久。"
+    "message": "包括自访问开始后经过的时间。"
   },
   "statsDim_place": {
     "message": "地址"
   },
   "statsDimHint_place": {
-    "message": "在哪里阅读：页面的地址、来源页面和框架的地址。"
+    "message": "页面、来源页和框架的网址。"
   },
   "statsDim_title": {
-    "message": "标题"
-  },
-  "statsDimHint_title": {
-    "message": "标签页的标题。"
+    "message": "标签页标题"
   },
   "statsDim_text": {
     "message": "段落文本"
   },
-  "statsDimHint_text": {
-    "message": "段落的内容。"
-  },
   "statsDim_len": {
-    "message": "长度"
-  },
-  "statsDimHint_len": {
-    "message": "每段的长度。"
+    "message": "段落长度"
   },
   "statsDim_verdict": {
     "message": "判断"
   },
-  "statsDimHint_verdict": {
-    "message": "模型对每段的判断。"
-  },
   "statsDim_lang": {
-    "message": "语言"
-  },
-  "statsDimHint_lang": {
-    "message": "每段所用的语言。"
+    "message": "段落语言"
   },
   "statsDim_struct": {
     "message": "页面结构"
@@ -1365,9 +1348,6 @@
   },
   "statsDim_scroll": {
     "message": "滚动"
-  },
-  "statsDimHint_scroll": {
-    "message": "页面如何滚动。"
   },
   "statsDim_input": {
     "message": "输入"
@@ -1706,13 +1686,14 @@
     "message": "关闭"
   },
   "statsPresetHint_off": {
-    "message": "不保存任何内容。"
+    "message": "不记录新的阅读活动。",
+    "description": "Explanation of recording being off; previously saved statistics are not deleted."
   },
   "statsPreset_daily": {
     "message": "每日合计"
   },
   "statsPresetHint_daily": {
-    "message": "每天读了多少词及其判断。不含站点。"
+    "message": "按日汇总词数和判断。"
   },
   "statsPreset_sites": {
     "message": "每日合计和站点"
@@ -1742,7 +1723,7 @@
     "message": "完整阅读轨迹"
   },
   "statsPresetHint_full": {
-    "message": "除文本外的一切，精确到毫秒。"
+    "message": "记录页面、段落指纹和交互时间。"
   },
   "statsPreset_fullText": {
     "message": "完整轨迹和文本"
@@ -1757,31 +1738,31 @@
     "message": "逐项选择。"
   },
   "statsWarnText": {
-    "message": "这会保存你读过的每个段落的文本。它只留在这台电脑上，但使用此浏览器配置的任何人都能看到。"
+    "message": "可访问此浏览器配置文件的应用能读取已保存的段落原文。"
   },
   "statsWarnHead": {
-    "message": "这会保存你读过的每个段落的前 12 个词。它只留在这台电脑上，但使用此浏览器配置的任何人都能看到。"
+    "message": "可访问此浏览器配置文件的应用能读取每个已保存段落的前 12 个词。"
   },
   "statsWarnUrl": {
-    "message": "完整地址可能包含网站放在其中的内容：搜索词、邮箱地址、登录链接。"
+    "message": "完整网址可能包含搜索词、电子邮箱和登录链接。"
   },
   "statsWarnPointer": {
-    "message": "这会在 Anagram 读取的每个页面上，每秒 10 次记录指针的位置。"
+    "message": "在分析的页面上，每秒采样十次指针位置。"
   },
   "optStatsFine": {
-    "message": "每一步保留"
+    "message": "详细事件"
   },
   "optStatsDetailKeep": {
-    "message": "段落和访问保留"
+    "message": "段落和访问记录"
   },
   "optStatsTotalsKeep": {
-    "message": "每日合计保留"
+    "message": "每日汇总"
   },
   "optStatsUntilCleared": {
     "message": "直到清除"
   },
   "optStatsSizeValue": {
-    "message": "$2 条记录，$1"
+    "message": "$1 条记录"
   },
   "statsAsHash": {
     "message": "以加盐哈希保存"
@@ -1841,7 +1822,7 @@
     "message": "占比依据"
   },
   "statsLensExpected": {
-    "message": "期望词数"
+    "message": "按概率加权的占比"
   },
   "statsLensChip": {
     "message": "段落，按标签词"
@@ -1883,19 +1864,23 @@
     "message": "不计快速划过的内容"
   },
   "statsLensReset": {
-    "message": "恢复 Anagram 的算法"
+    "message": "恢复默认值"
   },
   "statsLensDefault": {
-    "message": "按 Anagram 的算法：段落有部分在窗口中间停留一秒且页面没有被快速划过，即算读过，每次访问计一次。"
+    "message": "每次访问中，段落在窗口中部停留一秒即计数一次。快速滚动时跳过。"
   },
   "statsLensApplied": {
-    "message": "根据 Anagram 保存的段落重新计算。"
+    "message": "按已记录的段落计算。"
+  },
+  "statsLensNeedsDetail": {
+    "message": "此规则需要更详细的屏幕显示时长或段落判定数据。当前显示原始汇总。",
+    "description": "The stored paragraph detail cannot support this counting rule."
   },
   "statsLensCannot": {
-    "message": "这些是 Anagram 保存的合计：要用其他方式计算，需要保存段落（设置 > 统计）。"
+    "message": "显示已记录的汇总。此规则需要段落记录。"
   },
   "statsHeroLineHeavy": {
-    "message": "预计为重度 AI 编辑或 AI 生成"
+    "message": "大幅编辑或 AI 生成占比估计"
   },
   "statsColParagraphs": {
     "message": "段落"
@@ -1907,7 +1892,7 @@
     "message": "重度编辑或 AI"
   },
   "statsCovRemoved": {
-    "message": "判断返回前被移除：$1 个词"
+    "message": "判断返回前被移除：$1"
   },
   "statsVisits": {
     "message": "访问"
@@ -1919,34 +1904,31 @@
     "message": "共 $2 次访问中最新的 $1 次。导出文件包含全部。"
   },
   "statsColReplay": {
-    "message": "回放"
+    "message": "详情"
   },
   "statsReplay": {
-    "message": "回放"
+    "message": "访问详情"
   },
   "statsReplayNote": {
-    "message": "每个段落一行，按出现顺序排列；每次有部分出现在屏幕上画一段，颜色与标签相同；折线表示页面滚动的位置。"
+    "message": "横条表示每段内容出现在屏幕上的时段。"
   },
   "statsReplayAria": {
-    "message": "$1 个段落各自何时在屏幕上，共 $2"
+    "message": "阅读时间线，时长 $1"
   },
   "statsReplayTitle": {
     "message": "$1，$2"
   },
   "statsExportFields": {
-    "message": "逐项选择"
-  },
-  "statsExportCap": {
-    "message": "不会比已保存的更细。"
+    "message": "已记录字段"
   },
   "statsExportLink": {
     "message": "编号和哈希"
   },
   "statsExportLinkFile": {
-    "message": "此文件专用：无法与其他文件对应"
+    "message": "仅用于此次导出"
   },
   "statsExportLinkStable": {
-    "message": "在此浏览器导出的所有文件中相同：研究可以把你的文件对应起来"
+    "message": "此浏览器的各次导出使用相同标识"
   },
   "statsExportJsonGz": {
     "message": "JSON，压缩（.json.gz）"
@@ -1958,19 +1940,19 @@
     "message": "约 $1，共 $2 行。"
   },
   "statsExportTable": {
-    "message": "$1：$2 行"
+    "message": "$1（$2 行）"
   },
   "optFileAccessChromeHint": {
     "message": "在打开的页面中开启“允许访问文件网址”，然后返回此处。"
   },
   "statsDeltaUp": {
-    "message": "比之前 $2 天高 $1 个百分点。"
+    "message": "比前 $2 天高 $1 个百分点"
   },
   "statsDeltaDown": {
-    "message": "比之前 $2 天低 $1 个百分点。"
+    "message": "比前 $2 天低 $1 个百分点"
   },
   "statsDeltaSame": {
-    "message": "与之前 $1 天大致相同。"
+    "message": "与前 $1 天接近"
   },
   "statsKpiScored": {
     "message": "已评分词数"
@@ -1979,10 +1961,10 @@
     "message": "AI 生成占比最高"
   },
   "statsKpiTopLine": {
-    "message": "$2 词中占 $1"
+    "message": "在已评分的 $2 中占 $1"
   },
   "statsMix": {
-    "message": "四类判断"
+    "message": "判断分布"
   },
   "statsFilterSite": {
     "message": "站点：$1"
@@ -1990,13 +1972,224 @@
   "statsFilterClear": {
     "message": "显示全部"
   },
-  "statsMore": {
-    "message": "更多"
-  },
   "statsKpiPages": {
-    "message": "页面 $1"
+    "message": "$1 个页面"
   },
   "statsKpiSites": {
-    "message": "站点 $1"
+    "message": "$1 个网站"
+  },
+  "optReadingGroup": {
+    "message": "阅读"
+  },
+  "optDataGroup": {
+    "message": "本地数据"
+  },
+  "optStatsRecord": {
+    "message": "记录内容",
+    "description": "Label of the statistics recording preset menu."
+  },
+  "statsExportAllSites": {
+    "message": "全部网站"
+  },
+  "statsExportSites": {
+    "message": "要导出的网站"
+  },
+  "statsLensTotals": {
+    "message": "按整个时段已记录的总数计算。"
+  },
+  "statsLensPartial": {
+    "message": "有 $1 个词仅记录了汇总数据，未计入本次计算。"
+  },
+  "statsOneWord": {
+    "message": "$1 个词"
+  },
+  "statsManyWords": {
+    "message": "$1 个词"
+  },
+  "statsOneParagraph": {
+    "message": "$1 段"
+  },
+  "statsManyParagraphs": {
+    "message": "$1 段"
+  },
+  "statsOneSecond": {
+    "message": "$1 秒"
+  },
+  "statsManySeconds": {
+    "message": "$1 秒"
+  },
+  "statsScoredParagraphs": {
+    "message": "已评分的段落"
+  },
+  "statsScoredSeconds": {
+    "message": "已评分内容的阅读秒数"
+  },
+  "statsTopHeavy": {
+    "message": "高度编辑或 AI 生成占比最高"
+  },
+  "statsChipNote": {
+    "message": "每段按显示的判断计数一次。"
+  },
+  "statsArgmaxNote": {
+    "message": "每段按概率最高的判断计数一次。"
+  },
+  "statsWeightedNote": {
+    "message": "每段的权重按各类判断的概率分配。"
+  },
+  "onbTryParagraph": {
+    "message": "试读一段文字"
+  },
+  "readerPreparedPages": {
+    "message": "已准备好 $1 页，共 $2 页，可供分析。",
+    "description": "PDF whole-document scan progress, in pages."
+  },
+  "readerUnreadPages": {
+    "message": "有 $1 页无法读取，共 $2 页。",
+    "description": "PDF whole-document scan finished with unreadable pages."
+  },
+  "readerRetryPages": {
+    "message": "重试未读取的页面",
+    "description": "Retry the incomplete PDF scan."
+  },
+  "readerRenderedFallback": {
+    "message": "无法分析整份文档，正在读取已渲染的页面（共 $2 页，已读取 $1 页）。"
+  },
+  "statsCompareTrailing": {
+    "message": "截至所选日期的 30 天：$1"
+  },
+  "statsExportOneRow": {
+    "message": "$1（$2 行）"
+  },
+  "statsOnePage": {
+    "message": "$1 个页面"
+  },
+  "statsOneSite": {
+    "message": "$1 个网站"
+  },
+  "statsChartScale": {
+    "message": "图表刻度"
+  },
+  "statsChartWords": {
+    "message": "词数"
+  },
+  "statsChartShare": {
+    "message": "占比"
+  },
+  "statsTrendShareAria": {
+    "message": "每日判断占比，$1。"
+  },
+  "statsNoVerdicts": {
+    "message": "暂无判断。"
+  },
+  "statsRecords": {
+    "message": "阅读明细"
+  },
+  "statsAwaitingActivity": {
+    "message": "记录已开启，之后的阅读活动会显示在这里。"
+  },
+  "statsApplyRange": {
+    "message": "应用日期范围"
+  },
+  "statsReturnRange": {
+    "message": "返回原时段"
+  },
+  "bandAssisted": {
+    "message": "AI 辅助"
+  },
+  "bandShort": {
+    "message": "文本过短"
+  },
+  "detectorLabel": {
+    "message": "检测模型"
+  },
+  "engineManage": {
+    "message": "管理"
+  },
+  "optSiteRules": {
+    "message": "网站规则"
+  },
+  "detectorCheck": {
+    "message": "检查模型"
+  },
+  "detectorInstall": {
+    "message": "下载（$1）"
+  },
+  "detectorChecking": {
+    "message": "正在检查版本…"
+  },
+  "detectorCurrent": {
+    "message": "已是当前版本"
+  },
+  "detectorCatalogUnavailable": {
+    "message": "暂时无法访问模型列表。"
+  },
+  "detectorIncompatible": {
+    "message": "无法加载此模型版本。"
+  },
+  "detectorAccess": {
+    "message": "Hugging Face 限制了此版本的访问。版本公开后即可下载。"
+  },
+  "detectorSentences": {
+    "message": "逐句判断"
+  },
+  "detectorPass": {
+    "message": "第 $1 个窗口"
+  },
+  "reportLegacyEstimate": {
+    "message": "各类别概率按文本长度加权。分数为各类别分值按概率计算的加权平均值，范围从 0（人类）到 1（AI 生成）。"
+  },
+  "pasteMinimum": {
+    "message": "至少 $1 词"
+  },
+  "pasteProgress": {
+    "message": "$1 / $2 词"
+  },
+  "optStatsRetention": {
+    "message": "保留期限"
+  },
+  "statsVisitTimeline": {
+    "message": "阅读时间线"
+  },
+  "statsVisitDepth": {
+    "message": "最深显示位置"
+  },
+  "statsVisitVisible": {
+    "message": "出现在屏幕上的段落"
+  },
+  "statsVisitReturned": {
+    "message": "多次出现的段落"
+  },
+  "statsVisitNoFacts": {
+    "message": "本次访问没有可用的段落显示或页面深度数据。"
+  },
+  "statsVisitNoTimeline": {
+    "message": "本次访问未保留时间线采样。"
+  },
+  "statsVisitLoadFailed": {
+    "message": "无法加载详情。请收起后重新展开。"
+  },
+  "statsVisitScrollLine": {
+    "message": "折线表示主页面的纵向滚动位置。"
+  },
+  "statsVisitDepthValue": {
+    "message": "页面的 $1"
+  },
+  "statsLensAssistedAi": {
+    "message": "AI 辅助或 AI 生成"
+  },
+  "statsHeroLineAssisted": {
+    "message": "AI 辅助或 AI 生成的估算占比"
+  },
+  "statsHeroParagraphsAssisted": {
+    "message": "AI 辅助或 AI 生成的段落"
+  },
+  "statsColAssistedAi": {
+    "message": "AI 辅助或生成"
+  },
+  "statsTopAssisted": {
+    "message": "AI 辅助或 AI 生成占比最高"
+  },
+  "detectorFiles": {
+    "message": "模型文件与条款"
   }
 }

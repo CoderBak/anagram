@@ -11,20 +11,41 @@
 import { BUCKET_COUNT } from "../contract";
 import { SCORE_CUTS } from "../render/scale";
 import { rank, type Hashable, type Layers, type Layer } from "./config";
-import { coarseDur, coarseLang, coarseLen, coarseTime, coarseTitle, coarseVerdict, type Lengths } from "./coarsen";
+import { coarseDur, coarseLang, coarseLen, coarseTime, retainedTitle, coarseVerdict, projectReferrer, type Lengths } from "./coarsen";
+import { coarserPlaceLayer, groupTotals, projectTotal } from "./totals";
 import { TABLES } from "./dictionary";
 import { keyedHash } from "./hash";
-import { headlineOf, tallyUnder, type Lens } from "./lens";
+import { headlineOf, needsParagraphs, type Lens } from "./lens";
 import {
-  ARRIVALS, INPUT_KINDS, STATE_KINDS, UI_EVENTS,
+  addTally, emptyTally, indexHashedPlaces, readFlagOnly, recordedRead, type HashedPlaces, type PlaceLayerKey, type Tally, ARRIVALS, INPUT_KINDS, STATE_KINDS, UI_EVENTS,
   type ContextRow, type EventChunk, type TabEvent, type TotalRow, type UnitRow, type VisitRow,
 } from "./model";
+import type { LogRange, LogStore } from "./store";
+import { canApply, missingDetailWords, visitTallies } from "./summary";
 import type { TextRow } from "./store";
 
 export const EXPORT_SCHEMA = "anagram-stats";
 export const EXPORT_VERSION = 1;
 
+/** Only address links can come from visits outside the range. No visit or event is exported with them. */
+export async function exportPlaceLinks(store: LogStore, range: LogRange, layers: Layers): Promise<HashedPlaces> {
+  const wanted = new Map<string, PlaceLayerKey>();
+  for (const row of range.totals) {
+    const layer = coarserPlaceLayer(row, layers);
+    if (layer) wanted.set(row.key, layer);
+  }
+  const links: HashedPlaces = new Map();
+  if (!wanted.size) return links;
+  for (const visit of range.visits) indexHashedPlaces(links, visit, wanted);
+  for (const key of links.keys()) wanted.delete(key);
+  if (wanted.size) for (const [key, places] of await store.hashedPlaces(wanted)) links.set(key, places);
+  return links;
+}
+
 export interface ExportSource {
+  /** Calendar-day selection for recounting visits that span midnight. */
+  lensRange?: LogRange;
+  placeLinks?: HashedPlaces;
   visits: VisitRow[];
   units: UnitRow[];
   events: EventChunk[];
@@ -43,6 +64,7 @@ export interface ExportOptions {
   lens: Lens;
   generatedAt: string;
   extensionVersion: string;
+  siteFiltered?: boolean;
 }
 
 export interface Table { columns: string[]; rows: unknown[][] }
@@ -72,7 +94,6 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
 
   // ---- visits ----------------------------------------------------------------------------------
   const visitsKept = at("rows", "visit");
-  const byVisit = new Map(source.visits.map((v) => [v.id, v]));
   if (visitsKept) {
     for (const v of source.visits) {
       const was = (d: Hashable): boolean => v.hashed?.includes(d) ?? false;
@@ -82,11 +103,11 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
         parent: at("nav", "full") ? pseudo(v.parent) : undefined,
         tab: at("tabs", "ids") ? pseudo(v.tab) : undefined, window: at("tabs", "ids") ? pseudo(v.window) : undefined,
         url: rank("place", L.place) <= rank("place", "pattern") ? named(place, was("place"), "place") : undefined,
-        site: L.place === "none" ? undefined : named(v.places?.host ?? v.places?.domain, was("place"), "place"),
-        title: v.title === undefined || L.title === "none" ? undefined : was("title") ? pseudo(v.title) : named(coarseTitle(v.title, L.title), false, "title"),
+        site: L.place === "none" ? undefined : named(placeAt(v.places, L.place === "domain" ? "domain" : "host"), was("place"), "place"),
+        title: named(retainedTitle(v.title, was("title"), v.titleLayer, L.title), was("title"), "title"),
         kind: at("struct", "kind") ? v.kind : undefined, signals: L.struct === "full" ? v.signals : undefined, surface: v.surface,
         arrival: at("nav", "arrival") ? v.arrival : undefined,
-        referrer: at("nav", "full") ? named(v.referrer, was("place"), "place") : undefined,
+        referrer: at("nav", "full") ? named(projectReferrer(v, L.place), was("place"), "place") : undefined,
         previous: at("nav", "full") ? pseudo(v.previous) : undefined, opener: at("nav", "full") ? pseudo(v.opener) : undefined,
         shown: at("state", "totals") ? dur(v.shown) : undefined, active: at("state", "totals") ? dur(v.active) : undefined,
         focused: at("state", "totals") ? dur(v.focused) : undefined,
@@ -117,7 +138,7 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
         geom: !u.geom || L.geom === "none" ? undefined : L.geom === "share" ? { share: u.geom.share, page: u.geom.page } : L.geom === "order" ? { page: u.geom.page } : u.geom,
         verdict: u.verdict ? coarseVerdict(u.verdict, L.verdict) : undefined,
         timing: L.engine === "full" ? u.timing && { cached: u.timing.cached, answered: dur(u.timing.answered) } : L.engine === "basic" ? u.timing && { cached: u.timing.cached } : undefined,
-        expo: !u.expo || L.expo === "none" ? undefined : L.expo === "read" ? { readAt: dur(u.expo.readAt) }
+        expo: !u.expo || L.expo === "none" ? undefined : L.expo === "read" || L.dur === "none" || readFlagOnly(u.expo) ? { read: recordedRead(u.expo), readAt: dur(u.expo.readAt), sightings: L.expo !== "read" && u.expo.sightings ? u.expo.sightings : undefined }
           : { any: u.expo.any.map((x) => dur(x)), half: u.expo.half.map((x) => dur(x)), band: u.expo.band.map((x) => dur(x)), first: dur(u.expo.first), last: dur(u.expo.last), sightings: u.expo.sightings, readAt: dur(u.expo.readAt) },
         found: dur(u.found), removedAt: dur(u.removedAt),
       });
@@ -180,31 +201,60 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
     });
   }
   if (unitsKept && L.text === "full") for (const t of source.texts) add("texts", { hash: pseudo(t.hash), text: t.text, first: t.first, last: t.last });
-  for (const t of source.totals) {
-    if (t.scope === "site" && !(at("rows", "site") && at("place", "domain"))) continue;
-    if (t.scope === "page" && !(at("rows", "page") && at("place", "pattern"))) continue;
-    if (t.scope === "kind" && !at("struct", "kind")) continue;
-    const key = t.scope === "site" || t.scope === "page" ? (t.key.startsWith("file:") ? "file:" : named(t.key, t.hashed ?? false, "place")) : t.key;
+  // A retained visit can supply the coarser hash for an aggregate. Never substitute
+  // a finer hash if that layer was not kept.
+  const keptPlaces = source.placeLinks ?? new Map<string, NonNullable<VisitRow["places"]>>();
+  if (!source.placeLinks && at("rows", "site") && source.totals.some((row) => row.hashed)) {
+    for (const visit of source.visits) indexHashedPlaces(keptPlaces, visit);
+  }
+  for (const t of groupTotals(source.totals, (row) => projectTotal(row, L, opts.hashed, (value) => keyedHash(key, value), true, keptPlaces))) {
     add("totals", {
-      date: t.date, scope: t.scope, key,
-      title: t.title === undefined || L.title === "none" ? undefined : t.hashed ? pseudo(t.title) : named(coarseTitle(t.title, L.title), false, "title"),
-      start: at("time", "min") ? t.start : undefined, dwell: L.dur === "none" ? undefined : t.dwell, kind: t.kind, models: t.models,
+      date: t.date, scope: t.scope, key: t.key, title: t.title,
+      start: t.start, startDate: t.startDate, dwell: t.dwell, kind: t.kind, models: t.models,
       tally: tallyOut(t.tally),
     });
   }
 
   // ---- the lens ---------------------------------------------------------------------------------------
-  if (unitsKept && source.units.length > 0) {
-    const groups = new Map<string, UnitRow[]>();
-    for (const u of source.units) {
-      const v = byVisit.get(u.visit);
-      const key = `${v?.date ?? u.date}\t${v?.kind ?? "other"}`;
-      (groups.get(key) ?? groups.set(key, []).get(key)!).push(u);
+  const lensRange = source.lensRange ?? source;
+  const recounted = needsParagraphs(opts.lens) && unitsKept && canApply(lensRange, opts.lens);
+  if (unitsKept) {
+    const groups = new Map<string, Tally>();
+    const addGroup = (date: string, kind: string, tally: Tally): void => {
+      const id = date + "\t" + kind;
+      const total = groups.get(id) ?? emptyTally();
+      addTally(total, tally);
+      groups.set(id, total);
+    };
+    if (recounted) {
+      const perVisit = visitTallies(lensRange, opts.lens);
+      for (const v of lensRange.visits) {
+        for (const [date, tally] of perVisit.get(v.id) ?? []) {
+          if (date >= opts.from && date <= opts.to) addGroup(date, L.struct === "none" ? "" : v.kind, tally);
+        }
+      }
+    } else {
+      const kinds = source.totals.filter((r) => r.scope === "kind" && L.struct !== "none");
+      const byDate = new Map<string, Tally>();
+      for (const row of kinds) {
+        const sum = byDate.get(row.date) ?? emptyTally();
+        byDate.set(row.date, addTally(sum, row.tally));
+      }
+      // A site can have totals from a time when individual pages and their kinds
+      // were not kept. Use its whole day if the available kinds cover only part.
+      const unsplit = new Set<string>();
+      for (const row of source.totals) if (row.scope === "day") {
+        const sum = byDate.get(row.date);
+        if (!sum || JSON.stringify(tallyOut(sum)) !== JSON.stringify(tallyOut(row.tally))) {
+          addGroup(row.date, "", row.tally);
+          unsplit.add(row.date);
+        }
+      }
+      for (const row of kinds) if (!unsplit.has(row.date)) addGroup(row.date, row.key, row.tally);
     }
-    for (const [key, units] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
-      const [date, kind] = key.split("\t") as [string, string];
-      const tally = tallyUnder(units, opts.lens);
-      add("lens", { date, kind, headline: headlineOf(tally, opts.lens), tally: tallyOut(tally) });
+    for (const [id, tally] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+      const [date, kind] = id.split("\t");
+      add("lens", { date, kind: kind || undefined, headline: headlineOf(tally, opts.lens), tally: tallyOut(tally) });
     }
   }
 
@@ -215,8 +265,10 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
   return {
     manifest: {
       schema: EXPORT_SCHEMA, version: EXPORT_VERSION, generatedAt: opts.generatedAt, extension: { version: opts.extensionVersion },
-      range: { from: opts.from, to: opts.to },
-      layers: { ...L }, hashed: [...opts.hashed], link: opts.link, lens: { ...opts.lens }, recorded,
+      range: { from: opts.from, to: opts.to }, siteScope: opts.siteFiltered ? "selected-site" : "all-sites",
+      layers: { ...L }, hashed: [...opts.hashed], link: opts.link, lens: { ...opts.lens }, lensBasis: recounted ? "paragraphs" : "recorded-totals",
+      ...(recounted ? { lensOmittedBaselineWords: missingDetailWords(lensRange, opts.lens) } : {}), recorded,
+      detectorScale: {classes:["human","ai_assisted","ai_generated"], tallySlots:[0,4,3], scoreWeights:[0,0.5,1]},
       scale: { bands: ["human", "light", "heavy", "ai"], cuts: [...SCORE_CUTS].map((c) => Math.round(c * 10_000) / 10_000), buckets: BUCKET_COUNT },
       names: { input: INPUT_KINDS, state: STATE_KINDS, ui: UI_EVENTS, arrival: ARRIVALS, exposure: ["all", "focused", "flung", "focused and flung"] },
       rows: Object.fromEntries(Object.entries(out).map(([name, t]) => [name, t.rows.length])),
@@ -244,7 +296,7 @@ function streamName(stream: object, s: EventChunk["streams"]): string {
 
 const r1 = (x: number): number => Math.round(x * 10) / 10;
 function tallyOut(t: VisitRow["tally"]): Record<string, unknown> {
-  return { scored: t.scored, expected: t.expected.map(r1), units: [...t.units], argmax: [...(t.argmax ?? [0, 0, 0, 0])],
+  return { scored: t.scored, expected: t.missingProbabilities ? undefined : t.expected.map(r1), units: [...t.units], argmax: t.argmax ? [...t.argmax] : undefined,
     short: t.short, language: t.language, unavailable: t.unavailable, removed: t.removed ?? 0 };
 }
 

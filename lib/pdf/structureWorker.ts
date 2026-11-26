@@ -50,15 +50,15 @@ export function pageRanges(pages: number, most = RANGE_PAGES): [number, number][
  * again: a large PDF is held three times over otherwise. `rangePages`: the most pages one
  * worker reads (tests make it small).
  */
-export async function readStructure(bytes: Uint8Array, pages: number, signal?: AbortSignal, rangePages = RANGE_PAGES): Promise<SdtStructure> {
+export async function readStructure(bytes: Uint8Array, pages: number, signal?: AbortSignal, rangePages = RANGE_PAGES, password = ""): Promise<SdtStructure> {
   const began = performance.now();
   const ranges = pageRanges(pages, rangePages);
   try {
-    if (ranges.length === 1) return await readOne(bytes, pages, null, 0, signal);
+    if (ranges.length === 1) return await readOne(bytes, pages, null, 0, password, signal);
     const whole: SdtStructure = { catalog: { pages: [] }, content: [] };
     for (const [k, range] of ranges.entries()) {
       // Every worker but the last gets a copy: the last can have the caller's own.
-      const part = await readOne(k === ranges.length - 1 ? bytes : bytes.slice(), range[1] - range[0], range, whole.content.length, signal);
+      const part = await readOne(k === ranges.length - 1 ? bytes : bytes.slice(), range[1] - range[0], range, whole.content.length, password, signal);
       whole.catalog.pages.push(...part.catalog.pages);
       for (const block of part.content) whole.content.push(block);
     }
@@ -70,7 +70,7 @@ export async function readStructure(bytes: Uint8Array, pages: number, signal?: A
 }
 
 /** One worker's reading: of the whole document, or of `range` numbered into it. */
-function readOne(bytes: Uint8Array, pages: number, range: [number, number] | null, contentBase: number, signal?: AbortSignal): Promise<SdtStructure> {
+function readOne(bytes: Uint8Array, pages: number, range: [number, number] | null, contentBase: number, password: string, signal?: AbortSignal): Promise<SdtStructure> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error("aborted")); return; }
     const worker = new Worker(asset("start/document-worker.js"));
@@ -96,7 +96,7 @@ function readOne(bytes: Uint8Array, pages: number, range: [number, number] | nul
     const whole = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength;
     const buf = (whole ? bytes : bytes.slice()).buffer as ArrayBuffer;
     worker.postMessage({
-      id: 1, buf, password: "", sourceHash: "0".repeat(32), ...(range ? { range, contentBase } : {}),
+      id: 1, buf, password, sourceHash: "0".repeat(32), ...(range ? { range, contentBase } : {}),
       roots: {
         cmaps: asset("cmaps/"), standard_fonts: asset("standard_fonts/"), wasm: asset("document-worker/wasm/"),
         onnx: asset("engine/"), "block-seg": asset("document-worker/block-seg/"),

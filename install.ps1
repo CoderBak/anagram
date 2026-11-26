@@ -564,9 +564,13 @@ try {
   $completed = $true
   foreach ($path in $swapped) { Remove-OwnedTree ($path + '.old') }
   Say 'Preparing device-selected model files with Hugging Face…' '正在使用 Hugging Face 下载适合本机设备的模型文件…'
-  Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\prepare_models.py'),'--home',$ComponentHome,'--installer','--language',$Language)
-  Say 'Installed. Model files are ready; the browser finishes setup automatically.' '安装完成。模型文件已准备就绪，浏览器将自动完成剩余设置。'
-  Say 'EditLens models are licensed CC BY-NC-SA 4.0, for noncommercial use only.' 'EditLens 模型采用 CC BY-NC-SA 4.0 许可，仅限非商业用途。'
+  try {
+    Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\prepare_models.py'),'--home',$ComponentHome,'--installer','--language',$Language)
+  } catch {
+    Say 'The local engine is installed. Return to Anagram setup to retry the model download.' '本地引擎已安装。请返回 Anagram 设置页面重试模型下载。'
+    throw
+  }
+  Say 'Installed. Return to Anagram setup in your browser to see the engine status.' '安装完成。请返回浏览器中的 Anagram 设置页面查看引擎状态。'
 } finally {
   try {
     if ($installLock -and -not $completed) {

@@ -19,12 +19,12 @@ describe("cache invalidation and retention races", () => {
       const rows = keys.map((key) => store.rows.get(key));
       started.resolve(); await release.promise; return rows;
     };
-    const read = cache.getMany([key], false);
+    const read = cache.getMany([key]);
     await started.promise;
     await cache.clear();
     release.resolve();
     expect((await read).size).toBe(0);
-    expect((await cache.getMany([key], false)).size).toBe(0);
+    expect((await cache.getMany([key])).size).toBe(0);
   });
 
   it("orders old flush, clear and new flush without a late all-store clear", async () => {
@@ -52,11 +52,11 @@ describe("cache invalidation and retention races", () => {
     const store = fakeScoreStore(), cache = createSwCache(store);
     const key = cache.keyOf("old", dim);
     store.rows.set(key, { key, b: 3, p: result.probs, s: 1, t: Date.now() });
-    expect((await cache.getMany([key], false)).size).toBe(1);
+    expect((await cache.getMany([key])).size).toBe(1);
     const clear = store.clear;
     store.clear = async () => { throw new Error("transaction aborted"); };
     await expect(cache.clear()).rejects.toThrow("transaction aborted");
-    expect((await cache.getMany([key], false)).size).toBe(0);
+    expect((await cache.getMany([key])).size).toBe(0);
     expect(store.rows.size).toBe(1); // failing is not evidence that the data was removed
     store.clear = clear;
     await cache.clear();
@@ -71,17 +71,19 @@ describe("cache invalidation and retention races", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it("checks age on every L1, worker-memory and disk read, including private reads", async () => {
+  it("memory-only reads skip disk entirely and still expire in-memory results", async () => {
     let now = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => now);
     const l1 = createScoreCache(), store = fakeScoreStore(), cache = createSwCache(store);
     l1.set("old", result);
     cache.set("memory", result, dim, false);
     const diskKey = cache.keyOf("disk", dim), memoryKey = cache.keyOf("memory", dim);
     store.rows.set(diskKey, { key: diskKey, b: 3, p: result.probs, s: 1, t: now });
-    expect((await cache.getMany([diskKey], false)).size).toBe(1);
+    const get = vi.spyOn(store, "get");
+    expect([...(await cache.getMany([diskKey, memoryKey], false)).keys()]).toEqual([memoryKey]);
     now += SCORE_CACHE_MAX_AGE_MS;
     expect(l1.get("old")).toBeUndefined();
     expect((await cache.getMany([diskKey, memoryKey], false)).size).toBe(0);
+    expect(get).not.toHaveBeenCalled();
     expect(store.cutoffs).toHaveLength(0); // private reads never prune persistent data
   });
 

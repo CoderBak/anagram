@@ -9,7 +9,7 @@
 // the offer of the in-browser engine when the local one keeps crashing, and the in-browser
 // engine's setup page in each state on the way to Ready, its cancel confirmation and its toolbar
 // menu, and the reading statistics (off, a week of them, the export, Settings' group, the
-// toolbar menu's line) — at 1280 and 400 px (the menu at its own 340), three times: in a
+// toolbar menu's line) — at 1280 and 400 px (the menu at its own 300), three times: in a
 // pseudo-locale (every English message accented and stretched by the pseudo-localization
 // package, placeholders kept), in Chinese, and in English. On each it looks for the ways
 // a longer label breaks a layout:
@@ -40,7 +40,11 @@ import { presetConfig, seedStats, statsVisit, statsWeek } from "./stats-fixture.
 requireBuild();
 
 const results = [];
-const record = (name, ok, note = "") => results.push({ name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note: String(note) });
+const record = (name, ok, note = "") => {
+  const result = { name, status: ok === null ? "SKIP" : ok ? "PASS" : "FAIL", note: String(note) };
+  results.push(result);
+  console.log(`${result.status.padEnd(4)}  ${name}${note && result.status !== "PASS" ? `  —  ${note}` : ""}`);
+};
 
 // ---- the pseudo-locale ---------------------------------------------------------------------
 
@@ -57,7 +61,9 @@ function pseudoBuild(source = EXT, { siteOnly = true } = {}) {
   cpSync(source, ext, { recursive: true });
   const file = join(ext, "_locales", "en", "messages.json");
   const messages = JSON.parse(readFileSync(file, "utf8"));
-  for (const entry of Object.values(messages)) entry.message = pseudo(entry.message);
+  // localeTag is an Intl language identifier, not display copy. Accenting it crashes the
+  // statistics page before its controls mount, leaving the old runner waiting forever.
+  for (const [key, entry] of Object.entries(messages)) if (key !== "localeTag") entry.message = pseudo(entry.message);
   writeFileSync(file, JSON.stringify(messages));
   if (!siteOnly) return { dir, ext };
   // Only the page's own site granted, as a reader's per-site grant leaves it: the menu's
@@ -236,15 +242,15 @@ ${["ITEM-16", "ITEM-111", "ITEM-149"].map((t) => `<p>${PARA(t)}</p>`).join("\n")
 
 const WIDE = { width: 1280, height: 900 };
 const NARROW = { width: 400, height: 800 };
-const POPUP = { width: 340, height: 600 };
+const POPUP = { width: 300, height: 600 };
 
 async function pages(context, extId, fixture, lang) {
   const url = (p) => `chrome-extension://${extId}/${p}`;
   const page = await context.newPage();
   const componentReady = () =>
-    page.waitForFunction(() => /(Ready|就绪)$/.test(document.querySelector("#componentSettings .component-status")?.textContent ?? ""), null, { timeout: 15000 }).catch(() => {});
+    page.waitForFunction(() => document.querySelector("#componentSettings .component-status")?.textContent?.endsWith(chrome.i18n.getMessage("componentReady")), null, { timeout: 15000 }).catch(() => {});
 
-  // The popup is a fixed 340 px wide, whatever the window (entrypoints/popup/index.html).
+  // The popup is a fixed 300 px wide, whatever the window (entrypoints/popup/index.html).
   await page.setViewportSize(POPUP);
   await page.goto(url("popup.html"), { waitUntil: "load" });
   await page.waitForFunction(() => document.getElementById("status")?.textContent !== "…", null, { timeout: 10000 }).catch(() => {});
@@ -264,6 +270,16 @@ async function pages(context, extId, fixture, lang) {
     await page.goto(url("onboarding.html"), { waitUntil: "load" });
     await componentReady();
     await check(page, lang, "setup, engine ready");
+  }
+
+  await page.goto(url("paste.html"), { waitUntil: "load" });
+  await page.fill("#text", PARA("Library"));
+  await page.click("#analyze");
+  await page.locator("#scoreToggle").waitFor();
+  await page.click("#scoreToggle");
+  for (const size of [WIDE, NARROW]) {
+    await page.setViewportSize(size);
+    await check(page, lang, "text analysis, score breakdown");
   }
 
   // Setup without an engine: the install command and its buttons.
@@ -332,12 +348,15 @@ async function statsPages(context, sw, extId, lang) {
     await page.goto(url("stats.html"), { waitUntil: "load" });
     await page.click('#ranges [data-range="7"]').catch(() => {});
     await page.locator("#trendChart svg").waitFor({ timeout: 10000 }).catch(() => {});
+    await page.locator("#scoringDetails summary").click();
     await page.click("#trendCard summary").catch(() => {});
     await page.hover("#trendChart g.col:last-of-type rect.hit").catch(() => {});
     await page.click("#siteTable tbody tr.pick").catch(() => {});
     await page.click("#lens summary").catch(() => {});
+    await page.click("#visitsTab");
     await page.click("#visitsTable button.linkish").catch(() => {});
     await page.locator("#replay:not([hidden])").waitFor({ timeout: 5000 }).catch(() => {});
+    if (await up(page, "#visitTimeline summary")) await page.click("#visitTimeline summary");
     await check(page, lang, "statistics, a week");
     await page.click("#more summary").catch(() => {});
     await check(page, lang, "statistics, more");
@@ -401,6 +420,7 @@ async function enginePages(context, extId, lang) {
     else record(`${lang}: setup page, the local engine crashing at ${size.width} px`, false, "the switch never showed");
     await crashing.close();
     const settings = await open("options.html", size, async (p) => { await scriptEngine(p, "needed", { engine: "native" }); await scriptDevice(p, DEVICES["linux-cpu"]); });
+    await settings.click("#engine-manage");
     if (await up(settings, "#engine-delete-leftover") && await up(settings, "#engine-switch")) { await check(settings, lang, "settings, the switch and the files left behind"); }
     else record(`${lang}: settings, the switch and the files left behind at ${size.width} px`, false, "they never showed");
     await settings.close();
@@ -471,6 +491,8 @@ async function runInBrowser(lang, launch) {
   // On a device with no choice a fresh profile starts the model's download by itself: Hugging
   // Face resolves to nothing here.
   const { context, sw, extId } = await launchExtension({ ...launch, args: [...(launch.args ?? []), NO_MODEL_HOSTS] });
+  context.setDefaultTimeout(15000);
+  context.on("page", (page) => page.on("pageerror", (error) => record(`${lang}: ${page.url()}`, false, error.message)));
   await context.route("https://disqus.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>comments</title>" }));
   try {
     const got = await uiLanguageOf(sw);
@@ -491,6 +513,8 @@ async function runInBrowser(lang, launch) {
 
 async function run(lang, launch) {
   const { context, sw, extId, fixture } = await launchExtension(launch);
+  context.setDefaultTimeout(15000);
+  context.on("page", (page) => page.on("pageerror", (error) => record(`${lang}: ${page.url()}`, false, error.message)));
   // The article's comment frame, answered here: nothing leaves the machine.
   await context.route("https://disqus.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>comments</title>" }));
   try {
@@ -526,7 +550,6 @@ try {
 }
 
 console.log("\n=== PSEUDO-LOCALE LAYOUT ===");
-for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.name}${r.note && r.status !== "PASS" ? `  —  ${r.note}` : ""}`);
 const fails = results.filter((r) => r.status === "FAIL");
 const skips = results.filter((r) => r.status === "SKIP");
 console.log(`\n${results.length - fails.length - skips.length}/${results.length} checks passed${skips.length ? `, ${skips.length} skipped` : ""}`);

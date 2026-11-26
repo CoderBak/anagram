@@ -15,9 +15,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { test as base, expect, BADGE_SEL } from "./kit.mjs";
 import { fakeScore } from "../fake-native.mjs";
-import { buildColumnsPdf, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
+import { buildPdf, buildColumnsPdf, openPdfInReader, readerRead, readerReady } from "../pdf-fixture.mjs";
+import { documentOptions, loadPipeline } from "../pdf-bench/anagram.mjs";
 
-const REAL = join(homedir(), "anagram-bench", "pdf-placement");
+const REAL = process.env.ANAGRAM_PDF_PLACEMENT || join(homedir(), "anagram-bench", "pdf-placement");
 const PAPERS = ["2507.01297", "2004.04906"];
 const { pdf: COLUMNS_PDF, paragraphs: COLUMNS } = buildColumnsPdf();
 
@@ -28,6 +29,121 @@ const test = base.extend({
     pages.serve(files);
     await use({ url: pages.url });
   },
+});
+
+test("the fallback keeps ruled table rows together and out of scoring", async () => {
+  // Segmented horizontal rules, enclosing sides and no cell backgrounds.
+  const words = ["Human reading observations", "Later reading observations", "Final reading observations"];
+  const content = words.flatMap((text, i) => [
+    { text, x: 65, y: 680 - 30 * i, size: 12 }, { text: "Ref " + (i + 1), x: 265, y: 680 - 30 * i, size: 12 },
+  ]);
+  const drawing = [700, 670, 640, 610].map((y) => `60 ${y} 200 1 re f\n260 ${y} 100 1 re f\n`).join("") +
+    "60 610 1 91 re f\n359 610 1 91 re f\n";
+  const { pipeline, pdfjs } = await loadPipeline();
+  const task = pdfjs.getDocument(documentOptions(new Uint8Array(buildPdf([content], { drawings: [drawing] }))));
+  try {
+    const page = await (await task.promise).getPage(1);
+    const blocks = pipeline.reflowPdf([await pipeline.extractPageText(page)]);
+    expect(blocks.map((b) => [b.kind, b.text])).toEqual(words.map((w, i) => ["table", w + " Ref " + (i + 1)]));
+    expect(pipeline.unitsOf(blocks, 1)).toEqual([]);
+  } finally {
+    await task.destroy();
+  }
+});
+
+test("the fallback preserves all 21 rows in an untagged borderless PDF", async () => {
+  const rows = Array.from({ length: 21 }, (_, i) => ["Subject " + (i + 1), "Reference " + (i + 1), String(i + 1)]);
+  const content = rows.flatMap((row, i) => row.map((text, k) => ({text, x: [50, 270, 495][k], y: 690 - 24 * i, size: 11})));
+  const { pipeline, pdfjs } = await loadPipeline();
+  const task = pdfjs.getDocument(documentOptions(new Uint8Array(buildPdf([content]))));
+  try {
+    const page = await (await task.promise).getPage(1);
+    const blocks = pipeline.reflowPdf([await pipeline.extractPageText(page)]);
+    expect(blocks.map((b) => [b.kind, b.text])).toEqual(rows.map((row) => ["table", row.join(" ")]));
+    expect(pipeline.unitsOf(blocks, 1)).toEqual([]);
+  } finally { await task.destroy(); }
+});
+
+test("an untagged text table follows its rows, while the same fields painted as separate lists follow columns", async () => {
+  const rows = [["Title","Genre","Country"], ["Hamlet","Tragedy","Denmark"], ["Macbeth","Tragedy","Scotland"],
+    ["Othello","Tragedy","Italy"], ["Emma","Novel","England"], ["Rebecca","Novel","England"], ["Dune","Fiction","Arrakis"],
+    ["Persuasion","Novel","England"], ["Odyssey","Epic","Greece"], ["Iliad","Epic","Troy"], ["Faust","Drama","Germany"], ["Heidi","Novel","Switzerland"]];
+  const grid = rows.map((row, i) => row.map((text, j) => ({text, x: [60, 255, 450][j], y: 680 - i * 22, size: 11})));
+  const columns = [0, 1, 2].flatMap((j) => grid.map((r) => r[j]));
+  const { pipeline, pdfjs } = await loadPipeline();
+  for (const rowFirst of [true, false]) {
+    const task = pdfjs.getDocument(documentOptions(new Uint8Array(buildPdf([rowFirst ? grid.flat() : columns]))));
+    try {
+      const p = await pipeline.extractPageText(await (await task.promise).getPage(1));
+      const blocks = pipeline.reflowPdf([p]);
+      if (rowFirst) {
+        expect(blocks.map((b) => [b.kind, b.text])).toEqual(rows.map((row) => ["table", row.join(" ")]));
+        expect(pipeline.unitsOf(blocks, 1)).toEqual([]);
+      } else {
+        expect(blocks.every((b) => b.kind !== "table")).toBe(true);
+        expect(blocks.map((b) => b.text).join(" ")).toBe(columns.map((x) => x.text).join(" "));
+      }
+    } finally { await task.destroy(); }
+  }
+});
+
+test("PDF table tags describe wrapped cells even when other text shares their baselines", async () => {
+  const content = [["West", 50, 650], ["Trade", 215, 650], ["winds", 215, 634], ["East", 50, 610],
+    ["Westerlies", 215, 610], ["An independent note on the same line.", 370, 650], ["Region", 50, 680], ["Wind", 215, 680]]
+    .map(([text, x, y]) => ({text, x, y, size: 11}));
+  const rows = [[[6], [7]], [[0], [1,2]], [[3], [4]]];
+  const { pipeline, pdfjs } = await loadPipeline();
+  const task = pdfjs.getDocument(documentOptions(new Uint8Array(buildPdf([content], { taggedRows: [rows] }))));
+  try {
+    const page = await (await task.promise).getPage(1);
+    const p = await pipeline.extractPageText(page);
+    expect(p.taggedRows).toHaveLength(3);
+    const blocks = pipeline.reflowPdf([p]);
+    expect(blocks.filter((b) => b.kind === "table").map((b) => b.text)).toEqual(["Region Wind", "West Trade winds", "East Westerlies"]);
+    expect(blocks.filter((b) => b.kind !== "table").map((b) => b.text)).toEqual(["An independent note on the same line."]);
+    for (const b of blocks) for (const run of b.runs)
+      expect(b.text.slice(run.at, run.at + run.length)).toBe(p.items[run.item].str.slice(run.from, run.from + run.length));
+  } finally { await task.destroy(); }
+});
+
+test("a printed table beside a paragraph leaves the entire paragraph available for scoring", async () => {
+  const body = [
+    "During the night the water rose above the bank",
+    "and reached the bridge before the rain stopped.",
+    "The next morning we walked along the old path",
+    "to see how far the current had carried the stones.",
+    "We found them in the sand under the trees",
+    "and marked their positions in the field notebook.",
+  ];
+  const rows = [["Plant", "Season"], ["Crocus", "Spring"], ["Aster", "Autumn"]];
+  const content = [...body.map((text, i) => ({ text, x: 55, y: 680 - i * 16, size: 10 })),
+    ...rows.flatMap((row, i) => row.map((text, j) => ({ text, x: 350 + j * 85, y: 664 - i * 16, size: 10 })))];
+  const drawing = [672, 656, 640, 624].map((y) => `345 ${y} 85 1 re f\n430 ${y} 85 1 re f\n`).join("") +
+    "345 624 1 49 re f\n514 624 1 49 re f\n";
+  const { pipeline, pdfjs } = await loadPipeline();
+  const task = pdfjs.getDocument(documentOptions(new Uint8Array(buildPdf([content], { drawings: [drawing] }))));
+  try {
+    const p = await pipeline.extractPageText(await (await task.promise).getPage(1));
+    expect(p.tables).toHaveLength(3);
+    const blocks = pipeline.reflowPdf([p]);
+    expect(blocks.map((b) => b.text)).toEqual([body.join(" "), ...rows.map((r) => r.join(" "))]);
+    expect(pipeline.unitsOf(blocks).map((u) => u.text)).toEqual([body.join(" ")]);
+  } finally { await task.destroy(); }
+});
+
+test("the fallback keeps the measured results of arXiv 2004.04906 Table 4 out of prose scores", async () => {
+  const file = join(REAL, "2004.04906.pdf");
+  test.skip(!existsSync(file), "arXiv placement fixture unavailable");
+  const { pipeline, pdfjs } = await loadPipeline();
+  const task = pdfjs.getDocument(documentOptions(new Uint8Array(readFileSync(file))));
+  try {
+    const page = await (await task.promise).getPage(8);
+    const blocks = pipeline.reflowPdf([await pipeline.extractPageText(page)]);
+    const rows = blocks.filter((b) => b.kind === "table");
+    expect(rows.some((b) => b.text.includes("BM25+BERT") && b.text.includes("26.5") && b.text.endsWith("33.2"))).toBe(true);
+    expect(rows.some((b) => b.text.includes("BM25+DPR") && b.text.endsWith("35.8"))).toBe(true);
+    expect(blocks.filter((b) => b.kind === "paragraph").some((b) => b.text.includes("47.1"))).toBe(false);
+  } finally { await task.destroy(); }
 });
 
 /**

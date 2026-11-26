@@ -139,14 +139,17 @@ lock = HomeLock(validate_home(home))
 try:
     os.chdir(home)
     configure_environment(home)
-    script = home / 'app/download_modelkit.py'
-    sys.argv = [str(script), '--model-dir', str(home / 'models/editlens_roberta-large'),
-                '--lid-model', str(home / 'models/lid.176.ftz'), '--profile', 'installed']
-    runpy.run_path(str(script), run_name='__main__')
+    from detector import selected, model_dir
+    from download_modelkit import invalid_files, matches, LID_ENTRY
+    pin = selected(home)
+    bad = invalid_files(model_dir(home, pin), pin)
+    if bad or not matches(home / "models/lid.176.ftz", LID_ENTRY):
+        raise SystemExit("Detector files need repair. Run anagram download.")
+    print(pin["release"], pin["revision"])
 finally:
     lock.close()
 PYEOF
-    say "Installed model plan verified. Open Anagram Settings for preparation status and optional expanded comparison models."
+    say "Installed detector verified."
     ;;
   version) [ -f "$ANAGRAM_HOME/VERSION" ] || die "Installed version is missing"; cat "$ANAGRAM_HOME/VERSION" ;;
   path) printf '%s\n' "$ANAGRAM_HOME/extension" ;;

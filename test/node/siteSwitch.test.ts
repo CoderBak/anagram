@@ -2,7 +2,7 @@
 // rule it inherited from a parent domain, and flipping it leaves exactly one rule (or none)
 // saying what the user just asked for.
 import { describe, expect, it } from "vitest";
-import { isInherited, siteLine, switchWrite } from "../../entrypoints/popup/siteSwitch";
+import { isInherited, inheritedRuleNote, switchWrite } from "../../entrypoints/popup/siteSwitch";
 import type { SiteRule } from "../../lib/settings/settings";
 
 const parent: SiteRule = { host: "zhihu.com", mode: "off" };
@@ -11,13 +11,13 @@ const exact: SiteRule = { host: "zhuanlan.zhihu.com", mode: "off" };
 const HOST = "zhuanlan.zhihu.com";
 
 describe("this-site switch", () => {
-  it("names the site an inherited rule belongs to, and this host otherwise", () => {
-    expect(siteLine(HOST, parent)).toBe("on zhihu.com");
-    expect(siteLine(HOST, exact)).toBe("on zhuanlan.zhihu.com");
-    expect(siteLine(HOST, null)).toBe("on zhuanlan.zhihu.com");
+  it("only names the parent domain when its rule applies", () => {
+    expect(inheritedRuleNote(HOST, parent)).toBe("Uses the rule for zhihu.com.");
+    expect(inheritedRuleNote(HOST, exact)).toBe("");
+    expect(inheritedRuleNote(HOST, null)).toBe("");
     // A rule stored under the www. twin of this host is the host's OWN rule.
     expect(isInherited("www.x.com", { host: "x.com", mode: "off" })).toBe(false);
-    expect(siteLine("www.x.com", { host: "x.com", mode: "off" })).toBe("on www.x.com");
+    expect(inheritedRuleNote("www.x.com", { host: "x.com", mode: "off" })).toBe("");
     expect(isInherited("news.x.com", { host: "www.x.com", mode: "off" })).toBe(true);
   });
 

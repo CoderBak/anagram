@@ -201,7 +201,10 @@ class NativeComponent:
         self.download = {"status": "idle", "bytes_received": 0, "total_bytes": 0,
                          "file": None, "error": None, "phase": "detecting"}
         try:
-            self.pin = pin if pin is not None else load_pin(PIN)
+            from detector import selected, model_dir
+            self.pin = pin if pin is not None else selected(self.home)
+            if "release" in self.pin:
+                self.model_dir = model_dir(self.home, self.pin)
             self.settings = self._read_settings()
         except BaseException:
             # The host keeps answering this startup error; it must not keep the home.
@@ -270,6 +273,8 @@ class NativeComponent:
                             self._save_settings()
                         except OSError:
                             pass
+                if self.pin.get("release") and self.download["status"] == "failed" and not self.closed:
+                    self._restore_detector(error_text(exc))
             finally:
                 self._refresh_storage()
         self.thread = threading.Thread(target=run, name="anagram-component",
@@ -322,6 +327,9 @@ class NativeComponent:
             self._start_runtime()
 
     def _build_model_plan(self, profile):
+        if "release" in self.pin:
+            from detector import plan
+            return plan(self.pin, profile)
         from model_plan import build_plan, discover_hardware
         if self.hardware is None:
             self.hardware = discover_hardware()
@@ -373,6 +381,9 @@ class NativeComponent:
 
     def _download_models(self, cancel, progress):
         plain_tree(self.home / "models")
+        if "release" in self.pin:
+            from detector import reuse_weights
+            reuse_weights(self.home, self.pin)
         model_total = self.plan["total_bytes"]
         total = model_total + LID_ENTRY["size_bytes"]
         route = {}
@@ -423,6 +434,9 @@ class NativeComponent:
         self._start_runtime()
 
     def _make_controller(self):
+        if "release" in self.pin:
+            from detector import controller
+            return controller(self.model_dir, self.home, self.pin, self.lid_path)
         from runtime_adapters import create_controller
         return create_controller(self.model_dir, self.home / "runtime.json", self.lid_path, plan=self.plan)
 
@@ -442,7 +456,47 @@ class NativeComponent:
             self.runtime_draining = False
             self.state = "loading"
         controller.start()
+        if "release" in self.pin:
+            self._finish_detector_load(controller)
         return True
+
+    def _finish_detector_load(self, controller):
+        from detector import selected, model_dir, retire_legacy_files
+        while not self.closed and self.controller is controller:
+            state = controller.snapshot()["state"]
+            if state in ("ready", "idle"):
+                previous = selected(self.home, pending=False)
+                atomic_json(self.home / "active-detector.json", self.pin)
+                (self.home / "pending-detector.json").unlink(missing_ok=True)
+                if previous["revision"] != self.pin["revision"]:
+                    old = model_dir(self.home, previous)
+                    plain_tree(old)
+                    if old.exists():
+                        shutil.rmtree(old)
+                retire_legacy_files(self.home)
+                return
+            if state == "error":
+                self._restore_detector(controller.snapshot().get("error") or "Detector could not load")
+                return
+            time.sleep(.1)
+
+    def _restore_detector(self, message):
+        from detector import selected, model_dir
+        active = self.home / "active-detector.json"
+        if not (self.home / "pending-detector.json").exists() or not active.exists():
+            return
+        previous = selected(self.home, pending=False)
+        if previous["revision"] == self.pin["revision"]:
+            return
+        self._stop_runtime()
+        (self.home / "pending-detector.json").unlink(missing_ok=True)
+        self.pin, self.model_dir, self.plan = previous, model_dir(self.home, previous), None
+        self.settings.update(download_failed=False, download_pending=False, download_paused=False)
+        self._save_settings()
+        self._ensure_plan()
+        if self.verifier():
+            self._start_runtime()
+            self.error = {"code": "download_failed", "message": error_text(message)}
 
     def _stop_runtime(self):
         """Close the runtime and drain its work; a closed controller refuses new leases.
@@ -505,7 +559,7 @@ class NativeComponent:
             return {"schema_version": 1, "version": self.version, "home": str(self.home),
                     "state": state, "download": copy.deepcopy(self.download), "runtime": runtime,
                     "storage": {"models_bytes": self.storage_bytes}, "error": error,
-                    "settings": {"idle_unload_s": self.settings["idle_unload_s"]},
+                    "settings": {"idle_unload_s": self.settings["idle_unload_s"], **({"release": self.pin["release"], "revision": self.pin["revision"]} if "release" in self.pin else {})},
                     "operation": copy.deepcopy(self.operation)}
 
     def _runtime(self, wait=0.0):
@@ -537,6 +591,19 @@ class NativeComponent:
             raise ComponentError("invalid_request", "Unexpected operation payload", 422)
 
     def handle(self, op, payload):
+        if op == "models.select":
+            from detector import validate_release, model_dir
+            self._payload(payload, ("release",), ("release",))
+            try:
+                release = validate_release(payload["release"])
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                raise ComponentError("invalid_request", "Invalid detector release", 422) from exc
+            with self.lock:
+                self._ensure_idle()
+                atomic_json(self.home / "pending-detector.json", release)
+                self.pin = release
+                self.model_dir = model_dir(self.home, release)
+                return self.handle("models.download", {})
         if op == "status":
             self._payload(payload)
             return 200, self.status()

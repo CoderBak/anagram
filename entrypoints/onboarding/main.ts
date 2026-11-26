@@ -7,8 +7,10 @@ import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { localizePage } from "../../lib/ui/localize";
+import { mountExtensionUpdate } from "../../lib/ui/extensionUpdate";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
 import { messageLocale } from "../../lib/i18n";
+import { componentUpdateOffered } from "../../lib/ui/componentSettings";
 import { engineReady, mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
@@ -18,6 +20,7 @@ import { adoptBandColorRules } from "../../lib/render/scale";
 import "../../lib/ui/rows.css";
 
 localizePage();
+mountExtensionUpdate(document.getElementById("extensionUpdate")!);
 followSystemTheme();
 linkSourceCode();
 // The four words' colours are the chips' and the marks' own.
@@ -42,7 +45,7 @@ function layout(): void {
 for (const step of steps) {
   const toggle = (): void => { chosen.set(step, !step.classList.contains("open")); layout(); };
   const header = step.querySelector("header")!;
-  header.addEventListener("click", (e) => { if (!(e.target as Element).closest(".step-toggle")) toggle(); });
+  header.addEventListener("click", (e) => { if (!(e.target as Element).closest("button, a")) toggle(); });
   step.querySelector(".step-toggle")!.addEventListener("click", toggle);
 }
 // Sent to a step (the toolbar menu's "How to keep Anagram in the toolbar"): that step open, in view.
@@ -72,7 +75,14 @@ mountEngineCard({
   panelHost: document.getElementById("componentSettings")!,
   settings: false,
   // An engine that keeps dying is not done, whatever its last snapshot says.
-  onUpdate: (engine, reply, crashed) => done("engineCard", !crashed && engineReady(engine, reply)),
+  onUpdate: (engine, reply, crashed) => {
+    const ready = !crashed && engineReady(engine, reply);
+    const native = engine === "native" && reply?.kind === "ok" ? reply.snapshot : null;
+    const update = native && componentUpdateOffered(native, browser.runtime.getManifest().version);
+    if (native?.operation?.name === "update" && !chosen.has(steps[0]!)) chosen.set(steps[0]!, true);
+    done("engineCard", ready && !update);
+    document.getElementById("tryParagraph")!.hidden = !ready;
+  },
 });
 
 /** Step 2 is done once any site may be read; step 3 once the browser keeps Anagram in the

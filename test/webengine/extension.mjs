@@ -169,6 +169,7 @@ try {
     console.log(`memory once idle (GiB): ${JSON.stringify(idle)}`);
     check("the idle engine's worker is ended and its memory given back", idle.renderer < 0.5 && idle["gpu-process"] < 0.5, JSON.stringify(idle));
     // A text not scored yet: the first one's verdict is answered from the cache.
+    await paste.click("#edit");
     await paste.fill("#text", `${TEXT} The minutes were approved without changes.`);
     await paste.click("#analyze");
     for (let i = 0; i < 120 && reply?.data?.state !== "ready"; i++) {

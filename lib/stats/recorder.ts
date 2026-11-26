@@ -178,6 +178,8 @@ export function createRecorder(host: RecorderHost): Recorder {
   const byEl = new Map<Element, Set<Tracked>>();
   const byUnit = new Map<Unit, Tracked>();
   const byKey = new Map<number, Tracked>();
+  const pdfRanges = new Map<string, Tracked>();
+  const revisedTexts = new Map<number, Tracked>();
   /** The short stretch tracked for each of its text nodes, and the paragraph for each of its. */
   const shortByNode = new WeakMap<Text, Tracked>();
   const unitByNode = new WeakMap<Text, Tracked>();
@@ -307,6 +309,7 @@ export function createRecorder(host: RecorderHost): Recorder {
     if (t.short) return { status: "short", why: "short" };
     const r = t.result;
     if (!r || r.degraded) return { status: "pending", why: null };
+    if (r.insufficient) return {status:"short",why:"short"};
     if (r.unsupported) return { status: "language", why: "language" };
     return { status: "scored", why: null };
   }
@@ -499,9 +502,41 @@ export function createRecorder(host: RecorderHost): Recorder {
     return t;
   }
 
+  /** A PDF can correct its line-break spelling after the passage was read. Require
+   *  the same source glyph range as well as the same words around those hyphens. */
+  function earlierReading(unit: Unit, key: number): Tracked | undefined {
+    const exact = byKey.get(key) ?? revisedTexts.get(key);
+    if (exact || !unit.pdfRanges) return exact;
+    const hyphen = /(?<=\p{L})[-‐\u00ad](?=\p{L})/gu;
+    for (const range of unit.pdfRanges) {
+      const old = pdfRanges.get(range);
+      if (old && old.text.replace(hyphen, "") === unit.text.replace(hyphen, "")) {
+        revisedTexts.set(key, old);
+        return old;
+      }
+    }
+    return undefined;
+  }
+
   function track(unit: Unit): void {
     if (!on || !unit.topElement.isConnected || byUnit.has(unit)) return;
-    const t = adopt(cyrb53(unit.text), unit.text, unit.wordCount, unit, null, unit.topElement);
+    const key = cyrb53(unit.text);
+    const previous = unit.pdfRanges ? earlierReading(unit, key) : undefined;
+    const t = adopt(previous?.key ?? key, unit.text, unit.wordCount, unit, null, unit.topElement);
+    if (unit.pdfRanges) {
+      for (const range of unit.pdfRanges) pdfRanges.set(range, t);
+      // A recorded read keeps its original text, word count, verdict and date. A
+      // passage still waiting to count adopts the corrected text and its next verdict.
+      if (!t.counted && t.text !== unit.text) {
+        t.text = unit.text;
+        t.words = unit.wordCount;
+        t.status = "pending";
+        t.result = undefined;
+        t.answered = undefined;
+        t.sentText = false;
+        t.dirty = true;
+      }
+    }
     byUnit.set(unit, t);
     // Short stretches this paragraph took in: their words are its own now. One read and
     // counted already as short keeps that count, and the paragraph counts the rest of its
@@ -537,7 +572,7 @@ export function createRecorder(host: RecorderHost): Recorder {
 
   function verdict(unit: Unit, result: ScoreResult): void {
     const t = byUnit.get(unit);
-    if (!on || !t || result.degraded) return;
+    if (!on || !t || result.degraded || (unit.pdfRanges && unit.text !== t.text)) return;
     t.result = result;
     t.answered ??= offset(now());
     t.dirty = true;
@@ -703,7 +738,7 @@ export function createRecorder(host: RecorderHost): Recorder {
         tokens: r?.tokens, windows: undefined,
       };
     }
-    if (r && !r.degraded) {
+    if (r && !r.degraded && !r.insufficient) {
       out.verdict = {
         p: r.unsupported ? undefined : r.probs.slice(0, 4), score: r.unsupported ? undefined : r.score,
         flagged: r.unsupported ? undefined : host.flagged(r), truncated: r.truncated,
@@ -782,7 +817,7 @@ export function createRecorder(host: RecorderHost): Recorder {
     let textSize = 0;
     const out: StatsWire[] = [];
     const send = (last: boolean): void => {
-      out.push({ visit: base, seq: visit.seq++, ...(units.length ? { units } : {}), ...(last && reads.length ? { reads } : {}),
+      out.push({ visit: last ? base : { ...base, dwell: undefined }, seq: visit.seq++, ...(units.length ? { units } : {}), ...(last && reads.length ? { reads } : {}),
         ...(last && streams ? { events: trimmed(streams) } : {}) });
       units = []; textSize = 0;
     };
@@ -865,7 +900,7 @@ export function createRecorder(host: RecorderHost): Recorder {
   function release(): void {
     viewIO?.disconnect(); bandIO?.disconnect();
     viewIO = bandIO = null;
-    byEl.clear(); byUnit.clear(); byKey.clear(); onScreen.clear();
+    byEl.clear(); byUnit.clear(); byKey.clear(); pdfRanges.clear(); revisedTexts.clear(); onScreen.clear();
     openIntervals.clear();
     for (const timer of [tick, flushTimer, flingTimer, episodeTimer]) if (timer !== null) clearTimeout(timer);
     tick = flushTimer = flingTimer = episodeTimer = null;

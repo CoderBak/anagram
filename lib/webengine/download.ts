@@ -39,6 +39,7 @@ export interface DownloadOptions {
   signal?: AbortSignal;
   /** Bytes of this file on disk so far, whenever that changes. */
   onProgress?(bytes: number): void;
+  onPhase?(phase: "verifying" | "downloading"): void;
   /** A message worth showing while retrying. */
   onNotice?(message: string): void;
   /** Stands in for fetch, in the suite. */
@@ -59,12 +60,13 @@ const CONNECT_TIMEOUT = 20_000;
 
 /** What stopped a download, in the terms the setup page explains it in (lib/ui/inBrowserEngine.ts):
  *  the connection, a full disk, the server's answer, bytes that were not the pinned ones. */
-export type DownloadFailure = "network" | "storage" | "server" | "damaged" | "other";
+export type DownloadFailure = "access" | "network" | "storage" | "server" | "damaged" | "other";
 
 /** The kind of failure a DownloadFailed message describes, as the engine passes it on in
  *  its status (`download.error`); the messages are this file's own. */
 export function failureKind(message: string | null | undefined): DownloadFailure {
   if (!message) return "other";
+  if (/with status (401|403)$/.test(message)) return "access";
   if (/not enough free disk space/.test(message)) return "storage";
   if (/Checksum or size mismatch|larger than its pinned size/.test(message)) return "damaged";
   if (/answered \S+ with status \d+/.test(message)) return "server";
@@ -113,11 +115,11 @@ export async function verifyFile(store: FileStore, entry: PinnedFile, name = ent
 /** A file the extension ships (lid.176.ftz), read from the package and checked against its pin. */
 export async function readPackaged(entry: PinnedFile): Promise<Uint8Array> {
   const response = await fetch(entry.url);
-  if (!response.ok) throw new Error(`${entry.name} is missing from the extension (status ${response.status})`);
+  if (!response.ok) throw new Error(`${entry.path ?? entry.name} is missing from the extension (status ${response.status})`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   const hasher = new Sha256();
   hasher.update(bytes);
-  if (bytes.length !== entry.size_bytes || hasher.digest() !== entry.sha256) throw new Error(`${entry.name} in the extension is not the pinned file`);
+  if (bytes.length !== entry.size_bytes || hasher.digest() !== entry.sha256) throw new Error(`${entry.path ?? entry.name} in the extension is not the pinned file`);
   return bytes;
 }
 
@@ -137,7 +139,7 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
   if (source > 0) onNotice(mirrorNotice(hostOf(sources[source]!)));
   for (let attempt = 0; ; attempt++) {
     try {
-      await attemptDownload(store, { ...entry, url: sources[source]! }, part, transport, signal, onProgress, connectTimeout, stallTimeout);
+      await attemptDownload(store, { ...entry, url: sources[source]! }, part, transport, signal, onProgress, connectTimeout, stallTimeout, options.onPhase);
       return;
     } catch (error) {
       if (error instanceof DownloadPaused) throw error;
@@ -154,9 +156,9 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
       const retryable = error instanceof DownloadFailed ? error.retryable : true;
       const wait = retryWaits[attempt];
       if (!retryable || wait === undefined) {
-        throw error instanceof DownloadFailed ? error : new DownloadFailed(`Downloading ${entry.name} failed: ${(error as Error).message}`);
+        throw error instanceof DownloadFailed ? error : new DownloadFailed(`Downloading ${entry.path ?? entry.name} failed: ${(error as Error).message}`);
       }
-      onNotice(`Retrying ${entry.name} in ${Math.round(wait / 1000)} s`);
+      onNotice(`Retrying ${entry.path ?? entry.name} in ${Math.round(wait / 1000)} s`);
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, wait);
         signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
@@ -167,10 +169,12 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
 }
 
 async function attemptDownload(store: FileStore, entry: PinnedFile, part: string, transport: typeof fetch | undefined,
-  signal: AbortSignal | undefined, onProgress: (bytes: number) => void, connectTimeout: number, stallTimeout: number): Promise<void> {
+  signal: AbortSignal | undefined, onProgress: (bytes: number) => void, connectTimeout: number, stallTimeout: number,
+  onPhase: DownloadOptions["onPhase"]): Promise<void> {
   const paused = () => { if (signal?.aborted) throw new DownloadPaused(); };
   // Already there, and the pinned bytes exactly.
   if ((await store.size(entry.name)) === entry.size_bytes) {
+    onPhase?.("verifying");
     if (await verifyFile(store, entry)) { onProgress(entry.size_bytes); return; }
     await store.delete(entry.name);
   }
@@ -179,11 +183,13 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   let offset = (await store.size(part)) ?? 0;
   if (offset > entry.size_bytes) { await store.delete(part); offset = 0; }
   const hasher = new Sha256();
+  onProgress(offset);
   if (offset > 0) {
+    onPhase?.("verifying");
     for await (const chunk of store.stream(part)) { hasher.update(chunk); paused(); }
   }
-  onProgress(offset);
   if (offset === entry.size_bytes) return finish(store, entry, part, hasher);
+  onPhase?.("downloading");
   // Aborted only while no answer has come: once it has, the body streams for as long as it takes.
   const connecting = new AbortController();
   const timer = setTimeout(() => connecting.abort(), connectTimeout);
@@ -199,23 +205,23 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   };
   const response = await (transport ? transport(entry.url, request) : fetch(entry.url, request)).catch((error: unknown) => {
     if (signal?.aborted) throw new DownloadPaused();
-    if (connecting.signal.aborted) throw new DownloadFailed(`The network request for ${entry.name} timed out`, true, true);
+    if (connecting.signal.aborted) throw new DownloadFailed(`The network request for ${entry.path ?? entry.name} timed out`, true, true);
     if ((error as { name?: string }).name === "AbortError") throw new DownloadPaused();
-    throw new DownloadFailed(`The network request for ${entry.name} failed`, true, true);
+    throw new DownloadFailed(`The network request for ${entry.path ?? entry.name} failed`, true, true);
   }).finally(() => clearTimeout(timer));
   paused();
   // Followed redirects end on the hub's own hosts or the mirror's: anywhere else is not the
   // pinned repository (the bytes would fail their hash anyway), and is not read at all.
   if (response.url && !(secure(response.url) && fromTheHub(response.url))) {
     await response.body?.cancel().catch(() => {});
-    throw new DownloadFailed(`The download of ${entry.name} was sent somewhere other than the model's host`);
+    throw new DownloadFailed(`The download of ${entry.path ?? entry.name} was sent somewhere other than the model's host`);
   }
   let resumed = false;
   if (response.status === 206) {
     const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get("Content-Range") ?? "");
     if (!range || Number(range[1]) !== offset || Number(range[3]) !== entry.size_bytes) {
       await response.body?.cancel().catch(() => {});
-      throw new DownloadFailed(`The server answered ${entry.name} with an unexpected range`, true);
+      throw new DownloadFailed(`The server answered ${entry.path ?? entry.name} with an unexpected range`, true);
     }
     resumed = true;
   } else if (response.status === 200) {
@@ -223,9 +229,9 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
     if (offset > 0) { await store.truncate(part, 0); offset = 0; hasher.reset(); onProgress(0); }
   } else {
     await response.body?.cancel().catch(() => {});
-    throw new DownloadFailed(`The server answered ${entry.name} with status ${response.status}`, response.status >= 500 || response.status === 429, response.status >= 500);
+    throw new DownloadFailed(`The server answered ${entry.path ?? entry.name} with status ${response.status}`, response.status >= 500 || response.status === 429, response.status >= 500);
   }
-  if (!response.body) throw new DownloadFailed(`The server sent no body for ${entry.name}`, true);
+  if (!response.body) throw new DownloadFailed(`The server sent no body for ${entry.path ?? entry.name}`, true);
   const writer = await store.writer(part, resumed);
   const reader = response.body.getReader();
   let oversized = false;
@@ -242,13 +248,13 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
         ]);
       } catch (error) {
         if (signal?.aborted || (error as { name?: string }).name === "AbortError") throw new DownloadPaused();
-        throw new DownloadFailed(`The connection for ${entry.name} was lost`, true);
+        throw new DownloadFailed(`The connection for ${entry.path ?? entry.name} was lost`, true);
       } finally {
         clearTimeout(stalled);
       }
       if (next.done) break;
       const chunk = next.value;
-      if (offset + chunk.length > entry.size_bytes) { oversized = true; throw new DownloadFailed(`${entry.name} is larger than its pinned size`); }
+      if (offset + chunk.length > entry.size_bytes) { oversized = true; throw new DownloadFailed(`${entry.path ?? entry.name} is larger than its pinned size`); }
       hasher.update(chunk);
       // A write that fails stops the download here: the response is cancelled and the part
       // keeps what the disk took (downloadFile says why).
@@ -266,14 +272,15 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
     throw error;
   }
   await writer.close();
-  if (offset < entry.size_bytes) throw new DownloadFailed(`Incomplete download of ${entry.name}; partial bytes retained for retry`, true);
+  if (offset < entry.size_bytes) throw new DownloadFailed(`Incomplete download of ${entry.path ?? entry.name}; partial bytes retained for retry`, true);
+  onPhase?.("verifying");
   await finish(store, entry, part, hasher);
 }
 
 async function finish(store: FileStore, entry: PinnedFile, part: string, hasher: Sha256): Promise<void> {
   if (hasher.digest() !== entry.sha256) {
     await store.delete(part);
-    throw new DownloadFailed(`Checksum or size mismatch for ${entry.name}`);
+    throw new DownloadFailed(`Checksum or size mismatch for ${entry.path ?? entry.name}`);
   }
   await store.rename(part, entry.name);
 }

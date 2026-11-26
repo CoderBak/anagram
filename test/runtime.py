@@ -989,7 +989,9 @@ class ProvenanceTests(unittest.TestCase):
                 return real_open(file, mode, *args, **kwargs)
             with patch("io.open", counting_open):
                 remember(weights, hashlib.sha256(b"pinned weights").hexdigest())  # what a start does
-                first = load_candidate(path, FP32, 512, 32, None, api, {})[0].version
+                first = load_candidate(path, FP32, 512, 32, None, api, {"cpu_affinity": [0, 1]})[0].version
+                resumed = load_candidate(path, FP32, 512, 32, None, api, {"cpu_affinity": [1]})[0].version
+                self.assertEqual(first, resumed)
                 self.assertEqual(len(reads), 0)
                 weights.write_bytes(b"replaced weights!")
                 self.assertNotEqual(load_candidate(path, FP32, 512, 32, None, api, {})[0].version, first)

@@ -118,16 +118,18 @@ def load_candidate(model_dir, candidate, max_length, batch_size, gate, api, envi
     try:
         phase("loading")
         started = clock()
+        # Scheduler affinity can change on resume. Keep it in benchmark discovery only.
+        scoring_environment = {k: v for k, v in environment.items() if k != "cpu_affinity"}
         if candidate.runtime == "torch":
             engine = api.EditLens.__new__(api.EditLens)
             engine.__init__(model_dir, candidate.device, max_length, batch_size,
                             candidate.precision, gate, warmup=False)
-            options = {"device": candidate.device, "environment": environment}
+            options = {"device": candidate.device, "environment": scoring_environment}
         else:
             adapter = MlxEditLens if candidate.runtime == "mlx" else OnnxEditLens
             engine = adapter.__new__(adapter)
             engine.__init__(model_dir, candidate, max_length, batch_size, gate, api)
-            options = {**engine.options, "environment": environment}
+            options = {**engine.options, "environment": scoring_environment}
         engine.synchronize()
         load_ms = (clock() - started) * 1000
         phase("hashing")

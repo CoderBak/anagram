@@ -33,7 +33,7 @@ async function adapter(nav: NavigatorExtras): Promise<DeviceInputs["gpu"]> {
   if (!found || (found.info?.isFallbackAdapter ?? found.isFallbackAdapter) === true) return null;
   const { vendor, architecture, description } = found.info ?? {};
   const holds = (bytes: number): boolean => found.limits.maxStorageBufferBindingSize >= bytes && found.limits.maxBufferSize >= bytes;
-  return { vendor, architecture, description, fits: holds(TIERS[0].maxTensorBytes), fitsFp16: holds(TIERS[1].maxTensorBytes), f16: found.features?.has("shader-f16") === true };
+  return { vendor, architecture, description, fits: holds(TIERS[0].maxTensorBytes), fitsFp16: false, f16: found.features?.has("shader-f16") === true };
 }
 
 /** WebGL's names for the GPU (Firefox gives a generalized one, "Apple M1, or similar"). */

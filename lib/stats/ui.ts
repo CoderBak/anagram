@@ -9,7 +9,6 @@ import {
 } from "./config";
 
 export const dimensionLabel = (d: Dimension): string => t(DIMENSION_KEYS[d]![0]);
-export const dimensionHint = (d: Dimension): string => t(DIMENSION_KEYS[d]![1]);
 export const layerLabel = (d: Dimension, layer: string): string => t(LAYER_KEYS[`${d}.${layer}`]!);
 export const presetLabel = (p: Preset | "off" | "custom"): string => t(PRESET_KEYS[p]![0]);
 export const presetHint = (p: Preset | "off" | "custom"): string => t(PRESET_KEYS[p]![1]);
@@ -59,14 +58,20 @@ export function layerTable(idPrefix: string, onChange: (layers: Layers, hashed: 
     const label = document.createElement("label");
     label.htmlFor = `${idPrefix}-${d}`;
     label.textContent = dimensionLabel(d);
-    const hint = document.createElement("span");
-    hint.className = "hint";
-    hint.textContent = dimensionHint(d);
-    name.append(label, hint);
+    name.append(label);
     const cell = row.insertCell();
     const select = document.createElement("select");
     select.className = "select";
     select.id = `${idPrefix}-${d}`;
+    const hintKey = DIMENSION_KEYS[d]![1];
+    if (hintKey) {
+      const hint = document.createElement("span");
+      hint.id = select.id + "-hint";
+      hint.className = "hint";
+      hint.textContent = t(hintKey);
+      name.append(hint);
+      select.setAttribute("aria-describedby", hint.id);
+    }
     cell.append(select);
     selects.set(d, select);
     if ((HASHABLE as readonly Dimension[]).includes(d)) {
@@ -100,6 +105,8 @@ export function layerTable(idPrefix: string, onChange: (layers: Layers, hashed: 
         const select = selects.get(d)!;
         const all = DIMENSIONS[d] as readonly string[];
         const from = cap ? rank(d, cap[d] as never) : 0;
+        // A field absent from the recorded data has no export choice.
+        select.closest("tr")!.hidden = all[from] === "none";
         select.replaceChildren(...all.slice(from).map((layer) => new Option(layerLabel(d, layer), layer)));
         select.value = rank(d, layers[d] as never) < from ? all[from]! : layers[d];
       }

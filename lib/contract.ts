@@ -83,6 +83,10 @@ export interface ScoreResult {
    * render as "Unsupported language". A real, cacheable result (deterministic).
    */
   unsupported?: boolean;
+  /** Passage below the active detector’s minimum word count. */
+  insufficient?: boolean;
+  /** The decoder's ordered sentence labels within this scored passage, using the release's class order. */
+  sentenceLabels?: number[];
   /**
    * True when this result is a transport/backend-failure FALLBACK, not a model
    * output. Degraded results render ("Unavailable") but must never enter any

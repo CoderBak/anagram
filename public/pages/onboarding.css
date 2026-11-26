@@ -1,54 +1,114 @@
-/* Layout only; colours, type and controls come from Basecoat (Vega). */
-body { margin: 0; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; }
-.page { max-width: 640px; margin: 0 auto; padding: 24px 20px 28px; }
-header.hdr { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-header.hdr img { width: 48px; height: 48px; margin: -2px; }
-header.hdr .logo-dark { display: none; }
-html.dark header.hdr .logo-light { display: none; }
-html.dark header.hdr .logo-dark { display: block; }
-header.hdr h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
-header.hdr .tag { margin: 3px 0 0; font-size: 14px; color: var(--muted-foreground); }
-header.hdr .ver { margin-inline-start: auto; align-self: flex-start; font-size: 12px; color: var(--muted-foreground); }
-.stack { display: flex; flex-direction: column; gap: 12px; }
-.card > section { display: flex; flex-direction: column; gap: 10px; }
+.page { max-width: 720px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.stack > .card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+.stack > .card > header, .stack > .card > section { padding-inline: 0; }
+@media (min-width: 581px) { .stack > .step > section { padding-inline-start: 34px; } }
+.stack > .card > header h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+.card > section { display: flex; flex-direction: column; gap: 8px; }
+#tryParagraph { flex: none; }
 
-/* The three steps: a number that turns into a tick once the step is done. */
-.step > header { display: flex; align-items: center; gap: 10px; }
+/* The three steps: a circular badge whose number turns into a quiet checkmark once done. */
+.step > header { display: flex; align-items: center; gap: 11px; cursor: pointer; user-select: none; }
 .step > header h2 { flex: 1; min-width: 0; }
-.num { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%;
-  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
-  background: var(--muted); color: var(--foreground); }
-.num svg { display: none; }
-.step.done .num { background: #00a06a; color: #fff; }
-html.dark .step.done .num { background: #33d996; color: #0a0a0a; }
+.num {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid var(--input);
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.step.open:not(.done) .num {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.step.done .num {
+  border-color: color-mix(in srgb, #00a06a 32%, transparent);
+  background: color-mix(in srgb, #00a06a 12%, transparent);
+  color: #007d52;
+}
+html.dark .step.done .num {
+  border-color: color-mix(in srgb, #33d996 35%, transparent);
+  background: color-mix(in srgb, #33d996 14%, transparent);
+  color: #33d996;
+}
+.num svg { display: none; width: 12px; height: 12px; }
 .step.done .num span { display: none; }
 .step.done .num svg { display: block; }
 .step-note { margin: 0; font-size: 13px; color: var(--muted-foreground); }
+
 /* One step at a time: a closed step is its header alone. */
-.step > header { cursor: pointer; user-select: none; }
 .step:not(.open) > section { display: none; }
-.step-toggle { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
-.step-toggle:hover { background: var(--muted); }
+.step:not(.open) { gap: 0; }
+.step-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.step-toggle:hover { background: var(--accent); color: var(--foreground); }
 .step-toggle:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-.step-toggle svg { transition: transform .15s; }
+.step-toggle svg { width: 15px; height: 15px; transition: transform 0.15s; }
 .step.open .step-toggle svg { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .step-toggle svg { transition: none; } }
 
-/* Reading the marks: the four words in their colours, and the scale they cut. */
-/* The four words, each beside a chip as the page shows it (lib/render/badge.css.ts): a neutral
-   pill, the word's colour on its dot. */
-.words { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; }
-.word { display: inline-flex; align-items: center; gap: 7px; }
-.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; border-radius: 999px; background: #f4f4f5; color: #52525b; font-size: 11px; font-weight: 500; line-height: 1.35; font-variant-numeric: tabular-nums; }
-html.dark .chip { background: #27272a; color: #d4d4d8; }
-.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
-.bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; }
-.bar > span { background: var(--c); }
-/* The scale's four stretches: .00–1/6, 1/6–1/2, 1/2–5/6, 5/6–1.0. */
-.bar > .b0, .bar > .b3 { flex: 1; }
-.bar > .b1, .bar > .b2 { flex: 2; }
-.bar > span + span { border-inline-start: 2px solid var(--background); }
-.ends { display: flex; justify-content: space-between; margin-top: -4px; font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+/* The reference card: quiet pills matching the in-page chips. */
+#verdictCard { gap: 10px; }
+.marks-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; }
+.words { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
+.word { display: inline-flex; align-items: center; gap: 6px; color: var(--foreground); }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  border: 1px solid rgb(0 0 0 / 0.06);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; color: #d4d6dc; }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
 .note { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
-.links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 2px 0 0; font-size: 13px; }
-.links a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 12px 0 0;
+  padding-inline: 2px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.links a { display: inline-block; min-height: 24px; line-height: 24px; }

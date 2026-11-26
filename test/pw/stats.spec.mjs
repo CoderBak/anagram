@@ -4,7 +4,7 @@
 // asked); a route change is a visit of its own, filed under its own address; the PDF reader's
 // paragraphs count as a document; the statistics page shows what was kept, counts it another way
 // where paragraphs were kept, replays a visit, exports at the layers chosen and clears; Settings
-// chooses what to keep (a preset per tile) and offers to delete what a new choice would not; and the toolbar menu
+// chooses what to keep (a preset menu) and offers to delete what a new choice would not; and the toolbar menu
 // has today's line.
 //
 // The database is read from the extension's worker (the extension's own origin); its rows are
@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { test, expect, settledChips, ABSENCE_MS, popupOver } from "./kit.mjs";
 import { fakeScore } from "../fake-native.mjs";
 import { TEST_PDF, pdfChips, readerRead } from "../pdf-fixture.mjs";
-import { localDate, presetConfig, seedStats, statsRecords, statsVisit } from "../stats-fixture.mjs";
+import { daysAgo, localDate, presetConfig, seedStats, statsDb, statsRecords, statsVisit, statsWeek, tally } from "../stats-fixture.mjs";
 
 test.use({ launch: { viewport: { width: 1280, height: 720 } } });
 
@@ -35,24 +35,6 @@ ${TOP.map((p) => `<p>${p}</p>`).join("\n")}
 <div style="height:4000px"></div>
 ${BELOW.map((p) => `<p>${p}</p>`).join("\n")}
 </main></body></html>`;
-
-/** What the extension's database holds, from its worker; null while there is no database. */
-const statsDb = (extension) =>
-  extension.worker().evaluate(async () => {
-    const db = await new Promise((resolve) => {
-      const open = indexedDB.open("anagram-stats");
-      // No database yet: none is made here, or the extension's own would find it empty.
-      open.onupgradeneeded = () => open.transaction.abort();
-      open.onsuccess = () => resolve(open.result);
-      open.onerror = () => resolve(null);
-    });
-    if (!db) return null;
-    const all = (store) => new Promise((resolve) => { const r = db.transaction(store).objectStore(store).getAll(); r.onsuccess = () => resolve(r.result); });
-    const out = {};
-    for (const store of ["visits", "units", "events", "texts", "totals", "tabs", "context"]) out[store] = await all(store);
-    db.close();
-    return out;
-  });
 
 const dayTotal = (db) => db?.totals.find((t) => t.scope === "day")?.tally;
 /** The day's totals as soon as they hold `units` paragraphs (the page sends every few seconds). */
@@ -86,6 +68,43 @@ test("nothing is recorded while statistics are off, which is the default", async
   await readTop(page, pages);
   await leave(page, pages);
   expect(await statsDb(extension), "no database at all").toBeNull();
+});
+
+test.describe("with Chromium's private-window access enabled", () => {
+  test.use({ launch: { incognitoAccess: true } });
+
+  test("a private article gets a verdict without entering the full-text reading log", async ({ page, pages, extension, storage }) => {
+    await storage.set({ statsConfig: await presetConfig("fullText") });
+    await readTop(page, pages);
+    await dayWith(extension, 3);
+    await page.goto("about:blank");
+    const before = await statsDb(extension);
+    const label = "Private window test article";
+    const path = "/private-reading.html";
+    pages.serve({ [path]: article(label).replaceAll("Alpha", "Private-reading-marker") });
+    const worker = extension.worker();
+    const tab = await worker.evaluate(async (url) => {
+      const win = await chrome.windows.create({ incognito: true, focused: true, url });
+      return (await chrome.tabs.query({ windowId: win.id }))[0];
+    }, pages.url(path));
+    expect(tab.incognito).toBe(true);
+    try {
+      await expect.poll(() => worker.evaluate(async (id) => {
+        const [frame] = await chrome.scripting.executeScript({ target: { tabId: id }, func: () =>
+          [...document.querySelectorAll('[data-anagram="host"]')].filter((h) => h.shadowRoot?.querySelector(".pill.scored")).length });
+        return frame.result;
+      }, tab.id).catch(() => 0)).toBeGreaterThanOrEqual(3);
+      await page.waitForTimeout(1500); // Remain visible past the one-second reading threshold.
+    } finally {
+      await worker.evaluate((id) => chrome.windows.remove(id), tab.windowId);
+    }
+    await page.waitForTimeout(ABSENCE_MS);
+    const after = await statsDb(extension);
+    expect(dayTotal(after)).toEqual(dayTotal(before));
+    for (const store of ["units", "visits", "texts"]) expect(after[store]).toHaveLength(before[store].length);
+    const saved = JSON.stringify(after);
+    for (const value of [path, label, "Private-reading-marker"]) expect(saved).not.toContain(value);
+  });
 });
 
 test("daily totals: the paragraphs read, once each, as expected words per verdict, and nothing of the visit, the site or the page", async ({ page, pages, extension, storage }) => {
@@ -244,9 +263,9 @@ test("the PDF reader's paragraphs count as a document, and a file from this comp
 // ---- the statistics page --------------------------------------------------------------------
 
 /** The statistics page, with `records` put in the database first. */
-async function statsPage(page, extension, records) {
+async function statsPage(page, extension, records, hash = "#today") {
   if (records) await seedStats(extension.worker(), records);
-  await page.goto(extension.url("stats.html"), { waitUntil: "load" });
+  await page.goto(extension.url("stats.html") + hash, { waitUntil: "load" });
   return page;
 }
 
@@ -255,11 +274,11 @@ test("the statistics page, while off, offers the presets in one menu, says what 
   await expect(page.locator("#offCard")).toBeVisible();
   await expect(page.locator("#content")).toBeHidden();
   await expect(page.locator("#turnOnPreset option")).toHaveCount(7);
-  await expect(page.locator("#turnOnHint")).toHaveText("Words read each day and how they score. No sites.");
+  await expect(page.locator("#turnOnHint")).toHaveText("Word counts and verdicts by day.");
   await expect(page.locator("#turnOnWarn p")).toHaveCount(0);
   await page.selectOption("#turnOnPreset", "fullText");
   await expect(page.locator("#turnOnHint")).toHaveText("Everything, including the text you read.");
-  await expect(page.locator("#turnOnWarn p")).toContainText(["This keeps the text of every paragraph you read."]);
+  await expect(page.locator("#turnOnWarn p")).toContainText(["Apps with access to this browser profile can read the saved paragraphs."]);
   await page.selectOption("#turnOnPreset", "pages");
   await page.click("#turnOn");
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("page");
@@ -271,27 +290,36 @@ test("the statistics page shows what was kept: the share against before, the wor
   await storage.set({ statsConfig: await presetConfig("pages") });
   await statsPage(page, extension, statsRecords());
   await expect(page.locator("#heroShare")).toHaveText("14%");
-  await expect(page.locator("#heroLine")).toHaveText("expected to be AI-generated");
+  await expect(page.locator("#heroLine")).toHaveText("Estimated AI-generated share");
   await expect(page.locator("#heroLegend li")).toHaveText(["Human60%", "Lightly edited18%", "Heavily edited9%", "AI-generated14%"]);
-  await expect(page.locator("#heroCompare")).toHaveText("Over the last 30 days, today included: 14%.");
+  await expect(page.locator("#siteCard")).toBeVisible();
+  await expect(page.locator("#pagesCard")).toBeHidden();
+  await page.click("#pagesTab");
+  await expect(page.locator("#pagesCard")).toBeVisible();
+  await page.click("#siteTab");
+  await expect(page.locator("#heroCompare")).toHaveText("Last 30 days: 14%");
   await expect(page.locator("#scoredFigure")).toHaveText("8,400");
-  await expect(page.locator("#scoredLine")).toHaveText("Pages 1 · Sites 2");
+  await expect(page.locator("#scoredLine")).toHaveText("1 page · 2 sites");
   // The site with the largest share, of those with words enough to say.
   await expect(page.locator("#topFigure")).toHaveText("social.example");
-  await expect(page.locator("#topLine")).toHaveText("22% of 4,200 words");
-  await expect(page.locator("#coverageFigure")).toHaveText("82%");
-  await expect(page.locator("#coverageLine")).toHaveText("8,400 of the 10,200 words you read could be scored (82%).");
+  await expect(page.locator("#topLine")).toHaveText("22% of 3,000 words scored");
+  await expect(page.locator("#coverageLine")).toBeHidden();
+  await expect(page.locator("#coverageLine")).toHaveText("Scored 8,400 of 10,200 words (82%).");
   // What held no words is not listed.
-  await expect(page.locator("#coverageList li")).toHaveText(["Scored: 8,400 words", "Too short to score: 1,200 words", "Not in English: 500 words", "Engine unavailable: 100 words"]);
+  await expect(page.locator("#coverageList")).toBeHidden();
+  await page.getByText("Scoring details", { exact: true }).click();
+  await expect(page.locator("#coverageList")).toBeVisible();
+  await expect(page.locator("#coverageList li")).toHaveText(["Too short to score: 1,200 words", "Not in English: 500 words", "Engine unavailable: 100 words"]);
   await expect(page.locator("#trendCard")).toBeHidden();
   const rows = (id) => page.locator(`#${id} tbody tr`).evaluateAll((trs) => trs.map((tr) => [...tr.cells].slice(0, 3).map((c) => c.textContent)));
   expect(await rows("kindTable")).toEqual([["Feeds", "4,200", "22%"], ["Articles", "6,000", "10%"]]);
   expect(await rows("siteTable")).toEqual([["news.example", "6,000", "10%"], ["social.example", "4,200", "22%"]]);
-  const pagesRow = await page.locator("#pagesTable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.cells].map((c) => c.textContent)));
-  expect(pagesRow).toHaveLength(1);
-  expect(pagesRow[0].slice(1, 4)).toEqual(["A story", "5,400", "10%"]);
+  await expect(page.locator("#pagesTable tbody tr")).toHaveCount(1);
+  await expect(page.locator("#pagesTable a")).toHaveText("A story");
+  await expect(page.locator("#pagesTable .page-host")).toHaveText("news.example");
+  await expect(page.locator("#pagesTable .cell-value")).toHaveText(["5,400", "10%", "2 min"]);
   await expect(page.locator("#pagesTable a")).toHaveAttribute("href", "https://news.example/story");
-  await expect(page.locator("#lensNote")).toContainText("As Anagram counts");
+  await expect(page.locator("#lensNote")).toContainText("once per visit");
 
   // A site is a filter: the figures are that site's alone, By site still lists both, until Show all.
   await expect(page.locator("#filter")).toBeHidden();
@@ -299,13 +327,13 @@ test("the statistics page shows what was kept: the share against before, the wor
   await expect(page.locator("#filterText")).toHaveText("Site: news.example");
   await expect(page.locator("#heroShare")).toHaveText("10%");
   await expect(page.locator("#scoredFigure")).toHaveText("5,400");
-  await expect(page.locator("#scoredLine")).toHaveText("Pages 1");
+  await expect(page.locator("#scoredLine")).toHaveText("1 page");
   // One kind of page alone is not the most of anything.
-  await expect(page.locator("#topFigure")).toHaveText("–");
+  await expect(page.locator("#topDetail")).toBeHidden();
   await expect(page.locator("#siteTable tbody tr")).toHaveCount(2);
   await expect(page.locator('#siteTable tr[aria-current="true"]')).toContainText("news.example");
   expect(await rows("kindTable")).toEqual([["Articles", "5,400", "10%"]]);
-  await page.locator("#siteTable tbody tr", { hasText: "social.example" }).focus();
+  await page.locator("#siteTable button", { hasText: "social.example" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#filterText")).toHaveText("Site: social.example");
   await expect(page.locator("#heroShare")).toHaveText("22%");
@@ -328,8 +356,67 @@ test("the statistics page shows what was kept: the share against before, the wor
   await today.locator("rect.hit").click();
   await expect(page.locator("#trendCard")).toBeHidden();
   await expect(page.locator("#trendTip")).toBeHidden();
-  await expect(page.locator('#ranges [aria-selected="true"]')).toHaveCount(0);
+  await expect(page.locator('#ranges [aria-pressed="true"]')).toHaveCount(0);
   await expect(page.locator("#heroShare")).toHaveText("14%");
+  await page.click("#more summary");
+  await expect(page.locator("#rangeFrom")).toHaveValue(localDate());
+  await expect(page.locator("#rangeTo")).toHaveValue(localDate());
+  await page.keyboard.press("Escape");
+  await page.click("#returnRange");
+  await expect(page.locator('#ranges [data-range="7"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#returnRange")).toBeHidden();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('#ranges [data-range="30"]');
+  await expect(page.locator("#trendChart g.col")).toHaveCount(30);
+  const labels = await page.locator('#trendChart text[text-anchor="middle"]').evaluateAll((nodes) =>
+    nodes.map((n) => ({ left: n.getBoundingClientRect().left, right: n.getBoundingClientRect().right, date: n.textContent })).sort((a, b) => a.left - b.left));
+  expect(labels.length).toBeGreaterThan(2);
+  expect(labels.at(-1).date).toEqual(new Intl.DateTimeFormat("en", { month: "numeric", day: "numeric" }).format(new Date()));
+  for (let i = 1; i < labels.length; i++) expect(labels[i].left - labels[i - 1].right).toBeGreaterThan(1);
+  await page.click("#trendCard details summary");
+  const lastDay = page.locator("#trendTable button").last();
+  await expect(lastDay).toBeVisible();
+  await lastDay.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#trendCard")).toBeHidden();
+});
+
+test("the weekly report switches between comparable shares and daily volume", async ({ page, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("pages") });
+  await statsPage(page, extension, statsWeek(), "");
+  await expect(page.locator('#ranges [aria-pressed="true"]')).toHaveText("7 days");
+  const heights = () => page.locator("#trendChart g.col").evaluateAll(cols =>
+    cols.map(col => [...col.querySelectorAll("rect.seg")].reduce((total, rect) => total + rect.height.baseVal.value, 0)));
+  const volume = await heights();
+  expect(new Set(volume.filter(n => n > 0)).size).toBeGreaterThan(1);
+  await page.click("#trendShare");
+  await expect(page.locator("#trendShare")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#trendChart svg")).toHaveAttribute("aria-label", /Daily verdict shares/);
+  const shares = await heights();
+  expect(shares.filter(n => n === 0).length).toBeGreaterThan(0);
+  for (const [i, height] of shares.entries()) {
+    if (volume[i]) expect(height).toBeCloseTo(Math.max(...shares), 3);
+    else expect(height).toBe(0);
+  }
+  await page.click("#trendVolume");
+  expect(await heights()).toEqual(volume);
+  await page.locator("#siteTab").focus();
+  await page.keyboard.press("End");
+  await expect(page.locator("#pagesTab")).toBeFocused();
+  await expect(page.locator("#pagesCard")).toBeVisible();
+  await expect(page.locator("#visitsTab")).toBeHidden();
+  await page.keyboard.press("Home");
+  await expect(page.locator("#siteTab")).toBeFocused();
+  await page.click("#more summary");
+  await page.locator("#rangeFrom").fill(daysAgo(4));
+  await page.locator("#rangeTo").fill(daysAgo(1));
+  await expect(page.locator('#ranges [data-range="7"]')).toHaveAttribute("aria-pressed", "true");
+  await page.click("#rangeForm button");
+  await expect(page.locator("#trendChart g.col")).toHaveCount(4);
+  await page.setViewportSize({ width: 320, height: 680 });
+  await page.click("#pagesTab");
+  await expect(page.locator("#pagesTable .mobile-label").first()).toBeVisible();
+  expect(await page.locator("#pagesTable").evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
 test("how it counts: the paragraphs kept are counted again by another rule, and the totals say they cannot be", async ({ page, extension, storage }) => {
@@ -339,17 +426,39 @@ test("how it counts: the paragraphs kept are counted again by another rule, and 
   await page.click("#lens summary");
   // Two seconds on screen to count: the 1.5 s human paragraph is no longer read.
   await page.selectOption("#lensRead", "2000");
-  await expect(page.locator("#lensNote")).toHaveText("Counted again from the paragraphs Anagram kept.");
+  await expect(page.locator("#lensNote")).toHaveText("Calculated from recorded paragraphs.");
   await expect(page.locator("#heroShare")).toHaveText("90%");
   await page.selectOption("#lensRead", "500");
   await expect(page.locator("#heroShare")).toHaveText("60%");
   await page.click("#lensReset");
   await expect(page.locator("#heroShare")).toHaveText("45%");
   // A replay of the visit: a bar for each spell on screen.
+  await page.click("#visitsTab");
   await page.click("#visitsTable button.linkish");
   await expect(page.locator("#replay")).toBeVisible();
+  await expect(page.locator("#visitFacts")).toContainText("Passages on screen");
+  await expect(page.locator("#replayChart svg")).toHaveCount(0);
+  await page.locator("#visitTimeline summary").click();
   await expect(page.locator("#replayChart svg rect.on")).toHaveCount(3);
   await expect(page.locator("#replayChart svg path.scroll")).toHaveCount(1);
+});
+
+test("changing sites closes a replay from the previous site while keeping other visits visible", async ({ page, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("full") });
+  const records = statsVisit();
+  records.totals.push(...statsRecords().totals.filter((r) => r.scope === "site"));
+  records.visits.push({ ...records.visits[0], id: "abcdef0123456789abcdef0123456789", site: "social.example", url: "https://social.example/post", title: "Other visit" });
+  await statsPage(page, extension, records);
+  await page.click("#visitsTab");
+  await page.locator("#visitsTable tr", { hasText: "A story" }).getByRole("button").click();
+  await expect(page.locator("#replay")).toBeVisible();
+  await page.click("#siteTab");
+  await page.locator("#siteTable tr.pick", { hasText: "social.example" }).click();
+  await expect(page.locator("#visitsTable tbody tr")).toHaveCount(1);
+  await page.click("#visitsTab");
+  await expect(page.locator("#visitsCard")).toBeVisible();
+  await expect(page.locator("#replay")).toBeHidden();
+  await expect(page.locator("#replayTitle")).toHaveText("");
 });
 
 test("how it counts: totals alone cannot be counted another way, and say so", async ({ page, extension, storage }) => {
@@ -357,16 +466,55 @@ test("how it counts: totals alone cannot be counted another way, and say so", as
   await statsPage(page, extension, statsRecords());
   await page.click("#lens summary");
   await page.selectOption("#lensRead", "2000");
-  await expect(page.locator("#lensNote")).toHaveText("These are the totals Anagram kept: counting another way needs paragraphs kept (Settings, Statistics).");
+  await expect(page.locator("#lensNote")).toHaveText("Showing recorded totals. This rule requires paragraph history.");
   await expect(page.locator("#heroShare")).toHaveText("14%");
+});
+
+test("period comparisons require both periods to support the selected counting rule", async ({ page, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("full") });
+  const records = statsVisit(), previous = statsVisit(daysAgo(8));
+  previous.visits[0].id = "earlier-visit";
+  for (const unit of previous.units) {
+    unit.visit = previous.visits[0].id;
+    delete unit.expo;
+  }
+  records.visits.push(...previous.visits);
+  records.units.push(...previous.units);
+  records.totals.push(...previous.totals);
+  await statsPage(page, extension, records);
+  await page.click('#ranges [data-range="7"]');
+  await expect(page.locator("#heroCompare")).not.toBeEmpty();
+  await page.click("#lens summary");
+  await page.selectOption("#lensRead", "2000");
+  await expect(page.locator("#scoredFigure")).toHaveText("100");
+  await expect(page.locator("#heroCompare")).toBeEmpty();
+});
+
+test("paragraph verdict shares use the classified paragraph count throughout the dashboard", async ({ page, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("pages") });
+  const records = statsRecords();
+  for (const total of records.totals) delete total.tally.argmax;
+  await statsPage(page, extension, records);
+  await page.click("#lens summary");
+  await page.selectOption("#lensEstimator", "chip");
+  await expect(page.locator("#heroLine")).toHaveText("AI-generated paragraphs");
+  await expect(page.locator("#topLine")).toHaveText("15% of 33 paragraphs scored");
+  await page.click('#ranges [data-range="7"]');
+  await expect(page.locator("#trendChart svg")).toHaveAttribute("aria-label", /Paragraphs scored per day/);
+  await page.locator("#trendChart rect.hit").last().hover();
+  await expect(page.locator("#trendTip")).toContainText("65 paragraphs scored, 14% AI-generated");
+  await page.selectOption("#lensEstimator", "argmax");
+  await expect(page.locator("#heroShare")).toHaveText("Unavailable");
+  await expect(page.locator("#heroLegend")).toBeHidden();
+  await expect(page.locator("#trendUnavailable")).toBeVisible();
+  await expect(page.locator("#trendChart")).toBeHidden();
 });
 
 test("export: never finer than what was kept, at the layers chosen, as JSON or a zip of CSV", async ({ page, extension, storage }) => {
   await storage.set({ statsConfig: await presetConfig("full") });
   await statsPage(page, extension, { ...statsRecords(), ...statsVisit(), totals: [...statsRecords().totals] });
-  // Export is in the More menu, which closes once it is chosen.
-  await expect(page.locator("#export")).toBeHidden();
-  await page.click("#more summary");
+  // Export is available from the report header.
+  await expect(page.locator("#export")).toBeVisible();
   await page.click("#export");
   await expect(page.locator("#exportDialog")).toBeVisible();
   await expect(page.locator("#more")).not.toHaveAttribute("open");
@@ -381,7 +529,6 @@ test("export: never finer than what was kept, at the layers chosen, as JSON or a
   expect(file.tables.totals.rows.map((r) => r[file.tables.totals.columns.indexOf("scope")]).sort()).toEqual(["day", "kind", "kind"]);
   for (const leak of ["news.example", "social.example", "A story", "https://"]) expect(text).not.toContain(leak);
   // Full: visits, paragraphs and events, in a zip a real unzip opens.
-  await page.click("#more summary");
   await page.click("#export");
   await page.selectOption("#exportPreset", "full");
   await page.check('#exportForm input[name=format][value=csv]');
@@ -399,98 +546,224 @@ test("export: never finer than what was kept, at the layers chosen, as JSON or a
   }
 });
 
+test("exporting saved text or excerpts requires choosing them for each download", async ({ page, extension, storage }) => {
+  const records = statsVisit();
+  const unit = records.units[0];
+  unit.head = "Private excerpt";
+  records.texts = [{ hash: unit.hash, text: "Private excerpt and its continuation.", first: unit.date, last: unit.date }];
+  await storage.set({ statsConfig: await presetConfig("fullText") });
+  await statsPage(page, extension, records);
+  const downloadJSON = async () => {
+    const [file] = await Promise.all([page.waitForEvent("download"), page.click("#exportSave")]);
+    return readFile(await file.path(), "utf8");
+  };
+  await page.click("#export");
+  await expect(page.locator("#exportPreset")).toHaveValue("full");
+  expect(await downloadJSON()).not.toContain("Private excerpt");
+  await page.click("#export");
+  await page.selectOption("#exportPreset", "fullText");
+  await page.check('#exportForm input[name="link"][value="stable"]');
+  expect(await downloadJSON()).toContain("Private excerpt and its continuation.");
+  await expect(page.locator("#exportPreview")).toBeEmpty();
+  await page.click("#export");
+  await expect(page.locator("#exportPreset")).toHaveValue("full");
+  await expect(page.locator('#exportForm input[name="link"][value="file"]')).toBeChecked();
+  expect(await downloadJSON()).not.toContain("Private excerpt");
+});
+
+test("export starts with the selected site and includes other sites only when explicitly selected", async ({ page, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("full") });
+  await statsPage(page, extension, statsRecords());
+  await page.locator("#siteTable tbody tr", { hasText: "news.example" }).click();
+  await expect(page.locator("#filterText")).toContainText("news.example");
+  for (const scope of ["site", "all"]) {
+    await page.click("#export");
+    await expect(page.locator("#exportScope")).toHaveValue("site");
+    if (scope === "all") await page.selectOption("#exportScope", "all");
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#exportSave")]);
+    const file = JSON.parse(await readFile(await download.path(), "utf8"));
+    expect(file.manifest.siteScope).toBe(scope === "all" ? "all-sites" : "selected-site");
+    const table = file.tables.totals;
+    const keys = table.rows.filter((r) => r[table.columns.indexOf("scope")] === "site").map((r) => r[table.columns.indexOf("key")]);
+    expect(keys.sort()).toEqual(scope === "all" ? ["news.example", "social.example"] : ["news.example"]);
+  }
+});
+
+test("a selected hashed site exports its retained page totals, including older rows linked by a visit", async ({ page, extension, storage }) => {
+  await storage.set({ statsConfig: await presetConfig("full", { layers: { place: "url" }, hashed: ["place"] }) });
+  const rows = statsRecords(), visit = statsVisit().visits[0];
+  const site = "413a4effe5203f13", other = "433df0ba013cbab3", url = "ac65ee413094f6cb", path = "0c66ab5c1fed098d";
+  const siteRow = rows.totals.find((t) => t.scope === "site"), pageRow = rows.totals.find((t) => t.scope === "page");
+  rows.totals = [
+    ...rows.totals.filter((t) => t.scope === "day"),
+    ...[site, other].map((key) => ({ ...siteRow, key, placeLayer: "host", hashed: true })),
+    { ...pageRow, key: url, title: "Older page", placeLayer: "url", hashed: true },
+    { ...pageRow, key: "482b65b1e15054ad", title: "Retained page", placeLayer: "path", hashed: true, siteHash: site },
+    { ...pageRow, key: "fce1a67e924199ba", title: "Other site", placeLayer: "path", hashed: true, siteHash: other },
+  ];
+  rows.visits = [{ ...visit, url, site, hashed: ["place"], places: { url, path, host: site, domain: site } }];
+  rows.visits[0].date = daysAgo(1);
+  await seedStats(extension.worker(), rows, 3);
+  await statsPage(page, extension);
+  await page.locator("#siteTable tr.pick", { hasText: site }).click();
+  await expect(page.locator("#pagesTable tbody tr")).toHaveCount(2);
+  await page.click("#export");
+  await page.selectOption("#exportPreset", "pages");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#exportSave")]);
+  const file = JSON.parse(await readFile(await download.path(), "utf8"));
+  const totals = file.tables.totals;
+  const pages = totals.rows.filter((r) => r[totals.columns.indexOf("scope")] === "page");
+  expect(pages.map((r) => r[totals.columns.indexOf("title")]).sort()).toEqual(["Older page", "Retained page"]);
+  expect(file.tables.visits).toBeUndefined();
+  expect(file.tables.units).toBeUndefined();
+  expect(JSON.stringify(file)).not.toContain("Other site");
+  expect(JSON.stringify(file)).not.toContain(site);
+});
+
+test("upgrades overnight history and includes only today's reading in a one-day recount and download", async ({ page, extension, storage }) => {
+  const today = localDate(), yesterday = daysAgo(1), records = statsVisit(yesterday);
+  const v = records.visits[0];
+  v.start = new Date(yesterday + "T23:58:00").getTime();
+  v.end = v.start + 240_000;
+  records.units[1].expo.readAt = 180_000;
+  records.totals = [yesterday, today].map((date) => ({ ...records.totals[0], date, tally: { ...v.tally, scored: 100 } }));
+  await storage.set({ statsConfig: await presetConfig("full") });
+  await seedStats(extension.worker(), records, 2);
+  await statsPage(page, extension);
+  await page.click("#lens summary");
+  await page.selectOption("#lensWeight", "paragraphs");
+  await expect(page.locator("#scoredFigure")).toHaveText("1");
+  await expect(page.locator("#heroShare")).toHaveText("0%");
+  await expect(page.locator("#pagesTable tbody tr").first().locator("td").first()).toContainText("23:58");
+  await page.click("#export");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#exportSave")]);
+  const file = JSON.parse(await readFile(await download.path(), "utf8"));
+  expect(file.manifest.lensBasis).toBe("paragraphs");
+  const lens = file.tables.lens;
+  expect(lens.rows.map((r) => [r[lens.columns.indexOf("date")], r[lens.columns.indexOf("tally.scored")]])).toEqual([[today, 1]]);
+  expect(file.tables.units).toBeUndefined();
+});
+
+test("Settings keeps the permitted hashed page when deleting finer history from IndexedDB", async ({ page, extension, storage }) => {
+  const records = statsVisit(), url = "c8ba3570dd2aa601", path = "ca890e0f974a0063", host = "c170c6d721219c60";
+  Object.assign(records.visits[0], { url, site: host, places: { url, path, host }, hashed: ["place"] });
+  records.totals.push({ ...records.totals[0], scope: "page", key: url, hashed: true, placeLayer: "url", title: "Older page" });
+  await storage.set({ statsConfig: await presetConfig("full", { hashed: ["place"] }) });
+  await seedStats(extension.worker(), records);
+  await page.goto(extension.url("options.html#statistics"));
+  await page.selectOption("#statsPresets", "pages");
+  await page.click("#dropStatsConfirm");
+  await expect(page.locator("#statsStatus")).toHaveText("Deleted. The daily totals stay.");
+  const db = await statsDb(extension);
+  expect(db.visits).toEqual([]);
+  expect(db.totals.find((t) => t.scope === "page")).toMatchObject({ key: path, siteHash: host, tally: { scored: 200 } });
+});
+
 test("clear: everything kept is deleted, after a confirmation", async ({ page, extension, storage }) => {
   await storage.set({ statsConfig: await presetConfig("daily"), statsSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" });
   await statsPage(page, extension, statsRecords());
   await expect(page.locator("#heroShare")).toHaveText("14%");
-  await page.click("#more summary");
+  await page.locator("#siteTable tr.pick", { hasText: "news.example" }).click();
+  await expect(page.locator("#filter")).toBeVisible();
   await page.click("#clear");
   await expect(page.locator("#clearDialog")).toBeVisible();
   await page.click("#clearCancel");
   expect((await statsDb(extension)).totals.length).toBeGreaterThan(0);
   // The menu also closes on Escape and on a click elsewhere.
   await page.click("#more summary");
-  await expect(page.locator("#clear")).toBeVisible();
+  await expect(page.locator("#month")).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.locator("#clear")).toBeHidden();
+  await expect(page.locator("#month")).toBeHidden();
   await page.click("#more summary");
-  await page.click("#heroShare");
-  await expect(page.locator("#clear")).toBeHidden();
-  await page.click("#more summary");
+  await page.getByRole("heading", { name: "Reading statistics" }).click();
+  await expect(page.locator("#month")).toBeHidden();
   await page.click("#clear");
   await page.click("#clearConfirm");
   await expect(page.locator("#emptyCard")).toBeVisible();
+  await expect(page.locator("#filter")).toBeHidden();
   expect((await statsDb(extension)).totals).toEqual([]);
   expect((await storage.get("statsSecret")).statsSecret ?? null, "a new key for what comes next").toBeNull();
 });
 
-/** Settings' tile for a preset, and its radio. */
-const presetTile = (page, p) => page.locator("#statsPresets .preset", { has: page.locator(`input[name=statsPreset][value=${p}]`) });
-const presetRadio = (page, p) => page.locator(`#statsPresets input[name=statsPreset][value=${p}]`);
-
-test("Settings: every preset a tile saying what it keeps, its warnings, and how long, for what it keeps", async ({ page, extension, storage }) => {
+test("Settings: the preset menu explains what it keeps, preserves custom choices and works with the keyboard", async ({ page, extension, storage }) => {
   await page.goto(extension.url("options.html#statistics"), { waitUntil: "load" });
-  await expect(presetRadio(page, "off")).toBeChecked();
-  // Off and the seven, each with its line; "Your own" only for a setting made field by field.
-  await expect(page.locator("#statsPresets .preset:visible")).toHaveCount(8);
-  await expect(presetTile(page, "custom")).toBeHidden();
-  await expect(presetTile(page, "daily")).toContainText("Words read each day and how they score. No sites.");
-  // Off: nothing to keep for a while, nothing kept to open.
+  const preset = page.getByRole("combobox", { name: "What to record" });
+  await expect(preset).toHaveValue("off");
+  await expect(preset.locator("option")).toHaveCount(8);
+  await expect(page.locator("#statsPresetHint")).toHaveText("New reading activity is not recorded.");
   await expect(page.locator("#statsKeep")).toBeHidden();
   await expect(page.locator("#statsActions")).toBeHidden();
   await expect(page.locator("#statsWarnings p")).toHaveCount(0);
-  await presetTile(page, "pages").click();
-  await expect(presetRadio(page, "pages")).toBeChecked();
-  // Totals alone: no step, no paragraph or visit to keep for a while.
+  await preset.selectOption("daily");
+  await expect(page.locator("#statsPresetHint")).toHaveText("Word counts and verdicts by day.");
+  await preset.selectOption("pages");
+  await expect(page.locator("#statsTotals")).toBeHidden();
+  await expect(page.locator("#statsWarnings")).toBeVisible();
+  await page.locator("#statsKeep summary").focus();
+  await page.keyboard.press("Enter");
   await expect(page.locator("#statsTotals")).toBeVisible();
   await expect(page.locator("#statsDetailDays")).toBeHidden();
   await expect(page.locator("#statsFine")).toBeHidden();
-  await expect(page.locator("#statsWarnings p")).toHaveText(["This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it."]);
+  await expect(page.locator("#statsWarnings p")).toHaveText(["Saves page addresses and titles in this browser profile."]);
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("page");
-  // A radio group: the arrow keys choose the next.
-  await presetRadio(page, "pages").focus();
-  await page.keyboard.press("ArrowRight");
-  await expect(presetRadio(page, "paragraphs")).toBeChecked();
+  await preset.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(preset).toHaveValue("paragraphs");
+  await expect(preset).toBeFocused();
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("paragraph");
   await expect(page.locator("#statsFine")).toBeHidden();
   await page.selectOption("#statsDetailDays", "30");
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.retention?.detail).toBe(30);
-  await presetTile(page, "full").click();
+  await preset.selectOption("full");
   await expect(page.locator("#statsFine")).toBeVisible();
   await expect(page.locator("#statsDetailDays"), "the length chosen stays with the next choice").toHaveValue("30");
-  // A setting made field by field (an export's, or an older version's) is its own tile.
+  // An existing custom configuration stays intact when only its retention changes.
   await storage.set({ statsConfig: await presetConfig("pages", { layers: { title: "none" } }) });
-  await expect(presetRadio(page, "custom")).toBeChecked();
-  await expect(presetTile(page, "custom")).toBeVisible();
+  await expect(preset).toHaveValue("custom");
+  await expect(preset.locator("option")).toHaveCount(9);
   await page.selectOption("#statsTotals", "365");
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.retention?.totals).toBe(365);
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.title, "a new length keeps the fields").toBe("none");
+  await page.reload();
+  await expect(preset).toHaveValue("custom");
+  await expect(page.locator("#statsTotals")).toHaveValue("365");
   await expect(page.locator("#statsSize")).toContainText("records");
+  await preset.selectOption("off");
+  await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.on).toBe(false);
+  await expect(preset.locator("option")).toHaveCount(8);
+  await expect(page.locator("#statsKeep")).toBeHidden();
 });
 
 test("Settings: keeping less asks whether to delete what the new choice would not keep, and keeps it unless told", async ({ page, extension, storage }) => {
   await storage.set({ statsConfig: await presetConfig("full") });
   await seedStats(extension.worker(), statsVisit());
   await page.goto(extension.url("options.html#statistics"), { waitUntil: "load" });
-  await expect(presetRadio(page, "full")).toBeChecked();
+  await expect(page.locator("#statsPresets")).toHaveValue("full");
   const dialog = page.locator("#dropStatsDialog");
   const kept = async () => { const db = await statsDb(extension); return [db.visits.length, db.units.length, db.events.length, db.totals.length]; };
   // Full trace → every paragraph: the events would go. Keeping them is the default, and Escape keeps too.
-  await presetTile(page, "paragraphs").click();
+  await page.selectOption("#statsPresets", "paragraphs");
   await expect(dialog).toBeVisible();
   await expect(page.locator("#dropStatsKeep")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   expect(await kept()).toEqual([1, 3, 1, 2]);
   // → daily totals: the visits and paragraphs would go too; deleted, the totals stay.
-  await presetTile(page, "daily").click();
+  await page.selectOption("#statsPresets", "daily");
   await page.click("#dropStatsConfirm");
   await expect(dialog).toBeHidden();
   await expect(page.locator("#statsStatus")).toHaveText("Deleted. The daily totals stay.");
   expect(await kept()).toEqual([0, 0, 0, 2]);
   // Keeping more asks nothing.
-  await presetTile(page, "pages").click();
+  await page.selectOption("#statsPresets", "pages");
   await expect(dialog).toBeHidden();
+  // Off stops recording; the existing daily totals are still available to open or clear.
+  await page.selectOption("#statsPresets", "off");
+  await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.on).toBe(false);
+  await expect(page.locator("#statsPresetHint")).toHaveText("New reading activity is not recorded.");
+  await expect(page.locator("#statsActions")).toBeVisible();
+  expect(await kept()).toEqual([0, 0, 0, 2]);
 });
 
 test("the toolbar menu says today's share while statistics are recorded, and nothing while they are off", async ({ page, pages, extension, storage }) => {
@@ -506,5 +779,93 @@ test("the toolbar menu says today's share while statistics are recorded, and not
   const menu = await popupOver(page);
   await expect(menu.locator("#statsTodayText")).toHaveText("Today: 14% AI-generated, of 8,400 words scored.");
   const [opened] = await Promise.all([page.context().waitForEvent("page"), menu.click("#openStats")]);
-  await expect(opened).toHaveURL(extension.url("stats.html"));
+  await expect(opened).toHaveURL(extension.url("stats.html") + "#today");
+  await expect(opened.locator('#ranges [aria-pressed="true"]')).toHaveText("Today");
+});
+
+
+test("AI-assisted uses the reader's amber in current and mixed history", async ({ page, extension, storage }) => {
+  await storage.set({statsConfig: await presetConfig("daily")});
+  const day = (date, totals) => ({date, scope: "day", key: "", tally: totals});
+  await statsPage(page, extension, {totals: [
+    day(localDate(), tally(100, [60, 0, 0, 15, 25], [1, 0, 0, 1, 1])),
+    day(daysAgo(1), tally(100, [0, 55, 45, 0], [0, 1, 1, 0])),
+  ]});
+  const assisted = page.locator("#heroLegend li", {hasText: "AI-assisted"});
+  await expect(assisted).toHaveClass("b1");
+  await expect(assisted.locator(".n")).toHaveText("25%");
+  const choices = page.locator("#lensHeadline option");
+  await expect(choices).toHaveCount(2);
+  await page.locator("#lens summary").click();
+  await page.selectOption("#lensHeadline", "assistedAndAi");
+  await expect(page.locator("#heroShare")).toHaveText("40%");
+  await expect(page.locator("#heroLine")).toContainText("AI-assisted");
+
+  await page.click('#ranges [data-range="7"]');
+  await expect(assisted).toHaveClass("b1");
+  await expect(page.locator("#heroLegend li", {hasText: "Lightly edited"})).toHaveClass("b4");
+  await expect(choices).toHaveCount(3);
+  await expect(page.locator("#heroShare")).toHaveText("20%");
+  await page.selectOption("#lensHeadline", "heavyAndAi");
+  await expect(page.locator("#heroShare")).toHaveText("30%");
+  const today = page.locator("#trendChart .col").last();
+  await expect(today.locator(".seg.b1")).toHaveCount(1);
+  await today.locator(".hit").hover();
+  await expect(page.locator("#trendTip .b1")).toContainText("AI-assisted 25%");
+});
+
+test("visit facts survive event expiry and open inline with the keyboard at narrow widths", async ({ page, extension, storage }) => {
+  const records = statsVisit();
+  records.events = [];
+  records.visits[0].scroll = {depth: .785, distance: 1500};
+  records.units[0].expo.sightings = 3;
+  records.units[1].expo.sightings = 2;
+  await storage.set({statsConfig: await presetConfig("paragraphs")});
+  await statsPage(page, extension, records);
+  await page.click("#visitsTab");
+  await page.setViewportSize({width: 320, height: 800});
+  const open = page.getByRole("button", {name: "Visit details"});
+  await open.focus();
+  await page.keyboard.press("Enter");
+  await expect(open).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#visitFacts dd")).toHaveText(["78.5% of page", "3", "2"]);
+  await expect(page.locator("#visitTimeline")).toBeHidden();
+  expect(await page.locator("#replay").evaluate(panel => panel.closest("tr").previousElementSibling.contains(document.activeElement))).toBe(true);
+  expect(await page.locator("#visitsTable").evaluate(table => table.scrollWidth <= table.clientWidth)).toBe(true);
+  await page.keyboard.press("Space");
+  await expect(open).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#replay")).toBeHidden();
+});
+
+test("visit details omit unknown measurements and follow retained events after recording is reduced", async ({ page, extension, storage }) => {
+  const records = statsVisit();
+  records.visits[0].scroll = {depth: 0, distance: 0};
+  for (const u of records.units) delete u.expo;
+  records.events[0].streams = {input: {t: [5000], kind: [0]}};
+  await storage.set({statsConfig: await presetConfig("daily")});
+  await statsPage(page, extension, records);
+  await page.click("#visitsTab");
+  await page.getByRole("button", {name: "Visit details"}).click();
+  await expect(page.locator("#visitFacts dd")).toHaveCount(0);
+  await page.locator("#visitTimeline summary").click();
+  await expect(page.locator("#replayChart")).toHaveText("No timeline samples were retained for this visit.");
+  await expect(page.locator("#replayChart svg")).toHaveCount(0);
+});
+
+test("a passage can enter and leave view in separate timeline chunks", async ({page, extension, storage}) => {
+  const records = statsVisit();
+  const chunk = records.events[0];
+  const step = (t, ratio) => ({t: [t], unit: [0], obs: [0], ratio: [ratio], top: [0], h: [120]});
+  records.events = [
+    {...chunk, seq: 0, streams: {steps: step(500, .5)}},
+    {...chunk, seq: 1, streams: {steps: step(1500, 0)}},
+  ];
+  await storage.set({statsConfig: await presetConfig("full")});
+  await statsPage(page, extension, records);
+  await page.click("#visitsTab");
+  await page.getByRole("button", {name: "Visit details"}).click();
+  await page.locator("#visitTimeline summary").click();
+  await expect(page.locator("#replayChart rect.on")).toHaveCount(1);
+  await expect(page.locator("#timelineKey")).toHaveText("Bars show when each passage was on screen.");
+  await expect(page.locator("#replayChart svg text").last()).toHaveText("1:00");
 });

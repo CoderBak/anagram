@@ -27,7 +27,7 @@ const pinOf = (tier: "fp32" | "fp16") => ({
     { name: "tokenizer.json", size_bytes: TOKENIZER.length, sha256: sha256Hex(TOKENIZER), url: "https://example.test/tokenizer.json" },
   ],
   lid,
-  model: { id: modelId(tier), calibration: "editlens-4bucket-cosine(0.03,0.15)" },
+  model: { id: tier==="fp16" ? "editlens_roberta-large-fp16" : "editlens_roberta-large", calibration: "editlens-4bucket-cosine(0.03,0.15)" },
   license: "CC-BY-NC-SA-4.0",
 });
 const gpu = (id: string, precision: "fp32" | "fp16"): Candidate => ({ id, label: "GPU", device: "gpu", runtime: "onnxruntime-web/webgpu", precision, experimental: false, available: true, reason: null });
@@ -102,20 +102,12 @@ describe("the pin of each tier", () => {
     expect(m.log).toEqual(["fail webgpu:fp16"]);
     expect(m.server.requests.some((request) => request.url.endsWith("/model.onnx"))).toBe(false);
   });
-  it("offers the FP16 file from the same revision and URL form, by its pinned size and hash", () => {
-    const [model] = pinnedFiles("fp16");
-    expect(model).toMatchObject({ name: "model_fp16.onnx", size_bytes: 711_340_748, sha256: "a0da0f46c5026489c37137b5f455e092e09ac48eafd031bec6f05433c5c2ec01" });
-    expect(model!.url).toBe(pinnedFiles("fp32")[0]!.url.replace("onnx/model.onnx", "onnx/model_fp16.onnx"));
-    expect(pinnedFiles("fp32")[0]).toMatchObject({ name: "model.onnx", size_bytes: 1_421_900_913 });
-    // A tier's download is its model and the tokenizer (TIERS bytes).
-    for (const [i, id] of ["fp32", "fp16"].entries()) expect(pinnedFiles(id as "fp32" | "fp16").reduce((n, f) => n + f.size_bytes, 0)).toBe(TIERS[i]!.bytes);
-    
-  });
-
-  it("names the tier in the model id, so that the two never share a cache key", () => {
-    expect(extensionPin("x", "fp32").model.id).toBe("editlens_roberta-large");
-    expect(extensionPin("x", "fp16").model.id).toBe("editlens_roberta-large-fp16");
-    expect(extensionPin("x", "fp16").tier).toBe("fp16");
+  it("binds the release to its original weights and tokenizer", () => {
+    const pin=extensionPin("x");
+    expect(pin.model.id).toBe("2026-11-14-400m-research");
+    expect(pin.tier).toBe("fp32");
+    expect(pin.files.map(f=>f.path)).toContain("backbone/model.safetensors");
+    expect(pin.files.every(f=>f.url.includes(pin.release!.revision) && f.name===f.sha256)).toBe(true);
   });
 
   it("probes FP16 for the graphics card only, with shader-f16 and half the embedding matrix", async () => {

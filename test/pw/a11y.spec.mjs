@@ -375,6 +375,7 @@ const PAGE_SPECS = [
     },
     async prepare(page) {
       await page.waitForSelector("#sites table", { timeout: 8000 }).catch(() => {});
+      await page.click("#siteRulesToggle");
       await page.fill("#addHost", "  ");
       await page.click("#addRule button[type=submit]");
       await page.waitForSelector("#addError:not([hidden])", { timeout: 4000 }).catch(() => {});
@@ -446,13 +447,16 @@ const PAGE_SPECS = [
       await page.click("#siteTable tbody tr.pick");
       await page.waitForSelector("#filter:not([hidden])", { timeout: 8000 });
       await page.click("#lens summary");
+      await page.click("#visitsTab");
       await page.click("#visitsTable button.linkish");
       await page.waitForSelector("#replay:not([hidden])", { timeout: 8000 });
+      await page.click("#visitTimeline summary");
+      await page.waitForSelector("#replayChart svg");
       await page.waitForTimeout(200);
     },
   },
   {
-    // The More menu open: the month, a range, Export and Clear.
+    // The date picker open at the selected range.
     name: "statistics (more)",
     path: "stats.html",
     viewport: { width: 1100, height: 900 },
@@ -462,7 +466,7 @@ const PAGE_SPECS = [
     },
     async prepare(page) {
       await page.click("#more summary");
-      await page.waitForSelector("#export:visible", { timeout: 8000 });
+      await page.waitForSelector("#month:visible", { timeout: 8000 });
     },
   },
   {
@@ -475,7 +479,6 @@ const PAGE_SPECS = [
       await seedStats(extension.worker(), statsVisit());
     },
     async prepare(page) {
-      await page.click("#more summary");
       await page.click("#export");
       await page.waitForSelector("#exportDialog[open]", { timeout: 8000 });
       await page.click("#exportDimsBox summary");
@@ -672,6 +675,7 @@ for (const scheme of ["light", "dark"]) {
     expect.soft(listName, "the list is named by the title that counts it").toBe(shown.title);
     await settle(menu, scheme);
     await axe.scan(menu, `toolbar menu with the flagged list [${scheme}]`);
+    await menu.locator("#pageReport summary").click();
     await ourTextContrast(axe, menu, `toolbar menu's report [${scheme}]`, "#pageReport");
     if (scheme !== "light") return;
 
@@ -920,6 +924,7 @@ test.describe("Settings: switching engines", () => {
     await seed.close();
     for (const scheme of ["light", "dark"]) {
       const page = await open(extension.url("options.html"), { scheme, viewport: { width: 1100, height: 900 }, script: (p) => scriptEngine(p, "needed", { engine: "native" }) });
+      await page.click("#engine-manage");
       await choiceUp(page, "#engine-delete-leftover");
       await choiceUp(page, "#engine-switch");
       await settle(page, scheme);

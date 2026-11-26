@@ -37,7 +37,7 @@ export const BADGE_CSS: string = `
   display: inline-block !important;
   position: relative !important;
   vertical-align: middle;
-  margin-inline-start: 6px;
+  margin-inline-start: 4px;
   line-height: normal;
   /* NO z-index on purpose. The chip is part of the paragraph's flow and must be
      covered by whatever covers that paragraph — a comment modal, a lightbox, a
@@ -62,15 +62,15 @@ export const BADGE_CSS: string = `
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.3em;
   box-sizing: border-box;
   font-size: clamp(9px, 0.66em, 12px);
   line-height: 1;
-  padding: 0.3em 0.6em 0.3em 0.5em;
+  padding: 0.18em 0.44em;
   border-radius: 999px;
-  border: 1px solid transparent;
+  border: 1px solid rgb(0 0 0 / 0.06);
   background: #f4f4f5;
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: #52525b;
@@ -84,11 +84,11 @@ export const BADGE_CSS: string = `
 
 /* A chip where the whole pill has no room (between two columns of a PDF): its dot alone,
    the number in the card. */
-:host([data-compact]) .pill { gap: 0; padding: 0.2em; background: transparent; }
+:host([data-compact]) .pill { gap: 0; padding: 0.2em; border-color: transparent; background: transparent; }
 :host([data-compact]) .num { display: none; }
 :host([data-compact]) .dot { width: 0.8em; height: 0.8em; }
 
-:host(:hover) .pill { background: #e4e4e7; }
+:host(:hover) .pill { background: #e9e9ec; border-color: rgb(0 0 0 / 0.1); }
 
 .dot {
   width: 0.6em;
@@ -139,15 +139,15 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
   height: auto;
   box-sizing: border-box;
   width: max-content;
-  min-width: 232px;
-  max-width: min(300px, 78vw);
-  padding: 11px 13px 10px;
-  border-radius: 8px;
-  border: 1px solid #e5e5e5;
+  min-width: min(214px, calc(100vw - 16px));
+  max-width: min(272px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgb(0 0 0 / 0.09);
   background: #ffffff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  font: 400 11px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #252525;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.10), 0 1px 3px rgb(0 0 0 / 0.05);
+  font: 400 11.5px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  color: #18181b;
   text-align: left;
   white-space: normal;
   visibility: hidden;
@@ -214,52 +214,64 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
-.card .verdict { font-weight: 700; font-size: 12px; color: #252525; }
-.card .verdict.band-unknown { color: #57606a; }
-.card .verdict.band-unsupported { color: #737373; }
-.card .big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: #252525; }
+.card .verdict { font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; color: #18181b; }
+.card .verdict.band-unknown { color: #52525b; }
+.card .verdict.band-unsupported { color: #63636c; }
+.card .big { font-weight: 600; font-size: 12.5px; font-variant-numeric: tabular-nums; color: #18181b; }
 
 .card .row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
 }
-.card .row .k { color: #737373; }
-.card .row .v { font-variant-numeric: tabular-nums; color: #252525; }
+.card .row .k { color: #63636c; }
+.card .row .v { font-variant-numeric: tabular-nums; color: #18181b; }
 /* "Scored in 8 windows" carries up to eight numbers: the label keeps its line and the
    numbers wrap under each other, flush right like every other value. */
 .card .row.wins .k { flex: none; }
 .card .row.wins .v { text-align: right; }
 /* A verdict on a text under the model's training minimum says so, on a line of its own. */
-.card .short, .card .unsure { color: #737373; font-style: italic; margin-bottom: 4px; }
+.card .short, .card .unsure { color: #63636c; font-style: italic; margin-bottom: 4px; }
 
 .card .actions {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #f0f0f2;
 }
-/* Basecoat "outline" button: hairline border, plain surface, muted hover. */
+.card .actions .row { gap: 5px; }
 .card .act {
-  font: 500 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #252525;
-  border: 1px solid #e5e5e5;
-  background: #ffffff;
-  border-radius: 6px;
-  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: 500 10.5px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  color: #52525b;
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 4px;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
-.card .act:hover { background: #f5f5f5; }
-.card .act.done { color: #116a37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.08); }
+.card .act svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.card .act .check, .card .act.done .sheets { display: none; }
+.card .act.done .check { display: inline; }
+.card .act:hover { background: #efeff1; color: #18181b; }
 
 .card .foot {
   margin-top: 7px;
-  padding-top: 6px;
-  border-top: 1px solid #f0f0f0;
-  color: #737373;
-  font-size: 10px;
+  padding-top: 5px;
+  border-top: 1px solid #f0f0f2;
+  color: #63636c;
+  font-size: 10.5px;
   line-height: 1.4;
 }
 /* The card's only line while it waits for a verdict. */
@@ -267,26 +279,27 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
 
 /* ---- dark surfaces ------------------------------------------------------------ */
 
-:host(.pg-dark) .pill { background: #27272a; color: #d4d4d8; }
-:host(.pg-dark:hover) .pill { background: #3f3f46; }
-:host(.pg-dark[data-compact]) .pill { background: transparent; }
-:host(.pg-dark) .pill.band-unsupported { color: #a1a1aa; }
-:host(.pg-dark) .card .verdict.band-unsupported { color: #a3a3a3; }
+:host(.pg-dark) .pill { background: #26282d; border-color: rgb(255 255 255 / 0.09); color: #d4d6dc; }
+:host(.pg-dark:hover) .pill { background: #34373e; border-color: rgb(255 255 255 / 0.14); }
+:host(.pg-dark[data-compact]) .pill { border-color: transparent; background: transparent; }
+:host(.pg-dark) .pill.band-unsupported { color: #a1a4ad; }
+:host(.pg-dark) .card .verdict.band-unsupported { color: #a1a4ad; }
 
 :host(.pg-dark) .card {
-  border-color: rgba(255, 255, 255, 0.10);
-  background: #171717;
-  color: #fafafa;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: rgb(255 255 255 / 0.11);
+  background: #191a1d;
+  color: #f1f2f4;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.55), 0 1px 3px rgb(0 0 0 / 0.3);
 }
-:host(.pg-dark) .card .big { color: #fafafa; }
-:host(.pg-dark) .card .row .k, :host(.pg-dark) .card .short, :host(.pg-dark) .card .unsure { color: #a3a3a3; }
-:host(.pg-dark) .card .row .v { color: #fafafa; }
-:host(.pg-dark) .card .verdict { color: #fafafa; }
+:host(.pg-dark) .card .big { color: #f1f2f4; }
+:host(.pg-dark) .card .row .k, :host(.pg-dark) .card .short, :host(.pg-dark) .card .unsure { color: #a1a4ad; }
+:host(.pg-dark) .card .row .v { color: #f1f2f4; }
+:host(.pg-dark) .card .verdict { color: #f1f2f4; }
 :host(.pg-dark) .card .verdict.band-unknown { color: #b9c0c8; }
-:host(.pg-dark) .card .act { color: #fafafa; border-color: rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); box-shadow: none; }
-:host(.pg-dark) .card .act:hover { background: rgba(255, 255, 255, 0.12); }
-:host(.pg-dark) .card .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
+:host(.pg-dark) .card .actions { border-top-color: rgb(255 255 255 / 0.08); }
+:host(.pg-dark) .card .act { color: #a1a4ad; }
+:host(.pg-dark) .card .act:hover { background: rgb(255 255 255 / 0.1); color: #f1f2f4; }
+:host(.pg-dark) .card .foot { border-top-color: rgb(255 255 255 / 0.08); color: #9a9da6; }
 
 /* ---- forced colors (Windows High Contrast) ------------------------------------ */
 /* Let the system palette flatten surfaces, but keep the verdict dot semantic and

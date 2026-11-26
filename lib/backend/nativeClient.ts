@@ -15,7 +15,7 @@ export const ComponentSchema = v.object({
   /** The in-browser engine's model tier (lib/webengine/pin.ts), absent from the local engine's. */
   tier: v.optional(v.picklist(["fp32", "fp16"])),
   state: v.picklist(["starting", "needs_models", "downloading", "paused", "loading", "benchmarking", "ready", "idle", "stopped", "updating", "uninstalling", "error"]),
-  settings: v.optional(v.object({idle_unload_s: v.pipe(Count, v.integer(), v.check((s: number) => validIdleUnload(s)))})),
+  settings: v.optional(v.object({release:v.optional(Text),revision:v.optional(Text),idle_unload_s: v.pipe(Count, v.integer(), v.check((s: number) => validIdleUnload(s)))})),
   download: v.object({status: v.picklist(["idle", "running", "paused", "completed", "failed"]), bytes_received: Count, total_bytes: Count, file: v.nullable(Text), error: v.nullable(Text),
     phase: v.optional(v.picklist(["detecting", "verifying", "downloading", "complete"])),
     plan: v.optional(DownloadPlan),

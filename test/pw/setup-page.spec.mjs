@@ -6,7 +6,7 @@
 // drives that): permissions come first on the setup page; no card quotes a speed or a memory
 // figure; "Keep this browser open" shows only while the in-browser download runs, on the setup
 // page, in Settings and in the popup; the setup page opens one step at a time; Settings is panels
-// in two columns with nothing folded; the popup carries the PDF reader and Analyze text. The engine's states are scripted into each
+// in order beside its section index with nothing folded; the popup carries the PDF reader and Analyze text. The engine's states are scripted into each
 // page (test/webengine/scripted-engine.mjs) on the device builds (test/pw/devices.mjs).
 import { join } from "node:path";
 import { test, expect } from "./fixtures.mjs";
@@ -28,6 +28,20 @@ async function openScripted(extension, path, state, options = {}, viewport = { w
 }
 
 test.describe("the setup page", () => {
+  test("a pending extension update is visible above setup and settings with the in-browser engine", async ({ extension, storage }) => {
+    const setup = await openScripted(extension, "onboarding.html", "ready_gpu");
+    await expect(setup.locator("#engineCard")).toHaveClass(/done/);
+    const notice = setup.locator("#extensionUpdate");
+    await expect(notice).toBeHidden();
+    await storage.set({ extensionUpdatePending: "9.0.0" });
+    await expect(notice).toContainText("9.0.0");
+    await expect(notice.getByRole("button", { name: "Apply extension update" })).toBeVisible();
+    const settings = await openScripted(extension, "options.html", "ready_gpu");
+    await expect(settings.locator("#extensionUpdate")).toContainText("9.0.0");
+    await storage.set({ extensionUpdatePending: null });
+    await expect(settings.locator("#extensionUpdate")).toBeHidden();
+    await expect(notice).toBeHidden();
+  });
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
   test("teaches toolbar pinning in two short steps, which the toolbar menu's link opens", async ({ extension }) => {
@@ -59,6 +73,8 @@ test.describe("the setup page", () => {
       };
     });
     expect(order.tops).toEqual([...order.tops].sort((a, b) => a - b));
+    await expect(page.locator("#tryParagraph")).toBeHidden();
+    await expect(page.locator("#whereTitle")).toContainText("optional");
     expect(order.numbers).toEqual(["1", "2", "3"]);
     expect(order.inWhere, "site access and both PDF rows are in the second step").toEqual([true, true, true]);
     expect(order.folds, "no collapsed fold anywhere").toBe(0);
@@ -94,9 +110,22 @@ test.describe("the setup page", () => {
       await painted(page);
       await expect(page.locator(".engine-keepopen")).toHaveCount(1);
       expect(await page.locator(".engine-keepopen").isVisible()).toBe(shown);
-      if (shown) await expect(page.locator(".engine-keepopen")).toHaveText("Keep this browser open until the download finishes.");
+      if (shown) await expect(page.locator(".engine-keepopen")).toHaveText("You can close this page while the browser downloads the model.");
     });
   }
+
+  test("verification names the work being done and omits transfer estimates", async ({ extension }) => {
+    const page = await openScripted(extension, "onboarding.html", "verifying");
+    await expect(page.getByRole("progressbar")).toHaveAccessibleName("Verifying model files…");
+    await expect(page.locator(".component-status")).toHaveText("Verifying model files…");
+    await expect(page.locator("#engine-progress")).toHaveText("641 MB of 1.4 GB");
+  });
+
+  test("Resume counts a partial file toward the model's space requirement", async ({ extension }) => {
+    const page = await openScripted(extension, "onboarding.html", "paused_partial", { estimate: { quota: 1.8e9, usage: 9e8 } });
+    await page.getByRole("button", { name: "Resume download" }).click();
+    await expect.poll(() => page.evaluate(() => window.__engineOps.includes("models.download"))).toBe(true);
+  });
 
   test("the download reads as a bar with its percentage, one line of figures and Pause and Cancel beside it", async ({ extension }) => {
     const page = await openScripted(extension, "onboarding.html", "downloading");
@@ -146,46 +175,91 @@ test.describe("the setup page", () => {
 test.describe("Settings", () => {
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
-  test("lays its settings out as panels, two to a row, nothing folded, the marks' three choices on one line", async ({ extension }) => {
+  test("lays settings in a focused column without redundant navigation, with the three reading choices on one line", async ({ extension }) => {
     const page = await openScripted(extension, "options.html", "ready_gpu");
     await painted(page);
     const seen = await page.evaluate(() => {
       const top = (el) => Math.round(el.getBoundingClientRect().top);
-      const panels = [...document.querySelectorAll(".settings > .panel")];
+      const panels = [...document.querySelectorAll(".settings .panel")];
       return {
         titles: panels.map((p) => p.querySelector("h2").textContent),
         tops: panels.map(top),
-        folds: document.querySelectorAll("details").length,
+        folds: [...document.querySelectorAll("details")].map(el => el.id),
         marks: ["flagFrom", "displayMode", "underline"].map((id) => top(document.getElementById(id))),
-        ids: ["analysisScope", "debug", "openReader", "toolbarGuide", "statsPreset", "statsCustomize"].filter((id) => document.getElementById(id)),
+        ids: ["analysisScope", "debug", "openReader", "toolbarGuide", "statsPreset", "statsCustomize", "sectionJump", "settingsSections"].filter((id) => document.getElementById(id)),
         text: document.body.innerText,
       };
     });
-    expect(seen.titles).toEqual(["Engine", "Sites", "Marks", "PDFs", "Cache", "Statistics"]);
-    expect(seen.folds, "no settings hidden in folds").toBe(0);
-    // Engine beside Sites, Marks across, PDFs beside Cache, Statistics across.
-    const [engine, sites, marks, pdfs, cache, stats] = seen.tops;
-    expect(engine).toBe(sites);
-    expect(pdfs).toBe(cache);
-    expect(marks).toBeGreaterThan(engine);
-    expect(pdfs).toBeGreaterThan(marks);
-    expect(stats).toBeGreaterThan(pdfs);
+    expect(seen.titles).toEqual(["Websites", "PDFs", "Paragraph marks", "Reading history", "Saved scores", "In-browser engine"]);
+    expect(seen.folds).toEqual(["statsKeep"]);
+    expect(seen.tops[0]).toBe(seen.tops[1]);
+    expect(seen.tops.slice(2).every((top, i) => top > seen.tops[i + 1])).toBe(true);
+    await page.locator("#siteRulesToggle").click();
+    const websitesBox = await page.locator("#websites").boundingBox();
+    const pdfBox = await page.locator("#pdfs").boundingBox();
+    expect(pdfBox.y).toBeGreaterThanOrEqual(websitesBox.y + websitesBox.height - 1);
+    await page.locator("#siteRulesToggle").click();
     expect(new Set(seen.marks).size, "Flag, Chips and Underlines side by side").toBe(1);
-    expect(seen.ids, "Scope, Debug logging, the PDF reader, the toolbar guide and the field-by-field statistics are gone").toEqual([]);
+    expect(seen.ids, "Scope, Debug logging, the PDF reader, the toolbar guide, field-by-field statistics and redundant nav are gone").toEqual([]);
     expect(seen.text).not.toMatch(/Shortcuts|Alt\s*\+\s*Shift|Scope|Include passage|Include page title|Debug logging|Analyze text|In detail/);
-    expect(seen.text, "the engine in words").toContain("In the browser, on the graphics card: Ready");
-    // Narrow, one column.
+    await expect(page.locator(".component-status")).toHaveText("Ready (GPU)");
+    await expect(page.getByRole("combobox", { name: "What to record" })).toBeEnabled();
+    for (const width of [960, 800, 620, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const selectors of [
+        ["#engineLabel", ".component-status", "#engine-manage"],
+        ["#statsLabel", "#statsPresets"],
+        ["#cacheLabel", "#cacheMode"],
+      ]) {
+        const boxes = await Promise.all(selectors.map((selector) => page.locator(selector).boundingBox()));
+        expect(Math.max(...boxes.map((r) => r.y)), `${width}px: ${selectors.join(", ")} share a row`)
+          .toBeLessThan(Math.min(...boxes.map((r) => r.y + r.height)));
+      }
+      for (const id of ["flagFrom", "displayMode", "underline"]) {
+        const [label, menu] = await Promise.all([
+          page.locator(`label[for="${id}"]`).boundingBox(),
+          page.locator(`#${id}`).boundingBox(),
+        ]);
+        const gap = Math.max(menu.x - label.x - label.width, menu.y - label.y - label.height);
+        expect(gap, `${width}px: ${id} label has room before its menu`).toBeGreaterThanOrEqual(7);
+      }
+      const headingLines = await page.locator("#statsLabel").evaluate(
+        (el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)),
+      );
+      expect(headingLines, `${width}px: Reading history fits beside its menu`).toBe(1);
+      const [history, scores, marks, pdf] = await Promise.all(
+        ["#statsPresets", "#cacheMode", "#underline", "#autoOpenPdfs"].map((selector) => page.locator(selector).boundingBox()),
+      );
+      for (const field of [scores, marks, pdf]) {
+        expect(Math.abs(field.x + field.width - history.x - history.width), `${width}px: control right edges align`).toBeLessThan(1);
+      }
+      expect(Math.abs(history.x - scores.x), `${width}px: data menus share a left edge`).toBeLessThan(1);
+      if (width > 320) expect(Math.abs(marks.x - history.x), `${width}px: paragraph and data menus align`).toBeLessThan(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
     await page.setViewportSize({ width: 600, height: 900 });
-    const narrow = await page.evaluate(() => [...document.querySelectorAll(".settings > .panel")].map((p) => Math.round(p.getBoundingClientRect().left)));
+    const narrow = await page.evaluate(() => [...document.querySelectorAll(".settings .panel")].map((p) => Math.round(p.getBoundingClientRect().left)));
     expect(new Set(narrow).size).toBe(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.selectOption("#statsPresets", "daily");
+    await expect(page.locator("#openStats")).toBeVisible();
+    await page.locator("#statsKeep summary").click();
+    const [preset, totals, cache] = await Promise.all(
+      ["#statsPresets", "#statsTotals", "#cacheMode"].map((selector) => page.locator(selector).boundingBox()),
+    );
+    expect(Math.abs(preset.x - cache.x)).toBeLessThan(1);
+    expect(Math.abs(totals.x - preset.x)).toBeLessThan(1);
   });
 
-  test("the engine row carries the switch, Delete model files and the idle unload inline; Keep open only while downloading", async ({ extension }) => {
+  test("Manage reveals the engine switch, model removal and idle unload; Keep open only while downloading", async ({ extension }) => {
     const ready = await openScripted(extension, "options.html", "ready_gpu");
     await painted(ready);
     // The switch comes once the page has read the device (a GPU-less runner's adapter request
     // takes a while): the line is measured when all three are drawn.
+    await expect(ready.locator("#engine-delete")).toBeHidden();
+    const manage = ready.locator("#engine-manage");
+    await manage.press("Enter");
+    await expect(manage).toHaveAttribute("aria-expanded", "true");
     for (const id of ["engine-switch", "engine-delete", "idleUnload"]) await expect(ready.locator(`#${id}`)).toBeVisible();
     const line = await ready.evaluate(() => {
       const ids = ["engine-switch", "engine-delete", "idleUnload"];
@@ -236,8 +310,12 @@ test.describe("the popup", () => {
     await page.bringToFront();
     await popup.reload({ waitUntil: "load" });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
-    await expect(popup.locator("#openReader")).toHaveText("Read a PDF file…");
+    await expect(popup.locator("#openReader")).toHaveText("Open a PDF…");
     await expect(popup.locator("#analyzeText")).toHaveText("Analyze text");
+    const pdfButton = await popup.locator("#openReader").boundingBox();
+    const textButton = await popup.locator("#analyzeText").boundingBox();
+    expect(textButton.y).toBe(pdfButton.y);
+    expect(textButton.x).toBeGreaterThanOrEqual(pdfButton.x + pdfButton.width);
     expect(await popup.locator("main .btn:not([data-variant])").count(), "the new entries are secondary: at most one filled button").toBeLessThanOrEqual(1);
 
     const paste = context.waitForEvent("page", { predicate: (p) => /paste\.html$/.test(p.url()) });
@@ -259,7 +337,7 @@ test.describe("the popup", () => {
   test("on a page nothing can run on, the one action is the reader and it is not offered twice", async ({ extension }) => {
     const popup = await openScripted(extension, "popup.html", "ready_gpu", {}, { width: 360, height: 600 });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
-    expect(await popup.locator("#action").textContent()).toBe("Read a PDF file…");
+    expect(await popup.locator("#action").textContent()).toBe("Open a PDF…");
     expect(await popup.locator("#openReader").isHidden()).toBe(true);
     await expect(popup.locator("#analyzeText")).toBeVisible();
   });

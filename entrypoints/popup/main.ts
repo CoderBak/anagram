@@ -7,8 +7,7 @@
 // nothing, and ONE button that follows it — rescan, analyze this page once, read this PDF,
 // open a PDF from this computer, or set the engine up (./state.ts decides which). Under it:
 // the per-site switch (the rule that decides the active tab may belong to a parent domain,
-// see ./siteSwitch.ts) and what the page shows; at the foot, the other ways in and the
-// engine. Everything else lives in Settings.
+// see ./siteSwitch.ts) and the other ways to analyze text. Everything else lives in Settings.
 import { browser } from "#imports";
 import type { PublicPath } from "wxt/browser";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
@@ -22,7 +21,7 @@ import {
   setSiteOverride,
   type SiteRule,
 } from "../../lib/settings/settings";
-import { siteLine, switchWrite } from "./siteSwitch";
+import { inheritedRuleNote, switchWrite } from "./siteSwitch";
 import { ACTION_LABEL, popupLead, type PageFacts, type PopupLead } from "./state";
 import { sitePattern } from "../../lib/access/patterns";
 import { hasAccess, requestAccess } from "../../lib/access/grant";
@@ -49,16 +48,19 @@ import { openStatsStore } from "../../lib/stats/store";
 import { formatShare, formatWords } from "../../lib/stats/format";
 
 const siteEl = document.getElementById("siteEnabled") as HTMLInputElement;
-const siteHostEl = document.getElementById("siteHost") as HTMLElement;
+const siteGroup = document.getElementById("siteGroup")!;
+const siteRuleNote = document.getElementById("siteRuleNote")!;
 const actionEl = document.getElementById("action") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 const gearEl = document.getElementById("gear") as HTMLButtonElement;
 const backendEl = document.getElementById("backend") as HTMLElement;
 const switchEngineEl = document.getElementById("switchEngine") as HTMLButtonElement;
 const keepOpenEl = document.getElementById("keepOpen") as HTMLElement;
-const displayModeRowEl = document.getElementById("displayModeRow")!;
+const reportEl = document.getElementById("pageReport")!;
+const reportHeading = reportEl.querySelector<HTMLElement>(".report-heading")!;
 const openReaderEl = document.getElementById("openReader") as HTMLButtonElement;
 const analyzeTextEl = document.getElementById("analyzeText") as HTMLButtonElement;
+const pageActions = document.querySelector<HTMLElement>(".page-actions")!;
 const pageActionEl = document.getElementById("pageAction") as HTMLButtonElement;
 let currentTab: { id?: number; url?: string } | undefined;
 let docsEditor = false;
@@ -68,7 +70,7 @@ let statusRequest = 0;
 let pageControlFailed = false;
 /** One use of this menu, for the statistics where they keep such events (the worker decides). */
 const noteUi = (kind: UiEvent): void => void browser.runtime.sendMessage({ action: ACTIONS.STATS_UI, kind, ...(currentTab?.id !== undefined ? { tabId: currentTab.id } : {}) }).catch(() => undefined);
-const paintReport = mountReport(document.getElementById("pageReport")!, {
+const paintReport = mountReport(reportEl, {
   jump: (documentId, id) => { noteUi("jump"); void runPageControl({ action: ACTIONS.JUMP_TO_RESULT, documentId, id }); },
   page: (next) => { offset = next; void refreshStatus(currentTab?.id); },
   allow: (origin) => {
@@ -84,31 +86,6 @@ async function runPageControl(message: ControlMessage): Promise<void> {
   await refreshStatus(currentTab?.id);
   pageControlFailed = true;
   paint();
-}
-// The one segmented control left is a Basecoat tab list (buttons with aria-selected).
-const displayModeEls = segButtons("displayMode");
-
-function segButtons(name: string): HTMLButtonElement[] {
-  return Array.from(
-    document.querySelectorAll<HTMLButtonElement>(`nav[data-seg="${name}"] > [role="tab"]`),
-  );
-}
-
-/** Wire a tab list as a single-choice control (click + arrow keys) → callback. */
-function bindSeg(els: HTMLButtonElement[], onPick: (value: string) => void): void {
-  els.forEach((el, i) => {
-    el.addEventListener("click", () => {
-      checkSeg(els, el.dataset.value ?? "");
-      onPick(el.dataset.value ?? "");
-    });
-    el.addEventListener("keydown", (e) => {
-      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      e.preventDefault();
-      const next = els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length]!;
-      next.focus();
-      next.click();
-    });
-  });
 }
 
 async function activeTab() {
@@ -129,14 +106,6 @@ function sendToTab(tabId: number | undefined, msg: ControlMessage): Promise<unkn
   if (tabId == null) return Promise.resolve(undefined);
   // The content script may not be present (e.g. chrome:// pages) — swallow rejections.
   return sendTabControl(currentTab, msg).catch(() => undefined);
-}
-
-function checkSeg(els: HTMLButtonElement[], value: string): void {
-  for (const el of els) {
-    const on = el.dataset.value === value;
-    el.setAttribute("aria-selected", String(on));
-    el.tabIndex = on ? 0 : -1;
-  }
 }
 
 /**
@@ -183,14 +152,9 @@ function countsLine(state: TabState): Node[] {
 /** The status line and the button, from the facts as they stand. */
 function paint(): void {
   if (!asked) return;
+  const focusedAction = [actionEl, pageActionEl].find((button) => document.activeElement === button);
   lead = popupLead(facts);
-  // A page no extension may be granted — a browser page, the web store, a file, the reader —
-  // has no site to switch, and one nothing can run on has nothing to show either.
-  const siteField = siteEl.closest(".field") as HTMLElement;
-  const showField = document.getElementById("displayModeLbl")!.closest(".field") as HTMLElement;
-  siteField.hidden = facts.pattern === null;
-  showField.hidden = lead.status === "unsupported" || lead.status === "noTab";
-  (siteField.closest(".grp") as HTMLElement).hidden = siteField.hidden && showField.hidden;
+  siteGroup.hidden = facts.pattern === null;
   (document.getElementById("localFileSettings") as HTMLButtonElement).hidden = lead.status !== "fileAccess" || !FILE_URL_ACCESS_SUPPORTED;
   const down = lead.status === "daemon";
   statusEl.classList.toggle("down", down || lead.status === "crashed");
@@ -203,7 +167,7 @@ function paint(): void {
       statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("selAnalyzing")]));
       break;
     case "off":
-      statusEl.textContent = t("popupOff");
+      statusEl.textContent = siteGroup.hidden ? t("popupOff") : "";
       break;
     case "unsupported":
       statusEl.textContent = t("popupUnsupportedPage");
@@ -240,12 +204,6 @@ function paint(): void {
       statusEl.textContent = "";
       break;
   }
-  // On a PDF tab the button says the whole of it, and on a page read the report does; an
-  // empty line above them would only be a gap where a sentence used to be.
-  const reported = lead.status === "counts" && !!counts && !!report && !facts.tab?.translated;
-  statusEl.hidden = lead.status === "none" || reported;
-  // All chips or flagged only means something once the page has been read.
-  displayModeRowEl.hidden = !counts;
   // While the in-browser engine's model downloads, the browser has to stay open.
   keepOpenEl.hidden = !(lead.status === "setup" && facts.setup?.state === "downloading");
   // The main button already opens the reader empty on these tabs.
@@ -264,9 +222,18 @@ function paint(): void {
   // While no engine can score, what waits for one or found none is the status line's to say.
   const engineAway = lead.status === "setup" || lead.status === "daemon" || lead.status === "crashed";
   paintReport(counts && !facts.tab?.translated ? report : null, engineAway);
+  statusEl.hidden = !statusEl.textContent || (lead.status === "counts" && !reportEl.hidden);
   actionEl.disabled = false;
+  const inlineRescan = lead.action === "rescan" && !pageAction && !docsEditor && !reportEl.hidden && !reportHeading.hidden;
+  if (pageActionEl.parentElement !== pageActions) pageActions.prepend(pageActionEl);
+  if (inlineRescan) {
+    if (actionEl.parentElement !== reportHeading) reportHeading.append(actionEl);
+  } else if (actionEl.parentElement !== pageActions) {
+    pageActions.append(actionEl);
+  }
+  if (focusedAction && !focusedAction.hidden && document.activeElement !== focusedAction) focusedAction.focus({ preventScroll: true });
   if (lead.primary) delete actionEl.dataset.variant;
-  else actionEl.dataset.variant = "outline";
+  else actionEl.dataset.variant = inlineRescan ? "ghost" : "outline";
   if (pageControlFailed) {
     statusEl.hidden = false;
     statusEl.textContent = t("popupPageActionFailed");
@@ -289,6 +256,7 @@ function downloadLeft(percent: number): number | null {
 
 /** Why the model's download stopped, in the menu's few words; the setup page says what to do. */
 const SETUP_FAILURE: Record<NonNullable<EngineSetup["failure"]>, MessageKey> = {
+  access: "detectorAccess",
   network: "popupSetupStoppedNetwork",
   storage: "popupSetupStoppedStorage",
   server: "popupSetupStoppedServer",
@@ -308,24 +276,6 @@ let inBrowser = false;
 /** The local engine kept crashing and this device runs the in-browser engine: offer it. */
 let canSwitch = false;
 
-/** The engine line at the foot, when the engine is up (the action block says the rest). */
-function paintModel(s: BackendStatus | undefined): void {
-  const up = s?.active === "idle" || (s?.active === "server" && !!s.model);
-  backendEl.hidden = !up;
-  if (!up || !s) { backendEl.textContent = ""; return; }
-  const where = deviceWords(s.server.device);
-  backendEl.textContent = s.server.outdated ? t("popupEngineOutdated")
-    : t(inBrowser ? "popupEngineInBrowser" : "popupEngine", t("componentReady") + (where ? ", " + where : ""));
-}
-
-/** Where the model runs, in Settings' words; a runtime's own name ("mps", "webgpu") is none. */
-function deviceWords(device: string | undefined): string {
-  if (!device) return "";
-  if (/gpu|cuda|mps|metal|rocm|directml|dml/iu.test(device)) return t("engineWordsGpu");
-  if (/cpu|wasm/iu.test(device)) return t("engineWordsCpu");
-  return "";
-}
-
 /** Is the local engine ready? If not, the action opens setup and Settings. */
 async function refreshBackend(probe = false): Promise<void> {
   try {
@@ -341,11 +291,11 @@ async function refreshBackend(probe = false): Promise<void> {
     facts.crashed = s.engine === "native" && s.server.code === "engine_crashed";
     // The in-browser engine is offered beside Retry only where this device runs it.
     if (facts.crashed && !canSwitch) canSwitch = (await readDeviceInputs().then(decide).catch(() => null))?.path != null;
-    paintModel(s);
+    backendEl.hidden = !(s.server.outdated && facts.daemon === "up");
   } catch {
     // No worker to ask at all: say nothing about a model, and leave the page's own state
     // alone rather than blaming the daemon for a failure that is not its.
-    paintModel(undefined);
+    backendEl.hidden = true;
   }
   paint();
 }
@@ -381,26 +331,21 @@ let framesGranted = true;
 /** What the settings alone say about this site, access aside. */
 const ruleSaysOn = (): boolean => (siteRule ? siteRule.mode === "on" : globalDefault);
 
-/**
- * Paint "This site" from the rule that actually decides this page: the switch shows that
- * rule's state (or the global default when no rule covers the host), and the line under it
- * names the site the rule belongs to — "on zhihu.com" on a zhuanlan.zhihu.com tab. Access
- * comes first, though: a site Anagram may not read is a site Anagram is off for.
- */
+/** Only an inherited rule needs an explanation beside the site switch. */
 async function refreshSite(host: string): Promise<void> {
   globalDefault = await settings.enabled.getValue();
   granted = await hasAccess(facts.pattern);
   framesGranted = frames.length === 0 || (await hasAccess(frames[0]!, frames.slice(1)));
   if (!host) {
     siteEl.checked = false;
-    siteHostEl.textContent = "";
-    siteHostEl.title = "";
+    siteRuleNote.hidden = true;
+    siteRuleNote.textContent = "";
     return;
   }
   siteRule = await effectiveRule(host);
   siteEl.checked = granted && framesGranted && ruleSaysOn();
-  siteHostEl.textContent = siteLine(host, siteRule);
-  siteHostEl.title = host;
+  siteRuleNote.textContent = inheritedRuleNote(host, siteRule);
+  siteRuleNote.hidden = !siteRuleNote.textContent;
 }
 
 /**
@@ -476,7 +421,6 @@ async function init(): Promise<void> {
     if (pdf?.pdf === true) facts.pdfTab = true;
   }
 
-  checkSeg(displayModeEls, await settings.displayMode.getValue());
   // A page no extension may be granted — a browser page, the web store, a file — has
   // nothing this switch could do.
   siteEl.disabled = !host || facts.pattern === null;
@@ -513,7 +457,6 @@ async function init(): Promise<void> {
     });
   });
 
-  bindSeg(displayModeEls, (v) => void settings.displayMode.setValue(v as "all" | "flagged"));
   pageActionEl.addEventListener("click", () => {
     if (!report?.pageAction?.enabled) return;
     pageActionEl.disabled = true;
@@ -555,7 +498,7 @@ async function init(): Promise<void> {
         window.close();
         return;
       case "retry":
-        void browser.runtime.openOptionsPage();
+        void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#engineGroup" });
         window.close();
         return;
       case "retryEngine":
@@ -598,7 +541,7 @@ async function init(): Promise<void> {
     window.close();
   });
   document.getElementById("openStats")!.addEventListener("click", () => {
-    void browser.tabs.create({ url: browser.runtime.getURL("/stats.html" as PublicPath) });
+    void browser.tabs.create({ url: browser.runtime.getURL("/stats.html" as PublicPath) + "#today" });
     window.close();
   });
   void paintStatsToday();
@@ -609,14 +552,6 @@ async function init(): Promise<void> {
 
   gearEl.addEventListener("click", () => {
     void browser.runtime.openOptionsPage();
-  });
-  // How to keep Anagram in the toolbar, only while it is not kept there: the setup page's step.
-  const toolbarHelp = document.getElementById("toolbarHelp")!;
-  const userSettings = (browser as { action?: { getUserSettings?: () => Promise<{ isOnToolbar?: boolean }> } }).action?.getUserSettings;
-  void userSettings?.().then((u) => { toolbarHelp.hidden = u.isOnToolbar !== false; }).catch(() => undefined);
-  toolbarHelp.addEventListener("click", () => {
-    void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") + "#pinCard" });
-    window.close();
   });
   (document.getElementById("localFileSettings") as HTMLButtonElement).addEventListener("click", () => {
     void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#local-pdfs" });

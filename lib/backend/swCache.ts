@@ -24,6 +24,7 @@ import { modelText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
 import { digest128 } from "../hash";
 import { SCORE_CACHE_MAX_AGE_MS, type ScoreCacheMode } from "../cachePolicy";
 import { createLogger } from "../log";
+import { scoreCacheSecret } from "../settings/settings";
 
 const log = createLogger("swcache");
 
@@ -65,6 +66,8 @@ export interface Stored {
   l?: string;
   lp?: number;
   u?: 1;
+  short?: 1;
+  sl?: number[];
   t: number;
 }
 
@@ -111,6 +114,8 @@ function toStored(key: string, r: ScoreResult, at = Date.now()): Stored {
   if (r.truncated) s.x = 1;
   if (r.lang) s.l = r.lang;
   if (typeof r.lang_prob === "number") s.lp = r.lang_prob;
+  if (r.insufficient) s.short = 1;
+  if (r.sentenceLabels) s.sl = [...r.sentenceLabels];
   if (r.unsupported) s.u = 1;
   return s;
 }
@@ -122,6 +127,8 @@ function fromStored(s: Stored | undefined): ScoreResult | null {
   if (s.x) r.truncated = true;
   if (s.l) r.lang = s.l;
   if (typeof s.lp === "number") r.lang_prob = s.lp;
+  if (s.short) r.insufficient = true;
+  if (s.sl) r.sentenceLabels = [...s.sl];
   if (s.u) r.unsupported = true;
   return r;
 }
@@ -151,12 +158,13 @@ function db(): Promise<IDBPDatabase<ScoreDB> | null> {
   if (!_db) {
     _db = (async () => {
       try {
-        // 2: keys carry the partition and a SHA-256 digest; the rows keyed the old way go.
-        const d = await openDB<ScoreDB>(DB_NAME, 2, {
+        // Version 3 replaces independently recognizable site and text digests with a profile-keyed MAC.
+        const d = await openDB<ScoreDB>(DB_NAME, 3, {
           upgrade(u, from) {
             if (from >= 1 && u.objectStoreNames.contains(STORE)) u.deleteObjectStore(STORE);
             u.createObjectStore(STORE, { keyPath: "key" }).createIndex("byTime", "t");
           },
+          blocking() { void _db?.then((connection) => connection?.close()); _db = null; },
         });
         return d;
       } catch (e) {
@@ -166,6 +174,46 @@ function db(): Promise<IDBPDatabase<ScoreDB> | null> {
     })();
   }
   return _db;
+}
+
+/** Discard old unkeyed fingerprints on upgrade even for users who now keep scores in memory. */
+export async function upgradeScoreCache(): Promise<void> {
+  if (typeof indexedDB.databases === "function") {
+    const known = await indexedDB.databases();
+    if (!known.some((d) => d.name === DB_NAME && (d.version ?? 0) < 3)) return;
+  }
+  if (!(await db())) throw new Error("Score cache upgrade failed");
+}
+
+/** Kept separately from the verdict database. A copy of the database alone cannot be
+ * searched using candidate passages. Generate once even when two workers start together. */
+let signingKey: Promise<CryptoKey> | undefined;
+function scoreSigningKey(): Promise<CryptoKey> {
+  signingKey ??= loadScoreSigningKey().catch((error) => { signingKey = undefined; throw error; });
+  return signingKey;
+}
+
+async function loadScoreSigningKey(): Promise<CryptoKey> {
+  return navigator.locks.request("anagram-score-cache-key", async () => {
+    let encoded = await scoreCacheSecret.getValue();
+    if (encoded === null) {
+      const random = crypto.getRandomValues(new Uint8Array(32));
+      encoded = btoa(String.fromCharCode(...random));
+      await scoreCacheSecret.setValue(encoded);
+    }
+    const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+    if (bytes.length !== 32) throw new Error("Invalid score cache key");
+    return crypto.subtle.importKey("raw", bytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  });
+}
+
+async function diskKeys(keys: string[]): Promise<string[]> {
+  const secret = await scoreSigningKey();
+  const encoder = new TextEncoder();
+  return Promise.all(keys.map(async (key) => {
+    const digest = await crypto.subtle.sign("HMAC", secret, encoder.encode(key));
+    return btoa(String.fromCharCode(...new Uint8Array(digest)));
+  }));
 }
 
 /** Delete rows from the oldest end of the timestamp index; `while` decides how far. */
@@ -196,10 +244,11 @@ export function indexedDbStore(): ScoreStore {
       const d = await db();
       if (!d) return keys.map(() => undefined);
       try {
+        const opaque = await diskKeys(keys);
         const tx = d.transaction(STORE, "readonly");
-        const rows = await Promise.all(keys.map((k) => tx.store.get(k)));
+        const rows = await Promise.all(opaque.map((k) => tx.store.get(k)));
         await tx.done;
-        return rows;
+        return rows.map((row, i) => row && { ...row, key: keys[i]! });
       } catch (e) {
         log.warn("persistent cache read failed", e);
         return keys.map(() => undefined);
@@ -208,8 +257,9 @@ export function indexedDbStore(): ScoreStore {
     async put(rows) {
       const d = await db();
       if (!d) throw new Error("Persistent score cache is unavailable");
+      const opaque = await diskKeys(rows.map((row) => row.key));
       const tx = d.transaction(STORE, "readwrite");
-      for (const row of rows) void tx.store.put(row);
+      rows.forEach((row, i) => { void tx.store.put({ ...row, key: opaque[i]! }); });
       await tx.done;
     },
     async clear() {
@@ -315,7 +365,7 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
         if (persist && memoryOnly.has(key)) queueWrite(key, hit.result, hit.at);
       } else misses.push(key);
     }
-    if (!misses.length || mode === "session") return out;
+    if (!misses.length || !persist || mode === "session") return out;
     // A read begun after clear must wait for its deletion, even if an older put is slow.
     await writeTail;
     if (!current(seq)) return new Map();

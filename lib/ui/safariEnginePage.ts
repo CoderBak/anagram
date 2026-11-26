@@ -9,7 +9,7 @@ export function mountSafariEnginePage(): void {
   const main = document.createElement("main");
   main.className = "safari-engine";
   const icon = document.createElement("img");
-  icon.src = browser.runtime.getURL("/icons/icon-96.png"); icon.alt = ""; icon.width = icon.height = 64;
+  icon.src = browser.runtime.getURL("/icons/icon-96.png"); icon.alt = ""; icon.width = icon.height = 28;
   const title = document.createElement("h1"); title.textContent = t("safariEngineTitle");
   const note = document.createElement("p"); note.textContent = t("safariEngineTabNote");
   const privacy = document.createElement("p"); privacy.textContent = t("safariEnginePrivacy");
@@ -19,6 +19,8 @@ export function mountSafariEnginePage(): void {
   const settings = document.createElement("a");
   settings.href = browser.runtime.getURL("/options.html"); settings.target = "_blank"; settings.rel = "noopener"; settings.textContent = t("safariEngineSettings");
   links.append(setup, settings);
-  main.append(icon, title, note, privacy, links);
+  const header = document.createElement("header");
+  header.append(icon, title);
+  main.append(header, note, privacy, links);
   document.body.append(main);
 }

@@ -1,3 +1,4 @@
+import { resultLevel } from "./band";
 // lib/render/highlight.ts — in-place marking via the CSS Custom Highlight API.
 //
 // ZERO DOM mutation: we build `Range`s over the unit's text and add them to a
@@ -412,7 +413,7 @@ function wholeParts(unit: Unit): Range[] {
 function stepRuns(stretches: readonly WindowVerdict[]): Array<{ start: number; end: number; step: number }> {
   const runs: Array<{ start: number; end: number; step: number }> = [];
   for (const st of stretches) {
-    const step = scaleStep(st.result.score);
+    const step = resultLevel(st.result);
     const last = runs[runs.length - 1];
     if (last && last.end === st.start && last.step === step) last.end = st.end;
     else runs.push({ start: st.start, end: st.end, step });
@@ -445,14 +446,14 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0, atR
 
   const marks: Array<{ step: number; ranges: Range[]; rest: boolean }> = [];
   const rest = (step: number): boolean => atRest && step >= minLevel;
-  const onePass = verdict.windows.length === 1 && verdict.unreadChars === 0;
+  const onePass = verdict.windows.length === 1 && verdict.stretches.length === 1 && verdict.unreadChars === 0;
   // The stretches the verdict judged, neighbours on one step of the scale drawn as one.
   const runs = stepRuns(verdict.stretches);
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
   const own = _locator?.(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs);
   const located = own !== undefined ? own : onePass ? null : locateSpans(unit.parts, unit.text, runs);
-  const whole = scaleStep(verdict.result.score);
+  const whole = resultLevel(verdict.result);
   if (located && own !== undefined && onePass) {
     marks.push({ step: whole, ranges: located[0] ?? [], rest: rest(whole) });
   } else if (located) {

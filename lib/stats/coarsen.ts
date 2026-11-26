@@ -2,7 +2,8 @@
 // (lib/stats/config.ts). The worker applies these as it writes (what the reader chose to keep),
 // and an export applies them again for a coarser file. Pure.
 import { MIN_WORDS, MODEL_MIN_WORDS } from "../dom/text";
-import type { Layer } from "./config";
+import { INPUT_KINDS, type EventStreams, type TabEvent, type VisitRow } from "./model";
+import { rank, type Layers, type Layer } from "./config";
 import { registrableDomain } from "../publicSuffixes";
 
 // ---- time ---------------------------------------------------------------------------------
@@ -77,6 +78,13 @@ export function coarseTitle(title: string, layer: Layer<"title">): string | unde
   return layer === "short" ? t.slice(0, 60) : t.slice(0, 300);
 }
 
+/** A title hash made from a full title cannot represent its shortened title. */
+export function retainedTitle(title: string | undefined, hashed: boolean, was: Layer<"title"> | undefined, layer: Layer<"title">): string | undefined {
+  if (title === undefined || layer === "none") return undefined;
+  if (hashed) return rank("title", was ?? "full") < rank("title", layer) ? undefined : title;
+  return coarseTitle(title, layer);
+}
+
 /** The length bands: under the minimum, under the model's training minimum, then doubling. */
 export const LEN_BANDS = [MIN_WORDS, MODEL_MIN_WORDS, 150, 300, 600];
 export function lenBand(words: number): string {
@@ -114,4 +122,51 @@ export function coarseLang(l: LangFields, layer: Layer<"lang">): LangFields | un
   if (layer === "full") return l;
   if (layer === "label") return { label: l.label };
   return { english: l.english ?? l.label === "en" };
+}
+
+export function projectReferrer(v: VisitRow, layer: Layer<"place">): string | undefined {
+  if (!v.referrer || layer === "none") return undefined;
+  const stored = Object.keys(v.places ?? {}) as Layer<"place">[];
+  const finest = stored.sort((a, b) => rank("place", a) - rank("place", b))[0];
+  if (v.hashed?.includes("place")) return finest && rank("place", finest) >= rank("place", layer) ? v.referrer : undefined;
+  if (finest && rank("place", finest) >= rank("place", layer)) return v.referrer;
+  return placeLadder(v.referrer)?.[layer];
+}
+
+export function projectStreams(s: EventStreams, L: Layers, lastScroll = new Map<number, number>()): EventStreams {
+  const keep = { steps: L.expo === "steps", intervals: rank("expo", L.expo) <= rank("expo", "intervals"),
+    scroll: rank("scroll", L.scroll) <= rank("scroll", "second"), episodes: rank("scroll", L.scroll) <= rank("scroll", "episodes"),
+    input: rank("input", L.input) <= rank("input", "events"), state: L.state === "changes", ui: L.ui === "events", geom: L.geom === "changes" };
+  const out: EventStreams = {};
+  for (const name of Object.keys(s) as (keyof EventStreams)[]) {
+    const stream = s[name];
+    if (!stream || !keep[name]) continue;
+    let indices: boolean[] | undefined;
+    if (name === "scroll" && s.scroll) {
+      const every = L.scroll === "frames" ? 0 : L.scroll === "tenth" ? 100 : 1000;
+      indices = s.scroll.t.map((t, i) => {
+        const box = s.scroll!.box[i]!;
+        if (t - (lastScroll.get(box) ?? -Infinity) < every) return false;
+        lastScroll.set(box, t); return true;
+      });
+    } else if (name === "input" && L.input !== "pointer") indices = s.input!.kind.map((k) => k !== INPUT_KINDS.indexOf("move"));
+    const columns: Record<string, number[]> = {};
+    for (const [column, values] of Object.entries(stream) as [string, number[]][]) {
+      if (!values || (name === "input" && (column === "x" || column === "y") && L.input === "events")) continue;
+      const kept = indices ? values.filter((_, i) => indices[i]) : values;
+      columns[column] = ["t", "start", "end"].includes(column) ? kept.map((v) => coarseDur(v, L.dur) ?? 0) : kept;
+    }
+    (out as Record<string, unknown>)[name] = columns;
+  }
+  return out;
+}
+
+export function projectTab(e: TabEvent, L: Layers): TabEvent | null {
+  if (L.rows !== "event") return null;
+  const keep = e.kind === "uncovered" ? L.cover === "visit" : e.kind === "ui" ? L.ui === "events"
+    : L.tabs === "full" || (L.tabs === "ids" && ["tabFront", "windowFocus", "windowBlur"].includes(e.kind));
+  if (!keep) return null;
+  return { ...e, at: coarseTime(e.at, L.time), ms: e.ms === undefined ? undefined : coarseDur(e.ms, L.dur) ?? undefined,
+    ...(L.tabs === "full" ? {} : { opener: undefined, state: undefined, tabs: undefined, index: undefined }),
+    ...(L.tabs === "none" ? { tab: undefined, window: undefined } : {}) };
 }

@@ -32,6 +32,7 @@ function byteAlphabet(): string[] {
 interface AddedToken { id: number; content: string; lstrip: boolean; rstrip: boolean; single_word: boolean }
 
 export interface TokenizerFile {
+  normalizer?: {type:string} | null;
   added_tokens: AddedToken[];
   pre_tokenizer: { type: string; add_prefix_space: boolean; use_regex?: boolean } | null;
   post_processor: { type: string; sep: [string, number]; cls: [string, number] } | null;
@@ -45,6 +46,8 @@ export class Tokenizer {
   private readonly encoder = new TextEncoder();
   private readonly added: AddedToken[];
   private readonly cache = new Map<string, number[]>();
+  private readonly widths = new Map<number,number>();
+  private readonly nfc: boolean;
   readonly clsId: number;
   readonly sepId: number;
   readonly padId: number;
@@ -52,22 +55,28 @@ export class Tokenizer {
   constructor(file: TokenizerFile) {
     if (file.model.type !== "BPE") throw new Error(`tokenizer model ${file.model.type} is not BPE`);
     if (file.pre_tokenizer?.type !== "ByteLevel" || file.pre_tokenizer.add_prefix_space) throw new Error("tokenizer is not byte-level without a prefix space");
-    if (file.post_processor?.type !== "RobertaProcessing") throw new Error("tokenizer has no RoBERTa post-processor");
+    this.nfc = file.normalizer?.type === "NFC";
+    if (!["RobertaProcessing","TemplateProcessing"].includes(file.post_processor?.type ?? "")) throw new Error("tokenizer has no RoBERTa post-processor");
     this.vocab = new Map(Object.entries(file.model.vocab));
     file.model.merges.forEach((merge, rank) => {
       const [a, b] = Array.isArray(merge) ? merge : merge.split(" ");
       this.ranks.set(`${a}\u0000${b}`, rank);
     });
     this.added = [...file.added_tokens].sort((x, y) => y.content.length - x.content.length);
-    this.clsId = file.post_processor.cls[1];
-    this.sepId = file.post_processor.sep[1];
-    const pad = file.added_tokens.find((t) => t.content === "<pad>");
+    const special = (name:string) => file.added_tokens.find(t=>t.content===name);
+    this.clsId = file.post_processor?.cls?.[1] ?? special("[CLS]")?.id ?? -1;
+    this.sepId = file.post_processor?.sep?.[1] ?? special("[SEP]")?.id ?? -1;
+    if (this.clsId < 0 || this.sepId < 0) throw new Error("Missing sequence tokens");
+    for (const [token,id] of this.vocab) this.widths.set(id,Array.from(token).length);
+    for (const token of this.added) this.widths.set(token.id,this.encoder.encode(token.content).length);
+    const pad = special("<pad>") ?? special("[PAD]");
     if (!pad) throw new Error("tokenizer has no <pad> token");
     this.padId = pad.id;
   }
 
   /** The library's encode(text, add_special_tokens): token ids. */
   encode(text: string, addSpecialTokens: boolean): number[] {
+    if (this.nfc) text = text.normalize("NFC");
     const ids: number[] = [];
     if (addSpecialTokens) ids.push(this.clsId);
     let from = 0;
@@ -79,6 +88,21 @@ export class Tokenizer {
     this.encodeText(text.slice(from), ids);
     if (addSpecialTokens) ids.push(this.sepId);
     return ids;
+  }
+
+  /** Character offsets for the release's byte-level vocabulary, including split Unicode scalars. */
+  offsets(text: string, ids: number[]): [number,number][] {
+    const owner: number[] = [];
+    let index = 0;
+    for (const ch of text) { for (const _ of this.encoder.encode(ch)) owner.push(index); index++; }
+    let byte = 0;
+    const offsets = ids.map((id): [number,number] => {
+      const start = byte;
+      byte += this.widths.get(id) ?? 0;
+      return [owner[start] ?? index, (owner[byte-1] ?? index-1)+1];
+    });
+    if (byte !== owner.length) throw new Error("Tokenizer offsets do not match the passage");
+    return offsets;
   }
 
   /** Leftmost-longest occurrences of the added tokens, with their strip rules applied. */

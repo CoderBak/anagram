@@ -1,20 +1,11 @@
-// lib/webengine/pin.ts — the files the in-browser engine runs on: the native installer's pin.
-//
-// anagramd/modelkit.json names the Hugging Face redistribution of EditLens by repository
-// and commit, with the size and SHA-256 of every file; anagramd/download_modelkit.py
-// fetches each as https://huggingface.co/<repository>/resolve/<revision>/<path>, and from
-// hf-mirror.com under the same path where Hugging Face cannot be reached. The browser
-// engine downloads two of them, the ONNX graph (FP32, or the modelkit's FP16 one on the few
-// devices where FP32 does not fit, lib/device.ts TIERS) and the tokenizer, from there; nothing
-// else is ever fetched. The third file it needs, fastText's lid.176.ftz, ships inside the
-// package (scripts/webengine.mjs puts it there, checked against the same size and hash) and
-// is read from it, and checked again, whenever the model loads.
-import modelkit from "../../anagramd/modelkit.json";
+// Local engine files, identified by release commit and SHA-256.
+import { defaultRelease, type DetectorRelease } from "../detectorReleases";
 import { BUCKET_LABELS, CALIBRATION, LANGUAGE_ID, SUPPORTED_LANGUAGES } from "../contract";
 
 export interface PinnedFile {
   /** The file's name in the engine's storage. */
   name: string;
+  path?: string;
   size_bytes: number;
   sha256: string;
   url: string;
@@ -31,6 +22,7 @@ export const MIRROR_HOST = "hf-mirror.com";
 export type ModelTier = "fp32" | "fp16";
 
 export interface Pin {
+  release?: DetectorRelease;
   /** The precision of the model file in `files`; FP32 when absent. */
   tier?: ModelTier;
   /** The files setup downloads. */
@@ -53,28 +45,16 @@ export const LID = { name: LANGUAGE_ID.path, size_bytes: LANGUAGE_ID.size_bytes,
 export const LID_PATH = "/vendor/engine/lid.176.ftz";
 
 /** The files setup downloads for `tier`, with their addresses. */
-export function pinnedFiles(tier: ModelTier = "fp32"): PinnedFile[] {
-  const names: Record<string, string> = { [MODEL_PATHS[tier].path]: MODEL_PATHS[tier].name, "tokenizer.json": "tokenizer.json" };
-  const files: PinnedFile[] = [];
-  for (const entry of modelkit.files) {
-    const name = names[entry.path];
-    if (!name) continue;
-    // download_modelkit.py: quote(name, safe="/") on the path.
-    const path = entry.path.split("/").map(encodeURIComponent).join("/");
-    const at = `${modelkit.repository}/resolve/${modelkit.revision}/${path}`;
-    files.push({ name, size_bytes: entry.size_bytes, sha256: entry.sha256, url: `https://huggingface.co/${at}`, mirrors: [`https://hf-mirror.com/${at}`] });
-  }
-  if (files.length !== Object.keys(names).length) throw new Error("anagramd/modelkit.json no longer lists a file the browser engine needs");
-  return files;
+export function pinnedFiles(_tier: ModelTier = "fp32", release = defaultRelease): PinnedFile[] {
+  return release.files.map(f => ({...f, name: f.sha256, url: `https://huggingface.co/${release.repository}/resolve/${release.revision}/${f.path}`}));
 }
 
-/** engine.py's MODEL_ID. The FP16 model has an id of its own, so that the
- *  two never share a cached score (cache keys are folded from the id). */
-export const MODEL_ID = "editlens_roberta-large";
-export const modelId = (tier: ModelTier = "fp32"): string => (tier === "fp16" ? `${MODEL_ID}-fp16` : MODEL_ID);
+export const MODEL_ID = defaultRelease.release;
+export const modelId = (_tier:ModelTier = "fp32"):string => MODEL_ID;
 export { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES };
 
 /** The pin of `tier`, with lid.176.ftz at `lidUrl`: LID_PATH as the extension serves it. */
-export function pin(lidUrl: string, tier: ModelTier = "fp32"): Pin {
-  return { tier, files: pinnedFiles(tier), lid: { ...LID, url: lidUrl }, model: { id: modelId(tier), calibration: CALIBRATION }, license: modelkit.license };
+export function pin(lidUrl: string, _tier: ModelTier = "fp32", release = defaultRelease): Pin {
+  return {tier:"fp32", release, files:pinnedFiles("fp32",release), lid:{...LID,url:lidUrl},
+    model:{id:release.release,calibration:"anagram-detector/1"},license:""};
 }

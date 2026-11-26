@@ -1,6 +1,6 @@
-"""Install selected pinned EditLens files, verifying the transaction before replacement.
+"""Install selected pinned model files, verifying the transaction before replacement.
 
-The models retain Pangram's CC BY-NC-SA 4.0 license. Downloads are anonymous;
+Legacy EditLens files retain Pangram’s CC BY-NC-SA 4.0 license. Downloads are anonymous;
 no account, saved Hugging Face token, or upstream access approval is required.
 """
 from __future__ import annotations
@@ -241,7 +241,7 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
                 url = (f"https://huggingface.co/{pin['repository']}/resolve/{pin['revision']}/"
                        + quote(name, safe="/"))
                 download_asset(url, target, entry, cancel=cancel, transfer=transfer, notice=notice,
-                               fallbacks=[mirror_of(url)], route=route, on_fallback=on_fallback,
+                               fallbacks=[] if "release" in pin else [mirror_of(url)], route=route, on_fallback=on_fallback,
                                progress=lambda count, base=received, name=name: progress(base + count, total, name))
             received += entry["size_bytes"]
             progress(received, total, name)

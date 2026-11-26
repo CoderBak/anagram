@@ -17,7 +17,7 @@ import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
 import { formatScore } from "./score";
 import { coverageNote, shortTextNote, windowScores, windowReadout } from "./coverage";
-import { DIST_CSS, distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
+import { DIST_CSS, sentenceDetailsHtml, distributionHtml, placeMarkers, swatchHtml, unsureNote } from "./dist";
 import { countWords, MIN_WORDS } from "../dom/text";
 import { isDarkPage } from "./theme";
 
@@ -26,56 +26,49 @@ const CARD_CSS = `
 .card {
   position: fixed;
   box-sizing: border-box;
-  width: 264px;
-  padding: 11px 13px 10px;
-  border-radius: 8px;
-  border: 1px solid #e5e5e5;
+  width: min(248px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgb(0 0 0 / 0.09);
   background: #ffffff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  font: 400 11px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: #252525;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.10), 0 1px 3px rgb(0 0 0 / 0.05);
+  font: 400 11.5px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  color: #18181b;
   z-index: 2147483647;
 }
 /* The ✕ sits in the corner: the head's score stops short of it. */
-.head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 5px; padding-right: 14px; }
-.verdict { font-weight: 700; font-size: 12px; }
-.verdict.band-unknown { color: #57606a; }
-.verdict.band-unsupported { color: #737373; }
-.big { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; padding-right: 22px; }
+.verdict { font-weight: 600; font-size: 12.5px; letter-spacing: -0.01em; }
+.verdict.band-unknown { color: #52525b; }
+.verdict.band-unsupported { color: #63636c; }
+.big { font-weight: 600; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .row { display: flex; justify-content: space-between; gap: 12px; }
-.row .k { color: #737373; }
+.row .k { color: #63636c; }
 .row .v { font-variant-numeric: tabular-nums; }
 .row.wins .k { flex: none; }
 .row.wins .v { text-align: right; }
-.short, .unsure { color: #737373; font-style: italic; margin-bottom: 4px; }
-.foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #f0f0f0; color: #737373; font-size: 10px; }
+.short, .unsure { color: #63636c; font-style: italic; margin-bottom: 4px; }
+.foot { margin-top: 6px; padding-top: 5px; border-top: 1px solid #f0f0f2; color: #63636c; font-size: 10.5px; }
 .close {
-  position: absolute; top: 6px; right: 8px;
-  border: none; background: none; font: 700 12px/1 system-ui; color: #737373; cursor: pointer; padding: 2px;
+  position: absolute; top: 2px; right: 2px; z-index: 1;
+  display: grid; place-items: center; width: 28px; height: 28px;
+  border: 0; border-radius: 5px; padding: 0; background: transparent; color: #63636c; cursor: pointer;
 }
-/* Hit area, not paint: the glyph stays a 13x16 mark in the corner and an invisible
-   24x24 box accepts the pointer (WCAG 2.5.8, target size minimum). */
-.close::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 24px;
-  height: 24px;
-  transform: translate(-50%, -50%);
-}
-.close:hover { color: #252525; }
-.spin { color: #737373; }
+.close svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.close:hover { background: #efeff1; color: #18181b; }
+.spin { color: #63636c; }
 
 :host(.pg-dark) .card {
-  border-color: rgba(255, 255, 255, 0.10);
-  background: #171717;
-  color: #fafafa;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: rgb(255 255 255 / 0.11);
+  background: #191a1d;
+  color: #f1f2f4;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.55), 0 1px 3px rgb(0 0 0 / 0.3);
 }
-:host(.pg-dark) .row .k, :host(.pg-dark) .short, :host(.pg-dark) .unsure { color: #a3a3a3; }
-:host(.pg-dark) .foot { border-top-color: rgba(255, 255, 255, 0.08); color: #8a8a8a; }
+:host(.pg-dark) .row .k, :host(.pg-dark) .short, :host(.pg-dark) .unsure { color: #a1a4ad; }
+:host(.pg-dark) .foot { border-top-color: rgb(255 255 255 / 0.08); color: #9a9da6; }
 :host(.pg-dark) .verdict.band-unknown { color: #b9c0c8; }
+:host(.pg-dark) .close { color: #a1a4ad; }
+:host(.pg-dark) .close:hover { background: rgb(255 255 255 / 0.1); color: #f1f2f4; }
 ` + DIST_CSS;
 
 let _sheet: CSSStyleSheet | null = null;
@@ -198,9 +191,7 @@ export async function analyzeSelection(): Promise<void> {
   };
 
   const words = countWords(text);
-  // aria-label, not just title: a button's own text wins the accessible-name
-  // computation, so without it the control announces as the glyph "✕".
-  const closeBtn = `<button class="close" type="button" aria-label="${t("selClose")}" title="${t("selClose")}">✕</button>`;
+  const closeBtn = `<button class="close" type="button" aria-label="${t("selClose")}" title="${t("selClose")}"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3 3 10 10m0-10L3 13"/></svg></button>`;
 
   // The minimum length is the selection's floor as it is a paragraph's.
   const floor = MIN_WORDS;
@@ -252,7 +243,7 @@ export async function analyzeSelection(): Promise<void> {
     });
     if (!_host || _host !== host) return; // dismissed while in flight
     const windows = incompatible ? undefined : read.get("sel");
-    const verdict = windows ? unitVerdict("sel", text.length, windows) : null;
+    const verdict = windows ? unitVerdict("sel", text.length, windows, text) : null;
     if (!verdict || verdict.result.degraded) {
       card.innerHTML =
         closeBtn +
@@ -273,7 +264,7 @@ export async function analyzeSelection(): Promise<void> {
       const analyzed = partial
         ? verdict.windows.filter(isScoredWindow).reduce((n, w) => n + countWords(text.slice(w.start, w.end)), 0)
         : words;
-      const short = isNoVerdict(b) ? "" : shortTextNote(words);
+      const short = isNoVerdict(b) || r.probs.length===3 ? "" : shortTextNote(words);
       const foot = b === "unknown" ? t("selFootUnavailable") : b === "unsupported" ? t("selFootUnsupported") : coverageNote(verdict, "selection", text).trim();
       card.innerHTML =
         closeBtn +
@@ -281,10 +272,10 @@ export async function analyzeSelection(): Promise<void> {
         `<span class="big" title="${t("cardScaleTitle")}">${isNoVerdict(b) ? "—" : score}</span></div>` +
         (!isNoVerdict(b) && unsureNote(verdict) ? `<div class="unsure">${unsureNote(verdict)}</div>` : "") +
         (short ? `<div class="short">${short}</div>` : "") +
-        (isNoVerdict(b) ? "" : distributionHtml(r)) +
+        (isNoVerdict(b) ? "" : distributionHtml(r)+sentenceDetailsHtml(verdict)) +
         (b === "unsupported" ? row(t("cardDetectedLang"), `${languageName(r.lang)}, ${Math.round((r.lang_prob ?? 0) * 100)}%`) : "") +
         row(t("selWordsSelected"), String(words)) +
-        (readout ? row(t("selWordsAnalyzed"), verdict.unreadChars > 0 ? t("selFirst", analyzed) : String(analyzed)) : "") +
+        (!isNoVerdict(b) && partial ? row(t("selWordsAnalyzed"), verdict.unreadChars > 0 ? t("selFirst", analyzed) : String(analyzed)) : "") +
         (readout ? row(t("cardWindows", readout.count), windowScores(readout), " wins") : "") +
         (readout && readout.cutShort > 0 ? row(t("cardWindowsCut"), t("cardOfCount", readout.cutShort, readout.count)) : "") +
         (readout && readout.skipped > 0 ? row(t("cardWindowsSkipped"), t("cardOfCount", readout.skipped, readout.count)) : "") +

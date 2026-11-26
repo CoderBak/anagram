@@ -52,7 +52,7 @@ export const loadSurfaces = (): Promise<SurfacesModule> => lazyVendor<SurfacesMo
 /** Engine API used alongside the separately packaged full upstream viewer. */
 export type PdfJsModule = Pick<
   typeof import("pdfjs-dist"),
-  "getDocument" | "GlobalWorkerOptions" | "Util"
+  "getDocument" | "GlobalWorkerOptions" | "Util" | "OPS"
 >;
 
 export const loadPdfjs = (): Promise<PdfJsModule> => lazyVendor<PdfJsModule>("pdfjs.min.mjs");

@@ -1255,7 +1255,7 @@ SOFTWARE.
 
 ## The in-browser engine
 
-The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.
+The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names used by the legacy EditLens pipeline, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; the detector releases are listed under the component package below.
 
 ### ONNX Runtime Web (1.30.0)
 
@@ -1828,12 +1828,19 @@ The component archive (anagram.tar.gz, anagram.zip) holds Anagram's own engine, 
 - Copyright: Their respective authors
 - In Anagram: A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers on Windows and on Linux with an NVIDIA GPU, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock.
 
+### Anagram detector releases (selected in Settings, initially pinned in anagramd/detector-release.json)
+
+- Project: https://huggingface.co/CoderBak/anagram-detectors
+- Licence: See the selected model release
+- Copyright: See the selected model release
+- In Anagram: Downloaded separately by the selected engine and verified against the release’s SHA-256 hashes. Settings links to the exact revision.
+
 ### EditLens RoBERTa-large (pinned in anagramd/modelkit.json)
 
 - Project: https://huggingface.co/pangram/editlens_roberta-large
 - Licence: CC-BY-NC-SA-4.0
 - Copyright: Pangram Labs
-- In Anagram: The scoring model, downloaded with SHA-256 verification from the CoderBak/editlens_roberta_modelkit redistribution. Non-commercial use only.
+- In Anagram: The legacy scoring model, distributed with SHA-256 verification from the CoderBak/editlens_roberta_modelkit redistribution. Non-commercial use only.
 
 ## Licence texts
 

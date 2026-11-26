@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 def prepare(home, *, installer=False, language="en", profile=None):
     from native_component import HomeLock, STATE_DEFAULT, validate_home
     from native_host import configure_environment
-    from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, load_pin, installed_profile,
+    from download_modelkit import (LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, installed_profile,
                                    install_streaming, download_asset, invalid_files, matches)
     from safe_files import atomic_json, read_json, is_link
     from hub_transfer import safe_error
@@ -30,7 +30,11 @@ def prepare(home, *, installer=False, language="en", profile=None):
     with lock:
         configure_environment(home)
         os.chdir(home)
-        model_dir = home / "models/editlens_roberta-large"
+        from detector import selected, model_dir as release_dir, plan as detector_plan
+        pin = selected(home)
+        source = f"https://huggingface.co/{pin['repository']}/tree/{pin['revision']}"
+        print(("模型文件与条款：" if language == "zh_CN" else "Model files and terms: ") + source, flush=True)
+        model_dir = release_dir(home, pin)
         state_path = home / "component-state.json"
         # The terminal may prepare the expanded set explicitly; the browser only
         # ever reuses whichever profile the installation records here.
@@ -42,9 +46,7 @@ def prepare(home, *, installer=False, language="en", profile=None):
             return
         say = lambda en, zh: print(zh if language == "zh_CN" else en, flush=True)
         say("Detecting usable devices…", "正在检测可用计算设备…")
-        from model_plan import build_plan, discover_hardware
-        pin = load_pin(PIN)
-        plan = build_plan(pin, discover_hardware(), profile)
+        plan = detector_plan(pin, profile)
         total = plan["total_bytes"] + LID_ENTRY["size_bytes"]
         say("Devices: " + " · ".join(plan["devices"]), "设备：" + " · ".join(plan["devices"]))
         say(f"Model files: {total / 1e9:.2f} GB; verified files will be reused.\nDestination: {model_dir}",
@@ -66,6 +68,9 @@ def prepare(home, *, installer=False, language="en", profile=None):
                 last_time, last_name = now, name
 
         try:
+            if "release" in pin:
+                from detector import reuse_weights
+                reuse_weights(home, pin)
             route = {}
             use_mirror = lambda host: say(
                 f"Hugging Face is unreachable; downloading from {host} (same files, checked by SHA-256).",
@@ -97,6 +102,7 @@ def prepare(home, *, installer=False, language="en", profile=None):
             say("Close the browser's Anagram connection, then resume only the download (no reinstall):\n" + command,
                 "关闭浏览器中的 Anagram 连接后，只恢复下载，无需重新安装：\n" + command)
             raise SystemExit(130 if isinstance(exc, KeyboardInterrupt) else 1)
+        atomic_json(home / "pending-detector.json", pin)
         state.update(download_pending=False, download_failed=False, download_paused=False)
         atomic_json(state_path, state)
         say("Models verified. Return to the browser; Anagram finishes setup automatically.",

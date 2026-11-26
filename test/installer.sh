@@ -225,7 +225,7 @@ sha_of "$RELDIR/anagram.tar.gz" > "$RELDIR/anagram.tar.gz.sha256"
 # A UTF-8 locale, as in any Mac terminal: there bash reads a multibyte character right after
 # $NAME as part of the name.
 out="$(HOME="$FAKE_HOME" LC_ALL=en_US.UTF-8 ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
-if [ $rc -eq 0 ] && [ -f "$HFIRST/.native-component.json" ] && [ ! -f "$HFIRST/config" ] && echo "$out" | grep -q "the browser finishes setup automatically"; then
+if [ $rc -eq 0 ] && [ -f "$HFIRST/.native-component.json" ] && [ ! -f "$HFIRST/config" ] && echo "$out" | grep -q "Return to Anagram setup in your browser to see the engine status"; then
   ok "fresh installation registers native host and invokes terminal preparation without a listener config"
 else bad "fresh native install" "rc=$rc $out"; fi
 if echo "$out" | grep -q "Downloading and installing \([A-Za-z]*, \)\{0,1\}ONNX Runtime" && ! echo "$out" | grep -q "unbound variable"; then
@@ -235,6 +235,12 @@ out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$REL
 if [ $rc -eq 0 ] && [ ! -f "$HFIRST/config" ]; then
   ok "installer rerun updates exact owned registration without a listener config"
 else bad "installer native rerun" "rc=$rc $out"; fi
+touch "$HFIRST/fail-download-fixture"
+out="$(HOME="$FAKE_HOME" ANAGRAM_HOME="$HFIRST" ANAGRAM_RELEASE_URL="file://$RELDIR" sh "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ $rc -ne 0 ] && [ -f "$HFIRST/.native-component.json" ] && echo "$out" | grep -q "Return to Anagram setup to retry the model download"; then
+  ok "model preparation failure preserves the registered engine and points to retry in setup"
+else bad "partial installation feedback" "rc=$rc $out"; fi
+rm "$HFIRST/fail-download-fixture"
 HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$HFIRST" >/dev/null 2>&1
 # Linux gets PyTorch (the cuda extra) only beside an NVIDIA GPU: a driver in /proc, or a GPU
 # nvidia-smi lists. Fake commands stand in for the machine and a temporary root for /.
@@ -256,23 +262,12 @@ os_install() { # name "os arch" gpu(none|proc|smi|wsl): an update of a home whos
   HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --home "$h" >/dev/null 2>&1
   args="$(cat "$h/sync-args" 2>/dev/null)"
 }
-os_install linux-cpu "Linux x86_64" none
-if [ $rc -eq 0 ] && [ "${args#*--extra}" = "$args" ] && echo "$out" | grep -q "Downloading and installing ONNX Runtime and" \
-   && [ "$(echo "$out" | grep -c 'No NVIDIA GPU: PyTorch and its CUDA libraries (about 5 GB) are removed')" -eq 1 ] && [ ! -e "$h/venv/lib/python3.12/site-packages/torch" ]; then
-  ok "Linux without an NVIDIA GPU syncs without PyTorch and says in one line that the update removes it"
-else bad "Linux CPU sync" "rc=$rc args=$args $out"; fi
-os_install linux-driver "Linux aarch64" proc
-if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && echo "$out" | grep -q "Downloading and installing PyTorch, ONNX Runtime" && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
-  ok "Linux with the NVIDIA driver in /proc syncs the cuda extra"
-else bad "Linux NVIDIA driver sync" "rc=$rc args=$args $out"; fi
-os_install linux-smi "Linux x86_64" smi
-if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
-  ok "Linux where nvidia-smi lists a GPU syncs the cuda extra"
-else bad "Linux nvidia-smi sync" "rc=$rc args=$args $out"; fi
-os_install linux-wsl "Linux x86_64" wsl
-if [ $rc -eq 0 ] && echo " $args " | grep -q ' --extra cuda ' && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
-  ok "WSL2, whose nvidia-smi is off the PATH, syncs the cuda extra"
-else bad "WSL2 nvidia-smi sync" "rc=$rc args=$args $out"; fi
+for hardware in none proc smi wsl; do
+  os_install "linux-$hardware" "Linux x86_64" "$hardware"
+  if [ "$rc" -eq 0 ] && [ -n "$args" ] && [ "${args#*--extra}" = "$args" ]; then
+    ok "Linux $hardware installs the detector's ONNX Runtime dependencies"
+  else bad "Linux $hardware sync" "rc=$rc args=$args $out"; fi
+done
 os_install mac-smi "Darwin arm64" smi
 if [ $rc -eq 0 ] && [ -n "$args" ] && [ "${args#*--extra}" = "$args" ] && ! echo "$out" | grep -q 'No NVIDIA GPU'; then
   ok "macOS never syncs the cuda extra"

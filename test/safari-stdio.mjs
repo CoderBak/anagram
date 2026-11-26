@@ -3,6 +3,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+if (process.platform !== "darwin") {
+  if (process.env.ANAGRAM_SAFARI_REAL_HOME) throw new Error("The Safari native-engine test requires macOS and Xcode.");
+  console.log("SKIP  Safari native stdio bridge requires macOS and Xcode");
+  process.exit(0);
+}
+
 const realHome = process.env.ANAGRAM_SAFARI_REAL_HOME ? realpathSync(process.env.ANAGRAM_SAFARI_REAL_HOME) : null;
 if (realHome && !realHome.startsWith("/private/tmp/anagram-safari-real-")) throw new Error("Real-engine tests require a temporary owned home");
 const temp = mkdtempSync(join(tmpdir(), "anagram-safari-stdio-"));

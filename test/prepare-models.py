@@ -40,7 +40,8 @@ class PrepareTests(unittest.TestCase):
             kwargs["progress"](4)
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch("native_host.configure_environment"))
-            stack.enter_context(patch("download_modelkit.PIN", self.manifest))
+            stack.enter_context(patch("detector.selected", return_value=self.pin))
+            stack.enter_context(patch("detector.plan", return_value=self.plan))
             stack.enter_context(patch("download_modelkit.LID_ENTRY", self.entry))
             stack.enter_context(patch("download_modelkit.transfer_asset", transfer or download))
             stack.enter_context(patch.dict(sys.modules, {"model_plan": SimpleNamespace(
@@ -50,7 +51,9 @@ class PrepareTests(unittest.TestCase):
             prepare(self.home, installer=installer)
 
     def test_success_commits_state_and_rerun_does_not_download(self):
-        self.run_prepare()
+        out = io.StringIO()
+        self.run_prepare(stdout=out)
+        self.assertIn(f"https://huggingface.co/{self.pin['repository']}/tree/{self.pin['revision']}", out.getvalue())
         state = json.loads((self.home / "component-state.json").read_text())
         self.assertTrue(state["initialized"])
         self.assertFalse(state["download_pending"])
@@ -73,7 +76,7 @@ class PrepareTests(unittest.TestCase):
         self.assertEqual(hosts, ["huggingface.co", "hf-mirror.com", "hf-mirror.com"])
         self.assertEqual(out.getvalue().count("downloading from hf-mirror.com"), 1)
         self.assertFalse(json.loads((self.home / "component-state.json").read_text())["download_failed"])
-        self.assertEqual((self.home / "models/editlens_roberta-large/weights").read_bytes(), b"data")
+        self.assertEqual((self.home / "models" / ("detector-"+"a"*40) / "weights").read_bytes(), b"data")
 
     def test_a_missing_file_does_not_switch_to_the_mirror(self):
         hosts = []
@@ -90,7 +93,7 @@ class PrepareTests(unittest.TestCase):
             raise RuntimeError("fixture connection interrupted")
         with self.assertRaises(SystemExit):
             self.run_prepare(fail)
-        self.assertEqual((self.home / "models/.incoming-editlens_roberta-large/weights.part").read_bytes(), b"da")
+        self.assertEqual((self.home / "models" / (".incoming-detector-"+ "a"*40) / "weights.part").read_bytes(), b"da")
         self.assertTrue(json.loads((self.home / "component-state.json").read_text())["download_failed"])
         self.assertIn("connection interrupted", (self.home / "download-error.json").read_text())
         self.run_prepare()

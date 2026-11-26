@@ -187,12 +187,13 @@ test.describe("the engine dies on every batch", () => {
     const settings = "engine dies on every batch: Settings names the repeated stops and offers Retry";
     const status = options.locator("#componentSettings .component-status");
     await expect(options.locator("#componentSettings"), settings).toContainText(/stopp/i);
-    await expect(status, settings).toHaveText("Local engine: Needs attention");
+    await expect(options.locator("#engineLabel"), settings).toHaveText("Local engine");
+    await expect(status, settings).toHaveText("Needs attention");
     await expect(options.locator("#componentSettings"), settings).toContainText("Retry");
     expect.soft(nativeHost.crashes(), `${settings} (reading it wakes nothing)`).toBe(later);
     await options.locator("#component-primary").click();
     const again = "engine dies on every batch: Retry in Settings starts it again, and it is given up on again as quickly";
-    await expect(status, again).toHaveText("Local engine: Ready");
+    await expect(status, again).toHaveText("Ready");
     const second = await quiet(later, again);
     expect.soft(second, again).toBeGreaterThanOrEqual(2);
     expect.soft(second, again).toBeLessThanOrEqual(4);
@@ -238,7 +239,7 @@ test.describe("the local engine dies on every batch, where the in-browser engine
     await expect.poll(code, { message: "the engine is given up on" }).toBe("engine_crashed");
     const offer = "the setup page offers the in-browser engine beside Retry";
     await expect(setup.locator("#engine-crash-switch"), offer).toBeVisible({ timeout: 15_000 });
-    await expect(setup.locator("#engine-crash-switch"), offer).toHaveText("Switch to the in-browser engine");
+    await expect(setup.locator("#engine-crash-switch"), offer).toHaveText("Use in-browser engine");
     await expect(setup.locator("#component-primary"), offer).toHaveText("Retry");
     const popup = await context.newPage();
     await popup.goto(extension.url("popup.html"));

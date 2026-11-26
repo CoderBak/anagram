@@ -142,12 +142,14 @@ The estimators an export can compare are the expected share and the paragraph co
 - **Time to the first chip** depends on:
   - one-paragraph batches on screen (0.27 s instead of 0.69 s), and on a processor;
   - the hydration gate, up to 2.5 s on framework sites;
-  - the 250 ms drain debounce;
+  - a 16 ms settling time for a single article on a quiet page and a 250 ms trailing debounce when edits continue;
   - drain spacing, up to 5 s on expensive live pages.
 - **How far ahead chips are ready:**
   - `ROOT_MARGIN`, 1,200 px, never measured;
   - the background pace (`DUTY`; `SESSION_MS`, 10 minutes; `LOW_BATTERY`, 20%), after which the rest of a long page or document stays pending;
   - in the PDF reader, `SLOW_SCOPE`: 2 pages behind, 6 ahead.
+
+On Linux with Chromium 149, seven distinct English posts of about 75 words were inserted into a visible feed, 1.3 seconds apart, with the pinned FP32 model ready. Median time from inserting the post to displaying its verdict went from 368 to 93 ms with the native CPU engine and from 699 to 335 ms with in-browser WASM. Repeating one previously scored post went from 259 to 18 ms in each engine. The host was shared and each engine used a fresh temporary profile for each run.
 
 ### For what Anagram costs a page
 
@@ -666,7 +668,8 @@ This area covers when and how fast Anagram reads, scores and draws on a web page
 
 | Parameter | Value | Where | Controls | Basis | Notes |
 |---|---|---|---|---|---|
-| `DRAIN_DEBOUNCE_MS` | 250 ms | `lib/capture/observers.ts:54` | Trailing debounce before a mutation drain | Judgement | The floor on chip latency for new content (chat messages, infinite scroll). |
+| `DRAIN_DEBOUNCE_MS` | 250 ms | `lib/capture/observers.ts:54` | Trailing debounce before a mutation drain | Judgement | Used for bursts and ordinary DOM changes. |
+| `POST_SETTLE_MS` | 16 ms | `lib/capture/observers.ts` | A single `article` or `role="article"` arriving after a quiet second | Measured | A second mutation restores the trailing debounce. Recent expensive walks still set a minimum interval. |
 | `DRAIN_MAX_WAIT_MS` | 1000 ms | `lib/capture/observers.ts:59` | Forced drain on a page that never stops mutating | Judgement | Not a hard bound: the wait is max(1000, spacing) and never ends before the last drain + spacing. Budget B's 1500 ms wait between bursts relies on it. |
 | `DRAIN_COST_SPACING` | 19 × the last drain's cost | `lib/capture/observers.ts:70` | Keeps drains to 1/20 of the main thread | Measured | On the Reddit-like fixture the last-minute share fell from 9 % to under 5 %. Validated on one fixture only. |
 | `DRAIN_MAX_SPACING_MS` | 5000 ms | `lib/capture/observers.ts:75` | Ceiling on drain spacing | Judgement | Drains dearer than ~263 ms exceed the 1/20 share. On such pages new text may wait 5 s. |
@@ -1494,7 +1497,6 @@ No value in `lib/stats/` is backed by a measurement in a comment, doc, changelog
 | Where words are filed | a frame's words go to the tab's top page; the PDF reader's to its `src` | lib/stats/worker.ts:76-107 | Site and page attribution | Judgement | Disqus or giscus comments count for the host page, as site rules apply. |
 | Visit owners | 5000 visit ids remembered | lib/stats/worker.ts:143-147 | Which document may add to a visit | Safety | — |
 | `COVERED_MS` / `UNCOVERED_MIN_MS` | `HEARTBEAT_MS` + 10 s (70 s); 1 s | lib/stats/tabs.ts | Time in front of tabs Anagram cannot read | Judgement | Derived from the heartbeat, so it always exceeds it. Shorter spells are not kept. |
-| `datesBetween` cap | 400 dates | lib/stats/model.ts:351 | Length of a date range | Safety | Above the 365-day maximum retention, so it never binds. |
 
 ### Export
 
@@ -1535,7 +1537,7 @@ No value in `lib/stats/` is backed by a measurement in a comment, doc, changelog
 | `autoOpenPdfs` | default false | lib/settings/settings.ts:21 | Whether PDF tabs open in the reader | Judgement | Off means PDFs read in the browser's viewer are not measured, so the `document` kind is undercounted. |
 | `pdfStructure` | default true; no UI | lib/settings/settings.ts:25 | Zotero structure or the reader's own reflow | Judgement | Changes PDF paragraphs, and with them words and verdicts. Not recorded in the statistics. |
 | `pdfReadAhead` | default true | lib/settings/settings.ts:28 | Reading undrawn PDF pages in the background | Judgement | Off, more PDF paragraphs are read before they have a verdict, so `unavailable` grows. |
-| `cacheMode` | default `persistent` (30-day expiry); choice `session` | lib/settings/settings.ts:7; lib/cachePolicy.ts:2 | Verdict cache | Judgement | Cached verdicts arrive at once and lower `unavailable`. |
+| `cacheMode` | default `session`, optional `persistent` (30-day expiry) | lib/settings/settings.ts:8 | Verdict cache | Judgement | Saving scores to disk requires an explicit choice. |
 | `debug` | default false; no UI | lib/settings/settings.ts:30; lib/log.ts:30–39 | Console logging | Judgement | Errors are always logged, namespaced. |
 | Fallback to the default | a stored value that is not a choice reads as the default | lib/stats/config.ts:189-206; lib/render/flagLevel.ts:18-20 | Robust reads | Safety | Hard-coded copies in the diagnostics (`true`, `"all"`) can drift from these defaults (see Findings). |
 | One-shot end rule | ends only when this site is newly turned off | lib/settings/oneShot.ts:31–35 | Whether a menu-started run survives other setting writes | Judgement | Other rules and the global switch do not stop it. |

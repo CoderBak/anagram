@@ -1,6 +1,6 @@
 # Anagram Privacy Policy
 
-Last updated: 2026-10-04. Applies to the Anagram browser extension and to the local engine
+Last updated: 2026-11-26. Applies to the Anagram browser extension and to the local engine
 it can install on your computer. The extension scores with one of two engines, both on
 your computer:
 
@@ -67,11 +67,8 @@ text only: no URL, no cookies, no account data.
 - **The in-browser engine** is inside the extension itself: a hidden extension page in
   Chrome, the background page in Firefox, or a pinned engine tab in Safari, running
   ONNX Runtime Web on the model files stored in your
-  browser. When it is set up, the extension downloads the pinned model files from Hugging
-  Face (`huggingface.co` and its file CDN under `hf.co`), once, or, only when `huggingface.co`
-  cannot be reached, from `hf-mirror.com`, a public mirror of the same repositories, each file
-  checked against its pinned SHA-256; fastText's language-ID file ships inside the extension. Those requests carry normal download metadata and never page
-  text; after them, scoring needs no network.
+  browser. Setup downloads the detector files from Hugging Face at the selected commit and checks
+  each SHA-256. The extension includes the fastText language model. Inference runs offline.
 - **The local engine** is reached over Native Messaging: a registered pipe in Chrome and
   Firefox, or the containing app's XPC-to-stdio bridge in Safari. It accepts a fixed list
   of operations, never file paths or commands from a page. Inference runs from files on
@@ -96,9 +93,7 @@ a page to see.
 The local engine runs with your ordinary user privileges. When you install, download models or
 request an update, it contacts GitHub releases, the Astral Python and uv distributions,
 PyPI, Sigstore's trust-root server (`tuf-repo-cdn.sigstore.dev`, to check the release's
-signature), Hugging Face and its file CDN, and the fastText file host. Only when `huggingface.co`
-cannot be reached does it fall back to `hf-mirror.com`, a public mirror of the same
-repositories, for the same files, each checked against its pinned SHA-256. Where your pip
+signature), Hugging Face and its file CDN, and the fastText file host. The detector is downloaded from its selected Hugging Face commit. The language identifier also has a checksum-verified mirror. Where your pip
 or uv is set to a package or Python mirror, the installer fetches the packages and Python
 from that mirror instead, each file still checked against the locked checksums. The command
 the setup page gives you downloads the installer and runs it only if its SHA-256 is the one
@@ -109,15 +104,12 @@ signature. Those requests carry normal download metadata and never page text.
 
 - **Settings** in `chrome.storage.local`: switches, per-site rules, marking style, scope,
   cache mode. Nothing is synced.
-- **The score cache** in IndexedDB, keyed by the model identity plus SHA-256 digests of
-  where the text was read (the tab's site and the frame's origin) and of the normalized
-  text. No text and no site name is stored. A verdict is reused only on the site it was
-  read on, so a page cannot tell from how fast a verdict comes back what you read elsewhere,
-  and a private window's verdicts are kept apart from the rest. Rows expire after 30 days,
-  the store is capped at 20 000 rows, and **Clear cached verdicts** in Settings empties it.
-  **Memory only** mode keeps scores out of disk entirely. Private windows never write to
-  disk. The digests are unsalted, so someone with access to the cache can test guesses
-  about known text and sites.
+- **The score cache** uses memory by default. If you select **Keep 30 days**, Anagram saves
+  verdicts in IndexedDB under identifiers made with a random key stored separately in this
+  browser profile. Matching a known passage and site to a stored verdict requires that key.
+  The cache holds up to 20 000 verdicts. **Clear cached verdicts** in Settings empties it.
+  Private windows and **Analyze text** always use memory for scores. Leaving the Analyze
+  text page clears the editor and its results.
 - **PDF viewer state** (`pdfjs.history`, `pdfjs.preferences`) in the extension's local
   storage: page, zoom and layout for recent documents. No text or password.
 - **The local engine** under `~/.anagram` (macOS/Linux) or `%LOCALAPPDATA%\Anagram`
@@ -125,14 +117,14 @@ signature. Those requests carry normal download metadata and never page text.
   Chrome and Firefox also have a small manifest in their user-level NativeMessagingHosts
   location; Safari keeps its installation receipt inside the engine folder. Nothing from
   your browsing is written there.
-- **The in-browser engine's model files**, about 1.4 GB, in the extension's own storage in
+- **The in-browser engine's model files**, about 1.58 GB for the initial 400M release, in the extension's own storage in
   your browser profile. Nothing from your browsing is written with them. They stay when you
   switch to the local engine until you delete them there, in Settings.
 - **Which engine you chose**, in `chrome.storage.local`.
 - **Reading statistics, only if you turn them on** (Settings, Statistics; off by default), in
   IndexedDB in your browser profile. You choose what they keep: a preset (daily totals; daily
   totals and sites; every page; every paragraph; a research study; the full reading trace,
-  with or without the text), or, field by field, how exactly each kind of thing is kept, from
+  with or without the text). Earlier field-by-field recording choices are also honored, from
   the most exact to not at all: times; durations; addresses (the full address down to the
   domain, or a salted hash of it); titles; the paragraphs' text (in full, the first twelve
   words, a near-duplicate sketch, a salted hash, or nothing); their lengths, verdicts and
@@ -143,8 +135,8 @@ signature. Those requests carry normal download metadata and never page text.
   which engine scored; your use of Anagram's chips, cards and menu; the device; and what could
   not be read, including how long a tab Anagram cannot read was in front (never its address
   or title). [statistics.md](docs/statistics.md) lists every field. Settings warns you where a
-  choice keeps a reading history, full addresses, text, or the pointer: anyone who can use this
-  browser profile could see them.
+  choice keeps a reading history, full addresses, text, or the pointer. Full trace with text
+  stores readable paragraph text. Software with access to this profile can read it.
 
   Never recorded, at any choice: anything in a private window; a site you switched Anagram off
   for (not even a page of it you analyzed from the menu); the Analyze text page; what you type
@@ -155,7 +147,8 @@ signature. Those requests carry normal download metadata and never page text.
   statistics. Each part is deleted after the days you choose for it, and **Clear statistics**
   deletes everything. The statistics are never sent anywhere: **Export…** saves a file on your
   computer, no finer than what was kept, at the layers you choose, with ids and hashes keyed
-  for that file unless you choose otherwise, and shows you what it holds before you save it;
+  for that file unless you choose otherwise. Each export starts with paragraph text and excerpts
+  excluded. You can select them for an individual file and preview the contents before saving;
   whether you share it is up to you. Anagram has no code that uploads it.
 - **Your clipboard**, only when you click Copy: a paragraph and its readout from a card, the
   report of the Analyze text page, or a diagnostics report, which replaces every word of
@@ -187,3 +180,5 @@ Uninstall removes the whole `~/.anagram` directory, including anything you put i
 ## Contact
 
 Open an issue at <https://github.com/CoderBak/anagram/issues>.
+
+Checking for detector updates contacts Hugging Face for release names, commits and file metadata. Selecting a release downloads its verified model files. These requests carry no reading text, page addresses or reading history.

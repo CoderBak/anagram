@@ -26,6 +26,8 @@
 // the CPU provider, with as many threads as wasmThreads allows (one, unless the page is
 // cross-origin isolated and SharedArrayBuffer exists). A session that fails to build on
 // the GPU falls back to the CPU provider on its own.
+import {detectorGraph, type DetectorConfig} from "./detectorGraph";
+import type {Heads} from "./detectorScore";
 import { weightlessGraph } from "./onnx";
 import type { Backend } from "./scoring";
 import type { ModelTier } from "./pin";
@@ -215,6 +217,39 @@ export class Session implements Backend {
     catch (error) { await out.release().catch(() => {}); throw error; }
     out.info.firstRunMs = performance.now() - warm;
     return out;
+  }
+
+  static async detector(assets:RuntimeAssets,candidate:Candidate,cfg:DetectorConfig,window:number,weights:{path:string;data:Blob}[],signal:AbortSignal) {
+    const graph = await detectorGraph(cfg,window,weights);
+    if (signal.aborted) throw new Error("cancelled");
+    const ort = await loadRuntime(assets);
+    ort.env.wasm.numThreads = wasmThreads();
+    const start = performance.now();
+    const session = await ort.InferenceSession.create(graph,{
+      executionProviders:candidate.device === "gpu" ? [{name:"webgpu"}] : ["wasm"],
+      externalData:weights, graphOptimizationLevel:"all", logSeverityLevel:3,
+      extra:{session:{disable_prepacking:"1"}},
+    });
+    const loaded = new Session(ort,session,{candidate,createMs:performance.now()-start,firstRunMs:0});
+    const began = performance.now();
+    try {
+      await loaded.heads([0,1,2]);
+      if (signal.aborted) throw new Error("cancelled");
+    } catch (error) {await loaded.release();throw error;}
+    loaded.info.firstRunMs = performance.now()-began;
+    return loaded;
+  }
+
+  async heads(ids:number[]):Promise<Heads> {
+    if (!this.session) throw new Error("session released");
+    const tensor = new this.ort.Tensor("int64",BigInt64Array.from(ids,BigInt),[ids.length]);
+    try {
+      const outputs = await this.session.run({input_ids:tensor});
+      try {
+        const floats = (name:string) => Float32Array.from(outputs[name]!.data as ArrayLike<number>);
+        return {token:floats("token"),segment:floats("segment"),mixed:floats("mixed")};
+      } finally {for(const output of Object.values(outputs)) output.dispose?.();}
+    } finally {tensor.dispose?.();}
   }
 
   get device(): "webgpu" | "wasm" { return this.info.candidate.device === "gpu" ? "webgpu" : "wasm"; }

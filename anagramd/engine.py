@@ -415,6 +415,8 @@ class ScoreResult(BaseModel):
     lang: str | None = None
     lang_prob: float | None = None
     unsupported: bool | None = None
+    insufficient: bool | None = None
+    sentenceLabels: list[int] | None = None
     degraded: bool | None = None
 
 
@@ -448,6 +450,12 @@ def score_with_engine(req: ScoreRequest, engine) -> dict:
     t0 = time.time()
     texts, todo, langs, skipped = ([], [], {}, {})
     for b in req.blocks:
+        if hasattr(engine, "meta"):
+            from detector import WORDS
+            if len(WORDS.findall(b.text)) < engine.meta["min_words"] or not any(c.isalpha() for c in b.text):
+                todo.append(b.id)
+                texts.append(b.text)
+                continue
         if not b.text.strip():
             continue
         if engine.lid.enabled:
@@ -518,6 +526,8 @@ def tokens_with_engine(req: TokensRequest, engine) -> dict:
     Runs beside a forward pass and never takes engine.lock: scoring.Tokenizer
     keeps the Rust tokenizer's truncation and padding off, so encoding only reads it.
     """
+    if hasattr(engine, "count_tokens"):
+        return engine.count_tokens(req.texts)
     window = engine.max_length - 2
     cleaned = [clean_text(text, engine.emoji) for text in req.texts]
     if not cleaned:

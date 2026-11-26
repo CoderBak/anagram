@@ -1,0 +1,17 @@
+/* Prefer crisp native system typography; fall back to bundled Liberation Sans for consistent tabular digits. */
+@font-face {
+  font-family: "Anagram Sans";
+  src: url("/vendor/standard_fonts/LiberationSans-Regular.ttf") format("truetype");
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anagram Sans";
+  src: url("/vendor/standard_fonts/LiberationSans-Bold.ttf") format("truetype");
+  font-weight: 550 900;
+  font-display: swap;
+}
+:root {
+  --anagram-ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, "Anagram Sans", sans-serif;
+  --anagram-mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

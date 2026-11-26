@@ -20,9 +20,9 @@ describe("whether the download is wanted", () => {
   it("is wanted on a fresh install and while a download is under way", () => {
     expect(wantsDownload(null)).toBe(true);
     expect(wantsDownload({})).toBe(true);
-    expect(wantsDownload({ verified: { "model.onnx": all["model.onnx"]! } })).toBe(true);
+    expect(wantsDownload({ verified: { [PINNED[0]!.name]: PINNED[0]!.sha256 } })).toBe(true);
     // A file verified against another pin is not the pinned one.
-    expect(wantsDownload({ verified: { ...all, "model.onnx": "0".repeat(64) } })).toBe(true);
+    expect(wantsDownload({ verified: { ...all, [PINNED[0]!.name]: "0".repeat(64) } })).toBe(true);
   });
 
   it("is not wanted once the model is there, or after the person cancelled, deleted, paused or stopped", () => {
@@ -149,7 +149,7 @@ describe("starting it from the background", () => {
     const total = PINNED.reduce((n, f) => n + f.size_bytes, 0);
     const request = vi.fn(async () => ok);
     // A thousand bytes are there already: the rest fits in 500 bytes less than the whole, and not in 2000 less.
-    const onDisk = { "state.json": JSON.stringify({ verified: {} }), "model.onnx.part": "x".repeat(1000) };
+    const onDisk = { "state.json": JSON.stringify({ verified: {} }), [PINNED.find(f=>f.path==="backbone/model.safetensors")!.name+".part"]: "x".repeat(1000) };
     browserWith(onDisk, { quota: total - 2000, usage: 0 });
     expect(await startSetupByItself(request)).toBe("no_room");
     browserWith(onDisk, { quota: total - 500, usage: 0 });

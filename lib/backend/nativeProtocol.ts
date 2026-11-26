@@ -1,4 +1,5 @@
 // Shared wire contract. No code in this file opens a native connection.
+import { validRelease } from "../detectorReleases";
 import { validIdleUnload } from "../contract";
 export const NATIVE_HOST = "dev.coderbak.anagram";
 export const NATIVE_MESSAGE = "anagram.nativeRequest";
@@ -7,7 +8,7 @@ export const MAX_NATIVE_BYTES = 1_000_000;
 
 export const PAGE_OPERATIONS = [
   "status", "runtime", "runtime.benchmark", "runtime.config", "runtime.cancel",
-  "models.download", "models.pause", "models.delete", "engine.stop", "engine.resume", "engine.settings",
+  "models.select", "models.download", "models.pause", "models.delete", "engine.stop", "engine.resume", "engine.settings",
   "component.update", "component.uninstall",
 ] as const;
 export type ComponentOperation = typeof PAGE_OPERATIONS[number];
@@ -55,6 +56,7 @@ const RELEASE_VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 export function validPageRequest(op: unknown, payload: unknown): op is ComponentOperation {
   if (typeof op !== "string" || !PAGE_OPERATIONS.includes(op as ComponentOperation) || !isRecord(payload)) return false;
   const keys = Object.keys(payload);
+  if (op === "models.select") return keys.length === 1 && validRelease(payload.release);
   if (op === "models.delete" || op === "component.uninstall") return keys.length === 1 && payload.confirm === true;
   if (op === "component.update") return keys.length === 0 ||
     (keys.length === 1 && typeof payload.version === "string" && RELEASE_VERSION.test(payload.version));

@@ -21,11 +21,11 @@
 //     itself and the setup page opens on it running, with Pause and Cancel; the manifest
 //     names no model host, and with the shipped permissions (no host at all) the download
 //     goes by CORS alone; the package carries lid.176.ftz;
-//   - the download with progress, speed and time left, the popup's and the panel's progress
-//     line (pushed as it moves, the same figure in both), a dropped connection retried by
+//   - download progress, speed and time left in setup and progress pushed to the toolbar
+//     menu, a dropped connection retried by
 //     itself, Pause and Resume from the bytes on disk, and Cancel;
-//   - not set up: every page shows the in-browser block and no install command, the popup and
-//     the in-page panel say setup is needed and open the setup page, Save-Data and a disk too
+//   - not set up: every page shows the in-browser block and no install command, the toolbar
+//     menu says setup is needed and opens the setup page, Save-Data and a disk too
 //     full say why the download waits, a server error and Retry;
 //   - a disk that fills up mid-download, both ways Chrome says so (the engine worker's writes
 //     made to fail over the DevTools protocol): stopped at once, the room to make said, the
@@ -55,7 +55,7 @@ import puppeteer from "puppeteer-core";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { serveHtml, uiLanguage } from "./harness.mjs";
+import { uiLanguage } from "./harness.mjs";
 import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
@@ -92,10 +92,6 @@ const progressStart = (lang) => new RegExp("^" + MESSAGES[lang].engineProgress.m
 const pattern = (lang, key) => new RegExp(MESSAGES[lang][key].message.replace(/[.*+?^()[\]{}|\\]/g, "\\$&").replace(/\$[1-9]/g, "\\d+"));
 
 const PARA = (n) => `Paragraph ${n} of this page is long enough to be scored on its own, because it carries well over seventy-five ordinary English words describing nothing in particular except the fact that the in-browser engine has not been set up yet, which the floating ball has to say plainly and offer the one thing that fixes it, which is the setup page, before any of the words on this page can be read and given a verdict of any kind.`;
-const site = await serveHtml({
-  "/article.html": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>article</title></head><body style="max-width:720px;margin:24px auto;font:15px/1.6 system-ui">${[1, 2, 3].map((n) => `<p>${PARA(n)}</p>`).join("\n")}</body></html>`,
-});
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, timeout = 15000, step = 200) => {
   const end = Date.now() + timeout;
@@ -152,19 +148,9 @@ function watch(page, name, problems) {
   page.on("pageerror", (e) => problems.push(`${name}: ${e.message}`));
   page.on("console", (m) => { if (m.type() === "error") problems.push(`${name}: ${m.text()}`); });
 }
-/** What Settings puts in front of the stage ("In the browser, on the graphics card: Ready"), in both languages, longest first. */
-const STATUS_PREFIXES = ["en", "zh-CN"].flatMap((lang) => {
-  const m = (key) => MESSAGES[lang][key].message;
-  const sep = m("listSeparator"), colon = m("engineStatusSeparator");
-  return [`${m("engineWordsBrowser")}${sep}${m("engineWordsGpu")}${colon}`, `${m("engineWordsBrowser")}${sep}${m("engineWordsCpu")}${colon}`, `${m("engineWordsBrowser")}${colon}`, `${m("componentTitle")}${colon}`];
-});
 const rawStatusOf = (page) => page.evaluate(() => document.querySelector("#componentSettings .component-status")?.textContent ?? "");
-/** The stage the status line names, without Settings' words in front of it. */
-const statusOf = async (page) => {
-  const text = await rawStatusOf(page);
-  const prefix = STATUS_PREFIXES.find((p) => text.startsWith(p));
-  return prefix ? text.slice(prefix.length) : text;
-};
+const stageOf = (status) => status?.replace(/\s*[(（](?:GPU|CPU)[)）]$/, "");
+const statusOf = async (page) => stageOf(await rawStatusOf(page));
 const textOf = (page, selector) => page.evaluate((s) => { const el = document.querySelector(s); return el && !el.hidden ? el.textContent : null; }, selector);
 const engine = (page, op, payload = {}) => page.evaluate(([op, payload]) => chrome.runtime.sendMessage({ action: "anagram.nativeRequest", op, payload }), [op, payload]);
 /** onInstalled as the browser fires it on an extension update, into the extension's worker. */
@@ -301,7 +287,7 @@ for (const lang of ["en", "zh-CN"]) {
     await grantInWorker(run.sw);
     await page.click("#engine-pick-native");
     const command = await until(() => textOf(page, "#install-cmd"), 15000);
-    check("choice: picking the local engine with the permission granted shows its install command", /^f=\$\(mktemp\) && curl -fsSL '.*install\.sh' -o "\$f" && echo '[0-9a-f]{64}  '"\$f" \| (?:shasum -a 256|sha256sum) -c - && /.test(command ?? "") &&
+    check("choice: picking the local engine with the permission granted offers its verified install command", command?.includes("curl -fsSL") && /install\.sh' '[0-9a-f]{64}'$/.test(command) &&
       (await engineOf(page)) === "native" && (await page.evaluate(() => document.getElementById("engineTitle")?.textContent)) === w("componentTitle") &&
       !(await shown(page, ".engine-choice")), command);
     await sleep(1000);
@@ -439,16 +425,18 @@ if (process.env.ANAGRAM_CHROME) await nativeOptional("ANAGRAM_CHROME", process.e
     await setup.close();
     await grantInWorker(run.sw);
     const settings = await extPage(run.context, extId, "options.html", problems, (p) => answerPrompt(p, true));
+    await settings.click("#engine-manage");
     const offer = await until(async () => (await shown(settings, "#engine-switch")) && textOf(settings, "#engine-switch"), 15000);
     check("Settings: the in-browser engine in use offers the local engine", offer === w("engineSwitchToNative"), offer);
     await settings.click("#engine-switch");
     const command = await until(() => textOf(settings, "#install-cmd"), 15000);
     const left = await until(() => textOf(settings, "#engine-delete-leftover"), 10000);
     check("Settings: switching asks for the permission, then shows the install command, and the engine in use is the local one",
-      /^f=\$\(mktemp\) && curl /.test(command ?? "") && (await engineOf(settings)) === "native" && (await rawStatusOf(settings)).startsWith(w("componentTitle")), command);
+      command?.includes("curl -fsSL") && (await engineOf(settings)) === "native" && (await textOf(settings, "#engineLabel")) === w("componentTitle"), command);
     check("Settings: it offers to delete what the in-browser engine left, and deletes nothing by itself",
       /^Delete in-browser model files \(\d+ MB\)$/.test(left ?? "") &&
       (await settings.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine"); return true; } catch { return false; } })), left);
+    await settings.click("#engine-manage");
     await settings.click("#engine-delete-leftover");
     const deleted = await until(async () => !(await shown(settings, "#engine-delete-leftover")) &&
       settings.evaluate(async () => { try { await (await navigator.storage.getDirectory()).getDirectoryHandle("anagram-engine"); return false; } catch { return true; } }), 10000);
@@ -460,7 +448,7 @@ if (process.env.ANAGRAM_CHROME) await nativeOptional("ANAGRAM_CHROME", process.e
     const downloading = await until(async () => (await statusOf(settings)) === w("engineDownloading"), 20000);
     check("Settings: switching back starts the in-browser engine's setup", downloading && (await engineOf(settings)) === "inbrowser" &&
       server.requests.slice(before).some((r) => r.file === "model.onnx" && !r.preflight) &&
-      (await rawStatusOf(settings)).startsWith(w("engineWordsBrowser")), await statusOf(settings));
+      (await textOf(settings, "#engineLabel")) === w("engineTitle"), await statusOf(settings));
     await engine(settings, "models.delete", { confirm: true });
     check("Settings: no errors in the pages", problems.length === 0, problems.join(" | "));
   } finally {
@@ -493,7 +481,7 @@ for (const lang of ["en", "zh-CN"]) {
     check(`${lang}: the manifest names no model host`, !/huggingface|hf\.co|fbaipublicfiles/.test(JSON.stringify(worker.manifest)), JSON.stringify(worker.manifest.optional_host_permissions));
 
     // Installed: the download started by itself, and the setup page opened on it.
-    const setup = context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
+    let setup = context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
       await context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
     check(`${lang}: installing opens the setup page`, setup, context.pages().map((p) => p.url()).join(" "));
     if (!setup) continue;
@@ -517,7 +505,7 @@ for (const lang of ["en", "zh-CN"]) {
     }, "vendor/engine/lid.176.ftz");
     check(`${lang}: the package carries the pinned lid.176.ftz`, lid.size === LID.size_bytes && lid.hash === LID.sha256, JSON.stringify(lid));
 
-    // The download: progress, speed, time left, in the popup and the panel too.
+    // The download: progress, speed, time left, in the setup page and the popup.
     const withSpeed = await until(async () => {
       const line = await textOf(setup, "#engine-progress");
       return line && line.includes(w("engineSpeed", "").trim()) ? line : null;
@@ -527,7 +515,7 @@ for (const lang of ["en", "zh-CN"]) {
       withSpeed && progressStart(lang).test(withSpeed) && withSpeed.includes(size(DOWNLOAD_BYTES)) && left.some((re) => re.test(withSpeed)) &&
       /^\d+%$/.test(await textOf(setup, ".engine-percent") ?? ""), withSpeed);
     check(`${lang}: the progress bar moves`, await setup.evaluate(() => { const b = document.querySelector('#componentSettings [role="progressbar"]'); const n = Number(b?.getAttribute("aria-valuenow")); return !b.hidden && n > 0 && n < 100 && getComputedStyle(b.firstElementChild).animationName === "pbar-move"; }));
-    check(`${lang}: while it downloads the page says to keep the browser open`, (await textOf(setup, ".engine-keepopen")) === w("engineKeepOpen"));
+    check(`${lang}: the setup page can close during the download`, (await textOf(setup, ".engine-keepopen")) === w("engineBackgroundDownload"));
     const popup = await extPage(context, extId, "popup.html", problems);
     const popupLine = await until(async () => {
       const line = await popup.evaluate(() => document.getElementById("status").textContent);
@@ -536,46 +524,28 @@ for (const lang of ["en", "zh-CN"]) {
     const percent = Number(/(\d+)%/.exec(popupLine ?? "")?.[1]);
     check(`${lang}: the popup shows the download's progress`, popupLine === w("popupSetupDownloading", percent) &&
       (await popup.evaluate(() => document.getElementById("action").textContent)) === w("engineShowProgress"), popupLine);
+    await setup.close();
+    const continued = await until(async () => Number(/(\d+)%/.exec(await textOf(popup, "#status") ?? "")?.[1]) > percent);
+    check(`${lang}: the download continues with the setup tab closed`, continued);
+    setup = await extPage(context, extId, "onboarding.html", problems);
     await popup.close();
-    const article = await context.newPage();
-    article.on("pageerror", (e) => problems.push(`article: ${e.message}`));
-    await article.goto(site.url("/article.html"));
-    const down = await until(() => article.evaluate(() => document.getElementById("anagram-fab")?.shadowRoot?.querySelector(".count")?.textContent === "!"), 30000);
-    check(`${lang}: the ball shows the engine is not ready yet`, down);
-    const panelNotice = () => article.evaluate(() => {
-      const root = document.getElementById("anagram-fab")?.shadowRoot;
-      if (!root?.querySelector(".panel.open")) root?.querySelector(".count")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      const notice = root?.querySelector(".panel .pnotice");
-      return notice ? { text: notice.querySelector("span")?.textContent, button: notice.querySelector("button")?.textContent } : null;
-    });
-    const panelLine = await until(async () => { const n = await panelNotice(); return n && /\d/.test(n.text ?? "") ? n : null; }, 15000);
-    const panelPercent = Number(/(\d+)%/.exec(panelLine?.text ?? "")?.[1]);
-    check(`${lang}: the panel shows the download's progress`, panelLine?.text === w("panelSetupDownloading", panelPercent) && panelLine?.button === w("engineShowProgress"), JSON.stringify(panelLine));
-
-    // Pushed, not polled (lib/backend/setupFeed.ts): the popup and the panel move with the
-    // download together, each figure within a second of the engine's own; the panel used to ask
-    // every five seconds, and the popup not at all.
+    // The toolbar menu follows the engine through the background setup feed.
     const live = await extPage(context, extId, "popup.html", problems);
     await live.evaluate(() => { window.__pushes = 0; chrome.runtime.onMessage.addListener((m) => { if (m?.action === "engineSetup") window.__pushes++; }); });
-    const firstSeen = { engine: new Map(), popup: new Map(), panel: new Map() };
+    const firstSeen = { engine: new Map(), popup: new Map() };
     const saw = (which) => (text) => { const p = /(\d+)%/.exec(text ?? "")?.[1]; if (p !== undefined && !firstSeen[which].has(p)) firstSeen[which].set(p, Date.now()); };
     for (const end = Date.now() + 6000; Date.now() < end; await sleep(40)) {
       await Promise.all([
         engine(setup, "status").then((s) => { const d = s?.data?.download; if (d?.status === "running") saw("engine")(`${Math.floor((d.bytes_received * 100) / d.total_bytes)}%`); }),
         live.evaluate(() => document.getElementById("status").textContent).then(saw("popup")),
-        panelNotice().then((n) => saw("panel")(n?.text)),
       ]);
     }
     // Figures the engine reached while it was watched: the first one it was already showing.
     const reached = [...firstSeen.engine.keys()].slice(1);
     const lag = (which) => reached.filter((p) => firstSeen[which].has(p)).map((p) => firstSeen[which].get(p) - firstSeen.engine.get(p));
-    const [panelLag, popupLag] = [lag("panel"), lag("popup")];
-    const apart = reached.filter((p) => firstSeen.panel.has(p) && firstSeen.popup.has(p)).map((p) => Math.abs(firstSeen.panel.get(p) - firstSeen.popup.get(p)));
-    const pushNote = JSON.stringify({ reached, panelLag, popupLag, apart });
-    console.log(`${lang}: pushed progress, ms after the engine: panel ${panelLag.join(" ")}; popup ${popupLag.join(" ")}; apart ${apart.join(" ")}`);
-    check(`${lang}: the popup and the panel follow the download together, each new figure within a second of the engine's`,
-      reached.length >= 3 && panelLag.length >= reached.length - 1 && popupLag.length >= reached.length - 1 &&
-      Math.max(...panelLag, ...popupLag) <= 1000 && Math.max(...apart) <= 1000, pushNote);
+    const popupLag = lag("popup");
+    check(`${lang}: each new download percentage reaches the popup within a second`,
+      reached.length >= 3 && popupLag.length >= reached.length - 1 && Math.max(...popupLag) <= 1000, JSON.stringify({ reached, popupLag }));
 
     // A connection that drops is retried by the engine on its own.
     await setup.bringToFront();
@@ -598,14 +568,17 @@ for (const lang of ["en", "zh-CN"]) {
       (await textOf(setup, "#component-primary")) === w("componentResumeDownload") && (await textOf(setup, ".engine-keepopen")) === null &&
       (await setup.evaluate(() => getComputedStyle(document.querySelector('#componentSettings [role="progressbar"]').firstElementChild).animationName)) === "none", pausedLine);
     const pausedAt = Date.now();
-    const panelPaused = await until(async () => pattern(lang, "panelSetupPaused").test((await panelNotice())?.text ?? ""), 5000, 50);
-    const panelPausedMs = Date.now() - pausedAt;
     const popupPaused = await until(async () => pattern(lang, "popupSetupPaused").test(await live.evaluate(() => document.getElementById("status").textContent)), 5000, 50);
+    const popupPausedMs = Date.now() - pausedAt;
     const pushes = await live.evaluate(() => window.__pushes);
     await sleep(3000);
-    check(`${lang}: the panel and the popup say paused at once, and nothing is pushed while no download runs`,
-      panelPaused && panelPausedMs <= 1500 && popupPaused && (await live.evaluate(() => window.__pushes)) === pushes, `${panelPausedMs} ms, ${pushes} pushes`);
+    check(`${lang}: the popup says paused at once, and nothing is pushed while no download runs`,
+      popupPaused && popupPausedMs <= 1500 && (await live.evaluate(() => window.__pushes)) === pushes, `${popupPausedMs} ms, ${pushes} pushes`);
     await live.close();
+    await setup.reload();
+    await setup.locator("#component-primary").waitFor();
+    check(`${lang}: reopening setup restores the paused download and its Resume action`,
+      (await until(async () => (await statusOf(setup)) === w("enginePaused"))) && (await textOf(setup, "#component-primary")) === w("componentResumeDownload"));
     let before = server.requests.length;
     await setup.click("#component-primary");
     await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
@@ -633,6 +606,7 @@ for (const lang of ["en", "zh-CN"]) {
     for (const name of ["onboarding", "options"]) {
       const page = await extPage(context, extId, `${name}.html`, problems);
       await until(async () => (await statusOf(page)) === w("engineNotSetUp"), 15000);
+      if (name === "options") await page.click("#engine-manage");
       const seen = await page.evaluate(() => ({
         block: !!document.querySelector('#componentSettings[data-engine="in-browser"]'),
         installUi: !!document.querySelector("#install, #install-cmd, #install-copy"),
@@ -652,7 +626,8 @@ for (const lang of ["en", "zh-CN"]) {
         !seen.installUi && !/curl|Invoke-RestMethod|install\.sh|Terminal|终端/.test(seen.text) &&
         ![w("componentUpdate"), w("componentUninstall")].some((label) => seen.text.includes(label)) && !/benchmark|基准/i.test(seen.text), seen.text.slice(0, 300));
       check(`${lang}: ${name} is cross-origin isolated (the manifest's keys)`, seen.isolated === true);
-      if (name === "options") check(`${lang}: Settings' engine row says it in words`, (await rawStatusOf(page)) === `${w("engineWordsBrowser")}${w("engineStatusSeparator")}${w("engineNotSetUp")}`, await rawStatusOf(page));
+      if (name === "options") check(`${lang}: Settings shows the active engine and its status`,
+        (await textOf(page, "#engineLabel")) === w("engineTitle") && (await rawStatusOf(page)) === w("engineNotSetUp"), await rawStatusOf(page));
       if (name === "onboarding") {
         const reply = await engine(page, "status");
         check(`${lang}: a contract request reaches the in-browser engine through the offscreen document`,
@@ -676,17 +651,6 @@ for (const lang of ["en", "zh-CN"]) {
     check(`${lang}: the popup's button opens the setup page`, setupTab?.url().endsWith("/onboarding.html"), setupTab?.url());
     await setupTab?.close();
     if (!popup2.isClosed()) await popup2.close();
-
-    // The panel on the article: set up needed now, and its button to setup.
-    await article.bringToFront();
-    const notice = await until(async () => { const n = await panelNotice(); return n?.text === w("panelSetupNeeded") ? n : null; }, 20000);
-    check(`${lang}: the panel says setup is needed and offers it`, notice?.button === w("engineSetUp"), JSON.stringify(await panelNotice()));
-    const fromPanel = context.waitForEvent("page", { timeout: 10000 }).catch(() => null);
-    await article.evaluate(() => document.getElementById("anagram-fab").shadowRoot.querySelector(".panel .pnotice button").click());
-    const panelTab = await fromPanel;
-    check(`${lang}: the panel's button opens the setup page beside the article`, panelTab?.url().endsWith("/onboarding.html"), panelTab?.url());
-    await panelTab?.close();
-    await article.close();
 
     // Save-Data: the setup page says why the download waits, beside Set up.
     const saving = await extPage(context, extId, "onboarding.html", problems, (p) => p.addInitScript(() => {
@@ -783,6 +747,7 @@ for (const lang of ["en", "zh-CN"]) {
       const page = await extPage(run.context, extId, "options.html", problems, (p) => scriptEngine(p, name, options));
       await until(async () => { const s = await statusOf(page); return s && s !== w("componentStarting"); });
       await page.waitForTimeout(200);
+      if (name === "ready_gpu" && !options.crashed) await page.click("#engine-manage");
       const seen = await page.evaluate(() => ({
         status: document.querySelector("#componentSettings .component-status")?.textContent,
         error: (e => e && !e.hidden ? e.textContent : null)(document.querySelector("#componentSettings .component-error")),
@@ -793,8 +758,7 @@ for (const lang of ["en", "zh-CN"]) {
         folds: document.querySelectorAll("details").length,
       }));
       await page.close();
-      const prefix = STATUS_PREFIXES.find((p) => (seen.status ?? "").startsWith(p));
-      return { ...seen, stage: prefix ? seen.status.slice(prefix.length) : seen.status };
+      return { ...seen, stage: stageOf(seen.status) };
     };
     for (const [name, key] of [["network", "engineNetworkLost"], ["storage", "engineDiskFull"], ["server", "engineServerDown"], ["damaged", "engineDamaged"], ["stopped_download", "engineDownloadStopped"]]) {
       const seen = await scripted(name);
@@ -803,11 +767,11 @@ for (const lang of ["en", "zh-CN"]) {
         seen.stage === w("engineSetupFailed") && seen.error === want && seen.primary === w("panelRetry"), JSON.stringify(seen));
     }
     const gpu = await scripted("ready_gpu");
-    const sep = w("listSeparator");
-    check(`${lang}: ready on the GPU, in Settings' words, with Delete model files and idle unloading inline and no fold`,
-      gpu.status === [w("engineWordsBrowser"), w("engineWordsGpu"), w("componentReady")].join(sep) && gpu.where === null && gpu.manage && gpu.folds === 0 && !gpu.primary, JSON.stringify(gpu));
+    const readyOn = (device) => w("engineStatusDevice", w("componentReady"), device);
+    check(`${lang}: ready on the GPU, in Settings' words, with model removal and idle unloading available under Manage`,
+      gpu.status === readyOn("GPU") && gpu.where === null && gpu.manage && gpu.folds === 0 && !gpu.primary, JSON.stringify(gpu));
     const cpu = await scripted("ready_cpu");
-    check(`${lang}: ready on the CPU says so in words`, cpu.status === [w("engineWordsBrowser"), w("engineWordsCpu"), w("componentReady")].join(sep), cpu.status);
+    check(`${lang}: ready on the CPU says so in words`, cpu.status === readyOn("CPU"), cpu.status);
     const loading = await scripted("loading");
     check(`${lang}: a model loading says so`, loading.stage === w("engineLoading") && !loading.error, JSON.stringify(loading));
     const broken = await scripted("load_failed");
@@ -941,7 +905,7 @@ async function realRun(files) {
     const status = await engine(setup, "status");
     const wasm = status?.data?.runtime?.candidates?.find((c) => c.id === "wasm:fp32");
     check("real: the offscreen document is cross-origin isolated (WASM threads)", /\b[2-9] threads\b/.test(wasm?.label ?? ""), wasm?.label);
-    check("real: the setup page offers the site grant once ready", await setup.evaluate(() => !document.getElementById("ready").hidden));
+    check("real: the setup page offers to try a paragraph once ready", await setup.evaluate(() => !document.getElementById("tryParagraph").hidden));
     // A score through the ordinary pipeline.
     const paste = await extPage(run.context, extId, "paste.html", problems);
     await paste.fill("#text", `${PARA(1)} ${PARA(2)}`);
@@ -950,9 +914,12 @@ async function realRun(files) {
     check("real: the paste page scores with the downloaded model", !!verdict, verdict);
     await paste.close();
     // Delete, from Manage.
-    await setup.evaluate(() => { document.getElementById("manage").open = true; });
-    await setup.click("#engine-delete");
-    await setup.click("#engine-confirm");
+    const managing = await extPage(run.context, extId, "options.html", problems);
+    await managing.click("#engine-manage");
+    await managing.click("#engine-delete");
+    await managing.click("#engine-confirm");
+    await managing.waitForFunction(() => document.querySelector("#engine-delete").hidden);
+    await managing.close();
     const gone = await until(async () => (await statusOf(setup)) === w("engineNotSetUp"), 60_000);
     const after = await engine(setup, "status");
     check("real: Delete model files empties the engine's storage", gone && after?.data?.storage?.models_bytes < 10000, JSON.stringify(after?.data?.storage));
@@ -963,7 +930,6 @@ async function realRun(files) {
   }
 }
 
-await site.close();
 for (const r of results) if (r.ok) console.log(`PASS  ${r.name}`);
 const failedCount = results.filter((r) => !r.ok).length;
 console.log(failedCount ? `❌ ${failedCount} IN-BROWSER CHECKS FAILED` : `✅ ${results.length} IN-BROWSER CHECKS GREEN`);

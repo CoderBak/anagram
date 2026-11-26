@@ -46,7 +46,9 @@ describe("model download", () => {
     expect(server.requests.map((r) => r.range)).toEqual([null, "bytes=350-"]);
     expect(notices).toEqual(["Retrying model.bin in 0 s"]);
     server.options.cutAfter = undefined;
-    await downloadFile(store, entry(), { transport: server.fetch, ...NO_WAIT });
+    const phases: string[] = [];
+    await downloadFile(store, entry(), { transport: server.fetch, onPhase: (phase) => phases.push(phase), ...NO_WAIT });
+    expect(phases).toEqual(["verifying", "downloading", "verifying"]);
     expect(server.requests[2]!.range).toBe("bytes=700-");
     expect(await store.read("model.bin")).toEqual(FILE);
     expect(await store.size("model.bin.part")).toBeNull();

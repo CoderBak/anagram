@@ -124,7 +124,7 @@ const KEYWORD_LINE = /^\s*(?:index terms|key\s?words?|关键词|关键字)\s*[�
 const FIRST_PAGE_NOTE = /^\s*(?:this (?:work|research|study|project|paper) (?:was|is|has been) (?:\w+ )?(?:supported|funded)|manuscript received|(?:\*\s*)?corresponding author)/iu;
 
 function roleOf(block: ReflowBlock, words: number, floor: number): BlockRole {
-  if (block.kind === "heading") return "barrier";
+  if (block.kind === "heading" || block.kind === "table") return "barrier";
   if (KEYWORD_LINE.test(block.text) || (block.page === 1 && FIRST_PAGE_NOTE.test(block.text))) return "barrier";
   if (block.apart) return words >= floor ? "apart" : "barrier";
   if (words >= floor) return "prose";
@@ -223,9 +223,10 @@ export function documentParagraphs(
   blocks: readonly ReflowBlock[],
   pagesOf: (block: ReflowBlock) => readonly number[],
   floor: number = MIN_WORDS,
+  preparedGroups?: number[][],
 ): DocumentParagraph[] {
   const plan = planOf(blocks, floor);
-  const groups = groupBlocks(plan, floor);
+  const groups = preparedGroups ?? groupBlocks(plan, floor);
   const out: DocumentParagraph[] = [];
   groups.forEach((group, order) => {
     const members = group.map((at) => blocks[at]!);
@@ -376,6 +377,19 @@ export function createPdfUnitSource(): PdfUnitSource {
     return out;
   }
 
+  function readingRanges(runs: SourceRun[]): string[] {
+    const ranges: string[] = [];
+    let first = 0;
+    for (let i = 0; i < runs.length; i++) {
+      const end = runs[i]!;
+      if (runs[i + 1]?.page === end.page) continue;
+      const start = runs[first]!;
+      ranges.push(`${start.page}/${start.item}/${start.from}-${end.item}/${end.from + end.length}`);
+      first = i + 1;
+    }
+    return ranges;
+  }
+
   function mint(from: Blueprint): Unit {
     if (from.minted) placed.delete(from.minted);
     const unit: Unit = {
@@ -391,6 +405,7 @@ export function createPdfUnitSource(): PdfUnitSource {
       textFixed: true,
       paragraphs: from.paragraphs,
       page: from.runs.at(-1)?.page,
+      pdfRanges: readingRanges(from.runs),
     };
     from.minted = unit.id;
     placed.set(unit.id, from);

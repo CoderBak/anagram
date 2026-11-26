@@ -5,152 +5,145 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <title data-i18n="statsTitle">Reading statistics</title>
+    <link rel="stylesheet" href="/pages/theme.css" />
     <link rel="stylesheet" href="/pages/stats.css" />
   </head>
   <body>
     <main class="page">
       <header class="hdr">
-        <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
-        <img class="logo-dark" src="/icons/icon-96.png" alt="" />
-        <div>
+        <div class="report-title">
+          <img class="logo-light" src="/icons/icon-light-48.png" alt="" />
+          <img class="logo-dark" src="/icons/icon-48.png" alt="" />
           <h1 data-i18n="statsTitle">Reading statistics</h1>
-          <p id="levelLine"></p>
         </div>
+        <button type="button" class="btn" data-variant="outline" data-size="sm" id="export" hidden><svg class="action-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#download"></use></svg><span data-i18n="statsExport">Export…</span></button>
       </header>
+
+      <div class="bar" id="periodBar" hidden>
+        <div class="period-tabs">
+          <div role="group" aria-label="Period" data-i18n-aria-label="statsPeriod" id="ranges">
+            <button type="button" data-range="today" aria-pressed="false" data-i18n="statsToday">Today</button>
+            <button type="button" data-range="7" aria-pressed="true" data-i18n="statsLast7">7 days</button>
+            <button type="button" data-range="30" aria-pressed="false" data-i18n="statsLast30">30 days</button>
+          </div>
+        </div>
+        <details class="more" id="more">
+          <summary><span class="vh" data-i18n="statsPeriod">Period</span> <span id="period"></span></summary>
+          <div class="menu">
+            <label><span data-i18n="statsMonth">Month</span>
+              <select id="month" class="select"><option value="" data-i18n="statsMonthPick">A month…</option></select>
+            </label>
+            <form id="rangeForm">
+              <div class="range-inputs">
+                <label><span data-i18n="statsFrom">From</span><input type="date" class="input" id="rangeFrom" required /></label>
+                <label><span data-i18n="statsTo">To</span><input type="date" class="input" id="rangeTo" required /></label>
+              </div>
+              <button type="submit" class="btn" data-size="sm" data-i18n="statsApplyRange">Apply range</button>
+            </form>
+          </div>
+        </details>
+        <button type="button" class="back-range" id="returnRange" data-i18n="statsReturnRange" hidden>Back to range</button>
+        <span class="filter" id="filter" hidden>
+          <span id="filterText"></span>
+          <button type="button" class="btn" data-variant="ghost" data-size="sm" id="filterClear" data-i18n="statsFilterClear">Show all</button>
+        </span>
+      </div>
 
       <!-- Recording is off: a preset to turn on, and what the chosen one keeps. -->
       <section class="card" id="offCard" aria-labelledby="offTitle" hidden>
-        <header>
-          <h2 id="offTitle" data-i18n="statsOffTitle">Statistics are off</h2>
-          <p data-i18n="statsOffLead">Keep a record of what you read, on this computer only.</p>
-        </header>
-        <section>
+        <div class="recording-start">
+          <h2 id="offTitle" data-i18n="statsOffTitle">Recording is off</h2>
           <div class="form-row">
             <select id="turnOnPreset" class="select" aria-label="Record" data-i18n-aria-label="optStatsLevel" aria-describedby="turnOnHint"></select>
             <button type="button" class="btn" data-size="sm" id="turnOn" data-i18n="statsTurnOn">Turn on</button>
           </div>
-          <p class="note" id="turnOnHint"></p>
-          <div id="turnOnWarn"></div>
-          <p class="note" data-i18n="statsNeverNote">Never kept: private windows, sites Anagram is off for, Analyze text, and what you type, select or copy.</p>
-        </section>
+        </div>
+        <p class="note" id="turnOnHint"></p>
+        <div id="turnOnWarn"></div>
       </section>
 
       <div id="content" hidden>
-        <!-- The period, and everything else behind one More menu. -->
-        <div class="bar">
-          <div class="tabs">
-            <nav role="tablist" aria-orientation="horizontal" aria-label="Period" data-i18n-aria-label="statsPeriod" id="ranges">
-              <button type="button" role="tab" data-range="today" aria-selected="true" data-i18n="statsToday">Today</button>
-              <button type="button" role="tab" data-range="7" aria-selected="false" data-i18n="statsLast7">7 days</button>
-              <button type="button" role="tab" data-range="30" aria-selected="false" data-i18n="statsLast30">30 days</button>
-            </nav>
-          </div>
-          <p class="period" id="period" role="status" aria-live="polite"></p>
-          <span class="filter" id="filter" hidden>
-            <span id="filterText"></span>
-            <button type="button" class="btn" data-variant="ghost" data-size="sm" id="filterClear" data-i18n="statsFilterClear">Show all</button>
-          </span>
-          <details class="more" id="more">
-            <summary class="btn" data-variant="outline" data-size="sm" data-i18n="statsMore">More</summary>
-            <div class="menu">
-              <label><span data-i18n="statsMonth">Month</span>
-                <select id="month" class="select"><option value="" data-i18n="statsMonthPick">A month…</option></select>
-              </label>
-              <span class="range-inputs">
-                <label class="vh" for="rangeFrom" data-i18n="statsFrom">From</label>
-                <input type="date" class="input" id="rangeFrom" />
-                <span aria-hidden="true">–</span>
-                <label class="vh" for="rangeTo" data-i18n="statsTo">To</label>
-                <input type="date" class="input" id="rangeTo" />
-              </span>
-              <span class="menu-actions">
-                <button type="button" class="btn" data-variant="outline" data-size="sm" id="export" data-i18n="statsExport">Export…</button>
-                <button type="button" class="btn" data-variant="ghost" data-size="sm" id="clear" data-i18n="statsClear">Clear statistics</button>
-              </span>
-            </div>
-          </details>
-        </div>
-
         <section class="panel" id="emptyCard" hidden>
-          <p class="empty" id="emptyText" data-i18n="statsNothing">Nothing was recorded in this period.</p>
+          <p class="muted" id="emptyText" data-i18n="statsNothing">No records for this period.</p>
         </section>
 
+        <p id="detailCoverage" class="note" role="status" hidden></p>
         <div id="sections">
-          <!-- The answer first: four figures. -->
-          <div class="kpis">
-            <section class="panel kpi" aria-labelledby="heroTitle">
-              <h2 id="heroTitle" data-i18n="statsHeadline">What you read</h2>
-              <p class="hero" id="heroShare"></p>
-              <p class="hero-line" id="heroLine"></p>
-              <p class="compare" id="heroCompare"></p>
+          <div class="overview">
+            <section class="activity" aria-labelledby="trendTitle">
+              <div class="activity-heading">
+                <h2 id="trendTitle" data-i18n="statsTrend">Reading activity</h2>
+                <div id="plotControls" class="plot-controls" role="group" aria-label="Chart scale" data-i18n-aria-label="statsChartScale">
+                  <button type="button" id="trendVolume" aria-pressed="true"></button>
+                  <button type="button" id="trendShare" aria-pressed="false" data-i18n="statsChartShare">Share</button>
+                </div>
+              </div>
+              <dl class="measure"><dt id="scoredTitle"></dt><dd id="scoredFigure"></dd></dl>
+              <p class="context" id="scoredLine"></p>
+              <div id="trendCard">
+                <div id="trendChart"></div>
+                <p class="note" id="trendUnavailable" data-i18n="statsNoVerdicts" hidden>No verdicts available.</p>
+                <div class="tip" id="trendTip" hidden></div>
+                <details class="table-view"><summary data-i18n="statsShowTable">View table</summary><div class="table-container" id="trendTable" tabindex="0" role="group" aria-labelledby="trendTitle"></div></details>
+              </div>
             </section>
-            <section class="panel kpi" aria-labelledby="scoredTitle">
-              <h2 id="scoredTitle" data-i18n="statsKpiScored">Words scored</h2>
-              <p class="figure" id="scoredFigure"></p>
-              <p class="compare" id="scoredLine"></p>
-            </section>
-            <section class="panel kpi" aria-labelledby="topTitle">
-              <h2 id="topTitle" data-i18n="statsKpiTop">Most AI-generated</h2>
-              <p class="figure small" id="topFigure"></p>
-              <p class="compare" id="topLine"></p>
-            </section>
-            <section class="panel kpi" aria-labelledby="coverageTitle">
-              <h2 id="coverageTitle" data-i18n="statsCoverage">What could be scored</h2>
-              <p class="figure" id="coverageFigure"></p>
-              <div class="mix" id="coverageMix" aria-hidden="true"></div>
-              <ul class="coverage-list" id="coverageList"></ul>
-              <p class="vh" id="coverageLine"></p>
-            </section>
-          </div>
-
-          <div class="grid-2-1">
-            <section class="panel" id="trendCard" aria-labelledby="trendTitle">
-              <h2 id="trendTitle" data-i18n="statsTrend">Day by day</h2>
-              <div id="trendChart"></div>
-              <div class="tip" id="trendTip" hidden></div>
-              <details class="table-view"><summary data-i18n="statsShowTable">Show as a table</summary><div class="table-container" id="trendTable"></div></details>
-            </section>
-            <section class="panel" aria-labelledby="mixTitle">
-              <h2 id="mixTitle" data-i18n="statsMix">The four verdicts</h2>
-              <div class="mix" id="heroMix" aria-hidden="true"></div>
+            <section class="distribution" aria-labelledby="mixTitle">
+              <h2 id="mixTitle" data-i18n="statsMix">Verdict distribution</h2>
+              <dl class="measure"><dt id="heroLine"></dt><dd id="heroShare"></dd></dl>
+              <p class="context" id="heroCompare"></p>
               <ul class="legend" id="heroLegend"></ul>
-              <p class="note" data-i18n="statsExpectedNote">Shares are expected words: each paragraph's words are split by how likely the model finds each verdict, so a doubtful paragraph counts partly on both sides.</p>
+              <details class="breakdown" id="scoringDetails">
+                <summary data-i18n="statsCoverageDetails">Scoring details</summary>
+                <p id="coverageLine"></p>
+                <ul class="coverage-list" id="coverageList"></ul>
+                <p id="topDetail" hidden><span id="topTitle"></span> <strong id="topFigure"></strong> <span id="topLine"></span></p>
+              </details>
             </section>
           </div>
 
-          <div class="grid-2">
-            <section class="panel" id="siteCard" aria-labelledby="siteTitle">
-              <h2 id="siteTitle" data-i18n="statsBySite">By site</h2>
+          <section class="records" id="records" aria-labelledby="recordsTitle">
+            <header class="records-heading">
+              <h2 id="recordsTitle" data-i18n="statsRecords">Reading breakdown</h2>
+              <div class="record-tabs" id="recordTabs" role="tablist" aria-labelledby="recordsTitle">
+                <button type="button" role="tab" id="siteTab" aria-controls="siteCard" data-i18n="statsBySite">Sites</button>
+                <button type="button" role="tab" id="kindTab" aria-controls="kindCard" data-i18n="statsByKind">Page types</button>
+                <button type="button" role="tab" id="pagesTab" aria-controls="pagesCard" data-i18n="statsPages">Pages</button>
+                <button type="button" role="tab" id="visitsTab" aria-controls="visitsCard" data-i18n="statsVisits">Visits</button>
+              </div>
+            </header>
+            <div role="tabpanel" id="siteCard" aria-labelledby="siteTab" tabindex="0">
               <div class="table-container" id="siteTable"></div>
               <p class="note" id="siteMore"></p>
-            </section>
-            <section class="panel" id="kindCard" aria-labelledby="kindTitle">
-              <h2 id="kindTitle" data-i18n="statsByKind">By kind of page</h2>
+            </div>
+            <div role="tabpanel" id="kindCard" aria-labelledby="kindTab" tabindex="0" hidden>
               <div class="table-container" id="kindTable"></div>
-            </section>
-          </div>
-
-          <section class="panel" id="pagesCard" aria-labelledby="pagesTitle">
-            <h2 id="pagesTitle" data-i18n="statsPages">Pages</h2>
-            <div class="table-container" id="pagesTable"></div>
-            <p class="note" id="pagesMore"></p>
-          </section>
-
-          <section class="panel" id="visitsCard" aria-labelledby="visitsTitle">
-            <h2 id="visitsTitle" data-i18n="statsVisits">Visits</h2>
-            <div class="table-container" id="visitsTable"></div>
-            <p class="note" id="visitsMore"></p>
-            <div id="replay" hidden>
-              <h3 class="card-sub" id="replayTitle"></h3>
-              <div id="replayChart"></div>
-              <p class="note" data-i18n="statsReplayNote">A row per paragraph, in the order they were found; a bar for each spell any of it was on screen, in its chip's colour; the line is how far down the page was scrolled.</p>
+            </div>
+            <div role="tabpanel" id="pagesCard" aria-labelledby="pagesTab" tabindex="0" hidden>
+              <div class="table-container" id="pagesTable"></div>
+              <p class="note" id="pagesMore"></p>
+            </div>
+            <div role="tabpanel" id="visitsCard" aria-labelledby="visitsTab" tabindex="0" hidden>
+              <div class="table-container" id="visitsTable"></div>
+              <p class="note" id="visitsMore"></p>
+              <section id="replay" aria-labelledby="replayTitle" hidden>
+                <h3 class="vh" id="replayTitle"></h3>
+                <dl id="visitFacts"></dl>
+                <p class="note" id="visitStatus" role="status"></p>
+                <details id="visitTimeline" class="breakdown" hidden>
+                  <summary data-i18n="statsVisitTimeline">Reading timeline</summary>
+                  <div id="replayChart" role="status"></div>
+                  <p class="note" id="timelineKey"></p>
+                </details>
+              </section>
             </div>
           </section>
         </div>
 
         <details class="lens" id="lens">
           <summary data-i18n="statsLens">How it counts</summary>
+          <p class="note" id="levelLine"></p>
           <p class="note" id="lensNote"></p>
+          <p class="note" id="estimatorNote"></p>
           <div class="grid">
             <label><span data-i18n="statsLensRead">Read after</span><select class="select" id="lensRead"></select></label>
             <label><span data-i18n="statsLensVisible">On screen means</span><select class="select" id="lensVisible"></select></label>
@@ -161,47 +154,57 @@
             <label><span data-i18n="statsLensMinWords">Paragraphs of at least</span><select class="select" id="lensMinWords"></select></label>
             <label class="check"><input type="checkbox" class="input" id="lensFocused" /><span data-i18n="statsLensFocused">Only a focused window</span></label>
             <label class="check"><input type="checkbox" class="input" id="lensFling" /><span data-i18n="statsLensFling">Leave out what was flung past</span></label>
+            <button type="button" class="text-action" id="lensReset" data-i18n="statsLensReset">Restore defaults</button>
           </div>
-          <div class="actions"><button type="button" class="btn" data-variant="outline" data-size="sm" id="lensReset" data-i18n="statsLensReset">Count as Anagram does</button></div>
         </details>
       </div>
 
       <dialog class="stats-dialog wide" id="exportDialog" aria-labelledby="exportTitle">
         <form method="dialog" id="exportForm">
-          <h2 id="exportTitle" data-i18n="statsExportTitle">Export statistics</h2>
-          <p id="exportRange"></p>
-          <div class="field">
-            <label for="exportPreset" data-i18n="statsExportLevel">Detail</label>
-            <select id="exportPreset" class="select"></select>
-            <p class="muted" id="exportPresetNote"></p>
-          </div>
-          <details class="table-view" id="exportDimsBox">
-            <summary data-i18n="statsExportFields">Field by field</summary>
-            <div class="table-container" id="exportDims"></div>
-          </details>
-          <fieldset>
-            <legend data-i18n="statsExportLink">Ids and hashes</legend>
-            <label><input type="radio" class="input" name="link" value="file" checked /> <span data-i18n="statsExportLinkFile">This file's own: another file cannot be matched with it</span></label>
-            <label><input type="radio" class="input" name="link" value="stable" /> <span data-i18n="statsExportLinkStable">The same in every file from this browser: a study can join your files</span></label>
-          </fieldset>
-          <fieldset>
-            <legend data-i18n="statsExportFormat">Format</legend>
-            <label><input type="radio" class="input" name="format" value="json" checked /> <span data-i18n="statsExportJson">JSON</span></label>
-            <label><input type="radio" class="input" name="format" value="jsongz" /> <span data-i18n="statsExportJsonGz">JSON, compressed (.json.gz)</span></label>
-            <label><input type="radio" class="input" name="format" value="csv" /> <span data-i18n="statsExportCsv">CSV, a file per table, in a .zip</span></label>
-          </fieldset>
-          <div class="preview" id="exportPreview" aria-live="polite"></div>
-          <p class="muted" data-i18n="statsExportNote">The file is saved on this computer. Anagram never uploads it: whether to share it is up to you. You can open it and see everything it holds.</p>
-          <div class="actions">
-            <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportCancel" data-i18n="buttonCancel">Cancel</button>
-            <button type="submit" class="btn" data-size="sm" id="exportSave" data-i18n="statsExportSave">Save file</button>
+          <header class="export-header">
+            <h2 id="exportTitle" data-i18n="statsExportTitle">Export statistics</h2>
+            <div class="actions">
+              <button type="button" class="btn" data-variant="outline" data-size="sm" id="exportCancel" data-i18n="buttonCancel">Cancel</button>
+              <button type="submit" class="btn" data-size="sm" id="exportSave" data-i18n="statsExportSave">Save file</button>
+            </div>
+          </header>
+          <div class="export-options">
+            <p id="exportRange"></p>
+            <div class="export-selects">
+              <div class="field" id="exportScopeField" hidden>
+                <label for="exportScope" data-i18n="statsExportSites">Sites to include</label>
+                <select class="select" id="exportScope"></select>
+              </div>
+              <div class="field">
+                <label for="exportPreset" data-i18n="statsExportLevel">Detail</label>
+                <select id="exportPreset" class="select"></select>
+              </div>
+            </div>
+            <details class="table-view" id="exportDimsBox">
+              <summary data-i18n="statsExportFields">Recorded fields</summary>
+              <div class="table-container" id="exportDims"></div>
+            </details>
+            <div class="export-groups">
+              <fieldset>
+                <legend data-i18n="statsExportLink">Ids and hashes</legend>
+                <label><input type="radio" class="input" name="link" value="file" checked /> <span data-i18n="statsExportLinkFile">Unique to this export</span></label>
+                <label><input type="radio" class="input" name="link" value="stable" /> <span data-i18n="statsExportLinkStable">Consistent across exports from this browser</span></label>
+              </fieldset>
+              <fieldset>
+                <legend data-i18n="statsExportFormat">Format</legend>
+                <label><input type="radio" class="input" name="format" value="json" checked /> <span data-i18n="statsExportJson">JSON</span></label>
+                <label><input type="radio" class="input" name="format" value="jsongz" /> <span data-i18n="statsExportJsonGz">JSON, compressed (.json.gz)</span></label>
+                <label><input type="radio" class="input" name="format" value="csv" /> <span data-i18n="statsExportCsv">CSV tables (.zip)</span></label>
+              </fieldset>
+            </div>
+            <div class="preview" id="exportPreview" aria-live="polite"></div>
           </div>
         </form>
       </dialog>
 
       <dialog class="stats-dialog" id="clearDialog" aria-labelledby="clearTitle" aria-describedby="clearText">
         <h2 id="clearTitle" data-i18n="statsClearTitle">Clear statistics?</h2>
-        <p id="clearText" data-i18n="statsClearConfirm">Every day recorded is deleted from this computer. This can't be undone.</p>
+        <p id="clearText" data-i18n="statsClearConfirm">Permanently deletes all recorded statistics.</p>
         <div class="actions">
           <button type="button" class="btn" data-variant="outline" data-size="sm" id="clearCancel" data-i18n="buttonCancel">Cancel</button>
           <button type="button" class="btn" data-variant="destructive" data-size="sm" id="clearConfirm" data-i18n="statsClear">Clear statistics</button>
@@ -211,6 +214,7 @@
       <footer class="links">
         <a class="link" id="settingsLink" href="/options.html#statistics" data-i18n="statsSettingsLink">Statistics settings</a>
         <a class="link" href="https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="optPrivacyPolicy">Privacy policy</a>
+        <button type="button" class="footer-action" id="clear" data-i18n="statsClear" hidden>Clear statistics</button>
       </footer>
     </main>
     <script type="module" src="./main.ts"></script>

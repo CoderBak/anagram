@@ -35,7 +35,7 @@ QUEUE_TIMEOUT_S = 30
 # time, and still be wanted; past that the browser has stopped waiting for it.
 MOST_QUEUE_WAIT_S = QUEUE_TIMEOUT_S * max(MAX_PENDING_SCORES, MAX_PENDING_TOKENS)
 OPS = {"status", "health", "score", "tokens", "runtime", "runtime.benchmark", "runtime.config",
-       "runtime.cancel", "models.download", "models.pause", "models.delete",
+       "runtime.cancel", "models.select", "models.download", "models.pause", "models.delete",
        "engine.stop", "engine.resume", "engine.settings", "component.update", "component.uninstall"}
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 

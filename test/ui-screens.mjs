@@ -24,24 +24,22 @@ const LANGS = (process.env.LANGS ?? "en,zh-CN").split(",").map((l) => [l, l === 
 const SCHEMES = (process.env.SCHEMES ?? "light,dark").split(",");
 const wanted = (group) => !only || only.split(",").includes(group);
 
-const PARA = (tag) =>
-  `${tag} paragraph is long enough to be scored on its own because it carries well over seventy-five ordinary ` +
-  "English words describing nothing in particular except the fact that a reader who never touches a mouse " +
-  "must still be able to reach every verdict this extension produces, which is what the floating ball, its " +
-  "counter and the triage panel behind them exist for on a page like this one, where every verdict has to " +
-  "be one key press away and read out in words rather than shown only as a colour.";
-// Tags whose fixture scores are .05, .30, .60 and .95 (test/fake-native.mjs fakeScore).
-const CHIP_TAGS = ["S2197", "S366", "S1643", "S1430"];
-// One paragraph under the reader's 50 words (not scored) and one of 60 (scored, "less reliable").
-const SHORT_NOTE = "The committee met on Thursday and agreed to move the review to the following week.";
-const MID_NOTE = "The harbor road closes at dusk, and the ferry keeps its own timetable through the winter months, which surprises most visitors. " + "Locals plan around it: they buy bread early, post letters before noon and leave the last crossing for emergencies. ".repeat(2) + "Nobody complains.";
-const chipsHtml = (dark) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Chips</title></head>
+// Sample passages give flagged entries distinct, readable excerpts in the toolbar menu.
+const passages = [
+  "The old ticket booth now serves the town on Saturdays as a book exchange. There is one shelf for books that people can take away and another for books they promise to bring back. The second shelf belongs to the children at the village school. They write their names inside the covers in pencil and leave a note for the next reader. The woman who unlocks the booth keeps a little stack of fresh paper beside the door.",
+  "At high tide the lower steps disappear under the water. For years the boat crews marked the highest tide of each winter on a wooden post beside the ramp. When the post began to rot, a carpenter from the village took it home and cut the marked side into a thin plank. It now hangs just inside the waiting room door. People coming in out of the rain often pause beside it to find the year they were born.",
+  "The first ferry leaves before sunrise. At the ticket window, the clerk keeps a little tin of chalk for the board that hangs beside the door. Each morning she walks down to the landing before she writes the time of the next crossing. A strong wind can push the boat well past the pier, and it takes a while to bring it back around. The regular passengers know to look at the board before they buy their tea.",
+  "At the landing, the benches still face the water. They stood in pairs until the year the road was widened and the outside row had to go. On a clear day you can sit at the far end and watch the boat all the way across to the island. In winter the view seldom reaches that far. People come down anyway, carrying cups of tea from the shop and stopping to talk before they walk home.",
+];
+const SHORT_NOTE = "The last ferry leaves at six on Sundays.";
+const MID_NOTE = "The harbor road closes at dusk, but the ferry keeps its own timetable through the winter. Locals buy bread early and post their letters before noon. The last crossing is usually quiet enough for the crew to sit on the steps and finish a cup of tea before they tie up the boat.";
+const chipsHtml = (dark) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Notes from the harbor</title></head>
 <body style="margin:0;${dark ? "background:#0d1117;color:#e6edf3" : "background:#fff;color:#1a1a1a"}"><div style="max-width:680px;margin:0 auto;padding:32px 24px;font:16px/1.65 Georgia,serif">
-<h1 style="font:600 22px system-ui">A page read by Anagram</h1>
-${CHIP_TAGS.map((t) => `<p>${PARA(t)}</p>`).join("\n")}
-<h2 style="font:600 18px system-ui">Notes</h2>
+<h1 style="font:600 22px system-ui">Notes from the harbor</h1>
+${passages.map((text) => `<p>${text}</p>`).join("\n")}
+<h2 style="font:600 18px system-ui">Ferry times</h2>
 <p>${SHORT_NOTE}</p>
-<h2 style="font:600 18px system-ui">Shorter than the model's minimum</h2>
+<h2 style="font:600 18px system-ui">Winter crossings</h2>
 <p>${MID_NOTE}</p></div></body></html>`;
 
 async function painted(page) {
@@ -77,10 +75,10 @@ async function shot(ctx, { file, url, scheme, width, script, ready, tall }) {
 }
 
 /**
- * The toolbar menu as it opens over `target`: its page, 360 px wide, believing `target` is the
+ * The toolbar menu as it opens over `target`: its page at native width, believing `target` is the
  * active tab — everything else (the page's answers, the worker's) is the real thing.
  */
-async function popupOver(ctx, target, { file, scheme }) {
+async function popupOver(ctx, target, { file, scheme, breakdownFile }) {
   // An extension page's address is one the menu is not told (the reader's): it gets the id alone.
   const own = target.url().startsWith("chrome-extension://");
   const url = own ? undefined : target.url();
@@ -88,7 +86,7 @@ async function popupOver(ctx, target, { file, scheme }) {
     ? await target.evaluate(async () => (await chrome.tabs.getCurrent())?.id)
     : await ctx.sw.evaluate(async (url) => (await chrome.tabs.query({})).find((t) => t.url === url)?.id, url);
   const popup = await ctx.context.newPage();
-  await popup.setViewportSize({ width: 360, height: 600 });
+  await popup.setViewportSize({ width: 300, height: 600 });
   await popup.emulateMedia({ colorScheme: scheme });
   await popup.addInitScript(({ tabId, url }) => {
     const query = chrome.tabs.query.bind(chrome.tabs);
@@ -97,7 +95,18 @@ async function popupOver(ctx, target, { file, scheme }) {
   await popup.goto(`chrome-extension://${ctx.extId}/popup.html`);
   await popup.waitForFunction(() => !document.getElementById("action")?.disabled, null, { timeout: 10000 }).catch(() => {});
   await popup.waitForTimeout(1500);
-  await popup.screenshot({ path: file, fullPage: true });
+  const capture = async (path) => {
+    const clip = await popup.evaluate(() => {
+      const { width, height } = document.body.getBoundingClientRect();
+      return { x: 0, y: 0, width: Math.ceil(width), height: Math.min(innerHeight, Math.ceil(height)) };
+    });
+    await popup.screenshot({ path, clip });
+  };
+  await capture(file);
+  if (breakdownFile) {
+    await popup.locator("#pageReport summary").click();
+    await capture(breakdownFile);
+  }
   await popup.close();
 }
 
@@ -138,7 +147,7 @@ for (const [lang, tag] of LANGS) {
         await page.screenshot({ path: name("chips"), fullPage: true });
         await page.mouse.move(5, 5);
         // The toolbar menu over that page: everything Anagram offers on a page is in it.
-        await popupOver(ctx, page, { file: name("popup-page"), scheme });
+        await popupOver(ctx, page, { file: name("popup-page"), breakdownFile: name("popup-breakdown"), scheme });
         // …over a page it is off for (a site rule), and over a PDF tab.
         await ctx.sw.evaluate((host) => chrome.storage.local.set({ siteOverrides: { [host]: "off" } }), new URL(site.url("/chips.html")).hostname);
         const off = await ctx.context.newPage();

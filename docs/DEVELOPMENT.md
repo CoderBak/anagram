@@ -2,7 +2,7 @@
 
 Anagram is a browser extension (WXT, TypeScript) and a Python Native Messaging host.
 Content scripts extract prose, the background worker authorizes and batches requests,
-and one of two engines scores them with EditLens: the same model inside the browser, or
+and one of two engines scores them with the selected Anagram detector: the same model inside the browser, or
 the local engine under `~/.anagram` (Engines, below). There is no HTTP service anywhere.
 Work on `dev`; `main` holds the published README only.
 
@@ -23,7 +23,7 @@ Work on `dev`; `main` holds the published README only.
 | Native host: protocol, ownership, lifecycle | `anagramd/native_host.py`, `anagramd/native_component.py` |
 | In-browser engine: the native host's contract in a Web Worker | `lib/webengine/engine.ts` (lifecycle, operations), `session.ts` (ONNX Runtime Web, WebGPU or WASM), `onnx.ts` (the graph whose weights are read from the file), `host.ts` (the worker as a port; ends it when idle), `download.ts` and `storage.ts` (resumable, verified downloads into OPFS), `autoSetup.ts` (the download started by itself), `tokenizer.ts`, `clean.ts`, `fasttext.ts`; `client.ts` (the transport the background uses), `entrypoints/engine/` (Chrome's offscreen document); `scripts/webengine.mjs` builds `public/vendor/engine/` |
 | Inference and runtime selection | `anagramd/engine.py`, `anagramd/runtime_controller.py`, `anagramd/runtime_adapters.py`, `anagramd/model_plan.py` |
-| Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/modelkit.json` |
+| Model download | `anagramd/download_modelkit.py`, `anagramd/hub_transfer.py`, `anagramd/prepare_models.py`, `anagramd/detector-release.json`, `lib/detectorReleases.ts` |
 | Install, update, uninstall | `install.sh`, `install.ps1`, `installer/native_registration.py`, `installer/anagram` |
 | Reading statistics | `lib/stats/config.ts` (dimensions, layers, presets), `lib/stats/recorder.ts` (the page's half, a chunk loaded through `lib/stats/meter.ts`), `lib/stats/wire.ts` (its messages), `lib/stats/worker.ts` (what the worker keeps), `lib/stats/tabs.ts`, `lib/stats/store.ts`, `lib/stats/lens.ts` and `summary.ts` (what the page shows), `lib/stats/export.ts` and `dictionary.ts`, `entrypoints/stats/`; [statistics.md](statistics.md) |
 | Localization | `public/_locales/en/`, `public/_locales/zh_CN/`, `scripts/i18nSubset.ts` |
@@ -34,8 +34,9 @@ Work on `dev`; `main` holds the published README only.
 - Setup is automatic. After model files are prepared the engine detects devices and
   activates the best FP32 configuration itself. Benchmarking and switching are optional.
 - The browser starts a per-profile host over stdio. One component home has one owner.
-- Model weights are the pinned public modelkit in `anagramd/modelkit.json`, downloaded
-  anonymously with SHA-256 verification. License is CC BY-NC-SA 4.0.
+- Both engines verify detector files against the selected revision and its SHA-256 hashes.
+  The initial revision is pinned in `anagramd/detector-release.json`. Legacy EditLens weights
+  retain their CC BY-NC-SA 4.0 license and attribution in `anagramd/modelkit.json`.
 - Website access is optional and granted by the user. The shipping manifest declares no
   host permissions; the content script is registered at runtime from grants.
 - The complete upstream PDF.js viewer ships unmodified and hash-pinned, and so does the
@@ -150,6 +151,7 @@ Safari inside the component home, without creating Chrome/Firefox host registrat
 
 ```sh
 npm run build:safari       # output/safari-mv3; does not launch Safari
+npm run test:safari        # project and extension tests, plus the native stdio bridge on macOS
 npm run zip:safari         # Safari web resources ZIP under output/
 npm run build:safari:app    # full local app with both engine paths; requires macOS/Xcode
 npm run safari:project     # browser-only Xcode wrapper under dist/safari
@@ -215,7 +217,11 @@ on real test computers.
 `npm run bump <version>` rewrites the version in package files, `anagramd/pyproject.toml`
 and `uv.lock`. `npm run release` builds both browser ZIPs, the component archive and
 installers under `dist/` and runs `scripts/verify-release.py` on the ZIPs: a local check,
-unsigned. A release is published by `.github/workflows/release.yml`, dispatched by hand from
+unsigned. On Linux or macOS with Python 3.11+, run
+`python3 test/packaged-install.py dist --previous /path/to/previous/release` to check
+a real archive upgrade, retained model data, removal and fresh installation in a temporary
+home. The test substitutes local Python provisioning and pauses model downloads.
+A release is published by `.github/workflows/release.yml`, dispatched by hand from
 its version tag, which first runs CI's macOS job (the gate; Linux, Windows and Firefox are
 CI's own runs and hold no release), builds the same assets, signs each with Sigstore
 (keyless, its certificate naming that workflow at that tag) and attaches them with their
@@ -231,11 +237,11 @@ asks for, `dist/anagram-source-<version>.zip` (HEAD without `test/`, with its BU
 
 ## Open work
 
-- PDF: whole-document reading (`lib/pdf/readAhead.ts`) works only with Zotero's structure;
-  past its cap (`MOST_STRUCTURE_PAGES` in `entrypoints/reader/main.ts`: 2,500 pages; read
-  without asking up to all of them at 8 GB of device memory, 600 at 4, 300 below or unknown,
-  and past that when the menu's **Read the whole document** asks), or without it, the reflow
-  reads the drawn pages alone, because its text depends on the run of pages reflowed together.
+- PDF: the reader tries Zotero's structure for up to 2,500 pages. It asks first past
+  600 pages on a device reporting 4 GB of memory, or 300 below 4 GB or when memory is unknown.
+  If the structure is disabled, unavailable or over its cap, **Read the whole document** reads
+  unseen pages with the geometry fallback. A worker prepares consecutive batches, carrying
+  unfinished paragraphs across page breaks and retaining the source offsets for later highlights.
   Zotero reads a document past 1,000 pages in even ranges, a worker each, through a page-range
   view of the document in our entry (`vendor/document-worker/src/worker.js`): its own
   `getFullStructure` reads every page at once and holds them all, 2.7 GB of the reader's

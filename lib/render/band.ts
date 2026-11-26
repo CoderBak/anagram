@@ -9,19 +9,25 @@ import { messageLocale, t, type MessageKey } from "../i18n";
 import { levelOf } from "./scale";
 import { DEFAULT_FLAG_FROM, flagLevel, type FlagFrom } from "./flagLevel";
 
-export type Band = "human" | "light" | "heavy" | "ai" | "unknown" | "unsupported";
+export type Band = "human" | "light" | "heavy" | "ai" | "unknown" | "unsupported" | "assisted" | "short";
 
 /** Bucket index → band, in model order. */
 export const BUCKET_BANDS: readonly Band[] = ["human", "light", "heavy", "ai"];
 
+export const DETECTOR_BANDS: readonly Band[] = ["human","assisted","ai"];
+export const resultBands = (r:ScoreResult) => r.probs.length === 3 ? DETECTOR_BANDS : BUCKET_BANDS;
+export const resultLevel = (r:ScoreResult) => r.probs.length === 3 ? [0,1,3][r.bucket]! : levelOf(r.score);
+
 /** Derive the human-facing band from the contract: from the score, not the bucket. */
 export function band(r: ScoreResult): Band {
+  if (r.insufficient) return "short";
   if (r.degraded) return "unknown";
   if (r.unsupported) return "unsupported";
-  return BUCKET_BANDS[levelOf(r.score)]!;
+  return r.probs.length === 3 ? DETECTOR_BANDS[r.bucket]! : BUCKET_BANDS[levelOf(r.score)]!;
 }
 
 const BAND_KEY: Record<Band, MessageKey> = {
+  assisted: "bandAssisted", short:"bandShort",
   human: "bandHuman",
   light: "bandLight",
   heavy: "bandHeavy",
@@ -38,7 +44,7 @@ export function bandLabel(b: Band): string {
 
 /** Bands that carry no verdict and therefore get no mark and no distribution readout. */
 export function isNoVerdict(b: Band): boolean {
-  return b === "unknown" || b === "unsupported";
+  return b === "unknown" || b === "unsupported" || b === "short";
 }
 
 /** "Chinese (zh)" via the browser's own display-name tables, in the UI's own language;
@@ -60,10 +66,12 @@ export { DEFAULT_FLAG_FROM, flagFromOf, flagLevel, type FlagFrom } from "./flagL
  * flagged-only mode, and the underlines: `from` and every word above it.
  */
 export function isFlaggedBand(b: Band, from: FlagFrom = DEFAULT_FLAG_FROM): boolean {
-  const level = BUCKET_BANDS.indexOf(b);
+  const level = b === "assisted" ? 1 : BUCKET_BANDS.indexOf(b);
   return level >= 0 && level >= flagLevel(from);
 }
 
 export function isFlagged(r: ScoreResult, from: FlagFrom = DEFAULT_FLAG_FROM): boolean {
+  if (r.sentenceLabels && !r.degraded && !r.unsupported && !r.insufficient)
+    return r.sentenceLabels.some(k=>isFlaggedBand(DETECTOR_BANDS[k]!,from));
   return isFlaggedBand(band(r), from);
 }

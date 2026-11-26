@@ -187,7 +187,7 @@ export interface EngineSetup {
   percent: number;
   /** Why a failed download stopped (lib/webengine/download.ts DownloadFailure), for the
    *  toolbar menu to say. */
-  failure?: "network" | "storage" | "server" | "damaged" | "other";
+  failure?: "access" | "network" | "storage" | "server" | "damaged" | "other";
   /** Why the model could not start: "load", it failed to in this browser (Retry on the setup
    *  page may do it); "device", this device cannot run it at all. */
   problem?: "load" | "device";

@@ -86,6 +86,24 @@ while True:
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`chrome-extension://${id}/onboarding.html`);
+    const preview = page.locator("#install-preview");
+    await preview.waitFor();
+    assert.equal(await preview.getAttribute("aria-expanded"), "false");
+    for (const width of [1200, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const copyBox = await page.locator("#install-copy").boundingBox();
+      const previewBox = await preview.boundingBox();
+      assert.equal(copyBox.y + copyBox.height / 2, previewBox.y + previewBox.height / 2, "Copy and View share a row");
+      assert.ok(previewBox.x >= copyBox.x + copyBox.width);
+      assert.ok(previewBox.x + previewBox.width <= width);
+    }
+    await preview.press("Enter");
+    await page.locator("#install a").waitFor();
+    assert.equal(await preview.getAttribute("aria-expanded"), "true");
+    await preview.press("Space");
+    assert.equal(await page.locator("#install-cmd").isVisible(), false);
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await preview.click();
     await page.locator("#install-cmd").waitFor();
     const installCommand = await page.locator("#install-cmd").innerText();
     assert.ok(installCommand.includes(`/releases/download/v${manifest.version}/install.sh`));
@@ -140,6 +158,7 @@ while True:
     assert.equal(await panel.getByRole("button", { name: language === "en" ? "Uninstall Anagram" : "卸载 Anagram", exact: true }).count(), 0, "the setup page carries no uninstall");
     const managing = await context.newPage();
     await managing.goto(`chrome-extension://${id}/options.html`);
+    await managing.locator("#engine-manage").click();
     const controls = managing.locator("#componentSettings");
     const remove = controls.getByRole("button", { name: language === "en" ? "Delete model files" : "删除模型文件", exact: true });
     await remove.waitFor(); await remove.click();

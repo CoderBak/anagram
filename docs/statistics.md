@@ -69,7 +69,8 @@ second or faster), and both.
 
 **The default rule**, which the totals and the toolbar menu use: a paragraph is read after one
 second with some of it in the middle 80%, not counting time flung past, and counts once per
-visit. A visit is one document at one address; a route change within a single-page site starts
+visit. When a PDF corrects a line-break hyphen, the tally uses the word count and verdict from
+the first read of that passage. If paragraph text is enabled, the log stores the version counted. A visit is one document at one address. A route change within a single-page site starts
 another, filed under its own address. A paragraph read before its verdict counts when the
 verdict comes; one still without a verdict when the visit ends counts as *unavailable*; one the
 page took away before its verdict counts as *removed*.
@@ -78,16 +79,16 @@ On the statistics page, **How it counts** applies any other rule to what was kep
 rows or finer: another time (¼ s to 30 s), half visible or any of it, a focused window only,
 time flung past or not, once per visit, per day or ever (by the text's hash), shares from
 expected words, the chip's word or the most likely band, each paragraph weighing its words, one
-or its seconds on screen, the headline AI-generated or heavily edited and AI-generated, and a
+or its seconds on screen, the headline AI-generated alone or together with AI-assisted text (heavily edited is available for historical records), and a
 floor of 50, 75, 100 or 150 words (above 50 an approximation: a joined group of 50–74 words
-would have kept joining under a real floor of 75). Totals hold the default rule alone.
+would have kept joining under a real floor of 75). Daily totals also hold the histograms for changing the headline or estimator. Other counting rules use paragraph records. The page shows the baseline word count excluded when only part of the period has paragraph detail.
 
-For each paragraph read, its words are added to the four verdicts by the model's probabilities:
-a paragraph of 100 words the model finds 60% likely AI-generated and 40% heavily edited adds 60
-words to *AI-generated* and 40 to *heavily edited*. These are **expected words**, and the shares
-are expected words over the words scored. The paragraph is also counted once under the word its
-chip showed (the band whose slice of the score Σ pᵢ·i/3 it falls in, cut at 1/6, 1/2 and 5/6)
-and once under its most likely band. Words read that could not be scored are kept apart, by why:
+The current detector estimates how much of a paragraph is human, AI-assisted or AI-generated.
+A 100-word paragraph with 60% of its classified text AI-generated and 40% AI-assisted contributes
+60 expected words to AI-generated and 40 to AI-assisted. The default headline divides expected
+AI-generated words by scored words. The counting rules can also use the chip label or most likely
+label and count paragraphs. Historical lightly edited and heavily edited results retain their own
+bands when viewed alongside newer results. Words that could not be scored are kept apart by reason —
 **short** (under 50 words, with nothing of its own voice to join), **language** (not English),
 **unavailable** and **removed**.
 
@@ -116,7 +117,7 @@ by the browser's clock, so a visit over midnight counts on both days.
 **Export…** on the statistics page saves the period shown with each dimension at the layer
 chosen, never finer than what was kept, and shows the file's tables, rows and size before it
 saves. Formats: JSON (`.json`, or compressed `.json.gz`), or CSV, a file per table plus
-`manifest.json`, in a `.zip`.
+`manifest.json`, in a `.zip`. A site filter also applies to the export. The export dialog lets the reader include all sites explicitly. `manifest.siteScope` records which scope was used without adding a site name.
 
 Every id and hash in the file (visits, tabs, windows, texts, hashed addresses and titles) is
 keyed again for the file, and sketches are masked likewise: by default with a key of that file
@@ -148,7 +149,7 @@ Each table is a list of columns and rows of values in that order; a nested field
 column (`expo.band`), an exposure four milliseconds `[all, focused, flung, both]`. The tables a
 file can hold, each present only where its dimension's layer keeps it:
 
-- `visits`, `units`: one per visit, one per paragraph of a visit.
+- `visits`, `units`: visits opened in the selected period and the paragraphs belonging to them, including paragraphs read after midnight.
 - `steps`, `intervals`: what was on screen, step by step or spell by spell.
 - `scroll`, `episodes`, `input`, `state`, `ui`, `geom`: a visit's event streams; their kinds are
   numbers into `manifest.names`.
@@ -156,7 +157,7 @@ file can hold, each present only where its dimension's layer keeps it:
 - `context`: what the log was recorded under, a row each time it changed.
 - `texts`: each paragraph's text by its hash (Full trace with text).
 - `totals`: per day, kind, site and page, by the default rule.
-- `lens`: the paragraphs of the file added up by day and kind of page under `manifest.lens`.
+- `lens`: tallies by local reading day and page kind under `manifest.lens`, including reading in visits opened before the selected period. Older logs use the opening day when their retained timing cannot identify an overnight read. `lensBasis` identifies recorded totals or a recalculation from paragraphs. For a recalculation, `lensOmittedBaselineWords` reports the baseline words without the required paragraph detail. A recount from verdict labels omits the expected band weights when the probabilities were discarded.
 
 `manifest.dictionary` says what every table and column of the file is (lib/stats/dictionary.ts).
 

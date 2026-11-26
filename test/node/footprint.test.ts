@@ -120,7 +120,7 @@ describe("the network inventory in docs/footprint.md", () => {
   it("uses one native connection and limits fetch call sites to original-document readers and the model download", () => {
     expect(rows.filter((r) => r[1] === "connectNative(").map((r) => r[0])).toEqual(["lib/backend/nativeTransport.ts"]);
     // And the test build's read of its own stand-in device, which the shipping build does not carry.
-    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/docsOverlay.ts", "lib/pdf/handoff.ts", "lib/pdf/loader.ts", "lib/ui/deviceInputs.ts", "lib/webengine/download.ts"]);
+    expect(rows.filter((r) => r[1] === "fetch(").map((r) => r[0]).sort()).toEqual(["lib/detectorReleases.ts", "lib/docsOverlay.ts", "lib/pdf/handoff.ts", "lib/pdf/loader.ts", "lib/ui/deviceInputs.ts", "lib/webengine/download.ts"]);
     expect(read("lib/ui/deviceInputs.ts")).toMatch(/if \(import\.meta\.env\.ANAGRAM_TEST_BUILD === "1"\) Object\.assign\(inputs, await testDevice\(\)\);/);
   });
 

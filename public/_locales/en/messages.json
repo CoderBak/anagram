@@ -324,7 +324,7 @@
     "description": "Line above the paper in the Docs reading overlay."
   },
   "reportEstimate": {
-    "message": "The score is (p1 + 2p2 + 3p3) / 3 for the four EditLens classes. It summarizes the class distribution; it is not the fraction of AI-written words, a measured edit distance, or proof of authorship.",
+    "message": "Shares are measured by character. Score = AI-generated share + half the AI-assisted share.",
     "description": "Report preamble: what the percentages mean."
   },
   "reportUnread": {
@@ -336,7 +336,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportCaveat": {
-    "message": "Scores are estimates, not proof of authorship. Do not use them for disciplinary or other high-stakes decisions.",
+    "message": "Research estimates. Exclude these scores from disciplinary and other high-stakes decisions.",
     "description": "The fixed caveat every copied report carries."
   },
   "reportCopyFailed": {
@@ -348,15 +348,19 @@
     "description": "Reader button: leave for the PDF itself."
   },
   "readerDrop": {
-    "message": "Drop a PDF here",
+    "message": "Open a PDF",
     "description": "Reader drop zone."
   },
   "readerDropNote": {
-    "message": "Anagram reads it on this computer and marks each paragraph with how much of it AI wrote or edited.",
-    "description": "PDF reader's empty state, under \"Drop a PDF here\": what happens to a file once opened."
+    "message": "Or drop it here (up to $1 MB).",
+    "description": "File drop hint. $1 is the local file size limit in MiB."
+  },
+  "readerDropOne": {
+    "message": "Drop one PDF at a time.",
+    "description": "Message when multiple files are dropped into the single-document PDF reader."
   },
   "readerChoose": {
-    "message": "Choose a file",
+    "message": "Choose file…",
     "description": "Reader drop-zone button."
   },
   "readerPages": {
@@ -367,9 +371,17 @@
     "message": "Loading…",
     "description": "Reader notice while the file is fetched."
   },
+  "readerNoPageText": {
+    "message": "The pages shown have no selectable text.",
+    "description": "A PDF cover or other drawn page has no text. Later pages have not been checked."
+  },
   "readerNoText": {
-    "message": "This PDF's pages are images, with no text to read.",
-    "description": "Reader notice, and the toolbar menu over the reader: a scan, nothing to read."
+    "message": "This PDF has no selectable text. For a scan, open a copy saved with text recognition (OCR).",
+    "description": "Shown after every page was checked and none contained selectable text."
+  },
+  "readerPageReadFailed": {
+    "message": "This page’s text could not be read. Try reopening the PDF.",
+    "description": "Reader notice when extracting the text of the first visible page fails."
   },
   "readerTooLarge": {
     "message": "This PDF is too large to read here.",
@@ -412,24 +424,40 @@
     "description": "Button in the toolbar menu over the PDF reader where, on a slow computer, only the pages around the one being read are read ahead."
   },
   "readerReportScope": {
-    "message": "Covers the $1 pages loaded now, of $2; the others are read as you scroll to them.",
+    "message": "Covers $1 of $2 pages. Scroll to read more.",
     "description": "Popup report over the PDF reader where the document's paragraphs are not known (a very long document, or the structure setting off): only the pages loaded now are covered. $1 = pages loaded now, $2 = pages in the document."
   },
   "readerOpenMenu": {
     "message": "Anagram: results and controls for this document",
     "description": "Tooltip of the Anagram button in the PDF reader's toolbar, which opens the extension's toolbar menu."
   },
+  "scoreBreakdown": {
+    "message": "Score breakdown",
+    "description": "Opens the distribution of paragraph verdicts."
+  },
+  "statsCoverageDetails": {
+    "message": "Scoring details",
+    "description": "Expands score coverage, skipped counts and the highest share where available."
+  },
+  "pastePlaceholder": {
+    "message": "Paste English text…",
+    "description": "Placeholder in the text editor."
+  },
   "pasteTitle": {
     "message": "Analyze text",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteInput": {
-    "message": "Text to analyze",
+    "message": "English text to analyze",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFile": {
-    "message": "Open text file…",
+    "message": "Open file…",
     "description": "Text analysis page action, status, or limit."
+  },
+  "pasteEdit": {
+    "message": "Edit text",
+    "description": "Analyze text result. Button to reopen the original passage in the editor."
   },
   "pasteAnalyze": {
     "message": "Analyze",
@@ -452,7 +480,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "pasteFailed": {
-    "message": "Analysis did not complete. Check the local engine in Settings and try again.",
+    "message": "Analysis failed. Check the engine in Settings and try again.",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteWords_one": {
@@ -464,7 +492,7 @@
     "description": "Analyze text page: the length of the text typed or opened (plural)."
   },
   "pasteFileFailed": {
-    "message": "Could not read this file as UTF-8 text.",
+    "message": "Open a UTF-8 text file (.txt).",
     "description": "Text analysis page action, status, or limit."
   },
   "pasteExportText": {
@@ -472,7 +500,7 @@
     "description": "Text analysis page action, status, or limit."
   },
   "modelLine": {
-    "message": "Model: pangram/editlens_roberta-large (CC BY-NC-SA 4.0, non-commercial).",
+    "message": "Models from CoderBak/anagram-detectors.",
     "description": "Model credit in the options and first-run footers. The model id and licence are never translated."
   },
   "sourceCodeLink": {
@@ -482,10 +510,6 @@
   "cmdToggleOverlay": {
     "message": "Show or hide marks on this page",
     "description": "Keyboard shortcut description; also listed on the settings page."
-  },
-  "pasteIntro": {
-    "message": "Paste English text or open a text file to analyze it on this computer.",
-    "description": "One-line intro of the Analyze text page."
   },
   "onbOpenSettings": {
     "message": "Open Settings",
@@ -516,11 +540,11 @@
     "description": "Setup page: badge on the in-browser engine's card."
   },
   "engineOneClickWhat": {
-    "message": "Runs inside the browser. Nothing else to install.",
+    "message": "Runs in your browser.",
     "description": "Setup page, in-browser engine card: what it is."
   },
   "engineOneClickButton": {
-    "message": "Set up ($1 download)",
+    "message": "Download model ($1)",
     "description": "Setup page, in-browser engine card: its button. $1 is the size of the one-time download."
   },
   "engineTerminal": {
@@ -528,19 +552,19 @@
     "description": "Setup page: title of the card for the local engine, installed with one command in a terminal."
   },
   "engineTerminalWhat": {
-    "message": "Installs the local engine with one command in Terminal.",
+    "message": "Runs as a local process.",
     "description": "Setup page, local engine card on macOS and Linux: what it is."
   },
   "engineTerminalWhatWindows": {
-    "message": "Installs the local engine with one command in PowerShell.",
+    "message": "Install the local engine with PowerShell.",
     "description": "Setup page, local engine card on Windows: what it is."
   },
   "engineTerminalWhatNvidia": {
-    "message": "Installs the local engine with one command in Terminal. It runs on your NVIDIA graphics card.",
+    "message": "Runs as a local process.",
     "description": "The terminal card on Linux beside an NVIDIA GPU."
   },
   "engineTerminalButton": {
-    "message": "Use the local engine",
+    "message": "Get install command",
     "description": "Setup page, local engine card: its button. It asks the browser to let Anagram talk to the engine, then shows the install command."
   },
   "engineTight": {
@@ -552,7 +576,7 @@
     "description": "Setup page and Settings: the in-browser engine runs the FP16 model, because the full one does not fit this device. Half the download."
   },
   "engineNativeRefused": {
-    "message": "Anagram wasn't allowed to talk to the local engine, so nothing changed. Choose again when you're ready.",
+    "message": "Allow access to the local engine to continue.",
     "description": "Setup page and Settings: the browser's permission for the local engine was refused."
   },
   "engineCannotTitle": {
@@ -560,15 +584,15 @@
     "description": "Setup page: the engine card's title on a device that cannot run the model."
   },
   "engineCannotRun": {
-    "message": "This device doesn't have enough memory or free disk space for Anagram's model, so nothing was downloaded. Anagram never sends your text anywhere else to be scored.",
+    "message": "Insufficient memory or disk space for the model.",
     "description": "Setup page on a device with less than 4 GB of memory or too little free disk space for the model."
   },
   "engineSwitchToInBrowser": {
-    "message": "Switch to the in-browser engine",
+    "message": "Use in-browser engine",
     "description": "Settings, and beside Retry when the local engine keeps crashing: score with the in-browser engine instead."
   },
   "engineSwitchToNative": {
-    "message": "Switch to the local engine",
+    "message": "Use local engine",
     "description": "Settings: score with the local engine instead of the in-browser one."
   },
   "engineSwitchFailed": {
@@ -588,7 +612,7 @@
     "description": "Oneclick setup, not set up: why the model download did not start by itself (navigator.connection.saveData)."
   },
   "engineSetUpButton": {
-    "message": "Set up (one-time $1 download)",
+    "message": "Download model ($1)",
     "description": "In-browser edition: the button that starts the model download when it did not start by itself. $1 is the size, e.g. 1.4 GB."
   },
   "engineNotSetUp": {
@@ -804,11 +828,11 @@
     "description": "Error after the engine was removed but the extension could not remove itself."
   },
   "componentInstallIntro": {
-    "message": "Run this once in Terminal. It installs the local engine and downloads about 1.4 GB of model files.",
+    "message": "Run the install command in Terminal.",
     "description": "Install instruction on macOS and Linux, above the command."
   },
   "componentInstallIntroWindows": {
-    "message": "Run this once in PowerShell. It installs the local engine and downloads about 1.4 GB of model files.",
+    "message": "Run the install command in PowerShell.",
     "description": "Install instruction on Windows, above the command."
   },
   "componentUnsupportedPlatform": {
@@ -816,8 +840,32 @@
     "description": "Shown instead of the install command on unsupported platforms."
   },
   "componentUnreleased": {
-    "message": "Development build: no matching release exists yet, so the command is disabled.",
+    "message": "The terminal installer is available in release builds.",
     "description": "Notice in development builds whose installer is not published."
+  },
+  "componentCopiedPosix": {
+    "message": "Command copied. Paste it into Terminal and press Enter.",
+    "description": "What to do after copying the local installer command on macOS or Linux."
+  },
+  "componentCopiedWindows": {
+    "message": "Command copied. Paste it into PowerShell and press Enter.",
+    "description": "What to do after copying the local installer command on Windows."
+  },
+  "componentShowCommand": {
+    "message": "View command",
+    "description": "Opens the exact command that the Copy command button copies."
+  },
+  "componentHideCommand": {
+    "message": "Hide command",
+    "description": "Collapses the terminal installation command."
+  },
+  "componentVersionUpdate": {
+    "message": "Version $1 installed. Update to $2.",
+    "description": "Local engine version currently installed ($1) and the version available with this extension ($2)."
+  },
+  "componentVersionUpdated": {
+    "message": "Updated to $1",
+    "description": "The local engine reconnected with the requested version ($1)."
   },
   "componentCopyInstall": {
     "message": "Copy command",
@@ -828,7 +876,7 @@
     "description": "Link to the install script."
   },
   "componentCopyFailed": {
-    "message": "Copying failed; select the command and copy it yourself.",
+    "message": "Copy the selected command manually.",
     "description": "Shown when the clipboard is unavailable."
   },
   "componentDownloadBytes": {
@@ -904,7 +952,7 @@
     "description": "Notice when the browser has a pending extension update; $1 is the version."
   },
   "componentReloadExtension": {
-    "message": "Reload extension",
+    "message": "Apply extension update",
     "description": "Button that installs the pending extension update."
   },
   "popupTitle": {
@@ -928,28 +976,20 @@
     "description": "Button that opens the current PDF in the reader."
   },
   "popupOpenReader": {
-    "message": "Read a PDF file…",
-    "description": "Button that opens the empty reader for a local file."
+    "message": "Open a PDF…",
+    "description": "Button that opens the empty reader for a local PDF file."
   },
   "popupThisSite": {
-    "message": "Run on this site",
+    "message": "Scan this site automatically",
     "description": "Label of the per-site switch."
   },
-  "popupOn": {
-    "message": "on $1",
-    "description": "Line under the per-site switch naming the site the rule covers."
-  },
-  "popupShow": {
-    "message": "Show",
-    "description": "Label of the All chips / Flagged only tabs."
-  },
-  "popupAllChips": {
-    "message": "All chips",
-    "description": "Tab: show a chip on every paragraph."
+  "popupInheritedRule": {
+    "message": "Uses the rule for $1.",
+    "description": "Shown only when a parent domain supplies the site switch setting."
   },
   "popupFlaggedOnly": {
     "message": "Flagged only",
-    "description": "Tab and settings option: show only flagged paragraphs."
+    "description": "Settings option to show score labels only on flagged paragraphs."
   },
   "popupFlaggedCount": {
     "message": "$1 flagged",
@@ -995,14 +1035,6 @@
     "message": "This PDF could not be opened.",
     "description": "Error when the reader could not open the PDF."
   },
-  "popupEngine": {
-    "message": "Local engine: $1",
-    "description": "Engine status line at the foot of the popup; $1 is the state."
-  },
-  "popupEngineInBrowser": {
-    "message": "In-browser engine: $1",
-    "description": "In-browser edition: engine status line at the foot of the popup; $1 is the state."
-  },
   "popupEngineDown": {
     "message": "Local engine is not ready",
     "description": "Status when the engine is unavailable."
@@ -1036,12 +1068,12 @@
     "description": "Title and heading of the settings page."
   },
   "optMarks": {
-    "message": "Marks",
-    "description": "Card heading: chips and underlines."
+    "message": "Paragraph marks",
+    "description": "Heading of the settings panel for paragraph marks."
   },
   "optChips": {
-    "message": "Chips",
-    "description": "Select label: which paragraphs get a chip."
+    "message": "Score labels",
+    "description": "Label of the menu choosing which paragraphs get a score label."
   },
   "optEveryParagraph": {
     "message": "Every paragraph",
@@ -1064,8 +1096,8 @@
     "description": "Instructions where the browser has no settings page to open."
   },
   "optSites": {
-    "message": "Sites",
-    "description": "Card heading: site access and rules."
+    "message": "Websites",
+    "description": "Heading of the site access and rules settings panel."
   },
   "accessNone": {
     "message": "No sites",
@@ -1135,10 +1167,6 @@
     "message": "Already covered by $1.",
     "description": "Note when a parent domain's rule already says the same; $1 is that host."
   },
-  "optCacheMode": {
-    "message": "Verdict cache",
-    "description": "Select label: where scores are kept."
-  },
   "optCachePersistent": {
     "message": "Keep 30 days",
     "description": "Cache option."
@@ -1175,16 +1203,16 @@
     "message": ", ",
     "description": "Between the parts of a status line built in code, such as the popup's counts."
   },
-  "engineStatusSeparator": {
-    "message": ": ",
-    "description": "Between an engine's name and its state in Settings' status line: \"Local engine: Ready\"."
+  "engineStatusDevice": {
+    "message": "$1 ($2)",
+    "description": "Ready status followed by the processor used (GPU or CPU) in Settings."
   },
   "onbTagline": {
-    "message": "Marks AI-written paragraphs as you read. Everything runs on this computer.",
+    "message": "Highlights likely AI-edited paragraphs.",
     "description": "Setup page: the one line under the name."
   },
   "onbWhere": {
-    "message": "Where it reads",
+    "message": "Automatic site access (optional)",
     "description": "Setup page: heading of the permissions block, first on the page."
   },
   "onbVerdictTitle": {
@@ -1192,11 +1220,11 @@
     "description": "Setup page: heading of the block that explains the words, the colours and the dot."
   },
   "onbScoreLine": {
-    "message": "Hover a chip for details. English text only.",
+    "message": "Hover over a score to see its sentence labels.",
     "description": "Setup page, under the four words and the coloured scale."
   },
   "onbModelNotice": {
-    "message": "Model: Pangram's EditLens (CC BY-NC-SA 4.0). Not for commercial use, nor to enforce AI-use policies at school or work.",
+    "message": "English passages of 50 words or more.",
     "description": "Setup page: the licence and fair-use notice for the model, in the spirit of Pangram's own."
   },
   "accessHint": {
@@ -1219,20 +1247,12 @@
     "message": "Keep this browser open until the download finishes.",
     "description": "Shown only while the in-browser engine's model downloads."
   },
-  "engineWordsBrowser": {
-    "message": "In the browser",
-    "description": "Settings engine row: where the engine runs, first words of its status."
-  },
-  "engineWordsGpu": {
-    "message": "on the graphics card",
-    "description": "Settings engine row: the model runs on the GPU."
-  },
-  "engineWordsCpu": {
-    "message": "on the processor",
-    "description": "Settings engine row: the model runs on the CPU."
+  "engineBackgroundDownload": {
+    "message": "You can close this page while the browser downloads the model.",
+    "description": "On the setup and settings pages during a model download. The browser must stay open."
   },
   "optEngine": {
-    "message": "Engine",
+    "message": "Engine and models",
     "description": "Settings: row label."
   },
   "optPdfs": {
@@ -1240,19 +1260,19 @@
     "description": "Settings: row label."
   },
   "optCache": {
-    "message": "Cache",
-    "description": "Settings: row label."
+    "message": "Saved scores",
+    "description": "Heading of the verdict cache settings panel."
   },
   "safariEngineTitle": {
     "message": "Anagram for Safari",
     "description": "Safari: title of the in-browser engine card on the setup page."
   },
   "safariEngineTabNote": {
-    "message": "Keep the Anagram engine tab open while analyzing pages. Safari runs the WebGPU engine in this pinned tab. Closing it interrupts analysis; the next request opens it again.",
+    "message": "Keep this pinned tab open while Anagram analyzes pages.",
     "description": "Safari: why a pinned extension tab stays open while the engine runs."
   },
   "safariEnginePrivacy": {
-    "message": "Text is scored on this Mac. The model downloads once; page text is never sent to a server. Model memory is released when the engine is idle.",
+    "message": "The model runs locally on this Mac.",
     "description": "Safari: the in-browser engine runs locally; nothing is uploaded."
   },
   "safariEngineSetup": {
@@ -1280,12 +1300,8 @@
     "description": "Safari: button that opens the PDF reader's file picker."
   },
   "toolbarPinTitle": {
-    "message": "Keep Anagram in your toolbar",
+    "message": "Pin to toolbar (optional)",
     "description": "Setup page and Settings: title of the step that keeps Anagram's icon in the browser toolbar."
-  },
-  "toolbarPinHelp": {
-    "message": "How to keep Anagram in the toolbar",
-    "description": "Toolbar menu: link to the pinning instructions, shown while Anagram is not pinned."
   },
   "toolbarExtensionsMenu": {
     "message": "Click the puzzle-piece button beside the address bar.",
@@ -1328,16 +1344,12 @@
     "description": "Toolbar menu: the page did not carry out the requested action (jump, document action)."
   },
   "optFlagFrom": {
-    "message": "Flag",
-    "description": "Settings, Marks: the row choosing from which verdict word a paragraph counts as flagged."
+    "message": "Flag paragraphs",
+    "description": "Label of the minimum verdict to flag."
   },
   "optFlagLight": {
-    "message": "Lightly edited and above",
+    "message": "AI-assisted or AI-generated",
     "description": "Settings, Flag: flag lightly edited, heavily edited and AI-generated paragraphs."
-  },
-  "optFlagHeavy": {
-    "message": "Heavily edited and above",
-    "description": "Settings, Flag (the default): flag heavily edited and AI-generated paragraphs."
   },
   "optFlagAi": {
     "message": "AI-generated only",
@@ -1346,6 +1358,10 @@
   "optUnderlineFlagged": {
     "message": "Flagged paragraphs",
     "description": "Settings, Underlines: underline the flagged paragraphs (the other choices are Every paragraph and Off)."
+  },
+  "pasteOneRead": {
+    "message": "One paragraph read",
+    "description": "Analyze text coverage when the only paragraph was scored."
   },
   "pasteCoverageRead": {
     "message": "$1 of $2 paragraphs read",
@@ -1371,10 +1387,6 @@
     "message": "too short to read",
     "description": "Analyze text, copied report: a paragraph that has no verdict because it is too short."
   },
-  "pasteShareHint": {
-    "message": "The bar is how much of the text, in words, reads as each word.",
-    "description": "Analyze text, under the coloured bar: what the bar and its percentages measure."
-  },
   "pasteByParagraph": {
     "message": "By paragraph",
     "description": "Analyze text: heading above the text shown with a chip after each paragraph."
@@ -1384,16 +1396,8 @@
     "description": "Statistics page: its title and heading."
   },
   "statsOffTitle": {
-    "message": "Statistics are off",
+    "message": "Recording is off",
     "description": "Statistics page, while nothing is recorded: the heading of the card that explains the levels."
-  },
-  "statsOffLead": {
-    "message": "Keep a record of what you read, on this computer only.",
-    "description": "Statistics page, while nothing is recorded: what the feature is, and that it never leaves the computer."
-  },
-  "statsNeverNote": {
-    "message": "Never kept: private windows, sites Anagram is off for, Analyze text, and what you type, select or copy.",
-    "description": "Statistics page, while off: what is never recorded at any level. 'Analyze text' is the extension's own page for pasted text."
   },
   "optStatsLevel": {
     "message": "Record",
@@ -1404,7 +1408,7 @@
     "description": "Statistics page, while off: button that starts recording at the level chosen beside it."
   },
   "statsPagesWarning": {
-    "message": "This keeps a list of every page you read, with its address and title. It stays on this computer, but anyone who uses this browser profile could see it.",
+    "message": "Saves page addresses and titles in this browser profile.",
     "description": "Shown when 'Every page' is chosen: plainly, that it is a reading history."
   },
   "statsPeriod": {
@@ -1440,36 +1444,28 @@
     "description": "Statistics page and Settings: button that deletes everything recorded (after a confirmation)."
   },
   "statsNothing": {
-    "message": "Nothing was recorded in this period.",
+    "message": "No records for this period.",
     "description": "Statistics page: the chosen period has no records."
   },
-  "statsHeadline": {
-    "message": "What you read",
-    "description": "Statistics page: heading of the headline card (the AI-generated share and the four verdicts)."
-  },
   "statsExpectedNote": {
-    "message": "Shares are expected words: each paragraph's words are split by how likely the model finds each verdict, so a doubtful paragraph counts partly on both sides.",
+    "message": "Word shares use the probability of each verdict.",
     "description": "Statistics page: how the shares are computed (expected values, not counts of verdicts)."
   },
   "statsTrend": {
-    "message": "Day by day",
+    "message": "Reading activity",
     "description": "Statistics page: heading of the daily trend chart."
   },
   "statsShowTable": {
-    "message": "Show as a table",
+    "message": "View table",
     "description": "Statistics page: disclosure that shows the trend chart's numbers as a table."
   },
   "statsByKind": {
-    "message": "By kind of page",
+    "message": "Page types",
     "description": "Statistics page: heading of the table by kind of page (feeds, articles, …)."
   },
   "statsBySite": {
-    "message": "By site",
+    "message": "Sites",
     "description": "Statistics page: heading of the table of sites (recorded from the 'Daily totals and sites' level)."
-  },
-  "statsCoverage": {
-    "message": "What could be scored",
-    "description": "Statistics page: heading of the coverage card (how much of what was read could be scored, and why not)."
   },
   "statsPages": {
     "message": "Pages",
@@ -1492,12 +1488,8 @@
     "description": "Export dialog: the JSON format."
   },
   "statsExportCsv": {
-    "message": "CSV, a file per table, in a .zip",
+    "message": "CSV tables (.zip)",
     "description": "Export dialog: the CSV format, daily rows only."
-  },
-  "statsExportNote": {
-    "message": "The file is saved on this computer. Anagram never uploads it: whether to share it is up to you. You can open it and see everything it holds.",
-    "description": "Export dialog: that the file stays local and sharing it is the reader's decision."
   },
   "statsExportSave": {
     "message": "Save file",
@@ -1512,7 +1504,7 @@
     "description": "Confirmation dialog before deleting every recorded day: its title."
   },
   "statsClearConfirm": {
-    "message": "Every day recorded is deleted from this computer. This can't be undone.",
+    "message": "Permanently deletes all recorded statistics.",
     "description": "Confirmation dialog before deleting every recorded day: what happens."
   },
   "statsCleared": {
@@ -1556,15 +1548,23 @@
     "description": "Kind of page: everything else."
   },
   "statsHeroLine": {
-    "message": "expected to be AI-generated",
-    "description": "Statistics page: the line under the big percentage."
+    "message": "Estimated AI-generated share",
+    "description": "Label for the headline share in the reading summary."
   },
   "statsHeroNone": {
-    "message": "None of the words read in this period could be scored.",
-    "description": "Statistics page: under the headline when words were read but none could be scored."
+    "message": "Unavailable",
+    "description": "Value displayed when the selected estimator has no data for the period."
+  },
+  "statsHeroParagraphsAi": {
+    "message": "AI-generated paragraphs",
+    "description": "Label for the headline share in the reading summary."
+  },
+  "statsHeroParagraphsHeavy": {
+    "message": "Heavily edited or AI-generated paragraphs",
+    "description": "Label for the headline share in the reading summary."
   },
   "statsCompare30": {
-    "message": "Over the last 30 days, today included: $1.",
+    "message": "Last 30 days: $1",
     "description": "Statistics page: the headline share over all the words of the last thirty days, today included, for comparison. $1 is a percentage."
   },
   "statsColWords": {
@@ -1576,7 +1576,7 @@
     "description": "Statistics tables: column of the expected AI-generated share."
   },
   "statsColKind": {
-    "message": "Kind of page",
+    "message": "Page type",
     "description": "Statistics tables: column of kinds of page."
   },
   "statsColSite": {
@@ -1604,31 +1604,27 @@
     "description": "Statistics pages table: how long the page was shown while somebody was reading."
   },
   "statsTrendAria": {
-    "message": "Words read and scored each day, $1, split into the four verdicts. The table below gives the numbers.",
-    "description": "Accessible description of the trend chart. $1 is the date range."
+    "message": "$2 per day, $1, split by verdict. The table below gives the numbers.",
+    "description": "Accessible trend chart description. $1 is the date range and $2 names the plotted unit."
   },
   "statsTrendTip": {
-    "message": "$1 words scored, $2 AI-generated",
+    "message": "$1 scored, $2 $3",
     "description": "Trend chart: tooltip of a day's column, after the date. $1 is words, $2 a percentage."
   },
   "statsCoverageLine": {
-    "message": "$1 of the $2 words you read could be scored ($3).",
+    "message": "Scored $1 of $2 ($3).",
     "description": "Statistics page, coverage: $1 words scored, $2 words read, $3 the percentage."
   },
-  "statsCovScored": {
-    "message": "Scored: $1 words",
-    "description": "Statistics page, coverage list: words that were scored."
-  },
   "statsCovShort": {
-    "message": "Too short to score: $1 words",
+    "message": "Too short to score: $1",
     "description": "Statistics page, coverage list: words in paragraphs under the minimum length."
   },
   "statsCovLanguage": {
-    "message": "Not in English: $1 words",
+    "message": "Not in English: $1",
     "description": "Statistics page, coverage list: words in another language, which the model does not read."
   },
   "statsCovUnavailable": {
-    "message": "Engine unavailable: $1 words",
+    "message": "Engine unavailable: $1",
     "description": "Statistics page, coverage list: words read while the engine could not score them."
   },
   "statsNoPages": {
@@ -1660,7 +1656,7 @@
     "description": "Statistics page, under the title, for a choice that keeps totals only (no paragraphs or visits). $1 is the choice's name."
   },
   "optStats": {
-    "message": "Statistics",
+    "message": "Reading history",
     "description": "Settings: label of the reading statistics group."
   },
   "optStatsDays": {
@@ -1688,27 +1684,19 @@
     "description": "Toolbar menu, while statistics are recorded: $1 is the expected AI-generated share (a percentage), $2 the words read and scored today."
   },
   "statsDim_rows": {
-    "message": "What a row is",
+    "message": "Row detail",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (rows)."
-  },
-  "statsDimHint_rows": {
-    "message": "What each kept row stands for: an event, a paragraph, a visit, or a total.",
-    "description": "The field-by-field table: what 'What a row is' covers."
   },
   "statsDim_time": {
     "message": "Clock times",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (time)."
-  },
-  "statsDimHint_time": {
-    "message": "When things happened.",
-    "description": "The field-by-field table: what 'Clock times' covers."
   },
   "statsDim_dur": {
     "message": "Durations",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (dur)."
   },
   "statsDimHint_dur": {
-    "message": "How long, and how long after a visit began.",
+    "message": "Includes elapsed time since the visit began.",
     "description": "The field-by-field table: what 'Durations' covers."
   },
   "statsDim_place": {
@@ -1716,48 +1704,28 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (place)."
   },
   "statsDimHint_place": {
-    "message": "Where you read: the page's address, the page you came from, and frames'.",
+    "message": "Page, referrer and frame addresses.",
     "description": "The field-by-field table: what 'Addresses' covers."
   },
   "statsDim_title": {
-    "message": "Titles",
+    "message": "Tab titles",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (title)."
-  },
-  "statsDimHint_title": {
-    "message": "The tab's title.",
-    "description": "The field-by-field table: what 'Titles' covers."
   },
   "statsDim_text": {
     "message": "Paragraph text",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (text)."
   },
-  "statsDimHint_text": {
-    "message": "What the paragraphs said.",
-    "description": "The field-by-field table: what 'Paragraph text' covers."
-  },
   "statsDim_len": {
-    "message": "Lengths",
+    "message": "Paragraph length",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (len)."
-  },
-  "statsDimHint_len": {
-    "message": "How long each paragraph is.",
-    "description": "The field-by-field table: what 'Lengths' covers."
   },
   "statsDim_verdict": {
     "message": "Verdicts",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (verdict)."
   },
-  "statsDimHint_verdict": {
-    "message": "What the model made of each paragraph.",
-    "description": "The field-by-field table: what 'Verdicts' covers."
-  },
   "statsDim_lang": {
-    "message": "Languages",
+    "message": "Paragraph language",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (lang)."
-  },
-  "statsDimHint_lang": {
-    "message": "Which language each paragraph is in.",
-    "description": "The field-by-field table: what 'Languages' covers."
   },
   "statsDim_struct": {
     "message": "Page structure",
@@ -1786,10 +1754,6 @@
   "statsDim_scroll": {
     "message": "Scrolling",
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (scroll)."
-  },
-  "statsDimHint_scroll": {
-    "message": "How the page was scrolled.",
-    "description": "The field-by-field table: what 'Scrolling' covers."
   },
   "statsDim_input": {
     "message": "Input",
@@ -2240,15 +2204,15 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (off)."
   },
   "statsPresetHint_off": {
-    "message": "Nothing is kept.",
-    "description": "What the choice 'Off' keeps."
+    "message": "New reading activity is not recorded.",
+    "description": "Explanation of recording being off; previously saved statistics are not deleted."
   },
   "statsPreset_daily": {
     "message": "Daily totals",
     "description": "Settings and the statistics page: a choice of what the statistics keep (daily)."
   },
   "statsPresetHint_daily": {
-    "message": "Words read each day and how they score. No sites.",
+    "message": "Word counts and verdicts by day.",
     "description": "What the choice 'Daily totals' keeps."
   },
   "statsPreset_sites": {
@@ -2288,7 +2252,7 @@
     "description": "Settings and the statistics page: a choice of what the statistics keep (full)."
   },
   "statsPresetHint_full": {
-    "message": "Everything but the text, to the millisecond.",
+    "message": "Records pages, paragraph fingerprints and timed interactions.",
     "description": "What the choice 'Full reading trace' keeps."
   },
   "statsPreset_fullText": {
@@ -2308,31 +2272,31 @@
     "description": "What the choice 'Your own' keeps."
   },
   "statsWarnText": {
-    "message": "This keeps the text of every paragraph you read. It stays on this computer, but anyone who uses this browser profile could read it.",
+    "message": "Apps with access to this browser profile can read the saved paragraphs.",
     "description": "Settings and the statistics page: a warning under a choice that keeps paragraph text."
   },
   "statsWarnHead": {
-    "message": "This keeps the first twelve words of every paragraph you read. It stays on this computer, but anyone who uses this browser profile could read them.",
+    "message": "Apps with access to this browser profile can read the first 12 words of each saved paragraph.",
     "description": "Warning under a choice that keeps each paragraph's first words."
   },
   "statsWarnUrl": {
-    "message": "Full addresses can carry what a site puts in them: search terms, an email address, a sign-in link.",
+    "message": "Full URLs can include search terms, email addresses and sign-in links.",
     "description": "Warning under a choice that keeps full addresses."
   },
   "statsWarnPointer": {
-    "message": "This records where your pointer is on every page Anagram reads, ten times a second.",
+    "message": "Samples pointer positions ten times a second on analyzed pages.",
     "description": "Warning under a choice that keeps the pointer's track."
   },
   "optStatsFine": {
-    "message": "Keep every step for",
+    "message": "Detailed events",
     "description": "Settings, Statistics: how long the fine trace (every step on screen, scrolling, input) is kept."
   },
   "optStatsDetailKeep": {
-    "message": "Keep paragraphs and visits for",
+    "message": "Paragraphs and visits",
     "description": "Settings, Statistics: how long paragraphs and visits are kept."
   },
   "optStatsTotalsKeep": {
-    "message": "Keep daily totals for",
+    "message": "Daily totals",
     "description": "Settings, Statistics: how long the daily totals are kept."
   },
   "optStatsUntilCleared": {
@@ -2340,8 +2304,8 @@
     "description": "Settings, Statistics: keep the daily totals until the person clears them."
   },
   "optStatsSizeValue": {
-    "message": "$1 in $2 records",
-    "description": "Settings, Statistics: $1 is a size (12 MB), $2 a number of records."
+    "message": "$1 records",
+    "description": "The number of reading-log records."
   },
   "statsAsHash": {
     "message": "as a salted hash",
@@ -2420,7 +2384,7 @@
     "description": "How it counts: how the shares are estimated."
   },
   "statsLensExpected": {
-    "message": "Expected words",
+    "message": "Probability-weighted share",
     "description": "How it counts: shares as expected words (words times probabilities)."
   },
   "statsLensChip": {
@@ -2476,24 +2440,28 @@
     "description": "How it counts: time while the page was flung past does not count."
   },
   "statsLensReset": {
-    "message": "Count as Anagram does",
+    "message": "Restore defaults",
     "description": "How it counts: back to the default."
   },
   "statsLensDefault": {
-    "message": "As Anagram counts: a paragraph is read after a second with some of it in the middle of the window, while the page is not flung past, once per visit.",
+    "message": "Counts a paragraph once per visit after one second in the middle of the viewport. Fast scrolling is excluded.",
     "description": "How it counts: the line while the default is in use."
   },
   "statsLensApplied": {
-    "message": "Counted again from the paragraphs Anagram kept.",
+    "message": "Calculated from recorded paragraphs.",
     "description": "How it counts: the numbers are worked out from the paragraphs kept."
   },
+  "statsLensNeedsDetail": {
+    "message": "This rule needs more detail about time on screen or paragraph verdicts. Showing the original totals.",
+    "description": "The stored paragraph detail cannot support this counting rule."
+  },
   "statsLensCannot": {
-    "message": "These are the totals Anagram kept: counting another way needs paragraphs kept (Settings, Statistics).",
+    "message": "Showing recorded totals. This rule requires paragraph history.",
     "description": "How it counts: no paragraphs are kept, so only the default applies."
   },
   "statsHeroLineHeavy": {
-    "message": "expected to be heavily edited or AI-generated",
-    "description": "Statistics page: the line under the big percentage when the headline includes heavily edited."
+    "message": "Estimated heavily edited or AI-generated share",
+    "description": "Label for the headline share in the reading summary."
   },
   "statsColParagraphs": {
     "message": "Paragraphs",
@@ -2508,7 +2476,7 @@
     "description": "Statistics page: column of the heavily edited and AI-generated share."
   },
   "statsCovRemoved": {
-    "message": "Removed before its verdict: $1 words",
+    "message": "Removed before its verdict: $1",
     "description": "Statistics page, what could be scored: words the page took away before their verdict came."
   },
   "statsVisits": {
@@ -2524,43 +2492,39 @@
     "description": "Statistics page: how many visits are listed."
   },
   "statsColReplay": {
-    "message": "Replay",
-    "description": "Statistics page: column of Replay buttons."
+    "message": "Details",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
   },
   "statsReplay": {
-    "message": "Replay",
-    "description": "Statistics page: button that shows when each paragraph of a visit was on screen."
+    "message": "Visit details",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
   },
   "statsReplayNote": {
-    "message": "A row per paragraph, in the order they were found; a bar for each spell any of it was on screen, in its chip's colour; the line is how far down the page was scrolled.",
-    "description": "Statistics page: the note under a replay."
+    "message": "Bars show when each passage was on screen.",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
   },
   "statsReplayAria": {
-    "message": "When each of $1 paragraphs was on screen, over $2",
-    "description": "Statistics page: the replay chart's accessible name. $1 paragraphs, $2 a duration."
+    "message": "Reading timeline, $1 elapsed",
+    "description": "Accessible name for the visit timeline. $1 is elapsed time in minutes and seconds."
   },
   "statsReplayTitle": {
     "message": "$1, $2",
     "description": "Statistics page: a replay's title. $1 is when, $2 the page."
   },
   "statsExportFields": {
-    "message": "Field by field",
+    "message": "Recorded fields",
     "description": "Export dialog: the table of every kind of thing in the file."
-  },
-  "statsExportCap": {
-    "message": "Never finer than what was kept.",
-    "description": "Export dialog: the note under the detail."
   },
   "statsExportLink": {
     "message": "Ids and hashes",
     "description": "Export dialog: how ids and hashes are made for the file."
   },
   "statsExportLinkFile": {
-    "message": "This file's own: another file cannot be matched with it",
+    "message": "Unique to this export",
     "description": "Export dialog: ids and hashes are made new for this file."
   },
   "statsExportLinkStable": {
-    "message": "The same in every file from this browser: a study can join your files",
+    "message": "Consistent across exports from this browser",
     "description": "Export dialog: ids and hashes are the same in every file."
   },
   "statsExportJsonGz": {
@@ -2576,7 +2540,7 @@
     "description": "Export dialog: the file's size ($1) and rows ($2)."
   },
   "statsExportTable": {
-    "message": "$1: $2 rows",
+    "message": "$1 ($2 rows)",
     "description": "Export dialog: a table of the file ($1) and its rows ($2)."
   },
   "optFileAccessChromeHint": {
@@ -2584,15 +2548,15 @@
     "description": "Settings and setup, under the local-PDF switch: Chrome's own switch for file URLs is still off, on the extension page that just opened."
   },
   "statsDeltaUp": {
-    "message": "Up $1 points on the previous $2 days.",
+    "message": "+$1 points vs. previous $2 days",
     "description": "Statistics page, under the AI-generated share: $1 percentage points higher than the $2 days before the period."
   },
   "statsDeltaDown": {
-    "message": "Down $1 points on the previous $2 days.",
+    "message": "−$1 points vs. previous $2 days",
     "description": "Statistics page, under the AI-generated share: $1 percentage points lower than the $2 days before the period."
   },
   "statsDeltaSame": {
-    "message": "About the same as the previous $1 days.",
+    "message": "Similar to previous $1 days",
     "description": "Statistics page, under the AI-generated share: within a point of the $1 days before the period."
   },
   "statsKpiScored": {
@@ -2600,15 +2564,15 @@
     "description": "Statistics page, title of the figure that counts the words scored in the period."
   },
   "statsKpiTop": {
-    "message": "Most AI-generated",
+    "message": "Highest AI-generated share",
     "description": "Statistics page, title of the figure naming the site (or kind of page) with the largest AI-generated share."
   },
   "statsKpiTopLine": {
-    "message": "$1 of $2 words",
-    "description": "Statistics page, under that site: its AI-generated share ($1) of its words read ($2)."
+    "message": "$1 of $2 scored",
+    "description": "Statistics page, under the highest share. $1 is the percentage and $2 is the corresponding scored quantity with its unit."
   },
   "statsMix": {
-    "message": "The four verdicts",
+    "message": "Verdict distribution",
     "description": "Statistics page, title of the panel with the four verdicts' shares."
   },
   "statsFilterSite": {
@@ -2619,16 +2583,292 @@
     "message": "Show all",
     "description": "Statistics page, the button in that chip that shows every site again."
   },
-  "statsMore": {
-    "message": "More",
-    "description": "Statistics page, the menu holding the month, a date range, Export and Clear."
-  },
   "statsKpiPages": {
-    "message": "Pages $1",
+    "message": "$1 pages",
     "description": "Statistics page, under the words scored: how many pages ($1) they were read on."
   },
   "statsKpiSites": {
-    "message": "Sites $1",
+    "message": "$1 sites",
     "description": "Statistics page, under the words scored: on how many sites ($1)."
+  },
+  "optReadingGroup": {
+    "message": "Reading",
+    "description": "Settings section group for websites, PDFs and paragraph marks."
+  },
+  "optDataGroup": {
+    "message": "Local data",
+    "description": "Settings section group for reading history and saved scores."
+  },
+  "optStatsRecord": {
+    "message": "What to record",
+    "description": "Label of the statistics recording preset menu."
+  },
+  "statsExportAllSites": {
+    "message": "All sites",
+    "description": "Statistics export scope including every recorded site."
+  },
+  "statsExportSites": {
+    "message": "Sites to include",
+    "description": "Label for the site scope selector in the export dialog."
+  },
+  "statsLensTotals": {
+    "message": "Calculated from the recorded totals for the whole period.",
+    "description": "Counting rules message when the chosen headline or estimator can use stored totals."
+  },
+  "statsLensPartial": {
+    "message": "This calculation excludes $1 words recorded without paragraph detail.",
+    "description": "Reading summary coverage warning. $1 is the number of baseline words missing paragraph detail."
+  },
+  "statsOneWord": {
+    "message": "$1 word",
+    "description": "Formatted statistics quantity for the selected weight. $1 is the localized number."
+  },
+  "statsManyWords": {
+    "message": "$1 words",
+    "description": "Formatted statistics quantity for the selected weight. $1 is the localized number."
+  },
+  "statsOneParagraph": {
+    "message": "$1 paragraph",
+    "description": "Formatted statistics quantity for the selected weight. $1 is the localized number."
+  },
+  "statsManyParagraphs": {
+    "message": "$1 paragraphs",
+    "description": "Formatted statistics quantity for the selected weight. $1 is the localized number."
+  },
+  "statsOneSecond": {
+    "message": "$1 second",
+    "description": "Formatted statistics quantity for the selected weight. $1 is the localized number."
+  },
+  "statsManySeconds": {
+    "message": "$1 seconds",
+    "description": "Formatted statistics quantity for the selected weight. $1 is the localized number."
+  },
+  "statsScoredParagraphs": {
+    "message": "Paragraphs scored",
+    "description": "Statistics metric heading when a paragraph weighs one."
+  },
+  "statsScoredSeconds": {
+    "message": "Seconds of scored reading",
+    "description": "Statistics metric heading when paragraphs are weighted by their time on screen."
+  },
+  "statsTopHeavy": {
+    "message": "Highest heavily edited or AI-generated share",
+    "description": "Heading for the largest combined heavily edited and AI-generated share."
+  },
+  "statsChipNote": {
+    "message": "Each paragraph counts once under its displayed verdict.",
+    "description": "Explanation of the estimator that uses each paragraph’s chip."
+  },
+  "statsArgmaxNote": {
+    "message": "Each paragraph counts once under its most likely verdict.",
+    "description": "Explanation of the estimator that counts the most probable verdict."
+  },
+  "statsWeightedNote": {
+    "message": "Each paragraph’s weight is split by verdict probability.",
+    "description": "Explanation of probability-weighted shares when using paragraphs or time."
+  },
+  "onbTryParagraph": {
+    "message": "Try a paragraph",
+    "description": "Setup link to the paste tool once the engine is ready."
+  },
+  "readerPreparedPages": {
+    "message": "Prepared $1 of $2 pages for analysis.",
+    "description": "PDF whole-document scan progress, in pages."
+  },
+  "readerUnreadPages": {
+    "message": "Could not read $1 of $2 pages.",
+    "description": "PDF whole-document scan finished with unreadable pages."
+  },
+  "readerRetryPages": {
+    "message": "Retry unread pages",
+    "description": "Retry the incomplete PDF scan."
+  },
+  "readerRenderedFallback": {
+    "message": "Reading rendered pages because document analysis was unavailable ($1 of $2 pages).",
+    "description": "PDF reader scope after structured extraction fails. $1 pages read, $2 total."
+  },
+  "statsCompareTrailing": {
+    "message": "Trailing 30 days: $1",
+    "description": "Historical daily comparison. $1 is the share over the trailing 30 days."
+  },
+  "statsExportOneRow": {
+    "message": "$1 ($2 row)",
+    "description": "Preview label for a table with one row. $1 is the table name and $2 the count."
+  },
+  "statsOnePage": {
+    "message": "$1 page",
+    "description": "Statistics page, under the words scored: how many pages ($1) they were read on."
+  },
+  "statsOneSite": {
+    "message": "$1 site",
+    "description": "Statistics page, under the words scored: on how many sites ($1)."
+  },
+  "statsChartScale": {
+    "message": "Chart scale",
+    "description": "Label for the controls that change the vertical scale of the trend chart."
+  },
+  "statsChartWords": {
+    "message": "Words",
+    "description": "Word-count scale for daily reading activity."
+  },
+  "statsChartShare": {
+    "message": "Share",
+    "description": "Chart scale showing verdict percentages for each day."
+  },
+  "statsTrendShareAria": {
+    "message": "Daily verdict shares for $1.",
+    "description": "Accessible label for the percentage chart, with the selected period."
+  },
+  "statsNoVerdicts": {
+    "message": "No verdicts available.",
+    "description": "Chart tooltip for a day without a verdict distribution."
+  },
+  "statsRecords": {
+    "message": "Reading breakdown",
+    "description": "Heading above retained sites, page types, pages and visits."
+  },
+  "statsAwaitingActivity": {
+    "message": "Recording is on. Your next reading activity will appear here.",
+    "description": "Empty state while recording is enabled and no history exists."
+  },
+  "statsApplyRange": {
+    "message": "Apply range",
+    "description": "Button to display the dates entered in the date picker."
+  },
+  "statsReturnRange": {
+    "message": "Back to range",
+    "description": "Restores the period that was open before selecting a day from the chart or table."
+  },
+  "bandAssisted": {
+    "message": "AI-assisted",
+    "description": "Authorship result label."
+  },
+  "bandShort": {
+    "message": "Too short",
+    "description": "Authorship result label."
+  },
+  "detectorLabel": {
+    "message": "Detector",
+    "description": "Model release picker in Engine settings."
+  },
+  "engineManage": {
+    "message": "Manage",
+    "description": "Settings disclosure beside the active engine status. Opens maintenance controls."
+  },
+  "optSiteRules": {
+    "message": "Site rules",
+    "description": "Settings disclosure for exceptions to the default website rule."
+  },
+  "detectorCheck": {
+    "message": "Check for models",
+    "description": "Model release picker in Engine settings."
+  },
+  "detectorInstall": {
+    "message": "Download ($1)",
+    "description": "Model release picker in Engine settings."
+  },
+  "detectorChecking": {
+    "message": "Checking releases…",
+    "description": "Model release picker in Engine settings."
+  },
+  "detectorCurrent": {
+    "message": "Current release",
+    "description": "Model release picker in Engine settings."
+  },
+  "detectorCatalogUnavailable": {
+    "message": "The model catalog is unavailable.",
+    "description": "Model release picker in Engine settings."
+  },
+  "detectorIncompatible": {
+    "message": "This release could not be loaded.",
+    "description": "Model release picker in Engine settings."
+  },
+  "detectorAccess": {
+    "message": "Hugging Face restricted this release. Downloads will work when the release is public.",
+    "description": "Shown when the model repository requires approval for an anonymous download."
+  },
+  "detectorSentences": {
+    "message": "Sentence labels",
+    "description": "Expandable ordered sentence-level authorship readout."
+  },
+  "detectorPass": {
+    "message": "Pass $1",
+    "description": "Identifies the scoring pass for sentence labels when a long paragraph is read in overlapping passes."
+  },
+  "reportLegacyEstimate": {
+    "message": "Class probabilities are weighted by passage length. The score averages class ratings from 0 (human) to 1 (AI-generated) using these probabilities.",
+    "description": "Analyze text and copied report: what the four legacy model probabilities and their score measure."
+  },
+  "pasteMinimum": {
+    "description": "Empty editor word-count hint. $1 is the minimum word count.",
+    "message": "At least $1 words"
+  },
+  "pasteProgress": {
+    "description": "Draft word count below the minimum. $1 is the draft count, $2 the minimum.",
+    "message": "$1 / $2 words"
+  },
+  "optStatsRetention": {
+    "description": "Disclosure for how long each type of reading record is kept.",
+    "message": "Retention periods"
+  },
+  "statsVisitTimeline": {
+    "message": "Reading timeline",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitDepth": {
+    "message": "Furthest point shown",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitVisible": {
+    "message": "Passages on screen",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitReturned": {
+    "message": "Shown more than once",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitNoFacts": {
+    "message": "No visibility or depth measurements are available for this visit.",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitNoTimeline": {
+    "message": "No timeline samples were retained for this visit.",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitLoadFailed": {
+    "message": "Couldn’t load details. Close and reopen to retry.",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitScrollLine": {
+    "message": "The line tracks vertical scrolling on the main page.",
+    "description": "Reading statistics visit details, based on the observations retained for this visit."
+  },
+  "statsVisitDepthValue": {
+    "message": "$1 of page",
+    "description": "Furthest recorded viewport bottom as a share of page height, e.g. 78% of page."
+  },
+  "statsLensAssistedAi": {
+    "message": "AI-assisted or AI-generated",
+    "description": "Reading statistics for the combined AI-assisted and AI-generated classes."
+  },
+  "statsHeroLineAssisted": {
+    "message": "Estimated AI-assisted or AI-generated share",
+    "description": "Reading statistics for the combined AI-assisted and AI-generated classes."
+  },
+  "statsHeroParagraphsAssisted": {
+    "message": "AI-assisted or AI-generated paragraphs",
+    "description": "Reading statistics for the combined AI-assisted and AI-generated classes."
+  },
+  "statsColAssistedAi": {
+    "message": "Assisted or generated",
+    "description": "Reading statistics for the combined AI-assisted and AI-generated classes."
+  },
+  "statsTopAssisted": {
+    "message": "Highest AI-assisted or AI-generated share",
+    "description": "Reading statistics for the combined AI-assisted and AI-generated classes."
+  },
+  "detectorFiles": {
+    "message": "Model files and terms",
+    "description": "Link to the selected detector revision on Hugging Face."
   }
 }

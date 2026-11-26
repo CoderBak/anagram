@@ -7,10 +7,9 @@ import { settings, cacheModeStorage } from "../settings/settings";
 import { ALL_SITES } from "../access/patterns";
 import type { ContextRow, EngineInfo } from "./model";
 import { localDate } from "./model";
+import { coarseTime } from "./coarsen";
 import { readStatsConfig } from "./settings";
 import type { LogStore } from "./store";
-
-const LAST = "context";
 
 interface NavigatorUA { userAgentData?: { brands?: { brand: string; version: string }[]; platform?: string; getHighEntropyValues?(hints: string[]): Promise<Record<string, string>> } }
 
@@ -35,6 +34,7 @@ async function device(exact: boolean): Promise<Pick<ContextRow, "browser" | "os"
 }
 
 export async function noteStatsContext(deps: { store: LogStore; model(): ModelInfo | null; engine(): Promise<EngineInfo | null> }): Promise<void> {
+  const at = Date.now();
   const config = await readStatsConfig();
   if (!config.on) return;
   const L = config.layers;
@@ -45,10 +45,9 @@ export async function noteStatsContext(deps: { store: LogStore; model(): ModelIn
     browser.permissions.getAll().then((p) => p.origins?.length ?? 0).catch(() => 0),
     deps.engine().catch(() => null),
   ]);
-  const at = Date.now();
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const row: ContextRow = {
-    at, date: localDate(new Date(at)),
+    at: coarseTime(at, L.time), date: localDate(new Date(at)),
     extension: browser.runtime.getManifest().version,
     ...(L.device !== "none" ? await device(L.device === "exact") : {}),
     locale: { ui: browser.i18n.getUILanguage(), zone, offset: -new Date(at).getTimezoneOffset() },
@@ -63,8 +62,5 @@ export async function noteStatsContext(deps: { store: LogStore; model(): ModelIn
   };
   // A row only when something changed.
   const { at: _a, date: _d, ...what } = row;
-  const key = JSON.stringify(what);
-  if ((await deps.store.getMeta(LAST)) === key) return;
-  await deps.store.context(row);
-  await deps.store.setMeta(LAST, key);
+  await deps.store.context(row, JSON.stringify(what), at);
 }

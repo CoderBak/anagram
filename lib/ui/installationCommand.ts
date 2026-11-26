@@ -27,8 +27,11 @@ export function installationCommand(os: string, browser: "chrome" | "firefox" | 
     // macOS has shasum, Linux's coreutils sha256sum; both check a "<digest>  <file>" line.
     const check = os === "mac" ? "shasum -a 256 -c" : "sha256sum -c";
     const env = `env ANAGRAM_EXTENSION_ID='${id}' ANAGRAM_BROWSER='${browser}' ANAGRAM_LANG='${language}' ANAGRAM_RELEASE_URL='${release}'${home ? ` ANAGRAM_HOME=${shellQuote(home)}` : ""}`;
+    // Run in sh even when pasted into another interactive shell. The exit trap cleans up
+    // without replacing a download, verification or installer failure with rm's status.
+    const run = `f=$(mktemp) || exit 1; trap 'rm -f "$f"' 0; curl -fsSL "$1" -o "$f" && printf "%s  %s\\n" "$2" "$f" | ${check} - && sh "$f"`;
     return { platform: "posix", scriptUrl,
-      command: `f=$(mktemp) && curl -fsSL '${scriptUrl}' -o "$f" && echo '${installers.sh}  '"$f" | ${check} - && ${env} sh "$f"; rm -f "$f"` };
+      command: `${env} sh -c ${shellQuote(run)} sh '${scriptUrl}' '${installers.sh}'` };
   }
   if (os === "win") {
     const scriptUrl = `${release}/install.ps1`;

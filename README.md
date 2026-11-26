@@ -5,10 +5,9 @@
 
 # Anagram
 
-Anagram marks English prose in your browser with a local estimate of how much an AI
-edited it: human, lightly edited, heavily edited or AI-generated. Scoring runs on your
-own computer with Pangram's EditLens model, inside the browser or in a local engine.
-Nothing you read leaves your machine.
+Anagram marks English prose as human, AI-assisted or AI-generated. The selected detector
+runs on your computer, inside the browser or in a local engine. On mixed passages, the
+underline follows each sentence’s label.
 
 [User guide](docs/user-guide.en.md) · [中文指南](docs/user-guide.zh-CN.md) · [Privacy](PRIVACY.md)
 
@@ -21,7 +20,7 @@ Nothing you read leaves your machine.
 3. Open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**
    and choose that folder.
 4. The setup page opens with three numbered steps, each ticked off once it is done. First
-   the engine: on most computers the model (1.4 GB) downloads into the browser by itself.
+   the engine: on most computers the model downloads into the browser by itself.
    On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card, it asks
    first: **One click** runs the model in the browser; **Terminal** installs a faster local
    engine with one command, which installs a private Python runtime, registers the extension
@@ -42,13 +41,15 @@ Safari runtime verification is pending.
 
 ## Use
 
-Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
-(AI-generated), and an underline, in one of four colours: green for Human, gold for Lightly
-edited, orange for Heavily edited, crimson for AI-generated. Hover a chip for the four-way
-breakdown. Everything else is in the toolbar menu: the page's mix of the four, its flagged
-paragraphs, the AI-generated ones (click one to jump to it), the switch for each site, and what the chips show. On
-Google Docs, choose **Analyze document** there to open the reading view. PDFs open in a
-built-in reader. Settings covers site access, marks, cache and the engine.
+A paragraph’s chip shows its dominant label. Hover or focus the chip to see the share of
+text in each class and the individual sentence labels. The score adds the AI-generated
+share and half the AI-assisted share. Human is green, AI-assisted is amber and
+AI-generated is crimson.
+
+Open the toolbar menu for the page summary and flagged paragraphs. Select a paragraph
+to jump to it. On Google Docs, choose **Analyze document** to open the reading view.
+PDFs open in the built-in reader. Settings controls site access, marks, history and the engine.
+Older reading history keeps its original lightly edited and heavily edited labels.
 
 ## Develop
 
@@ -68,7 +69,14 @@ Anagram's code is licensed under the [GNU AGPL v3.0 or later](LICENSE). The thir
 work it ships or adapts keeps its own licences, listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Inference uses [Pangram's EditLens RoBERTa-large](https://huggingface.co/pangram/editlens_roberta-large)
-via the [CoderBak/editlens_roberta_modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit)
-redistribution, pinned in `anagramd/modelkit.json`. The model is **CC BY-NC-SA 4.0**,
-non-commercial. Scores are estimates, not proof of authorship.
+Models are published in [CoderBak/anagram-detectors](https://huggingface.co/CoderBak/anagram-detectors).
+Settings → Engine → Check for models lists dated branches and tags, for example
+`2026-11-14-400m-research`. Choose a release to download it. Each engine verifies its files and runs locally.
+The detector was inspired by Pangram 4. Its reading card shows sentence-level authorship labels.
+The initial release reads English passages of at least 50 words and reports the shares labeled human,
+AI-assisted and AI-generated.
+
+To publish a compatible model, use `YYYY-MM-DD-SIZE[-tag]` (for example `2026-12-01-400m` or
+`2026-12-01-1.2b-preview`). Keep the release's standard `anagram-detector/1` layout, ModernBERT FP32 backbone,
+byte-level tokenizer, three heads and CRF. The plugin reads the selected commit directly and builds the inference graph locally.
+Open the model link in Settings to see the files, documentation and terms published for that revision.

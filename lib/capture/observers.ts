@@ -52,6 +52,8 @@ export interface Observers {
 }
 
 const DRAIN_DEBOUNCE_MS = 250;
+/** Give a single post on an idle page one frame to finish rendering. */
+const POST_SETTLE_MS = 16;
 /** How long the idle prefetch waits for the observers to place a unit (Observers.placed). */
 export const PLACE_WAIT_MS = 1000;
 /** A trailing debounce alone never fires on a page that mutates continuously (live
@@ -251,11 +253,18 @@ export function createObservers(opts: {
   }
 
   function scheduleDrain(): void {
+    if (!documentReplaced && !wholePage && !dirty.size && !removed.size && !quiet.size) return;
     const now = Date.now();
+    // A second change while the post settles gets the usual trailing debounce.
+    // Expensive recent walks still impose their measured minimum spacing.
+    const only = dirty.size === 1 ? dirty.values().next().value : undefined;
+    const post = drainTimer === null && !draining && now - lastDrainAt > DRAIN_MAX_WAIT_MS &&
+      !documentReplaced && !wholePage && !removed.size && !quiet.size && only instanceof Element &&
+      (only.localName === "article" || only.getAttribute("role") === "article");
     if (dirtySince === null) dirtySince = now;
     if (drainTimer !== null) clearTimeout(drainTimer);
     const spacing = Math.min(drainCost * DRAIN_COST_SPACING, DRAIN_MAX_SPACING_MS);
-    const debounced = Math.min(DRAIN_DEBOUNCE_MS, dirtySince + Math.max(DRAIN_MAX_WAIT_MS, spacing) - now);
+    const debounced = Math.min(post ? POST_SETTLE_MS : DRAIN_DEBOUNCE_MS, dirtySince + Math.max(DRAIN_MAX_WAIT_MS, spacing) - now);
     drainTimer = setTimeout(drain, Math.max(0, debounced, lastDrainAt + spacing - now));
   }
 

@@ -20,11 +20,11 @@ import type { ModelInfo } from "../contract";
 import { safePdfSource } from "../pdf/source";
 import { MODEL_MIN_WORDS } from "../dom/text";
 import { HASHABLE, rank, type Hashable, type Layer, type RecordingConfig } from "./config";
-import { coarseDur, coarseLang, coarseLen, coarseTime, coarseTitle, coarseVerdict, placeLadder } from "./coarsen";
+import { coarseDur, coarseLang, coarseLen, coarseTime, coarseTitle, coarseVerdict, projectStreams, placeLadder } from "./coarsen";
 import { headOf, keyedHash, sketchOf } from "./hash";
 import {
-  addDays, addTally, argmaxOf, bandOf, emptyTally, localDate, localMinute, scoreOf, tallyOfRead,
-  type Arrival, type EngineInfo, type EventChunk, type EventStreams, type Exposure, type Tally, type UnitRow, type VisitRow,
+  addDays, addRead, addTally, argmaxOf, bandOf, emptyTally, localDate, localMinute, scoreOf,
+  type Arrival, type EngineInfo, type EventChunk, type Exposure, type Tally, type UnitRow, type VisitRow,
 } from "./model";
 import type { LogStore, LogWrite } from "./store";
 import type { StatsWire, WireUnit } from "./wire";
@@ -136,6 +136,7 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
     record(wire: StatsWire, sender: StatsSender, role: "content" | "reader"): Promise<boolean> {
       const run = queue.then(async () => {
         if (sender.tab?.incognito) return false;
+        const preparedAt = Date.now();
         const config = await deps.config();
         if (!config.on) return false;
         const place = role === "reader" ? readerPlace(sender.url) : pagePlace(wire, sender);
@@ -148,7 +149,8 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
         if (owners.size > 5000) owners.delete(owners.keys().next().value!);
         const today = localDate(now());
         await prune(today, config).catch(() => undefined);
-        await keep(wire, sender, role, place, config);
+        if (wire.visit.start <= Number(await deps.store.getMeta("clearedAt"))) return false;
+        await keep(wire, sender, role, place, config, preparedAt);
         return true;
       });
       queue = run.catch(() => undefined);
@@ -156,16 +158,17 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
     },
   };
 
-  async function keep(wire: StatsWire, sender: StatsSender, role: "content" | "reader", place: Place, config: RecordingConfig): Promise<void> {
+  async function keep(wire: StatsWire, sender: StatsSender, role: "content" | "reader", place: Place, config: RecordingConfig, preparedAt: number): Promise<void> {
     const L = config.layers;
     const hashed = (d: Hashable): boolean => config.hashed.includes(d);
     const needsSecret = hashed("place") || hashed("title") || L.text !== "none";
     const secret = needsSecret ? await deps.secret() : null;
     const hashOf = (value: string): string => keyedHash(secret!, value);
     const v = wire.visit;
-    const date = localDate(new Date(Math.min(v.start, now().getTime())));
+    const observed = now();
+    const date = localDate(new Date(Math.min(v.start, observed.getTime())));
     /** The day what this message read is added to. */
-    const today = localDate(now());
+    const today = localDate(observed);
     const existing = await deps.store.visit(v.id);
     const tabId = sender.tab?.id;
     const dur = (ms: number | undefined): number | undefined => ms === undefined ? undefined : coarseDur(ms, L.dur) ?? undefined;
@@ -197,9 +200,10 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
     };
     if (v.end !== undefined) row.end = coarseTime(v.end, L.time);
     if (v.ended) row.ended = v.ended;
+    if (role === "reader" && !place.own && L.place !== "none") row.site = "";
     if (Object.keys(places).length) { row.places = places; row.url = url; row.site = site; }
     if (config.hashed.length) row.hashed = [...config.hashed];
-    if (title !== undefined) row.title = title;
+    if (title !== undefined) { row.title = title; row.titleLayer = L.title; }
     if (tabId !== undefined && L.tabs !== "none") {
       row.tab = deps.tabs?.tabId(tabId);
       if (sender.tab?.windowId !== undefined) row.window = deps.tabs?.windowId(sender.tab.windowId);
@@ -233,25 +237,30 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
 
     // ---- what was counted ------------------------------------------------------------------------
     const read: Tally = emptyTally();
-    for (const r of wire.reads ?? []) addTally(read, tallyOfRead(r.w, r.p ? normalized(r.p) : null, r.why ?? null));
+    for (const r of wire.reads ?? []) addRead(read, r.w, r.p ? normalized(r.p) : null, r.why ?? null);
     addTally(row.tally, read);
 
     // ---- the paragraphs --------------------------------------------------------------------------
     const units: UnitRow[] = [];
     const texts: NonNullable<LogWrite["texts"]> = [];
     if (rowsAt("paragraph")) {
-      for (const u of wire.units ?? []) units.push(unitRow(u, v.id, date, L, secret, texts));
+      for (const u of wire.units ?? []) {
+        const unit = unitRow(u, v.id, date, L, secret, texts);
+        const offset = u.expo?.readAt ?? u.found;
+        unit.readDate = L.expo === "none" ? date : localDate(new Date(Math.min(v.start + offset, observed.getTime())));
+        units.push(unit);
+      }
     }
 
     // ---- the events --------------------------------------------------------------------------------
     let events: EventChunk | undefined;
     if (L.rows === "event" && wire.events && Object.keys(wire.events).length > 0) {
-      events = { visit: v.id, seq: wire.seq, date, streams: coarseStreams(wire.events, L) };
+      events = { visit: v.id, seq: wire.seq, date, streams: projectStreams(wire.events, L) };
     }
 
     // ---- totals --------------------------------------------------------------------------------------
     const totals: NonNullable<LogWrite["totals"]> = [];
-    const shownDelta = isTop ? Math.round((v.dwell ?? 0) / 1000) : 0;
+    const shownDelta = isTop ? Math.round(v.shown / 1000) - Math.round(Math.max(0, v.shown - (v.dwell ?? 0)) / 1000) : 0;
     const anything = (wire.reads?.length ?? 0) > 0;
     const models = model ? [model] : [];
     if (anything) {
@@ -260,25 +269,33 @@ export function createStatsKeeper(deps: StatsKeeperDeps) {
     }
     // The page and the site the words count for: the tab's (a frame's words are its page's).
     const pagePlaces = place.page ? placeLadder(place.page) : null;
+    let siteHash: string | undefined;
     if (rowsAt("site") && L.place !== "none") {
-      const siteKey = pagePlaces ? (hashed("place") ? hashOf(pagePlaces.host) : pagePlaces[rank("place", L.place) <= rank("place", "host") ? "host" : "domain"]) : "";
-      if (anything) totals.push({ date: today, scope: "site", key: siteKey, tally: read, ...(hashed("place") ? { hashed: true } : {}) });
+      const placeLayer = L.place === "domain" ? "domain" : "host";
+      if (pagePlaces && hashed("place")) siteHash = hashOf(pagePlaces[placeLayer]);
+      const siteKey = siteHash ?? pagePlaces?.[placeLayer] ?? "";
+      if (rowsAt("visit") && row.frame === "frame") row.pageSite = siteKey;
+      if (anything) totals.push({ date: today, scope: "site", key: siteKey, placeLayer, tally: read, ...(hashed("place") ? { hashed: true } : {}) });
     }
     if (rowsAt("page") && rank("place", L.place) <= rank("place", "pattern")) {
       const layer = L.place as typeof PLACE_LAYERS[number];
-      const pageKey = pagePlaces ? (hashed("place") ? hashOf(pagePlaces[layer]) : pagePlaces[layer]) : `file:${rawTitle}`;
+      const pageKey = pagePlaces ? (hashed("place") ? hashOf(pagePlaces[layer]) : pagePlaces[layer]) : `file:${title ?? ""}`;
       if (anything || shownDelta > 0) {
         totals.push({
           // The kind a visit settles on comes with its first reading (lib/stats/recorder.ts).
-          date: today, scope: "page", key: pageKey, tally: read, ...(anything ? { kind: row.kind } : {}), ...(hashed("place") ? { hashed: true } : {}),
-          ...(title !== undefined && isTop ? { title } : {}),
-          ...(rank("time", L.time) <= rank("time", "min") ? { start: localMinute(new Date(v.start)) } : {}),
+          date: today, scope: "page", key: pageKey, placeLayer: layer, tally: read, ...(anything ? { kind: row.kind } : {}), ...(hashed("place") ? { hashed: true } : {}),
+          ...(siteHash ? { siteHash } : {}),
+          ...(title !== undefined && isTop ? { title, titleLayer: L.title, titleHashed: hashed("title") } : {}),
+          ...(rank("time", L.time) <= rank("time", "min") ? { start: localMinute(new Date(v.start)), ...(today !== date ? { startDate: date } : {}) } : {}),
           ...(L.dur !== "none" && isTop ? { dwell: shownDelta } : {}),
         });
       }
     }
 
-    const write: LogWrite = { totals, texts, units };
+    const write: LogWrite = { started: v.start, preparedAt, totals, texts, units };
+    if (date !== today && rowsAt("paragraph") && L.expo !== "none" && wire.reads?.length) {
+      write.counted = { visit: v.id, date: today, units: wire.reads.map((r) => r.n) };
+    }
     if (rowsAt("visit")) write.visit = row;
     if (events) write.events = events;
     await deps.store.write(write);
@@ -325,28 +342,12 @@ function unitRow(u: WireUnit, visit: string, date: string, L: RecordingConfig["l
   }
   if (u.expo && L.expo !== "none") {
     const e = (x: Exposure): Exposure => x.map((ms) => dur(ms) ?? 0) as Exposure;
-    row.expo = L.expo === "read"
-      ? { any: [0, 0, 0, 0], half: [0, 0, 0, 0], band: [0, 0, 0, 0], sightings: 0, readAt: dur(u.expo.readAt) }
+    row.expo = L.expo === "read" || L.dur === "none"
+      ? { any: [0, 0, 0, 0], half: [0, 0, 0, 0], band: [0, 0, 0, 0], sightings: L.expo === "read" ? 0 : u.expo.sightings, read: u.expo.readAt !== undefined, readAt: dur(u.expo.readAt) }
       : { any: e(u.expo.any), half: e(u.expo.half), band: e(u.expo.band), sightings: u.expo.sightings, first: dur(u.expo.first), last: dur(u.expo.last), readAt: dur(u.expo.readAt) };
   }
   if (u.timing && L.engine !== "model") row.timing = L.engine === "full" ? { cached: u.timing.cached, answered: dur(u.timing.answered) } : { cached: u.timing.cached };
   return row;
-}
-
-/** The streams with their offsets at DUR's layer. */
-function coarseStreams(s: EventStreams, L: RecordingConfig["layers"]): EventStreams {
-  const d = (ms: number): number => coarseDur(ms, L.dur) ?? 0;
-  const out: EventStreams = {};
-  for (const [name, stream] of Object.entries(s) as [keyof EventStreams, Record<string, number[] | undefined>][]) {
-    if (!stream) continue;
-    const copy: Record<string, number[]> = {};
-    for (const [column, values] of Object.entries(stream)) {
-      if (!values) continue;
-      copy[column] = column === "t" || column === "start" || column === "end" ? values.map(d) : [...values];
-    }
-    (out as Record<string, unknown>)[name] = copy;
-  }
-  return out;
 }
 
 export { HASHABLE };

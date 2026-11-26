@@ -3,10 +3,13 @@
 // controls in one line (update, stop, delete model files, uninstall, idle unload). Mounting
 // only reads status; downloads belong to the engine. Its configuration list and benchmark
 // have no place here: setup never asks for one and the engine picks its own.
+import { prependActionIcon } from "./actionIcon";
+import { engineManagement } from "./disclosure";
 import { browser } from "#imports";
 import { t, tn, messageLocale, type MessageKey } from "../i18n";
 import { requestComponent, finishNativeUninstall, type ComponentSnapshot } from "../backend/nativeClient";
 import { runtimeReady } from "../backend/runtimeClient";
+import { componentIsBehind } from "../backend/scoreProtocol";
 import { formatSize } from "./size";
 import { progressBar } from "./progressBar";
 import { installationCommand } from "./installationCommand";
@@ -55,6 +58,10 @@ export function componentBusy(s: ComponentSnapshot): boolean {
   return s.operation?.status === "running" || s.operation?.status === "scheduled" || ["starting", "downloading", "loading", "benchmarking", "updating", "uninstalling"].includes(s.state);
 }
 
+export function componentUpdateOffered(s: ComponentSnapshot, targetVersion: string): boolean {
+  return componentIsBehind(s.version, targetVersion) || s.error?.code === "incompatible" || s.operation?.name === "update" && s.operation.status === "failed";
+}
+
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className?: string): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   if (text !== undefined) el.textContent = text;
@@ -62,9 +69,8 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
   return el;
 }
 
-/** `crashAction`: a button shown beside Retry while the engine keeps crashing (the setup
- *  page's switch to the in-browser engine, lib/ui/engineCard.ts). */
-export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply, crashed?: boolean) => void, { crashAction, settings: inSettings = false, extra = [] }: { crashAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
+/** The engine switch sits with installation, with Retry after a crash, or with Settings controls. */
+export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: ComponentReply, crashed?: boolean) => void, { switchAction, settings: inSettings = false, extra = [] }: { switchAction?: HTMLButtonElement; settings?: boolean; extra?: HTMLElement[] } = {}): { refresh(): void; destroy(): void } {
   host.classList.add("component-settings");
   delete host.dataset.engine;
   const makeButton = (key: MessageKey, handler: () => void, variant = "outline"): HTMLButtonElement => {
@@ -73,28 +79,56 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   };
   const summary = element("p", t("componentStarting"), "component-status"); summary.setAttribute("role", "status");
 
-  // A pending extension update, when the browser has one.
-  const extensionUpdate = element("div", undefined, "component-update"); extensionUpdate.hidden = true;
-  const extensionUpdateText = element("p"); extensionUpdateText.setAttribute("role", "status");
-  extensionUpdate.append(extensionUpdateText, makeButton("componentReloadExtension", () => browser.runtime.reload()));
+  const statusRow = element("div", undefined, "component-status-row"); statusRow.append(summary);
+
+  const targetVersion = browser.runtime.getManifest().version;
+  const updateInfo = element("p", undefined, "component-version");
+  updateInfo.setAttribute("role", "status"); updateInfo.hidden = true;
 
   // Not installed: the one-sentence instruction, the command, Copy and View script.
   const install = element("section", undefined, "component-install"); install.id = "install"; install.hidden = true;
-  const intro = element("p", t("componentInstallIntro"));
+  const intro = element("p", t("componentInstallIntro")); intro.setAttribute("role", "status");
   const releaseNotice = element("p", t("componentUnreleased"), "component-notice");
   releaseNotice.hidden = import.meta.env.VITE_ANAGRAM_RELEASE_BUILD === "1";
   const commandBox = element("pre", undefined, "component-command");
-  const command = element("code"); command.id = "install-cmd"; commandBox.append(command);
-  const copied = element("p"); copied.setAttribute("role", "status"); copied.hidden = true;
-  const copy = makeButton("componentCopyInstall", () => {
-    void navigator.clipboard.writeText(command.textContent ?? "").then(() => {
-      copied.textContent = t("copied"); copied.hidden = false;
-    }, () => { copied.textContent = t("componentCopyFailed"); copied.hidden = false; });
-  }, "primary"); copy.id = "install-copy"; copy.disabled = true; delete copy.dataset.variant;
+  const command = element("code"); command.id = "install-cmd"; command.tabIndex = -1; commandBox.append(command);
+  commandBox.id = "install-details"; commandBox.hidden = true;
   const script = element("a", t("componentViewScript"), "btn"); script.dataset.variant = "ghost"; script.dataset.size = "sm";
   script.target = "_blank"; script.rel = "noopener noreferrer"; script.hidden = true;
-  const installActions = element("div", undefined, "component-actions"); installActions.append(copy, script);
-  install.append(intro, releaseNotice, commandBox, installActions, copied);
+  const preview = makeButton("componentShowCommand", () => showCommand(commandBox.hidden), "ghost");
+  preview.id = "install-preview";
+  preview.setAttribute("aria-controls", commandBox.id);
+  preview.setAttribute("aria-expanded", "false");
+  function showCommand(open: boolean): void {
+    commandBox.hidden = script.hidden = !open;
+    if (!open) intro.textContent = t(shell === "windows" ? "componentInstallIntroWindows" : "componentInstallIntro");
+    preview.setAttribute("aria-expanded", String(open));
+    preview.textContent = t(open ? "componentHideCommand" : "componentShowCommand");
+  }
+  let shell: "posix" | "windows" = "posix";
+  const copy = makeButton("componentCopyInstall", () => {
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(command.textContent ?? "");
+        intro.textContent = t(shell === "windows" ? "componentCopiedWindows" : "componentCopiedPosix");
+      } catch {
+        showCommand(true);
+        requestAnimationFrame(() => {
+          if (commandBox.hidden || !command.isConnected) return;
+          command.focus();
+          const range = document.createRange();
+          range.selectNodeContents(command);
+          const selection = window.getSelection();
+          selection?.removeAllRanges(); selection?.addRange(range);
+        });
+        intro.textContent = t("componentCopyFailed");
+      }
+    })();
+  }, "primary"); copy.id = "install-copy"; copy.disabled = true; delete copy.dataset.variant;
+  prependActionIcon(copy, "copy");
+  const commandActions = element("div", undefined, "component-actions");
+  commandActions.hidden = true; commandActions.append(copy, preview, script);
+  install.append(intro, releaseNotice, commandActions, commandBox);
 
   const bar = progressBar(); bar.el.hidden = true;
   const percent = element("span", "", "engine-percent"); percent.hidden = true;
@@ -112,8 +146,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   });
   primary.id = "component-primary"; primary.hidden = true;
   const finishRemoval = makeButton("componentRemoveExtension", () => void finishUninstall()); finishRemoval.hidden = true;
-  actions.append(primary, ...(crashAction ? [crashAction] : []), finishRemoval);
-  const barRow = element("div", undefined, "engine-bar-row"); barRow.append(bar.el, percent, actions);
+  actions.append(primary, finishRemoval);
+  const barRow = element("div", undefined, "engine-bar-row"); barRow.append(updateInfo, bar.el, percent, actions);
 
   // Settings: the engine's controls in one line.
   const controls = element("div", undefined, "component-inline"); controls.hidden = true;
@@ -142,7 +176,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (op && snapshot && !acting && !componentBusy(snapshot)) run(op);
   });
   dialogActions.append(cancelConfirm, acceptConfirm); dialog.append(dialogTitle, dialogText, dialogActions);
-  host.replaceChildren(summary, extensionUpdate, install, barRow, progressText, error, details, controls, dialog);
+  const management = engineManagement(statusRow, controls, inSettings);
+  host.replaceChildren(statusRow, install, barRow, progressText, error, details, management, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -157,33 +192,21 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let crashed = false;
   let actionError = "", actionDetail = "";
   let awaitingUninstall = false, awaitingUpdate = false, removingExtension = false, scheduledCleanup = false, scheduledUpdate = false;
+  let updatedVersion: string | null = null;
   let completedUninstallReceipt: string | null = null;
   let attemptedReceipt: string | null = null;
   let confirming: "models.delete" | "component.uninstall" | undefined;
-
-  const paintExtensionUpdate = (value: unknown): void => {
-    if (destroyed) return;
-    const version = typeof value === "string" && value.length <= 100 && value !== browser.runtime.getManifest().version ? value : "";
-    extensionUpdate.hidden = !version;
-    extensionUpdateText.textContent = version ? t("componentExtensionUpdate", version) : "";
-  };
-  const updateAvailable = (value: { version: string }): void => paintExtensionUpdate(value.version);
-  const storageChanged = (changes: Record<string, { newValue?: unknown }>, area: string): void => {
-    if (area === "local" && "extensionUpdatePending" in changes) paintExtensionUpdate(changes.extensionUpdatePending.newValue);
-  };
-  browser.runtime.onUpdateAvailable?.addListener(updateAvailable);
-  browser.storage.onChanged.addListener(storageChanged);
-  void browser.storage.local.get("extensionUpdatePending").then((value) => paintExtensionUpdate(value.extensionUpdatePending)).catch(() => undefined);
 
   void Promise.all([browser.runtime.getPlatformInfo(), safariBridge()]).then(([platform, bridge]) => {
     const instruction = installationCommand(platform.os, import.meta.env.BROWSER === "safari" ? "safari" : import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
       browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en", import.meta.env.ANAGRAM_INSTALLERS, bridge?.home);
     if (destroyed) return;
-    if (!instruction) { intro.textContent = t("componentUnsupportedPlatform"); commandBox.hidden = installActions.hidden = releaseNotice.hidden = true; return; }
+    if (!instruction) { intro.textContent = t("componentUnsupportedPlatform"); commandActions.hidden = releaseNotice.hidden = true; return; }
+    shell = instruction.platform;
     intro.textContent = t(instruction.platform === "windows" ? "componentInstallIntroWindows" : "componentInstallIntro");
-    command.textContent = instruction.command; script.href = instruction.scriptUrl; script.hidden = false;
+    command.textContent = instruction.command; script.href = instruction.scriptUrl; commandActions.hidden = false;
     copy.disabled = import.meta.env.VITE_ANAGRAM_RELEASE_BUILD !== "1";
-  }).catch(() => { intro.textContent = t("componentUnsupportedPlatform"); commandBox.hidden = installActions.hidden = releaseNotice.hidden = true; });
+  }).catch(() => { intro.textContent = t("componentUnsupportedPlatform"); commandActions.hidden = releaseNotice.hidden = true; });
 
   function confirm(op: "models.delete" | "component.uninstall"): void {
     if (!snapshot || acting || componentBusy(snapshot)) return;
@@ -203,6 +226,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.download.status === "running") return ["componentPauseDownload", "models.pause"];
     if (s.download.status === "paused") return ["componentResumeDownload", "models.download"];
     if (s.download.status === "failed") return ["panelRetry", "models.download"];
+    if (awaitingUpdate) return null;
+    if (!componentBusy(s) && componentUpdateOffered(s, targetVersion)) return ["componentUpdate", "component.update"];
     if (s.state === "needs_models") return ["componentDownloadModels", "models.download"];
     if (s.state === "stopped") return ["componentResume", "engine.resume"];
     if (s.state === "error") return ["panelRetry", "engine.resume"];
@@ -210,7 +235,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   }
 
   function buttons(): void {
-    const s = snapshot, busy = s ? componentBusy(s) || s.error?.code === "busy" : false;
+    const s = snapshot, busy = awaitingUpdate || (s ? componentBusy(s) || s.error?.code === "busy" : false);
     const terminal = completedUninstallReceipt !== null;
     const action = terminal ? null : primaryAction(s);
     primary.hidden = !action;
@@ -218,16 +243,31 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     primary.disabled = acting || (primaryOp === "models.pause" && pausing);
     idleSelect.disabled = acting || busy || !s;
     stop.hidden = !s || !["loading", "benchmarking", "ready", "idle"].includes(s.state);
-    update.hidden = removeModels.hidden = uninstall.hidden = !s;
+    removeModels.hidden = uninstall.hidden = !s;
+    update.hidden = !s || !componentUpdateOffered(s, targetVersion) || action?.[1] === "component.update" || awaitingUpdate;
     update.disabled = uninstall.disabled = acting || busy;
     removeModels.disabled = acting || busy || !s || s.storage.models_bytes === 0;
-    stop.disabled = acting || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
+    stop.disabled = acting || awaitingUpdate || s?.error?.code === "busy" || s?.operation?.status === "running" || s?.operation?.status === "scheduled";
     finishRemoval.hidden = !terminal; finishRemoval.disabled = removingExtension;
-    if (crashAction) crashAction.hidden = !crashed || terminal;
+    if (switchAction) {
+      const parent = install.hidden ? (inSettings && !crashed ? controls : actions) : statusRow;
+      if (switchAction.parentElement !== parent) {
+        if (parent === controls) controls.prepend(switchAction);
+        else parent.append(switchAction);
+        switchAction.dataset.variant = parent === statusRow ? "ghost" : "outline";
+      }
+      if (!inSettings) switchAction.hidden = terminal || (install.hidden && !crashed);
+    }
     // Settings only: the controls in one line, with the engine switch beside them.
     idleField.hidden = idleField.hidden || !s;
     controls.hidden = !inSettings || terminal;
-    barRow.hidden = bar.el.hidden && primary.hidden && finishRemoval.hidden && !(crashAction && !crashAction.hidden);
+    const actionRow = bar.el.hidden && updateInfo.hidden ? statusRow : barRow;
+    if (actions.parentElement !== actionRow) {
+      const focus = document.activeElement;
+      actionRow.append(actions);
+      if (focus instanceof HTMLElement && actions.contains(focus) && !focus.hidden) focus.focus({ preventScroll: true });
+    }
+    barRow.hidden = actionRow === statusRow;
   }
 
   function paint(reply: ComponentReply): void {
@@ -236,8 +276,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       const inUse = reply.code === "busy";
       retryable = !inUse && (everConnected || reply.kind === "invalid" || !!actionError);
       const said = t(scheduledCleanup || scheduledUpdate ? "componentSystemWindow" : awaitingUninstall ? "componentRemoving" : awaitingUpdate ? "componentUpdating" : inUse ? "componentInUse" : reply.kind === "invalid" || everConnected ? "componentNeedsAttention" : "componentNotInstalled");
-      summary.textContent = inSettings ? t("componentTitle") + t("engineStatusSeparator") + said : said;
-      install.hidden = everConnected || awaitingUninstall || inUse;
+      summary.textContent = said;
+      install.hidden = everConnected || awaitingUpdate || awaitingUninstall || inUse || reply.kind === "invalid";
+      updateInfo.hidden = true;
       bar.el.hidden = percent.hidden = progressText.hidden = idleField.hidden = true;
       error.textContent = actionError; error.hidden = !actionError;
       // A host that was never reached is simply not installed; its transport message is noise.
@@ -251,10 +292,19 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (s.operation?.name === "uninstall" && s.operation.status === "scheduled") scheduledCleanup = true;
     scheduledUpdate = s.operation?.name === "update" && s.operation.status === "scheduled";
     if (s.operation?.status === "failed") awaitingUninstall = awaitingUpdate = scheduledCleanup = scheduledUpdate = false;
-    if (awaitingUpdate && s.operation?.name !== "update" && !["updating", "stopped"].includes(s.state)) awaitingUpdate = false;
+    if (awaitingUpdate && s.operation?.name !== "update" && s.state !== "updating") {
+      awaitingUpdate = false;
+      if (s.version === targetVersion) {
+        updatedVersion = s.version;
+        actionError = actionDetail = "";
+      }
+    }
+    updateInfo.textContent = s.version && componentIsBehind(s.version, targetVersion) ? t("componentVersionUpdate", s.version, targetVersion)
+      : updatedVersion && updatedVersion === s.version ? t("componentVersionUpdated", updatedVersion) : "";
+    updateInfo.hidden = !updateInfo.textContent;
     const downloading = ["running", "paused", "failed"].includes(s.download.status);
-    const label = completedUninstallReceipt ? t("componentCleanupDone") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
-    summary.textContent = inSettings && !completedUninstallReceipt ? t("componentTitle") + t("engineStatusSeparator") + label : label;
+    const label = completedUninstallReceipt ? t("componentCleanupDone") : awaitingUpdate && s.operation?.status === "completed" ? t("componentUpdating") : crashed ? t("componentNeedsAttention") : componentStateLabel(s);
+    summary.textContent = label;
     install.hidden = true;
     idleField.hidden = !s.settings;
     if (s.settings) {
@@ -299,7 +349,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   function schedule(): void {
     if (timer !== undefined) clearTimeout(timer);
     if (!destroyed && document.visibilityState === "visible" && !completedUninstallReceipt) {
-      const ms = snapshot && componentBusy(snapshot) ? POLL_MS.busy : snapshot && componentReady(snapshot) ? POLL_MS.ready : POLL_MS.other;
+      const ms = awaitingUpdate || snapshot && componentBusy(snapshot) ? POLL_MS.busy : snapshot && componentReady(snapshot) ? POLL_MS.ready : POLL_MS.other;
       timer = setTimeout(() => void poll(), ms);
     }
   }
@@ -356,7 +406,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     if (timer !== undefined) clearTimeout(timer);
     actionError = actionDetail = "";
     if (op === "component.uninstall") awaitingUninstall = true;
-    if (op === "component.update") awaitingUpdate = true;
+    if (op === "component.update") { awaitingUpdate = true; updatedVersion = null; }
     void poll(op);
   }
   const visibility = (): void => {
@@ -368,6 +418,5 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   return { refresh: () => run(), destroy() {
     destroyed = true; controller?.abort(); if (timer !== undefined) clearTimeout(timer);
     if (dialog.open) dialog.close(); document.removeEventListener("visibilitychange", visibility);
-    browser.runtime.onUpdateAvailable?.removeListener(updateAvailable); browser.storage.onChanged.removeListener(storageChanged);
   } };
 }

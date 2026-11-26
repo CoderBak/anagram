@@ -40,7 +40,8 @@ downloads, into the extension's own storage.
 | `lib/pdf/loader.ts` | `fetch(` | reads an online PDF only after the private loader validates its one-use source ticket and current website access; rejects redirects | the exact authorized original HTTP(S) PDF URL, with normal browser credentials and no referrer |
 | `lib/pdf/loader.ts` | `XMLHttpRequest` | reads bytes for an authorized local PDF after checking file access, size and PDF signature | the exact authorized local file URL; remote-host file URLs are rejected |
 | `lib/lazy.ts` | `import(` | loads one of the vendored chunks that ship inside the extension (DOMPurify, the diagnostics chunk, the surfaces chunk, pdf.js) | `chrome-extension://<this extension>/vendor/…` |
-| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine only) | the exact pinned addresses in `lib/webengine/pin.ts`: the modelkit on huggingface.co (following its redirect to its storage) or, where huggingface.co is unreachable, the same paths on hf-mirror.com, and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
+| `lib/detectorReleases.ts` | `fetch(` | lists dated releases and resolves the selected revision and file hashes from Settings | the fixed Hugging Face repository API and release metadata |
+| `lib/webengine/download.ts` | `fetch(` | downloads the pinned model files once, resumably, verifying each against its pinned SHA-256 as it streams; anonymous, no credentials, no referrer; and reads lid.176.ftz, which the package ships, checking it against its pinned SHA-256 whenever the model loads (the in-browser engine only) | the exact pinned addresses in `lib/webengine/pin.ts`: the selected detector revision on huggingface.co, following its storage redirect, and `chrome-extension://<this extension>/vendor/engine/lid.176.ftz` |
 | `lib/ui/deviceInputs.ts` | `fetch(` | the test build only (absent from the shipping bundles): reads the stand-in device a suite put beside the pages | `chrome-extension://<this extension>/test-device.json` |
 | `lib/webengine/session.ts` | `import(` | loads ONNX Runtime Web, which ships inside the extension, into the engine's worker | `chrome-extension://<this extension>/vendor/engine/ort.jspi.min.mjs` |
 
@@ -103,8 +104,9 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `lib/dom/shadow.ts` | `https://github.com/mozilla-firefox/firefox` | the attribution of adapted Firefox code in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/document-worker` | the attribution of Zotero's document-worker, whose reading of a PDF this translates, in a comment |
 | `lib/pdf/structured.ts` | `https://github.com/zotero/structured-document-text` | the attribution of the glyph-map decoding adapted from Zotero's library, in a comment |
-| `lib/webengine/pin.ts` | `https://huggingface.co/` | builds the pinned modelkit files' download addresses (`anagramd/modelkit.json`'s repository and revision), the native installer's |
-| `lib/webengine/pin.ts` | `https://hf-mirror.com/` | the same files' addresses on hf-mirror.com, a mirror of Hugging Face's repositories under the same paths, tried only where huggingface.co answers nothing (lib/webengine/download.ts) |
+| `lib/detectorReleases.ts` | `https://huggingface.co/` | metadata for the selected release and its revision link, opened by the reader in Settings |
+| `lib/detectorReleases.ts` | `https://huggingface.co/api/models/` | branches, tags and file hashes |
+| `lib/webengine/pin.ts` | `https://huggingface.co/` | builds the pinned modelkit files' download addresses (the selected detector repository and revision), the native installer's |
 | `lib/webengine/emoji.ts` | `https://github.com/carpedm20/emoji` | the attribution of the emoji tokenizer port, in a comment |
 | `lib/webengine/fasttext.ts` | `https://github.com/facebookresearch/fastText` | the attribution of the fastText prediction port, in a comment |
 | `lib/pdf/reading.ts` | `https://github.com/funstory-ai/BabelDOC` | the attribution of the formula-character rules adapted from BabelDOC, in a comment |
@@ -130,6 +132,7 @@ reader hands it; the document's bytes are copied into it and nowhere else.
 | `entrypoints/onboarding/main.ts` | `https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.zh-CN.md` | the same link for a Chinese browser |
 | `entrypoints/options/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the settings page; opened only when clicked |
 | `entrypoints/stats/index.html` | `https://github.com/CoderBak/anagram/blob/dev/PRIVACY.md` | the privacy-policy link on the statistics page; opened only when clicked |
+| `lib/ui/actionIcon.ts` | `http://www.w3.org/2000/svg` | SVG namespace for the locally packaged action icons |
 | `entrypoints/stats/main.ts` | `http://www.w3.org/2000/svg` | the SVG namespace the trend chart is drawn in; a name, not an address |
 | `entrypoints/options/main.ts` | `https://www.Example.com/path` | an example in a comment about parsing a hostname |
 | `entrypoints/options/main.ts` | `https://` | the scheme prepended to a bare hostname before `new URL()` parses it |
@@ -158,23 +161,22 @@ for the browser session (lib/stats/tabs.ts). It dies with the browser session.
 | `pdfStructure` | whether the reader's paragraphs come from the vendored Zotero document-worker (default) or from its own geometric reflow; no control in the UI |
 | `pdfReadAhead` | whether the reader also reads the pages it has not drawn, in the background, paced by how fast the engine is (default on; Settings, PDFs) |
 | `debug` | verbose logging |
-| `cacheMode` | persistent scores (up to 30 days) or memory only |
+| `cacheMode` | memory only (default) or persistent scores for up to 30 days |
+| `scoreCacheSecret` | random 256-bit key used to identify verdicts on disk, stored separately from the score database |
 | `displayMode` | mark everything, or only flagged paragraphs |
 | `flagFrom` | the word paragraphs are flagged from: lightly edited, heavily edited (default) or AI-generated |
 | `underlineScope` | underlines on the flagged paragraphs (default) or on every paragraph read |
 | `statsConfig` | what the reading statistics keep: off (default), or a layer for each dimension and how long each part is kept ([statistics.md](statistics.md)) |
+| `statsClearedAt` | last statistics reset, so open tabs can discard pending readings |
 | `statsSecret` | the random key the statistics' hashes and sketches are made with; never exported, made anew when the statistics are cleared |
 
 ### IndexedDB `anagram-scores`
 
-The persistent score cache. A row holds the model identity, a 128-bit SHA-256 digest of
-where the text was read (the tab's top-level site, the frame's origin) and one of the text the
-model read, the verdict (bucket, four probabilities, score), token count, truncation flag,
-detected language and write time. **No raw page text is stored in the score cache.** Nor is
-any site's name. A verdict is shared only within the site it was read on: one that came back at
-once would tell a page the user had read the same text elsewhere. A private window's verdicts
-are kept in memory, apart from the rest. An unsalted digest is not anonymous: someone with
-local cache access can test guesses about known text and sites. The store keeps at most 20 000 rows, pruned back to 15 000 oldest first, and
+In **Keep 30 days** mode a row holds one HMAC-SHA-256 identifier covering the model,
+normalization version, site partition and normalized text. The row also holds the verdict,
+token count, truncation flag, detected language and write time. **No raw page text is stored in the score cache.**
+Checking a candidate passage against the score database requires the separate profile key.
+Private windows and the Analyze text editor use memory for their verdicts. The store keeps at most 20 000 rows, pruned back to 15 000 oldest first, and
 rows expire 30 days after they were written.
 
 ### IndexedDB `anagram-stats`

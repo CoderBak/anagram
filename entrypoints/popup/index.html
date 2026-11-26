@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <title data-i18n="popupTitle">Anagram</title>
+    <link rel="stylesheet" href="/pages/theme.css" />
     <link rel="stylesheet" href="/pages/popup.css" />
   </head>
   <body>
@@ -12,63 +13,51 @@
       <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
       <img class="logo-dark" src="/icons/icon-96.png" alt="" />
       <h1>Anagram</h1>
-      <button id="gear" class="btn" data-variant="ghost" data-size="icon-sm" type="button" title="Settings" aria-label="Settings"
+      <button id="gear" class="btn" data-variant="ghost" data-size="sm" type="button" title="Settings" aria-label="Settings"
         data-i18n-title="popupSettings" data-i18n-aria-label="popupSettings">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
+        <svg class="action-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#settings"></use></svg>
       </button>
     </header>
 
     <main>
       <section class="grp act">
         <div class="status" id="status">…</div>
-        <section class="report" id="pageReport" aria-labelledby="reportTitle" hidden></section>
+        <section class="report" id="pageReport" aria-labelledby="reportTitle" hidden>
+          <header class="report-heading" hidden><h2 id="reportTitle" tabindex="-1"></h2></header>
+          <div class="report-body"></div>
+        </section>
         <p class="keepopen" id="keepOpen" hidden data-i18n="engineKeepOpen">Keep this browser open until the download finishes.</p>
-        <button id="pageAction" class="btn w-full" data-size="sm" type="button" hidden></button>
+        <div class="page-actions">
+        <button id="pageAction" class="btn" data-size="sm" type="button" hidden></button>
         <!-- Label, variant and action are the page's state (./state.ts); until the page
              has answered there is nothing honest to put on it. -->
-        <button id="action" class="btn w-full" data-variant="outline" data-size="sm" type="button" disabled></button>
-        <button id="localFileSettings" class="btn w-full" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
+        <button id="action" class="btn" data-variant="outline" data-size="sm" type="button" disabled></button>
+        <button id="localFileSettings" class="btn" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
         <!-- The local engine kept crashing: the in-browser engine, beside Retry (./main.ts). -->
-        <button id="switchEngine" class="btn w-full" data-variant="outline" data-size="sm" type="button" hidden data-i18n="engineSwitchToInBrowser">Switch to the in-browser engine</button>
+        <button id="switchEngine" class="btn" data-variant="outline" data-size="sm" type="button" hidden data-i18n="engineSwitchToInBrowser">Use in-browser engine</button>
+        </div>
       </section>
 
-      <section class="grp">
+      <section class="grp" id="siteGroup" hidden>
         <div class="field" data-orientation="horizontal">
-          <section>
-            <label for="siteEnabled" data-i18n="popupThisSite">Run on this site</label>
-            <p id="siteHost">…</p>
-          </section>
-          <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" />
+          <label for="siteEnabled" data-i18n="popupThisSite">Scan this site automatically</label>
+          <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" aria-describedby="siteRuleNote" />
         </div>
-        <div class="field" data-orientation="horizontal" id="displayModeRow">
-          <label id="displayModeLbl" data-i18n="popupShow">Show</label>
-          <div class="tabs">
-            <nav role="tablist" aria-orientation="horizontal" aria-labelledby="displayModeLbl" data-seg="displayMode">
-              <button type="button" role="tab" data-value="all" aria-selected="true" data-i18n="popupAllChips">All chips</button>
-              <button type="button" role="tab" data-value="flagged" aria-selected="false" data-i18n="popupFlaggedOnly">Flagged only</button>
-            </nav>
-          </div>
-        </div>
+        <p id="siteRuleNote" hidden></p>
       </section>
 
       <footer class="foot">
         <div class="tools">
           <button id="openReader" class="btn" data-variant="ghost" data-size="sm" type="button">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 13H8" /><path d="M16 17H8" /><path d="M16 13h-2" /></svg>
-            <span data-i18n="popupOpenReader">Read a PDF file…</span>
+            <svg class="action-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#folder"></use></svg><span data-i18n="popupOpenReader">Open a PDF…</span>
           </button>
           <button id="analyzeText" class="btn" data-variant="ghost" data-size="sm" type="button">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8" /><path d="M12 4v16" /><path d="M9 20h6" /></svg>
-            <span data-i18n="pasteTitle">Analyze text</span>
+            <svg class="action-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#text"></use></svg><span data-i18n="pasteTitle">Analyze text</span>
           </button>
         </div>
         <!-- Today's reading, while statistics are recorded (lib/stats/). -->
         <p class="stats-today" id="statsToday" hidden><span id="statsTodayText"></span><button type="button" id="openStats" data-i18n="popupStatsLink">Statistics</button></p>
-        <p class="engine" id="backend" hidden></p>
-        <button id="toolbarHelp" class="toolbar-help" type="button" hidden data-i18n="toolbarPinHelp">How to keep Anagram in the toolbar</button>
+        <p class="engine" id="backend" data-i18n="popupEngineOutdated" hidden>Local engine needs an update</p>
       </footer>
     </main>
 

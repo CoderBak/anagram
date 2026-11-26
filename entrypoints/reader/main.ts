@@ -6,8 +6,9 @@ import { enabledForSite, settings } from "../../lib/settings/settings";
 import { ACTIONS, type ControlMessage, type TabState } from "../../lib/messaging/protocol";
 import { setHighlightSurface, setRangeLocator } from "../../lib/render/highlight";
 import { extractPageText, nameFonts } from "../../lib/pdf/extract";
-import { readReflowed } from "../../lib/pdf/reading";
-import type { PdfPageText, ReflowBlock } from "../../lib/pdf/reflow";
+import { readScanBatch, stopScanWorker } from "../../lib/pdf/scanWorker";
+import { ReflowScan, reflowRendered } from "../../lib/pdf/reflowScan";
+import type { PdfPageText } from "../../lib/pdf/reflow";
 import { createStructuredReaderInSlices, type StructuredBlock, type StructuredReader } from "../../lib/pdf/structured";
 import { readStructure } from "../../lib/pdf/structureWorker";
 import { createPdfUnitSource, documentParagraphs, planInSlices, type DocumentParagraph, type PdfUnitSource } from "../../lib/pdf/units";
@@ -16,14 +17,15 @@ import { LOW_BATTERY, READER_INPUT } from "../../lib/capture/pace";
 import { MIN_WORDS } from "../../lib/dom/text";
 import { pdfFileName, pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
 import { claimPdfBytes } from "../../lib/pdf/handoff";
-import type { PdfReopenResult } from "../../lib/pdf/sourceTransfer";
+import { hasPdfMagic, PDF_HEADER_BYTES, type PdfReopenResult } from "../../lib/pdf/sourceTransfer";
 import { startViewer, pageView, type PageView, type PdfApplication, type UpstreamPage } from "./viewer";
 import { placeChip } from "./chips";
 import "./style.css";
 
-const MAX_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_MIB = 100;
+const MAX_BYTES = MAX_FILE_MIB * 1024 * 1024;
 /** Zotero's structure is read for documents up to this many pages, a thousand pages at a time
- *  (lib/pdf/structureWorker.ts); past it the reflow reads every page as it renders. What grows
+ *  (lib/pdf/structureWorker.ts). Longer documents use the geometry fallback. What grows
  *  with the document is what the page keeps while it is read — the structure's reading and
  *  every page's text: at 2,445 pages, 195 MB when the structure came, rising to 311 MB as the
  *  document was read (683 MB at first, falling, while the paragraphs not read yet kept their
@@ -57,6 +59,8 @@ const original = document.getElementById("original") as HTMLButtonElement;
 const fileInput = document.getElementById("file") as HTMLInputElement;
 const analyze = document.getElementById("anagramAnalyze") as HTMLButtonElement;
 let app: PdfApplication;
+let documentPassword = "";
+let structureFailed = false;
 let orchestrator: Orchestrator | null = null;
 let source: PdfUnitSource | null = null;
 
@@ -65,33 +69,22 @@ let site: string | null = null;
 let generation = 0;
 let controller: AbortController | null = null;
 let started = false;
-/**
- * Zotero's reading of the whole document (lib/pdf/structureWorker.ts), once it has
- * arrived. Until then, and if it never does — the worker failed or timed out, the
- * document is over the page cap, or the setting is off — the pages on screen are
- * reflowed by lib/pdf/reflow.ts, page by page as they render.
- */
+/** The structured reading takes over once the worker has found the paragraphs. */
 let structure: StructuredReader | null = null;
+let scan: ReflowScan | null = null;
+let deferredStructure = false;
 const pages = new Map<number, {view: PageView; text: PdfPageText; geometry: string}>();
-/**
- * WHOLE-DOCUMENT READING. The text of every page the reader has, drawn or not: a page pdf.js
- * has not drawn is read from the document as its find bar reads it (getTextContent), with
- * any font no page before it loaded loaded first, so that a formula or code reads as it will
- * when drawn. With Zotero's structure the paragraphs come from all of them, so a paragraph's
- * text is the same whichever pages happen to be drawn, and the ones on pages not drawn are
- * scored in the background (readAhead below): a page's chips are in the cache when it is
- * drawn, and the report covers the document. Without the structure nothing is kept: the
- * reflow reads the pages drawn.
- */
+/** Drawn and unseen page text used by the structured reader. The geometry
+ *  fallback keeps completed paragraphs and their source offsets in ReflowScan. */
 const texts = new Map<number, PdfPageText>();
 /** Whether pages' texts are kept: until the structure is known not to come. */
 let keepTexts = true;
 /** Pages the read-ahead could not read: held as empty so that it goes on, and read again
  *  when drawn. */
 const unread = new Set<number>();
+const retryPages: number[] = [];
 /** The document's paragraphs as the reader reads them, from all the pages it has the text of
- *  (structure only: the reflow reads a run of drawn pages as a whole, and its text changes
- *  with the run). */
+ *  or the completed paragraph groups of a requested fallback scan. */
 let plan: DocumentParagraph[] | null = null;
 /** Their texts: a verdict kept on any other is of a paragraph read differently since. */
 let planTexts: Set<string> | null = null;
@@ -113,14 +106,23 @@ let lowBattery = false;
 /** Wakes the read-ahead loop from its rest: the setting turned on, the menu's ask, another
  *  document. */
 let wake: (() => void) | null = null;
-/** The pages drawn so far are images with no text on them: a scan, nothing to read. */
+/** Whether every page is known to have no selectable text. */
 let textless = false;
+let foundText = false;
 const hasText = (text: PdfPageText): boolean => text.items.some((item) => item.str.trim() !== "");
 const extracting = new WeakSet<Element>();
 
+// A failed replacement shares the status line with the PDF still being read.
+let rejectedFile = "";
 function say(text: string): void {
-  notice.textContent = text;
-  notice.hidden = !text;
+  const message = rejectedFile || text;
+  notice.textContent = message;
+  notice.hidden = !message;
+}
+function rejectFile(message: string): void {
+  rejectedFile = message;
+  say(message);
+  if (!app.pdfDocument) drop.hidden = false;
 }
 function failure(reason: string): void {
   say(reason === "large" ? t("readerTooLarge") : reason === "type" ? t("readerBadFile") : reason === "busy" ? t("readerBusy") : t("readerFetchFailed"));
@@ -144,26 +146,23 @@ function rebuild(): void {
     plan = documentParagraphs(blocks, (block) => reader.pagesOf(block as StructuredBlock));
     planTexts = new Set(plan.map((p) => p.text));
   } else {
-    source.setBlocks(reflowRendered([...pages.values()].map(({text}) => text).sort((a, b) => a.page - b.page)));
+    const drawn = [...pages.values()].map(({text}) => text).sort((a, b) => a.page - b.page);
+    source.setBlocks(scan ? scan.visible(drawn) : reflowRendered(drawn));
+    if (scan) { plan = scan.plan; planTexts = scan.done && !unread.size ? scan.texts : null; }
   }
   performance.measure(structure ? "anagram-structured" : "anagram-reflow", {start: began});
 }
-/** The fallback: every run of consecutive rendered pages reflowed on its own — a
- *  recycled or unrendered page is a real gap, and prose is never joined across it. */
-function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
-  const groups: PdfPageText[][] = [];
-  for (const text of rendered) {
-    const previous = groups.at(-1);
-    if (previous && previous.at(-1)!.page + 1 === text.page) previous.push(text);
-    else groups.push([text]);
+/** A cover may be an image even when the following pages contain paragraphs. */
+function updateReadability(): void {
+  if (!pages.size) return;
+  if (foundText || plan?.length) {
+    textless = false;
+    say("");
+    return;
   }
-  const blocks: ReflowBlock[] = [];
-  for (const group of groups) {
-    const reflow = readReflowed(group);
-    if (reflow[0] && blocks.length) reflow[0].columnBreak = true;
-    blocks.push(...reflow);
-  }
-  return blocks;
+  const total = app.pdfDocument?.numPages;
+  textless = !unread.size && (scan?.done === true || pages.size === total || texts.size === total);
+  say(t(textless ? "readerNoText" : "readerNoPageText"));
 }
 /**
  * Ask the worker for the document's structure and switch to it when it comes. A paper
@@ -171,16 +170,19 @@ function reflowRendered(rendered: PdfPageText[]): ReflowBlock[] {
  * are already up, and the switch re-collects the units — the verdicts of paragraphs
  * whose text did not change come straight back from the cache.
  */
-async function readWholeDocument(bytes: Uint8Array, count: number, owned: number, signal: AbortSignal, asked = false): Promise<boolean> {
-  // No structure: the reflow reads the pages drawn, and nothing else is kept.
+async function readWholeDocument(count: number, owned: number, signal: AbortSignal, asked = false): Promise<boolean> {
+  // The explicit whole-document action can still read the pages with the fallback.
   const without = (): false => {
-    if (owned === generation) { keepTexts = false; texts.clear(); unread.clear(); }
+    if (owned === generation) { keepTexts = false; askable = true; texts.clear(); unread.clear(); }
     return false;
   };
-  if (count > MOST_STRUCTURE_PAGES || !(await settings.pdfStructure.getValue())) return without();
+  if (count > MOST_STRUCTURE_PAGES || !(await settings.pdfStructure.getValue())) {
+    if (owned === generation) documentPassword = "";
+    return without();
+  }
   if (count > autoStructurePages() && !asked) {
     // The menu offers to read it whole (scopeNote).
-    if (owned === generation) askable = true;
+    if (owned === generation) deferredStructure = true;
     return without();
   }
   if (owned !== generation) return false;
@@ -190,7 +192,9 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
     // thread in two pieces, as the reader started reading. The reader keeps the text of every
     // page it has read for as long as the document is open; the structure itself is let go as
     // soon as the reader is made, not kept here until the paragraphs are planned.
-    const reader = await readStructure(bytes, count, signal, testCaps()?.rangePages)
+    const bytes = await app.pdfDocument!.getData();
+    if (owned !== generation || signal.aborted) return false;
+    const reader = await readStructure(bytes, count, signal, testCaps()?.rangePages, documentPassword)
       .then((result) => (owned === generation ? createStructuredReaderInSlices(result, {pagesStay: true}) : null));
     if (!reader || owned !== generation) return false;
     await readAround(pages.keys(), owned);
@@ -199,17 +203,21 @@ async function readWholeDocument(bytes: Uint8Array, count: number, owned: number
     if (owned !== generation) return false;
     structure = reader;
     rebuild();
+    updateReadability();
     if (started) orchestrator?.refresh();
     return true;
   } catch {
-    // The reflow is already reading the pages; nothing to tell the user.
+    if (owned === generation && !signal.aborted) structureFailed = true;
     return without();
+  } finally {
+    if (owned === generation) documentPassword = "";
   }
 }
 /** Pages read in the background change the paragraphs of their neighbours on screen: read
  *  the paragraphs again. */
 function replan(): void {
   rebuild();
+  updateReadability();
   if (started) orchestrator?.refresh();
 }
 
@@ -232,19 +240,34 @@ function scopeNote(read: number): string {
   if (!plan) {
     // Asked for: the paragraphs of the whole document are on their way.
     if (askedWhole) return t("readerReading", "0");
-    const ask = askable && read < total;
+    const ask = aheadOn && askable && total > 1 && (read < total || unread.size > 0);
     if (ask !== asking) {
       asking = ask;
       orchestrator?.setPageAction(ask ? t("readerReadWhole") : null, readWholeAsked);
     }
+    if (structureFailed) return t("readerRenderedFallback", read, total);
     return read < total ? t("readerReportScope", read, total) : "";
   }
+  if (scan && !scan.done) return t("readerPreparedPages", scan.scanned, total);
+  if (retryPages.length) return t("readerPreparedPages", total - unread.size, total);
   const { done, of, left } = share();
   const limited = pacer.limited() && !whole;
   const offer = limited && aheadOn && done < of;
   if (offer !== offered) {
     offered = offer;
     orchestrator?.setPageAction(offer ? t("readerReadWhole") : null, () => { whole = true; offered = false; orchestrator?.setPageAction(null); wake?.(); });
+  }
+  if (scan && unread.size && done >= of) {
+    if (asking !== aheadOn) {
+      asking = aheadOn;
+      orchestrator?.setPageAction(asking ? t("readerRetryPages") : null, () => {
+        asking = false;
+        orchestrator?.setPageAction(null);
+        for (const n of unread) retryPages.push(n);
+        wake?.();
+      });
+    }
+    return t("readerUnreadPages", unread.size, total);
   }
   if (done >= of) return "";
   // The paragraphs are counted again as their pages are read, and a page read can add one: a
@@ -259,27 +282,38 @@ function scopeNote(read: number): string {
   return minutes <= 1 ? t("readerReadingSoon", percent) : t("readerReadingLeft", percent, String(minutes));
 }
 
-/** A document past what is read without asking, which the menu's button may read whole. */
+/** The fallback or a deferred structured reading is available on request. */
 let askable = false;
 /** The menu shows that button. */
 let asking = false;
-/** The button was pressed, and the structure is being read. */
+/** The requested whole-document reading is being prepared. */
 let askedWhole = false;
 /** The menu's button asked for the whole of a document past what is read without asking: the
- *  structure is read as it would have been at the start, from pdf.js's copy of the bytes. */
+ *  deferred structure is tried first when available. */
 function readWholeAsked(): void {
-  if (!askable || !controller) return;
+  if (!aheadOn || !askable || !controller) return;
   askable = false; asking = false;
   orchestrator?.setPageAction(null);
   const owned = generation, signal = controller.signal, count = app.pdfDocument?.numPages ?? 0;
-  keepTexts = true;
-  askedWhole = true;
-  void (async () => {
-    const bytes = await app.pdfDocument?.getData().catch(() => null);
-    const read = bytes && owned === generation ? readWholeDocument(bytes, count, owned, signal, true) : Promise.resolve(false);
-    void read.finally(() => { if (owned === generation) askedWhole = false; });
-    await readAhead(owned, read);
-  })();
+  const read = async (): Promise<boolean> => {
+    askedWhole = true;
+    try {
+      if (deferredStructure) {
+        keepTexts = true;
+        if (await readWholeDocument(count, owned, signal, true)) return true;
+      }
+      if (owned !== generation || signal.aborted) return false;
+      keepTexts = false;
+      texts.clear();
+      scan = new ReflowScan(count);
+      replan();
+      return true;
+    } finally {
+      if (owned === generation) { askedWhole = false; askable = false; }
+    }
+  };
+  whole = true;
+  void readAhead(owned, read());
 }
 
 let aheadOn = true;
@@ -301,9 +335,9 @@ function nap(ms: number): Promise<void> {
 /** Why the read-ahead may not run now, as how long to wait before asking again; 0 to run. */
 function holdFor(): number {
   const live = orchestrator;
-  if (!live || !started || !structure || !aheadOn || !pages.size) return 1000;
+  if (!live || !started || (!structure && !scan) || !aheadOn || !pages.size) return 1000;
   // Hidden, on a low battery, or a scan: nothing to read that would be seen.
-  if (document.hidden || lowBattery || textless) return 2000;
+  if (document.hidden || lowBattery || (textless && !scan)) return 2000;
   if (live.busy()) return 250;
   const quiet = pacer.quiet() - (performance.now() - lastInput);
   return quiet > 0 ? quiet : 0;
@@ -328,18 +362,25 @@ function nextPage(): number | null {
   return best;
 }
 
+async function extractUnseen(n: number, tables: boolean): Promise<PdfPageText> {
+  const page = await app.pdfDocument!.getPage(n);
+  try {
+    const text = await extractPageText(page, tables);
+    if (!nameFonts(page, text)) { await page.getOperatorList().catch(() => undefined); nameFonts(page, text); }
+    return text;
+  } finally {
+    if (!pages.has(n)) page.cleanup();
+  }
+}
+
 /** A page's text without drawing it, so that it reads as the drawn page will: a font no
  *  page before it loaded is loaded first (getOperatorList draws nothing, but builds the
  *  whole page, its images too — only where a font needs it). */
 async function readPage(n: number, owned: number): Promise<void> {
   try {
-    const page = await app.pdfDocument!.getPage(n);
-    const text = await extractPageText(page);
-    if (!nameFonts(page, text)) { await page.getOperatorList().catch(() => undefined); nameFonts(page, text); }
-    // What that left behind is let go, where the viewer is not drawing the page: a long
-    // document's every page would otherwise stay in memory.
-    if (!pages.has(n)) page.cleanup();
+    const text = await extractUnseen(n, false);
     if (owned !== generation || texts.has(n)) return;
+    foundText ||= hasText(text);
     texts.set(n, text);
   } catch {
     // An unreadable page is held as one with no text, and read again when drawn.
@@ -385,6 +426,7 @@ function nextBatch(): DocumentParagraph[] {
   const limited = pacer.limited() && !whole;
   const now = performance.now();
   const settled = (p: DocumentParagraph): boolean => {
+    if (scan) return true;
     if (!p.pages.length) return false;
     for (let n = Math.max(1, Math.min(...p.pages) - 1), last = Math.min(total, Math.max(...p.pages) + 1); n <= last; n++) {
       if (!texts.has(n)) return false;
@@ -392,8 +434,10 @@ function nextBatch(): DocumentParagraph[] {
     return true;
   };
   const due = (p: DocumentParagraph): boolean => { const t = tried.get(p.text); return !t || (t.times < MAX_TRIES && t.after <= now); };
-  const ready = plan.filter((p) => due(p) && inScope(p.page, current, limited) && settled(p) &&
-    !live.onScreen(p.text) && !live.knows(p.text));
+  // Most of a long book can already be cached. Its map lookup avoids walking
+  // the drawn units and the neighbouring pages of each finished paragraph.
+  const ready = plan.filter((p) => inScope(p.page, current, limited) && !live.knows(p.text) &&
+    due(p) && settled(p) && !live.onScreen(p.text));
   ready.sort((a, b) => readingDistance(a.page, current, down) - readingDistance(b.page, current, down) || a.order - b.order);
   return takeBatch(ready, pacer.budget());
 }
@@ -424,7 +468,33 @@ async function readAhead(owned: number, structured: Promise<boolean>): Promise<v
       const hold = holdFor();
       if (hold > 0) { await nap(hold); continue; }
       const batch = nextBatch();
-      const n = nextPage();
+      if (scan && retryPages.length) {
+        const n = retryPages.at(-1)!;
+        const text = pages.get(n)?.text ?? await extractUnseen(n, true).catch(() => null);
+        if (owned !== generation) return;
+        retryPages.pop();
+        if (text && unread.delete(n)) { foundText ||= hasText(text); scan.recover(text); replan(); }
+        await nap(0);
+        continue;
+      }
+      if (scan && !scan.done && !batch.length) {
+        const began = performance.now();
+        for (let i = 0; i < PAGE_CHUNK && !scan.done; i++) {
+          const n = scan.scanned + 1;
+          const text = pages.get(n)?.text ?? await extractUnseen(n, true).catch(() => null);
+          if (owned !== generation) return;
+          if (!text) unread.add(n);
+          else foundText ||= hasText(text);
+          const changed = await scan.add(text, readScanBatch);
+          if (owned !== generation) return;
+          if (scan.done) stopScanWorker();
+          if (changed) { replan(); break; }
+          if (performance.now() - began >= PAGE_CHUNK_MS || document.hidden || !aheadOn) break;
+        }
+        await nap(performance.now() - began);
+        continue;
+      }
+      const n = scan ? null : nextPage();
       const { current, down } = position();
       if (n !== null && (batch.length === 0 || readingDistance(n, current, down) <= readingDistance(batch[0]!.page, current, down) + PAGES_AHEAD)) {
         const began = performance.now();
@@ -453,6 +523,7 @@ async function readAhead(owned: number, structured: Promise<boolean>): Promise<v
       if (stalls >= 3) { stalls = 0; await nap(60_000); continue; }
       await nap(pacer.restAfter(cost.ms, onBattery, whole));
     } catch {
+      if (owned !== generation) return;
       // Whatever failed, the reading goes on, a little later.
       await nap(5000);
     }
@@ -519,8 +590,13 @@ async function rendered(page: UpstreamPage | undefined): Promise<void> {
   try {
     // A page read ahead keeps the text it was read with: its paragraphs' texts, and so their
     // cached verdicts, stay what they were.
-    const text = (unread.has(page.id) ? undefined : texts.get(page.id)) ?? await extractPageText(page.pdfPage);
+    const text = (unread.has(page.id) ? undefined : texts.get(page.id)) ?? await extractPageText(page.pdfPage, !structure);
     if (owned !== generation || !view.layer.isConnected || page.textLayer?.div !== view.layer) return;
+    if (scan && unread.has(page.id)) scan.recover(text);
+    if (scan && unread.delete(page.id) && !unread.size && asking) {
+      asking = false;
+      orchestrator?.setPageAction(null);
+    }
     if (keepTexts && (unread.delete(page.id) || !texts.has(page.id))) texts.set(page.id, text);
     if (structure) {
       await readAround([page.id], owned);
@@ -529,33 +605,32 @@ async function rendered(page: UpstreamPage | undefined): Promise<void> {
     pages.set(page.id, {view, text, geometry});
     currentSource.setPage(page.id, {layer: view.layer, spans: view.spans});
     rebuild();
-    if (hasText(text)) {
-      textless = false;
-      say("");
-      if (!orchestrator) await startAnalysis(owned);
-      else if (started) orchestrator.refresh();
-    } else if (pages.size >= Math.min(app.pdfDocument?.numPages ?? 1, 2) && ![...pages.values()].some((p) => hasText(p.text))) {
-      // The first pages drawn are all images: a cover alone would not say so, two do.
-      textless = true;
-      say(t("readerNoText"));
-    }
+    foundText ||= hasText(text);
+    updateReadability();
+    if (!orchestrator && !textless) await startAnalysis(owned);
+    else if (started) orchestrator?.refresh();
   } catch {
     // A malformed page does not prevent the upstream viewer showing other pages.
-    if (owned === generation && !pages.size) say(t("readerNoText"));
+    if (owned === generation && !pages.size) say(t("readerPageReadFailed"));
   } finally { extracting.delete(view.layer); }
 }
 function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void>} {
+  rejectedFile = "";
   controller?.abort();
+  stopScanWorker();
+  documentPassword = "";
+  structureFailed = false;
   controller = new AbortController();
   const owned = ++generation;
   orchestrator?.stop(); orchestrator = null; started = false;
   cancelDocumentSession();
   setRangeLocator(null);
-  pages.clear(); source = null; structure = null; textless = false;
-  texts.clear(); unread.clear(); pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; askable = false; asking = false; askedWhole = false; shownPercent = 0; tried.clear(); wake?.();
+  pages.clear(); source = null; structure = null; scan = null; deferredStructure = false; textless = false; foundText = false;
+  texts.clear(); unread.clear(); retryPages.length = 0; pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; askable = false; asking = false; askedWhole = false; shownPercent = 0; tried.clear(); wake?.();
   pacer.newDocument();
   originalUrl = null; original.hidden = true;
   site = null;
+  document.body.classList.remove("document-open");
   say(t("readerLoading")); drop.hidden = true;
   const closing = app.close().catch(() => undefined);
   return {owned, signal: controller.signal, closing};
@@ -571,28 +646,35 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   // Upstream controls the password dialog, rendering, navigation, find and printing.
   try {
     app.setTitleUsingUrl(name);
-    // pdf.js may transfer the bytes it is given to its worker: the structure worker
-    // gets its own copy, taken before that.
-    const copy = bytes.slice();
-    await app.open({data: bytes});
+    await app.open({data: bytes, filename: name});
     if (load.owned !== generation) return;
+    document.body.classList.add("document-open");
     drop.hidden = true;
     const count = app.pdfDocument?.numPages ?? 0;
     say("");
-    void readAhead(load.owned, readWholeDocument(copy, count, load.owned, load.signal));
+    void readAhead(load.owned, readWholeDocument(count, load.owned, load.signal));
   } catch {
-    if (load.owned === generation) { say(t("readerBadFile")); drop.hidden = false; }
+    if (load.owned === generation) { documentPassword = ""; say(t("readerBadFile")); drop.hidden = false; }
   }
 }
+let fileChoice = 0;
 async function openFile(file: File): Promise<void> {
-  // Refused before the load begins, so the document already open stays open.
-  if (file.size > MAX_BYTES) { failure("large"); return; }
-  const load = beginLoad();
-  holdSource(null);
+  const choice = ++fileChoice;
+  rejectedFile = "";
+  if (file.size > MAX_BYTES) { rejectFile(t("readerTooLarge")); return; }
+  // The extension and MIME type can be missing or wrong. Check the bytes before replacing the open PDF.
   try {
+    const head = new Uint8Array(await file.slice(0, PDF_HEADER_BYTES).arrayBuffer());
+    if (choice !== fileChoice) return;
+    if (!hasPdfMagic(head)) { rejectFile(t("readerBadFile")); return; }
+    say(t("readerLoading"));
     const bytes = new Uint8Array(await file.arrayBuffer());
-    await openBytes(bytes, file.name, null, load);
-  } catch { if (load.owned === generation) failure("type"); }
+    if (choice !== fileChoice) return;
+    const load = beginLoad();
+    holdSource(null);
+    history.replaceState(null, "", location.pathname);
+    await openBytes(bytes, pdfFileName(file.name) ?? "document.pdf", null, load);
+  } catch { if (choice === fileChoice) rejectFile(t("readerBadFile")); }
 }
 async function openTicket(ticket: string, src: string): Promise<void> {
   const load = beginLoad(), began = performance.now();
@@ -614,25 +696,29 @@ function documentAddress(raw: string | null): string | null {
  *  way every other route reads one (lib/pdf/sourceTransfer.ts), and move to the address
  *  that holds it. False when that cannot be: the reader then offers the original. */
 async function reopen(src: string): Promise<boolean> {
+  const owned = generation;
   say(t("readerLoading"));
   try {
     const reply = await sendDocumentMessage({action: ACTIONS.PDF_REOPEN, url: src}) as PdfReopenResult | undefined;
+    if (owned !== generation) return true;
     if (reply?.ok && reply.reader.startsWith(`${browser.runtime.getURL("/reader.html")}?`)) {
       location.replace(reply.reader);
       return true;
     }
   } catch {}
-  return false;
+  return owned !== generation;
 }
 
 async function main(): Promise<void> {
   document.getElementById("choose")!.textContent = t("readerChoose");
   document.getElementById("dropLabel")!.textContent = t("readerDrop");
-  document.getElementById("dropNote")!.textContent = t("readerDropNote");
+  document.getElementById("dropNote")!.textContent = t("readerDropNote", MAX_FILE_MIB);
   original.querySelector("span")!.textContent = t("readerOpenOriginal");
   original.title = t("readerOpenOriginal"); original.setAttribute("aria-label", t("readerOpenOriginal"));
   analyze.title = t("readerOpenMenu"); analyze.setAttribute("aria-label", t("readerOpenMenu"));
-  document.getElementById("choose")!.addEventListener("click", () => fileInput.click());
+  const chooseFile = (): void => fileInput.click();
+  document.getElementById("choose")!.addEventListener("click", chooseFile);
+  document.getElementById("anagramOpenFile")!.addEventListener("click", chooseFile);
   // Capture before the upstream file handlers, converting local files into bytes ourselves.
   document.addEventListener("change", (event) => {
     const input = event.target;
@@ -641,11 +727,31 @@ async function main(): Promise<void> {
     const file = input.files?.[0]; input.value = "";
     if (file && app) void openFile(file);
   }, true);
-  document.addEventListener("dragover", (event) => { event.preventDefault(); }, true);
+  let dragDepth = 0;
+  const endDrag = (): void => { dragDepth = 0; document.body.classList.remove("drag-file"); };
+  document.addEventListener("dragenter", (event) => {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepth++;
+    document.body.classList.add("drag-file");
+  }, true);
+  document.addEventListener("dragleave", () => {
+    if (dragDepth > 0 && --dragDepth === 0) endDrag();
+  }, true);
+  document.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (event.dataTransfer?.types.includes("Files")) {
+      event.stopImmediatePropagation();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }, true);
   document.addEventListener("drop", (event) => {
     event.preventDefault(); event.stopImmediatePropagation();
-    const file = event.dataTransfer?.files?.[0];
-    if (file && app) void openFile(file);
+    endDrag();
+    const files = event.dataTransfer?.files;
+    if (!app || !files?.length) return;
+    if (files.length > 1) { ++fileChoice; rejectFile(t("readerDropOne")); return; }
+    void openFile(files[0]!);
   }, true);
   original.addEventListener("click", async () => {
     const url = originalUrl;
@@ -679,6 +785,18 @@ async function main(): Promise<void> {
       battery.addEventListener("levelchange", read);
     }).catch(() => undefined);
   app = await startViewer();
+  const upstreamPicker = document.getElementById("fileInput") as HTMLInputElement | null;
+  if (upstreamPicker) upstreamPicker.accept = fileInput.accept;
+  const prompt = app.passwordPrompt;
+  const setCallback = prompt.setUpdateCallback.bind(prompt);
+  prompt.setUpdateCallback = (submit, reason) => {
+    const owned = generation;
+    documentPassword = "";
+    return setCallback((value) => {
+      if (owned === generation) documentPassword = typeof value === "string" ? value : "";
+      submit(value);
+    }, reason);
+  };
   app.eventBus.on("textlayerrendered", (event) => { void rendered(event.source); });
   // Upstream find replaces text nodes inside item spans; rebuild ownership after its listeners finish.
   let refreshQueued = false;
@@ -698,6 +816,7 @@ async function main(): Promise<void> {
   if (src && ticket) await openTicket(ticket, src);
   else if (src && returning && !params.has("err") && await reopen(src)) return;
   else {
+    document.title = t("readerDrop");
     drop.hidden = false;
     if (params.has("err")) failure(params.get("err")!);
     else if (src) say(t("readerReloadRequired"));
@@ -706,15 +825,17 @@ async function main(): Promise<void> {
 void main().catch(() => { say(t("readerBadFile")); drop.hidden = false; });
 let resumeAfterPageShow = false;
 window.addEventListener("pagehide", (event) => {
-  ++generation; controller?.abort(); orchestrator?.stop(); cancelDocumentSession();
+  ++fileChoice; ++generation; controller?.abort(); stopScanWorker(); wake?.(); orchestrator?.stop(); cancelDocumentSession();
   resumeAfterPageShow = event.persisted && started;
   if (!event.persisted) void app?.close();
 });
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && resumeAfterPageShow) {
+    controller = new AbortController();
+    if (!structure && !scan) { askedWhole = false; askable = true; }
     orchestrator?.start();
     // pagehide ended the read-ahead with everything else of this document's; it goes on.
-    if (structure) void readAhead(generation, Promise.resolve(true));
+    if (structure || scan) void readAhead(generation, Promise.resolve(true));
   }
   resumeAfterPageShow = false;
 });

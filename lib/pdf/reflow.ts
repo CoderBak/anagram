@@ -11,12 +11,15 @@
 // and y growing DOWNWARD (lib/pdf/extract.ts flips pdf.js's bottom-up space), so
 // "the top margin" is simply a small y and lines sort by y ascending.
 //
-// WHAT IT DOES NOT DO. Reference lists, tables and formula fragments are left as
-// the paragraphs and lines they look like, and so are footnotes and captions, though
+// Rows with drawn cell boundaries or aligned data fields stay together and are excluded from scoring.
+// Ambiguous layouts, reference lists and formula fragments are left as the paragraphs
+// and lines they look like, and so are footnotes and captions, though
 // a paragraph is joined across them (markAsides). Being clever there means guessing,
 // and the walker's own filters (name lists, symbol noise, link density, the 50-word
-// floor) already skip most of it — a table row never reaches the engine anyway. Ligatures are kept exactly as the PDF gives them; the model form
+// floor) already skip much of it. Ligatures are kept exactly as the PDF gives them; the model form
 // (modelText) spells ﬁ/ﬂ out itself.
+import type { TaggedRow } from "./taggedTables";
+import type { TableRowBox } from "./tableGrid";
 import { skipGap } from "../dom/text";
 import { BARE_NUMBER, lineNumberMarks, type NumberMark, type PageContent } from "./lineNumbers";
 import { finish } from "../slices";
@@ -68,6 +71,8 @@ export interface PdfPageText {
   width: number;
   height: number;
   items: PdfTextItem[];
+  tables?: TableRowBox[];
+  taggedRows?: TaggedRow[];
   /**
    * pdf.js's viewport transform at scale 1 — PDF user space to this page's top-left
    * space — for a reading that arrives in PDF coordinates (lib/pdf/structured.ts).
@@ -105,7 +110,7 @@ export interface SourceRun {
 
 /** A block of reading-order text: one paragraph as the model reads it. */
 export interface ReflowBlock {
-  kind: "heading" | "paragraph";
+  kind: "heading" | "paragraph" | "table";
   text: string;
   /** The page the block starts on. */
   page: number;
@@ -279,6 +284,30 @@ function median(values: number[]): number {
   const s = [...values].sort((a, b) => a - b);
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+/** The median of repeated measurements without allocating a slot for every character. */
+function weightedMedian<T>(rows: readonly T[], sizeOf: (row: T) => number, weightOf: (row: T) => number): number {
+  const weights = new Map<number, number>();
+  for (const row of rows) {
+    const size = sizeOf(row), weight = weightOf(row);
+    weights.set(size, (weights.get(size) ?? 0) + weight);
+  }
+  return medianOfWeights(weights);
+}
+
+function medianOfWeights(weights: Map<number, number>): number {
+  let total = 0;
+  for (const weight of weights.values()) total += weight;
+  if (total === 0) return 0;
+  const left = Math.floor((total - 1) / 2), right = Math.floor(total / 2);
+  let sum = 0, lower = 0;
+  for (const [size, weight] of [...weights].sort(([a], [b]) => a - b)) {
+    sum += weight;
+    if (sum - weight <= left) lower = size;
+    if (sum > right) return (lower + size) / 2;
+  }
+  return lower;
 }
 
 function percentile(values: number[], p: number): number {
@@ -516,6 +545,7 @@ interface Line {
   items: PdfTextItem[];
   /** The line is set beside a drop cap, so its left edge says nothing about paragraphs. */
   wrapped?: boolean;
+  tableRow?: boolean;
 }
 
 /** Runs worth reading: something other than whitespace, and set the normal way round. */
@@ -652,13 +682,7 @@ function groupIntoLines(page: PdfPageText, index: ItemIndex): Line[] {
 
 /** The size most of a page's CHARACTERS are set in — its body size, before any lines. */
 function characterSize(items: PdfTextItem[]): number {
-  const weighted: number[] = [];
-  for (const it of items) {
-    for (let i = Math.max(1, Math.round(it.str.trim().length / 4)); i > 0; i--) {
-      weighted.push(it.height);
-    }
-  }
-  return median(weighted);
+  return weightedMedian(items, (it) => it.height, (it) => Math.max(1, Math.round(it.str.trim().length / 4)));
 }
 
 /**
@@ -993,7 +1017,7 @@ function columnsHold(items: PdfTextItem[], gutters: number[]): boolean {
 }
 
 /** Which column a run sits in, or -1 when it spans a gutter and belongs to none. */
-function columnOf(it: PdfTextItem, gutters: number[]): number {
+function columnOf(it: Pick<PdfTextItem, "x" | "width" | "height">, gutters: number[]): number {
   const tol = it.height * STRADDLE_TOL;
   const x1 = it.x + it.width;
   let col = 0;
@@ -1002,6 +1026,188 @@ function columnOf(it: PdfTextItem, gutters: number[]): number {
     if ((it.x + x1) / 2 >= g) col++;
   }
   return col;
+}
+
+/** Read through each cell, including its wrapped lines, before advancing to the
+ *  next cell. Source offsets continue to refer to the original page. */
+function tableLine(page: PdfPageText, cells: PdfTextItem[][], index: ItemIndex): Line | undefined {
+  const content = traced(), members: PdfTextItem[] = [];
+  let first: Line | undefined;
+  for (const items of cells) {
+    if (!items.length) continue;
+    const only = items[0]!;
+    if (items.length === 1 && (only.rotated || !only.str.trim())) continue;
+    const lines = items.length === 1 ? [makeLine(page.page, items, index)] : groupIntoLines({ ...page, items }, index);
+    for (const line of lines) {
+      if (!first || line.y < first.y) first = line;
+      if (content.text) addPlain(content, " ");
+      addTraced(content, line);
+      append(members, line.items);
+    }
+  }
+  if (first) return { ...first, ...content, items: members, tableRow: true, col: -1,
+    x0: least(members, (it) => it.x), x1: most(members, (it) => it.x + it.width) };
+}
+
+function taggedLines(page: PdfPageText, index: ItemIndex): { rows: Line[]; taken: Set<PdfTextItem> } {
+  const rows: Line[] = [], taken = new Set<PdfTextItem>();
+  for (const row of page.taggedRows ?? []) {
+    const cells = row.map((cell) => cell.map((i) => page.items[i]).filter((it): it is PdfTextItem => !!it && !taken.has(it)));
+    const line = tableLine(page, cells, index);
+    if (!line) continue;
+    rows.push(line);
+    for (const item of line.items) taken.add(item);
+  }
+  return { rows, taken };
+}
+
+/** Collect only runs inside each row box. A physical baseline can also carry
+ *  prose from the neighbouring column, or cells from a second table. */
+function assembleTableRows(page: PdfPageText, lines: Line[], boxes: TableRowBox[], index: ItemIndex): Line[] {
+  const taken = new Set<PdfTextItem>(), rows: Line[] = [];
+  let first = 0;
+  for (const box of boxes) {
+    while (first < lines.length && lines[first]!.y <= box.top) first++;
+    const left = box.edges[0]!, right = box.edges.at(-1)!;
+    const cells: PdfTextItem[][] = box.edges.slice(1).map(() => []);
+    let crossesBorder = false;
+    for (let i = first; i < lines.length && lines[i]!.y <= box.bottom; i++) {
+      for (const it of lines[i]!.items) {
+        if (taken.has(it) || it.x + it.width <= left || it.x >= right) continue;
+        if (it.x < left - 1 || it.x + it.width > right + 1) { crossesBorder = true; break; }
+        const mid = it.x + it.width / 2;
+        let cell = 0;
+        while (cell + 1 < cells.length && mid >= box.edges[cell + 1]!) cell++;
+        cells[cell]!.push(it);
+      }
+      if (crossesBorder) break;
+    }
+    if (crossesBorder) continue;
+    const row = tableLine(page, cells, index);
+    if (!row) continue;
+    rows.push({ ...row, x0: left, x1: right });
+    for (const it of row.items) taken.add(it);
+  }
+  if (!rows.length) return lines;
+  for (const line of lines) {
+    if (!line.items.some((it) => taken.has(it))) { rows.push(line); continue; }
+    const rest = line.items.filter((it) => !taken.has(it));
+    if (rest.length) rows.push(makeLine(line.page, rest, index));
+  }
+  return rows.sort((a, b) => a.y - b.y || a.x0 - b.x0);
+}
+
+interface Cell { left: number; right: number; text: string }
+
+/** A run of right-hand measurements is often centred under its headings.
+ *  Dashes stand in for missing values and row labels may span several rows. */
+function markMeasurementRows(lines: Line[]): void {
+  const numeric = /^[+(−–-]?(?:\d+(?:[.,]\d+)*|\.\d+)(?:[%)]|±\d+(?:\.\d+)?)?$/u;
+  let columns: number[] = [], start = 0, rows = 0;
+  const finish = (end: number) => {
+    if (rows >= 3) {
+      for (let i = start; i < end; i++) lines[i]!.tableRow = true;
+      const header = lines[start - 1], first = lines[start]!;
+      if (header && first.y - header.y <= 2.5 * first.size && header.text.length <= 160 &&
+          columns.every((x) => header.items.some((it) => it.str.trim() && it.str.trim().split(/\s+/).length <= 3 &&
+            Math.abs(it.x + it.width / 2 - x) < first.size))) header.tableRow = true;
+    }
+    rows = 0; columns = [];
+  };
+  for (const [i, line] of lines.entries()) {
+    const fields: PdfTextItem[] = [];
+    if (!line.tableRow && line.items.length >= 3 && line.text.length <= 180 && /\d/.test(line.text)) {
+      for (let j = line.items.length - 1; j >= 0; j--) {
+        const it = line.items[j]!, value = it.str.trim();
+        if (!value) continue;
+        if (!(numeric.test(value) || /^[-–—]$/.test(value))) break;
+        if (fields.length && fields.at(-1)!.x - it.x - it.width < 0.55 * line.size) break;
+        fields.push(it);
+      }
+    }
+    if (fields.length < 3 || !fields.some((it) => numeric.test(it.str.trim()))) { finish(i); continue; }
+    const centers = fields.map((it) => it.x + it.width / 2);
+    if (rows && (centers.length !== columns.length || line.y - lines[i - 1]!.y > 3 * line.size ||
+        centers.some((x, j) => Math.abs(x - columns[j]!) > line.size * 0.8))) finish(i);
+    if (!rows) { start = i; columns = centers; }
+    rows++;
+  }
+  finish(lines.length);
+}
+
+/** For an all-text grid, the PDF's own order provides evidence independent of
+ *  geometry. Short names read across repeated categories (or under a distinct
+ *  header) describe records. Independent lists commonly paint down each column. */
+function textTable(rows: Cell[][], lines: Line[], start: number): boolean {
+  if (rows.length < 4 || rows[0]!.length < 2) return false;
+  const body = rows.slice(1);
+  if (!rows.every((row) => row.every(({text}) => text.length <= 48 &&
+      /^[\p{L}\p{M}][\p{L}\p{M} ’',-]*$/u.test(text.trim()) && text.trim().split(/\s+/).length <= 3))) return false;
+
+  let item = -1;
+  for (let i = start; i < start + rows.length; i++) {
+    for (const run of lines[i]!.runs) {
+      if (run.item < item) return false;
+      item = run.item;
+    }
+  }
+  if (new Set(body.map((row) => row[0]!.text.trim())).size < 3) return false;
+  const header = lines[start]!.font;
+  if (header && body.every((_, i) => lines[start + i + 1]!.font && lines[start + i + 1]!.font !== header)) return true;
+  if (rows[0]!.length < 3) return false;
+  return rows[0]!.slice(1).some((_, j) => {
+    const count = new Set(body.map((row) => row[j + 1]!.text.trim())).size;
+    return count >= 2 && count <= body.length - 2;
+  });
+}
+
+/** Infer an unruled table only when successive rows have aligned, short fields and
+ *  repeated data values. Aligned prose columns alone do not supply that evidence. */
+function markUnruledTables(lines: Line[]): void {
+  let start = 0, values = 0;
+  const rows: Cell[][] = [];
+  const finish = (end: number) => {
+    if (!rows.length) return;
+    if (rows.length >= 3 && (values >= Math.ceil(rows.length * 0.6) || textTable(rows, lines, start))) {
+      for (let i = start; i < end; i++) lines[i]!.tableRow = true;
+    }
+    rows.length = 0;
+    values = 0;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.tableRow || line.text.length > 160 || !line.items.some((it, j, row) => j > 0 && it.x - (row[j - 1]!.x + row[j - 1]!.width) > 2 * line.size)) { finish(i); continue; }
+    const cells: Cell[] = [];
+    for (const item of line.items) {
+      const last = cells.at(-1);
+      if (!last || item.x - last.right > 2 * line.size) {
+        cells.push({ left: item.x, right: item.x + item.width, text: item.str });
+      } else {
+        if (item.x - last.right > line.size * SPACE_GAP) last.text += " ";
+        last.text += item.str;
+        last.right = Math.max(last.right, item.x + item.width);
+      }
+    }
+    if (cells.length < 2 || cells.some((c) => c.text.trim().split(/\s+/).length > 6 || /[!?。！？]$/.test(c.text.trim()))) {
+      finish(i); continue;
+    }
+    const anchors = rows[0];
+    if (anchors && (cells.length !== anchors.length || line.y - lines[i - 1]!.y > 4 * line.size ||
+        cells.some((c, j) => Math.min(Math.abs(c.left - anchors[j]!.left), Math.abs(c.right - anchors[j]!.right)) > line.size * 0.75))) {
+      finish(i);
+    }
+    if (!rows.length) start = i;
+    rows.push(cells);
+    // In a two-column layout a quantitative value supplies the distinction from a
+    // pair of columns of short prose. In a wider grid, short identifiers also recur.
+    const data = cells.slice(1).filter((c) => {
+      const value = c.text.trim();
+      return cells.length === 2 ? /^[+−–(\d$€£-][\d\s.,%+±−–():/$€£-]*$/u.test(value)
+        : value.length <= 32 && value.split(/\s+/).length <= 3 && /\d/u.test(value);
+    });
+    if (data.length && (cells.length > 2 || /\p{L}/u.test(cells[0]!.text))) values++;
+  }
+  finish(lines.length);
 }
 
 /**
@@ -1019,7 +1225,15 @@ function splitColumns(page: PdfPageText, lines: Line[], { at: gutters, from, to 
   const columns = new Map<number, PdfTextItem[]>();
   for (const line of lines) {
     // Outside the stretch the gutters divide, the page has no columns (stretchGutters).
-    if (line.y <= from || line.y >= to || line.items.some((it) => columnOf(it, gutters) < 0)) {
+    if (line.y <= from || line.y >= to) {
+      out.push({ ...line, col: -1 });
+      continue;
+    }
+    if (line.tableRow) {
+      out.push({ ...line, col: columnOf({ x: line.x0, width: line.x1 - line.x0, height: line.size }, gutters) });
+      continue;
+    }
+    if (line.items.some((it) => columnOf(it, gutters) < 0)) {
       out.push({ ...line, col: -1 });
       continue;
     }
@@ -1034,6 +1248,38 @@ function splitColumns(page: PdfPageText, lines: Line[], { at: gutters, from, to 
     for (const line of groupIntoLines({ ...page, items }, index)) out.push({ ...line, col });
   }
   return out.sort((a, b) => a.y - b.y || a.col - b.col);
+}
+
+/** A table can occupy one side of an otherwise single-column page. Shared
+ *  baselines locate the adjacent prose even when the table is too short to
+ *  establish a page-wide gutter. Read the whole paragraph on its own side. */
+function orderBesideTables(lines: Line[]): Line[] {
+  let consumed = 0;
+  const out: Line[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const row = lines[i]!;
+    if (!row.tableRow) continue;
+    const beside = [lines[i - 1], lines[i + 1]].find((l) => l && !l.tableRow &&
+      Math.abs(l.y - row.y) <= Math.max(l.size, row.size) &&
+      (l.x1 + row.size < row.x0 || row.x1 + row.size < l.x0));
+    if (!beside) continue;
+    const tableLeft = row.x1 < beside.x0;
+    const gutter = tableLeft ? (row.x1 + beside.x0) / 2 : (beside.x1 + row.x0) / 2;
+    const fits = (l: Line) => Boolean(l.tableRow) === tableLeft ? l.x1 <= gutter : l.x0 >= gutter;
+    const near = (a: Line, b: Line) => b.y - a.y <= 3 * Math.max(a.size, b.size);
+    let start = i, end = i + 1;
+    while (start > consumed && fits(lines[start - 1]!) && near(lines[start - 1]!, lines[start]!)) start--;
+    while (end < lines.length && fits(lines[end]!) && near(lines[end - 1]!, lines[end]!)) end++;
+    for (let j = consumed; j < start; j++) out.push(lines[j]!);
+    for (const left of [true, false]) {
+      for (let j = start; j < end; j++) if ((lines[j]!.x1 <= gutter) === left) out.push(lines[j]!);
+    }
+    consumed = end;
+    i = end - 1;
+  }
+  if (!consumed) return lines;
+  for (let j = consumed; j < lines.length; j++) out.push(lines[j]!);
+  return out;
 }
 
 /**
@@ -1181,8 +1427,14 @@ function findMarginLines(perPage: Line[][], pages: PdfPageText[]): Set<Line> {
   perPage.forEach((lines, i) => {
     const height = pages[i]!.height || 1;
     for (const line of lines) {
+      if (line.tableRow) continue;
       const rel = line.y / height;
-      const band = rel <= MARGIN_TOP ? "top" : rel >= MARGIN_BOTTOM ? "bottom" : null;
+      let band: "top" | "bottom" | null = rel <= MARGIN_TOP ? "top" : rel >= MARGIN_BOTTOM ? "bottom" : null;
+      // Some footers put the baseline just inside the body (RFC 9110). A
+      // separate page-number field lets the repeated-label check use the
+      // height of the full line at the margin boundary.
+      if (!band && line.y + line.size >= height * MARGIN_BOTTOM && line.items.length > 1 &&
+          line.items.some((it) => PAGE_NUMBER.test(it.str.trim()))) band = "bottom";
       if (!band) continue;
       if (PAGE_NUMBER.test(line.text)) {
         drop.add(line);
@@ -1250,7 +1502,7 @@ const KEEP_HYPHEN = new Set([
  *  starts where a word does: tried at every letter of a word with no hyphen in it, the
  *  search ran to the word's end from each, and a run of fifty thousand letters (a sequence,
  *  an encoded blob, a PDF's own making) took time as the square of its length. */
-const INLINE_COMPOUND = /(?<!\p{L})(\p{L}{2,})-(\p{L}{2,})/gu;
+const INLINE_COMPOUND = /(?<!\p{L})(\p{L}{2,})[-‐](\p{L}{2,})/gu;
 
 /** Whole words, for the fused spellings a document that writes "nonlinear" attests. */
 const WORD = /\p{L}{3,}/gu;
@@ -1265,11 +1517,34 @@ const WORD = /\p{L}{3,}/gu;
  */
 const HYPHEN_MEASURE = 0.5;
 
+export interface Spelling { stem: string; tail: string }
+
+/** A printed hyphen the line layout allowed to be either literal or discretionary. */
+export interface PrintedBreak extends Spelling {
+  glyph: string;
+  page: number;
+  item: number;
+  offset: number;
+  after: string;
+  kept: boolean;
+}
+
+export function sourcePosition(page: number, item: number, offset: number): string {
+  return `${page}/${item}/${offset}`;
+}
+
+export interface BatchSpellings {
+  fused: Set<string>;
+  hyphenated: Set<string>;
+  breaks: PrintedBreak[];
+}
+
 /**
  * What the document says about its own compounds — the only dictionary available, and a
  * better one than any list we could ship, because it is this document's usage.
  */
 export interface Vocabulary {
+  breaks?: PrintedBreak[];
   /** Compounds written WITH a hyphen where no line break forced it: "third-party". */
   hyphenated: Set<string>;
   /** Their first elements: "third", for the compound met only in its broken form. */
@@ -1290,7 +1565,7 @@ const CONTINUED = 3;
 /** The longest word the vocabulary keeps. Every beginning of a word is kept (`starts`), and
  *  a "word" of fifty thousand letters had fifty thousand beginnings, gigabytes of them. No
  *  dictionary's longest word is half this long; German's longest compounds are not over it. */
-const LONGEST_WORD = 64;
+export const LONGEST_WORD = 64;
 
 /** Collect the evidence once per document — it is read at every broken line. */
 export function vocabularyOf(texts: string[]): Vocabulary {
@@ -1342,20 +1617,30 @@ export function* vocabularyInSlices(texts: string[]): Generator<void, Vocabulary
  * leave far more real words ("straightfor-ward") broken, which reads worse to a scorer.
  */
 export function dehyphenates(stem: string, head: string, vocab: Vocabulary): boolean {
-  // What stands before the word is not part of it: "(Ta-" and "causal/en-" end in "Ta-", "en-".
+  const word = brokenSpelling(stem, head);
+  return word !== null && fusesWord(word, vocab);
+}
+
+function brokenSpelling(stem: string, head: string): Spelling | null {
+  // What stands before a word is not part of it: "(Ta-" and "causal/en-" end in "Ta-", "en-".
   stem = stem.replace(/^.*[^\p{L}\p{M}‐-]/u, "");
-  if (!/^\p{Ll}/u.test(head)) return false;
-  if (!/^\p{L}{2,}$/u.test(stem)) return false;
-  if (stem === stem.toUpperCase()) return false;
-  const next = /^\p{L}+(?:-\p{L}+)*/u.exec(head)?.[0] ?? "";
-  if (next.includes("-")) return false;
-  const lower = stem.toLowerCase();
-  const tail = next.toLowerCase();
-  if (vocab.hyphenated.has(`${lower}-${tail}`)) return false;
-  if (vocab.fused.has(lower + tail)) return true;
-  if (tail.length >= CONTINUED && vocab.starts.has(lower + tail.slice(0, CONTINUED))) return true;
-  if (vocab.heads.has(lower)) return false;
-  return !KEEP_HYPHEN.has(lower);
+  if (!/^\p{Ll}/u.test(head) || !/^\p{L}{2,}$/u.test(stem) || stem === stem.toUpperCase()) return null;
+  const next = /^\p{L}+(?:[-‐]\p{L}+)*/u.exec(head)?.[0] ?? "";
+  if (/[-‐]/u.test(next)) return null;
+  return {stem: stem.toLowerCase(), tail: next.toLowerCase()};
+}
+
+export function continuedPrefix({stem, tail}: Spelling): string | null {
+  return tail.length >= CONTINUED ? stem + tail.slice(0, CONTINUED) : null;
+}
+
+export function fusesWord(word: Spelling, vocab: Vocabulary): boolean {
+  const {stem, tail} = word;
+  if (vocab.hyphenated.has(`${stem}-${tail}`)) return false;
+  if (vocab.fused.has(stem + tail)) return true;
+  const prefix = continuedPrefix(word);
+  if (prefix && vocab.starts.has(prefix)) return true;
+  return !vocab.heads.has(stem) && !KEEP_HYPHEN.has(stem);
 }
 
 /** How a line ended, for the two decisions that need more than the text itself. */
@@ -1384,8 +1669,19 @@ function appendLine(t: Traced, next: Traced, vocab: Vocabulary, br: Break = {}):
   // The whole token is captured, hyphens and all, so "state-of-the-" arrives at the
   // test below as "state-of-the" and is refused for carrying a hyphen of its own.
   const hyphen = /^(\S+)[-‐­]$/u.exec(lastToken(t.text));
-  if (hyphen && !br.short && dehyphenates(hyphen[1]!, next.text, vocab)) {
-    dropLastChar(t);
+  if (hyphen && !br.short) {
+    const word = brokenSpelling(hyphen[1]!, next.text);
+    if (word) {
+      const fuse = fusesWord(word, vocab);
+      if (vocab.breaks && word.stem.length <= LONGEST_WORD && word.tail.length <= LONGEST_WORD) {
+        const a = t.runs.at(-1), b = next.runs[0], glyph = t.text.slice(-1);
+        if (a && b && a.at + a.length === t.text.length && b.at === 0 && glyph !== "\u00ad") {
+          vocab.breaks.push({...word, glyph, kept: !fuse, page: a.page, item: a.item,
+            offset: a.from + a.length - 1, after: sourcePosition(b.page, b.item, b.from)});
+        }
+      }
+      if (fuse) dropLastChar(t);
+    }
   } else if (!hyphen && !(CJK.test(t.text.slice(-1)) && CJK.test(next.text.slice(0, 1)))) {
     // Neither a real hyphen (which swallowed no space) nor CJK (which is set solid):
     // the line break stood for a word space, and the space is ours.
@@ -1398,7 +1694,7 @@ function appendLine(t: Traced, next: Traced, vocab: Vocabulary, br: Break = {}):
 
 /** A block still knowing which run of lines it came from, so joins can be judged. */
 interface Draft {
-  kind: "heading" | "paragraph";
+  kind: "heading" | "paragraph" | "table";
   text: string;
   /** Where every stretch of `text` was set — offsets into `text`. */
   runs: SourceRun[];
@@ -1462,12 +1758,12 @@ function segments(lines: Line[], front: Set<Line>): Line[][] {
   let key = "";
   for (const line of lines) {
     const k = `${line.page}:${line.col}:${front.has(line) ? "front" : ""}`;
-    if (k !== key && current.length > 0) {
+    if ((k !== key || line.tableRow) && current.length > 0) {
       out.push(current);
       current = [];
     }
     key = k;
-    current.push(line);
+    if (line.tableRow) out.push([line]); else current.push(line);
   }
   if (current.length > 0) out.push(current);
   return out;
@@ -1482,6 +1778,12 @@ function segments(lines: Line[], front: Set<Line>): Line[][] {
  * to know which one the document chose.
  */
 function paragraphsOf(lines: Line[], vocab: Vocabulary, front: boolean): Draft[] {
+  const first = lines[0]!;
+  if (first.tableRow) {
+    const id = `${first.page}:table:${first.y}`;
+    return [{ kind: "table", text: first.text, runs: first.runs, page: first.page, start: id, segment: id,
+      size: first.size, font: first.font, aside: true, endsShort: true, front: false }];
+  }
   const pitches: number[] = [];
   for (let i = 1; i < lines.length; i++) {
     const d = lines[i]!.y - lines[i - 1]!.y;
@@ -1682,7 +1984,7 @@ function continuesInto(prev: Draft | null, d: Draft): prev is Draft {
  */
 function classifyHeadings(drafts: Draft[], bodySize: number, displayFonts: Set<string>): void {
   for (const d of drafts) {
-    if (d.front) continue;
+    if (d.front || d.kind === "table") continue;
     if (d.text.split(/\s+/).length > HEADING_MAX_WORDS) continue;
     const display = displayFonts.has(d.font) || SECTION_NUMBER.test(d.text);
     if (d.size >= bodySize * HEADING_SIZE || (display && !SENTENCE_END.test(d.text))) {
@@ -1712,14 +2014,54 @@ function classifyFrontMatter(front: Draft[], bodySize: number): void {
   });
 }
 
+/** Protocol specifications print formal grammar among the prose. Keep its
+ *  definitions and their continuations together when deciding what to omit.
+ *  A single assignment, an inline quotation or a list of prose stays readable. */
+function omitGrammar(lines: Line[]): Line[] {
+  if (!lines.some((line) => line.text.includes("="))) return lines;
+  const definition = /^[A-Za-z][A-Za-z0-9-]*\s*=(?:\/|\s|$)/;
+  const terminal = /%[isbxd](?:["0-9])|\b(?:\d*DIGIT|ALPHA|SP|HTAB|OCTET|CRLF)\b/;
+  const omitted = new Set<Line>();
+  let start = 0, rules = 0, hasTerminal = false;
+  const finish = (end: number) => {
+    if (rules >= 2 && hasTerminal) for (let i = start; i < end; i++) omitted.add(lines[i]!);
+    rules = 0;
+    hasTerminal = false;
+  };
+  for (const [i, line] of lines.entries()) {
+    const prev = lines[i - 1];
+    if (prev && (line.font !== prev.font || line.col !== prev.col || line.y - prev.y > 6 * line.size)) finish(i);
+    const text = line.text.trim();
+    if (!line.tableRow && definition.test(text)) {
+      if (!rules) start = i;
+      rules++;
+    } else if (!rules || !/^[;/]/.test(text) || line.tableRow) { finish(i); continue; }
+    hasTerminal ||= terminal.test(text);
+  }
+  finish(lines.length);
+  return omitted.size ? lines.filter((line) => !omitted.has(line)) : lines;
+}
+
 // ---- the entry point ------------------------------------------------------------------
+
+/** Type sizes and faces of pages already measured, including the frontier page
+ *  that will be laid out again with its successor. Maps travel with worker batches. */
+export interface ReflowTypography {
+  through: number;
+  sizes: Map<number, number>;
+  fonts: Map<string, number>;
+}
+
+export function copyTypography(from?: ReflowTypography): ReflowTypography {
+  return {through: from?.through ?? 0, sizes: new Map(from?.sizes), fonts: new Map(from?.fonts)};
+}
 
 /**
  * Rebuild a document's paragraphs from its pages' text runs. The pages may be some of the
  * document only — the pages drawn, where the reader goes without Zotero's structure, or what
  * a reading surface shows — and running-head detection then works from what it has.
  */
-export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
+export function reflowPdf(pages: PdfPageText[], compoundHeads: readonly string[] = [], typography = copyTypography(), spellings?: BatchSpellings): ReflowBlock[] {
   if (pages.length === 0) return [];
 
   // Every run of glyphs is known by its place in its page's `items`, which is the place
@@ -1732,44 +2074,63 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   // every line, where the paragraphs' indents and sentence starts are read.
   const numbers = lineNumberRuns(pages);
   const perPage = pages.map((whole) => {
-    const p = numbers.size === 0 ? whole : { ...whole, items: whole.items.filter((it) => !numbers.has(it)) };
-    const lines = groupIntoLines(p, index);
-    const gutters = findGutters(lines, p.width, p.height);
+    const tagged = whole.taggedRows?.length ? taggedLines(whole, index) : null;
+    const ordinary = tagged ? { ...whole, items: whole.items.filter((it) => !tagged.taken.has(it)) } : whole;
+    const readLines = (p: PdfPageText): Line[] => {
+      const physical = groupIntoLines(p, index);
+      const lines = p.tables?.length ? assembleTableRows(p, physical, p.tables, index) : physical;
+      markMeasurementRows(lines);
+      markUnruledTables(lines);
+      return tagged ? lines.concat(tagged.rows).sort((a, b) => a.y - b.y || a.x0 - b.x0) : lines;
+    };
+    let p = ordinary, lines = readLines(p);
+    // Sequential measurements in the outside column of a table can look exactly
+    // like manuscript line numbers. Keep those cells when stripping the margin.
+    if (numbers.size && lines.some((l) => !l.tableRow && l.items.some((it) => numbers.has(it)))) {
+      const cells = new Set(lines.filter((l) => l.tableRow).flatMap((l) => l.items));
+      p = { ...ordinary, items: ordinary.items.filter((it) => !numbers.has(it) || cells.has(it)) };
+      lines = readLines(p);
+    }
+    const gutters = findGutters(lines.filter((l) => !l.tableRow), p.width, p.height);
     return gutters.at.length === 0
-      ? lines
+      ? orderBesideTables(lines)
       : orderColumns(splitColumns(p, lines, gutters, index), gutters.at.length + 1);
   });
 
   const drop = findMarginLines(perPage, pages);
-  const lines = perPage.flat().filter((l) => !drop.has(l));
+  const lines = perPage.flatMap((onPage) => omitGrammar(onPage.filter((l) => !drop.has(l))));
   if (lines.length === 0) return [];
 
   // The body size is the size most CHARACTERS are set in, not the size most lines are:
   // a page of footnotes must not redefine what "normal" means for the document.
-  const weighted: number[] = [];
   for (const l of lines) {
+    if (l.page <= typography.through) continue;
     const weight = Math.max(1, Math.round(l.text.length / 8));
-    for (let i = 0; i < weight; i++) weighted.push(l.size);
+    typography.sizes.set(l.size, (typography.sizes.get(l.size) ?? 0) + weight);
+    typography.fonts.set(l.font, (typography.fonts.get(l.font) ?? 0) + l.text.length);
   }
-  const bodySize = median(weighted);
+  typography.through = Math.max(typography.through, pages.at(-1)!.page);
+  const bodySize = medianOfWeights(typography.sizes);
 
   // A face carrying almost none of the document's text is a display face — the bold
   // used for section titles, the small caps of a running head that escaped the margin
   // rule. It is the only way to tell a bold heading from body text at the same size.
-  const charsByFont = new Map<string, number>();
   let totalChars = 0;
-  for (const l of lines) {
-    charsByFont.set(l.font, (charsByFont.get(l.font) ?? 0) + l.text.length);
-    totalChars += l.text.length;
-  }
+  for (const chars of typography.fonts.values()) totalChars += chars;
   const displayFonts = new Set<string>();
-  for (const [font, chars] of charsByFont) {
+  for (const [font, chars] of typography.fonts) {
     if (font !== "" && chars < totalChars * DISPLAY_FONT_SHARE) displayFonts.add(font);
   }
 
   // Heading classification comes BEFORE the cross-segment join, so a section title at
   // the top of a column can never be swallowed by the paragraph that ended above it.
   const vocab = vocabularyOf(lines.map((l) => l.text));
+  if (spellings) {
+    vocab.breaks = spellings.breaks;
+    for (const word of vocab.fused) spellings.fused.add(word);
+    for (const word of vocab.hyphenated) spellings.hyphenated.add(word);
+  }
+  for (const head of compoundHeads) vocab.heads.add(head);
   // Only the document's own first page has a title block. The reader reflows each run of
   // rendered pages on its own, and a run that starts deeper in opens on an ordinary page.
   const front = pages[0]!.page === 1
@@ -1785,7 +2146,7 @@ export function reflowPdf(pages: PdfPageText[]): ReflowBlock[] {
   // it. lib/pdf/units.ts reads nothing else of the layout.
   const joined = joinAcrossSegments(drafts, vocab);
   return joined.flatMap((d, i) => {
-    const { text, runs } = withoutCitations(d);
+    const { text, runs } = d.kind === "table" ? d : withoutCitations(d);
     return text === "" ? [] : [{
       kind: d.kind,
       text,

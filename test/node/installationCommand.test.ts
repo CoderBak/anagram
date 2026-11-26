@@ -11,8 +11,9 @@ const chromeId = "a".repeat(32);
 const installers = { sh: "1".repeat(64), ps1: "2".repeat(64) };
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 /** Run a command without blocking this process: the stand-in release is served from it. */
-const run = (file: string, args: string[]): Promise<string> =>
-  new Promise((resolve) => execFile(file, args, { timeout: 30_000 }, (_error, stdout, stderr) => resolve(`${stdout}${stderr}`)));
+const run = (file: string, args: string[]): Promise<{ output: string; code: number | string }> =>
+  new Promise((resolve) => execFile(file, args, { timeout: 30_000 }, (error, stdout, stderr) =>
+    resolve({ output: `${stdout}${stderr}`, code: error ? (error.code ?? 1) : 0 })));
 /** Two runs of a shell each: PowerShell alone takes seconds to start on a CI runner. */
 const RUN_TIMEOUT = 75_000;
 
@@ -27,8 +28,8 @@ describe("native installation command", () => {
     expect(result.command).not.toContain("latest");
   });
   it("checks the installer against the digest it was built with before running it", () => {
-    expect(installationCommand("mac", "chrome", chromeId, "0.9.0", "en", installers)!.command).toContain(`echo '${installers.sh}  '"$f" | shasum -a 256 -c -`);
-    expect(installationCommand("linux", "chrome", chromeId, "0.9.0", "en", installers)!.command).toContain(`echo '${installers.sh}  '"$f" | sha256sum -c -`);
+    expect(installationCommand("mac", "chrome", chromeId, "0.9.0", "en", installers)!.command).toContain("shasum -a 256 -c -");
+    expect(installationCommand("linux", "chrome", chromeId, "0.9.0", "en", installers)!.command).toContain("sha256sum -c -");
     const win = installationCommand("win", "chrome", chromeId, "0.9.0", "en", installers)!.command;
     expect(win).toContain(`(Get-FileHash -Algorithm SHA256 $f).Hash -ne '${installers.ps1}'`);
     expect(win).not.toContain("Invoke-RestMethod");
@@ -92,13 +93,18 @@ describe("the installation command, run", () => {
     const script = `printf '%s %s %s' "$ANAGRAM_EXTENSION_ID" "$ANAGRAM_BROWSER" "$ANAGRAM_LANG" > '${marker}'\n`;
     served = { "/installer": script };
     const result = installationCommand(posix!, "chrome", chromeId, "0.9.0", "en", { sh: sha256(script), ps1: "0".repeat(64) })!;
-    await run("/bin/sh", ["-c", local(result.command, result.scriptUrl)]);
+    expect((await run("/bin/sh", ["-c", local(result.command, result.scriptUrl)])).code).toBe(0);
     expect(readFileSync(marker, "utf8")).toBe(`${chromeId} chrome en`);
     rmSync(marker);
     served = { "/installer": script.replace("printf", "echo tampered; printf") };
     const refused = await run("/bin/sh", ["-c", local(result.command, result.scriptUrl)]);
     expect(existsSync(marker)).toBe(false);
-    expect(refused).toMatch(/FAILED/);
+    expect(refused.output).toMatch(/FAILED/);
+    expect(refused.code).not.toBe(0);
+    const interrupted = "exit 23\n";
+    served = { "/installer": interrupted };
+    const retry = installationCommand(posix!, "chrome", chromeId, "0.9.0", "en", { ...installers, sh: sha256(interrupted) })!;
+    expect((await run("/bin/sh", ["-c", local(retry.command, retry.scriptUrl)])).code).toBe(23);
   }, RUN_TIMEOUT);
 
   const pwsh = (() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], { stdio: "pipe" }); return true; } catch { return false; } })();
@@ -112,6 +118,6 @@ describe("the installation command, run", () => {
     served = { "/installer": script.replace("param", "Write-Host tampered\nparam") };
     const refused = await run("pwsh", ["-NoProfile", "-Command", local(result.command, result.scriptUrl)]);
     expect(existsSync(marker)).toBe(false);
-    expect(refused).toMatch(/nothing was run/);
+    expect(refused.output).toMatch(/nothing was run/);
   }, RUN_TIMEOUT);
 });

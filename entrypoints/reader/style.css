@@ -1,32 +1,82 @@
 /* Keep upstream layout/styles intact; this layer only owns Anagram controls and marks. */
-:root { --anagram-reader-fg: #202124; --anagram-reader-muted: #374151; --anagram-reader-bg: #fff; --anagram-reader-border: #b8bcc4; }
-@media (prefers-color-scheme: dark) { :root { --anagram-reader-fg: #f3f4f6; --anagram-reader-muted: #e5e7eb; --anagram-reader-bg: #242629; --anagram-reader-border: #6d7178; } }
+:root { --anagram-reader-fg: #18181b; --anagram-reader-muted: #52525b; --anagram-reader-bg: #f6f6f7; --anagram-reader-card: #ffffff; --anagram-reader-border: #d4d4d8; --anagram-reader-primary: #18181b; --anagram-reader-on-primary: #ffffff; }
+@media (prefers-color-scheme: dark) { :root { --anagram-reader-fg: #f1f2f4; --anagram-reader-muted: #a1a4ad; --anagram-reader-bg: #111214; --anagram-reader-card: #191a1d; --anagram-reader-border: #3a3d45; --anagram-reader-primary: #f1f2f4; --anagram-reader-on-primary: #111214; } }
+#toolbarContainer, #toolbarContainer .toolbarButton, #toolbarContainer #toolbarViewer :is(input, select),
+#sidebarContainer, #sidebarContainer :is(input, button, select), .dialog, .dialog :is(input, button, select) {
+  font-family: var(--anagram-ui-font);
+}
 #anagramReaderStatus {
   position: fixed;
-  inset: 64px 16px auto;
+  inset: clamp(20px, 4vh, 36px) 16px auto;
   z-index: 100;
   pointer-events: none;
   color: var(--anagram-reader-fg);
-  font: 14px/1.5 system-ui, sans-serif;
+  font: 14px/1.5 var(--anagram-ui-font);
   text-align: center;
 }
 #anagramReaderStatus p { margin: 0; }
-#anagramReaderStatus #notice:not([hidden]):not(:empty), #drop:not([hidden]) {
+#anagramReaderStatus #notice:not([hidden]):not(:empty) {
   display: inline-block;
   padding: 12px 18px;
   border: 1px solid var(--anagram-reader-border);
-  border-radius: 8px;
-  background: var(--anagram-reader-bg);
-  box-shadow: 0 2px 10px #0002;
+  border-radius: 10px;
+  background: var(--anagram-reader-card);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.08);
   pointer-events: auto;
 }
-#drop:not([hidden]) { display: block; max-width: 32rem; margin: 12vh auto 0; }
-#dropLabel { font-size: 16px; font-weight: 600; }
-#dropNote { margin-top: 4px !important; color: var(--anagram-reader-muted); font-size: 13px; }
+#drop:not([hidden]) {
+  display: block;
+  max-width: 25rem;
+  margin: 0 auto;
+  padding: 20px 22px;
+  border: 1px dashed var(--anagram-reader-border);
+  border-radius: 12px;
+  background: var(--anagram-reader-card);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
+  text-align: start;
+  pointer-events: auto;
+}
+/* Keep persistent document notices outside the scrollable PDF, including
+   when a translated message takes several lines in a narrow window. */
+@media screen {
+  body { display: flex; flex-direction: column; }
+  body:has(#drop:not([hidden])) #mainContainer, body:has(#drop:not([hidden])) #viewerContainer { background: var(--anagram-reader-bg); }
+  #outerContainer { flex: 1 1 0; min-height: 0; }
+  #anagramReaderStatus:has(> #drop[hidden]) { position: static; order: 1; }
+  #anagramReaderStatus:has(> #drop[hidden]) #notice:not([hidden]):not(:empty) {
+    display: block;
+    padding: 4px 10px;
+    border: 0;
+    border-top: 1px solid var(--anagram-reader-border);
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+body:not(.document-open):has(#original[hidden]) .toolbar,
+body:not(.document-open) #toolbarViewer > :not(#toolbarViewerRight),
+body:not(.document-open) #toolbarViewerRight > :not(#original) { display: none; }
+body.drag-file::after {
+  content: ""; position: fixed; inset: 4px; z-index: 110; border: 2px dashed var(--anagram-reader-primary); pointer-events: none;
+}
+body.drag-file #drop { border-color: var(--anagram-reader-primary); }
+#fileTools > .labeled { width: auto; min-height: 0; padding-inline: 7px; gap: 5px; white-space: nowrap; }
+#anagramOpenFile::before { mask-image: url("/vendor/pdfjs/web/images/toolbarButton-openFile.svg"); }
+@media (min-width: 981px) { #secondaryOpenFile { display: none; } }
+@media (max-width: 980px) {
+  #anagramOpenFile { display: none; }
+  #fileTools #downloadButton { width: var(--toolbar-button-dimensions, 28px); justify-content: center; padding: 0; gap: 0; }
+  #downloadButton > span { width: 0; height: 0; overflow: hidden; }
+}
+@media (min-width: 480px) { #secondaryDownload { display: none; } }
+@media (max-width: 479px) { #fileTools { display: none; } }
+.drop-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+body:has(#original:not([hidden])) #anagramReaderStatus:has(#drop:not([hidden])) { top: 52px; }
+#dropLabel { margin: 0; color: var(--anagram-reader-fg); font: 600 20px/1.3 var(--anagram-ui-font); letter-spacing: -.025em; }
+#drop #dropNote { margin-top: 6px; color: var(--anagram-reader-muted); font-size: 13px; }
 /* The reader's one button, as the extension's pages draw a primary one. */
-#choose { margin: 16px 0 4px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--anagram-reader-fg); color: var(--anagram-reader-bg); font: 500 14px/1.4 system-ui, sans-serif; cursor: pointer; }
+#choose { margin: 0; padding: 6px 12px; border: 0; border-radius: 6px; background: var(--anagram-reader-primary); color: var(--anagram-reader-on-primary); font: 500 14px/1.4 var(--anagram-ui-font); cursor: pointer; }
 #choose:hover { opacity: 0.88; }
-#choose:focus-visible { outline: 2px solid #0060df; outline-offset: 2px; }
+#choose:focus-visible { outline: 2px solid var(--anagram-reader-primary); outline-offset: 2px; }
 #anagramAnalyze, #original { width: auto; flex: none; padding-inline: 8px; }
 #anagramAnalyze { min-width: 72px; }
 #original { max-width: 120px; }
@@ -35,10 +85,15 @@
 #anagramAnalyze { display: inline-flex; align-items: center; gap: 6px; }
 #anagramAnalyze .logo { width: 20px; height: 20px; flex: none; }
 #anagramAnalyze .logo-dark { display: none; }
+@media (max-width: 400px) {
+  #mainContainer { min-width: 0; }
+  #anagramAnalyze { width: 32px; min-width: 32px; justify-content: center; padding-inline: 0; }
+  #anagramAnalyze > span { display: none; }
+}
 @media (prefers-color-scheme: dark) { #anagramAnalyze .logo-light { display: none; } #anagramAnalyze .logo-dark { display: block; } }
 .anagramPdfChips { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .anagramPdfChips > span { position: absolute; transform: translateY(-50%); pointer-events: auto; }
-@media (max-width: 700px) { #original { width: 32px; } #original > span { font-size: 0; } #original::after { content: "↗"; font-size: 18px; } #anagramAnalyze { min-width: 38px; } }
+@media (max-width: 800px) { #original { width: 32px; } #original > span { font-size: 0; } #original::after { content: "↗"; font-size: 18px; } }
 @media print { #anagramReaderStatus, .anagramPdfChips { display: none !important; } }
 
 /* The page area takes keyboard focus to scroll; upstream draws no outline, so show one inside its edge. */

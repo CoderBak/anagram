@@ -17,7 +17,7 @@ const firstCard = (page) =>
     return {
       verdict: root?.querySelector(".card .verdict")?.textContent ?? "",
       words: root?.querySelector(".card .row .k")?.textContent ?? "",
-      copy: root?.querySelector(".card .act.copy")?.textContent ?? "",
+      copy: root?.querySelector(".card .act.copy")?.getAttribute("aria-label") ?? "",
       // Our own chrome declares its language whatever the article is written in.
       lang: root?.querySelector(".pill")?.lang ?? "",
     };
@@ -26,7 +26,7 @@ const firstCard = (page) =>
 test.describe("a zh-CN browser", () => {
   test.use({ uiLanguage: "zh-CN" });
 
-  test("a zh-CN browser gets a Chinese popup, options page, chip card, page report and menu entries", async ({ context, page, pages, extension }) => {
+  test("a zh-CN browser gets a Chinese popup, options page, chip card, page report and menu entries", async ({ context, page, pages, extension, nativeHost }) => {
     const zh = "a zh-CN browser gets a Chinese popup, options page, chip card, page report and menu entries";
     // The context menus are created with t(), and chrome.contextMenus cannot read a title
     // back, so the same lookup the worker made is asked for again.
@@ -44,11 +44,12 @@ test.describe("a zh-CN browser", () => {
         gear: document.getElementById("gear")?.getAttribute("aria-label") ?? "",
         site: document.querySelector('label[for="siteEnabled"]')?.textContent ?? "",
         action: document.getElementById("action")?.textContent ?? "",
-        flagged: document.querySelector('[role="tab"][data-value="flagged"]')?.textContent ?? "",
       })), { message: `${zh} (popup)` })
-      .toEqual({ lang: "zh-CN", gear: "设置", site: "在此网站运行", action: "阅读本机 PDF…", flagged: "仅存疑" });
+      .toEqual({ lang: "zh-CN", gear: "设置", site: "自动分析此网站", action: "打开 PDF…" });
     await popup.close();
 
+    const current = nativeHost.state().component;
+    nativeHost.setState({ component: { ...current, version: "0.1.0" } });
     const opts = await context.newPage();
     await opts.goto(extension.url("options.html"), { waitUntil: "load" });
     await expect
@@ -57,6 +58,7 @@ test.describe("a zh-CN browser", () => {
         engine: document.getElementById("engineLabel")?.textContent ?? "",
         componentStatus: document.querySelector(".component-status")?.textContent ?? "",
         update: [...document.querySelectorAll("button")].some((b) => !b.hidden && b.textContent === "更新引擎"),
+        flagged: document.querySelector('#displayMode option[value="flagged"]')?.textContent ?? "",
         marks: document.querySelector('label[for="underline"]')?.textContent ?? "",
         fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
         // The footer's link to this version's source, next to the model credit.
@@ -64,10 +66,11 @@ test.describe("a zh-CN browser", () => {
         sourceHref: document.getElementById("sourceCode")?.getAttribute("href") ?? "",
       })), { message: `${zh} (options)` })
       .toEqual({
-        lang: "zh-CN", engine: "引擎", componentStatus: "本地引擎：就绪", update: true, marks: "下划线",
+        lang: "zh-CN", engine: "本地引擎", componentStatus: "就绪", update: true, marks: "下划线", flagged: "仅存疑",
         fabricatedCommand: false, source: "源代码（AGPL-3.0）", sourceHref: `https://github.com/CoderBak/anagram/tree/v${EXTENSION_VERSION}`,
       });
     await opts.close();
+    nativeHost.setState({ component: current });
 
     // The in-page UI, a chip's card, and the toolbar menu's report on that page.
     pages.serve({ "/zh.html": ZH_PAGE });

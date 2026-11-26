@@ -88,10 +88,10 @@ for (const [label, p] of [["options", optionsPage], ["onboarding", onboarding.pa
 }
 await sleep(1200);
 
-const versionText = await optionsPage.evaluate(() => `${document.getElementById("version")?.textContent ?? ""}|${document.querySelector("#componentSettings .component-status")?.textContent ?? ""}`);
+const versionText = await optionsPage.evaluate(() => `${document.getElementById("version")?.textContent ?? ""}|${document.getElementById("engineLabel")?.textContent ?? ""}|${document.querySelector("#componentSettings .component-status")?.textContent ?? ""}`);
 check(
   "options page renders and shows the version and the engine's status (background page reachable)",
-  /^v\d+\.\d+\.\d+\|Local engine: Ready$/.test(versionText),
+  /^v\d+\.\d+\.\d+\|Local engine\|Ready$/.test(versionText),
   versionText,
 );
 
@@ -349,12 +349,13 @@ const underlineLive = await (async () => {
       return sheet ? { disabled: sheet.disabled, css: [...sheet.cssRules].map((r) => r.cssText).join("\n") } : null;
     });
   const before = await markSheet();
-  // Underlines are all or nothing: switching them off disables the one stylesheet that
-  // paints every mark, and switching them back on restores it, ranges and all.
+  // Turning resting underlines off removes their ranges. The stylesheet stays enabled
+  // so the reader can still point at a chip to see which paragraph it scored.
+  const resting = (enabled) => [...CSS.highlights].some(([name, ranges]) => /^anagram-s\d/.test(name) && ranges.size > 0) === enabled;
   await optionsPage.evaluate(() => browser.storage.local.set({ showHighlights: false }));
-  const off = await waitFor(page, () => [...document.adoptedStyleSheets].some((s) => s.disabled && [...s.cssRules].some((r) => r.cssText.includes("::highlight(anagram-"))), { timeout: 8000 });
+  const off = await waitFor(page, resting, { timeout: 8000, arg: false });
   await optionsPage.evaluate(() => browser.storage.local.set({ showHighlights: true }));
-  const on = await waitFor(page, () => [...document.adoptedStyleSheets].some((s) => !s.disabled && [...s.cssRules].some((r) => r.cssText.includes("::highlight(anagram-"))), { timeout: 8000 });
+  const on = await waitFor(page, resting, { timeout: 8000, arg: true });
   return { hadSheet: !!before, paintsTheScale: /::highlight\(anagram-s00\)/.test(before?.css ?? ""), off, on };
 })();
 check(

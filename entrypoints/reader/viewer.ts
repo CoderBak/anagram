@@ -19,6 +19,7 @@ export interface PdfApplication {
   pdfLoadingTask: {destroy(): Promise<void>} | null;
   pdfViewer: {getPageView(index: number): UpstreamPage; currentScaleValue: string; currentPageNumber: number};
   eventBus: {on(name: string, listener: (event: {source?: UpstreamPage; pageNumber?: number; pageIndex?: number}) => void): void};
+  passwordPrompt: { setUpdateCallback(callback: (value: string | Error) => void, reason: number): Promise<void> };
   open(args: Record<string, unknown>): Promise<void>;
   close(): Promise<void>;
   _initializeAutoPrint(): Promise<void>;

@@ -1,5 +1,6 @@
 // lib/stats/settings.ts — the statistics' configuration and secret, in the extension's storage:
 // what the worker, Settings and the statistics page read and write.
+import type { LogStore } from "./store";
 import { settings } from "../settings/settings";
 import { configOf, normalize, OFF, type RecordingConfig } from "./config";
 
@@ -23,6 +24,10 @@ const fromBase64 = (text: string): Uint8Array => Uint8Array.from(atob(text), (c)
 /** The key the log's hashes are made with: 32 random bytes, made the first time it is asked
  *  for. */
 export async function statsSecret(): Promise<Uint8Array> {
+  return navigator.locks.request("anagram-stats-secret", readOrCreateSecret);
+}
+
+async function readOrCreateSecret(): Promise<Uint8Array> {
   const kept = await settings.statsSecret.getValue();
   if (kept) {
     try {
@@ -37,6 +42,8 @@ export async function statsSecret(): Promise<Uint8Array> {
 
 /** Forget the key: what is recorded from now on cannot be matched with what was before
  *  (Clear statistics). */
-export async function forgetStatsSecret(): Promise<void> {
-  await settings.statsSecret.setValue(null);
+export async function clearStatistics(store: LogStore): Promise<void> {
+  await store.clear();
+  await navigator.locks.request("anagram-stats-secret", () => settings.statsSecret.setValue(null));
+  await settings.statsClearedAt.setValue(Date.now());
 }

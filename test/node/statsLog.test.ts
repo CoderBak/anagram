@@ -8,11 +8,12 @@
 // suites (test/pw/stats.spec.mjs) run the real database.
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { addDays, datesBetween, monthRange, emptyTally, type UnitRow } from "../../lib/stats/model";
+import { addDays, datesBetween, monthRange, emptyTally, readingDay, type UnitRow } from "../../lib/stats/model";
 import { createStatsKeeper, type StatsKeeperDeps, type StatsSender, type TabFacts } from "../../lib/stats/worker";
-import { memoryStatsStore } from "../../lib/stats/store";
+import { memoryStatsStore, mergeTotal } from "../../lib/stats/store";
 import { presetConfig, type Preset, type RecordingConfig } from "../../lib/stats/config";
 import { DEFAULT_KIND_RULE, DEFAULT_LENS, headlineOf, sharesUnder, tallyUnder, type Lens } from "../../lib/stats/lens";
+import { stripTo } from "../../lib/stats/strip";
 import { summarize } from "../../lib/stats/summary";
 import { buildExport, exportCsvFiles, preview, type ExportOptions } from "../../lib/stats/export";
 import { sketchSimilarity } from "../../lib/stats/hash";
@@ -96,6 +97,16 @@ describe("what each preset keeps", () => {
     expect(store.dump().totals).toEqual([]);
   });
 
+  it("continues recording into older totals that predate the argmax and removed fields", () => {
+    const old = emptyTally();
+    Reflect.deleteProperty(old, "argmax");
+    Reflect.deleteProperty(old, "removed");
+    old.scored = 30;
+    const row = { date: "2026-10-04", scope: "day" as const, key: "", tally: old };
+    const next = mergeTotal(row, { ...row, tally: { ...emptyTally(), scored: 52, removed: 4, argmax: [0, 0, 0, 1] } });
+    expect(next.tally).toMatchObject({ scored: 82, removed: 4, argmax: [0, 0, 0, 1] });
+  });
+
   it("daily totals: the day's and each kind's tallies, and no visit, paragraph, site or page", async () => {
     const { store, keep } = keeper(preset("daily"));
     expect(await keep.record(wire(), sender(), "content")).toBe(true);
@@ -173,7 +184,8 @@ describe("what each preset keeps", () => {
     expect(d.visits[0]!.site).toBe("example.com");
     expect(d.units[0]!.sketch).toHaveLength(86);
     expect(d.units[0]!.head).toBeUndefined();
-    expect(d.events[0]!.streams.steps?.t).toEqual([100, 1600]);
+    expect(d.events[0]!.streams.steps).toBeUndefined();
+    expect(d.events[0]!.streams.intervals?.end).toEqual([1600]);
     expect(d.texts).toEqual([]);
   });
 
@@ -205,6 +217,7 @@ describe("what each preset keeps", () => {
     expect(page.key).toMatch(/^[0-9a-f]{16}$/);
     expect(page.title).toMatch(/^[0-9a-f]{16}$/);
     expect(page.hashed).toBe(true);
+    expect(page.siteHash).toBe(store.dump().totals.find((t) => t.scope === "site")!.key);
   });
 });
 
@@ -284,6 +297,46 @@ describe("lenses", () => {
     expect(sharesUnder(t, { estimator: "argmax" })).toEqual([0, 0, 0, 1]);
   });
 
+  it("counts current assistance and historical heavy editing separately for each estimator", () => {
+    const t = tallyUnder(units, DEFAULT_LENS);
+    t.scored = 100;
+    t.expected = [30, 10, 15, 20, 25];
+    t.units = [2, 1, 3, 1, 3];
+    t.argmax = [1, 2, 1, 4, 2];
+    for (const [estimator, assisted, heavy] of [["expected", .45, .35], ["chip", .4, .4], ["argmax", .6, .5]] as const) {
+      expect(headlineOf(t, { headline: "assistedAndAi", estimator })).toBeCloseTo(assisted);
+      expect(headlineOf(t, { headline: "heavyAndAi", estimator })).toBeCloseTo(heavy);
+    }
+    t.missingProbabilities = true;
+    expect(headlineOf(t, {headline: "assistedAndAi", estimator: "expected"})).toBeNull();
+    expect(headlineOf(t, {headline: "assistedAndAi", estimator: "chip"})).toBeCloseTo(.4);
+  });
+
+  it("can reweight read flags, including old rows with an offset, without inventing exposure time", () => {
+    const legacy = { any: [0, 0, 0, 0], band: [0, 0, 0, 0], half: [0, 0, 0, 0], sightings: 0 } as NonNullable<UnitRow["expo"]>;
+    const rows = [u(0, 0, AI, { expo: { ...legacy, readAt: 0 } }), u(1, 0, HUMAN, { expo: { ...legacy, read: true } }),
+      u(2, 0, AI, { expo: { ...legacy, read: false } }), u(3, 0, AI, { expo: undefined })];
+    expect(tallyUnder(rows, { ...DEFAULT_LENS, weight: "paragraphs" }).scored).toBe(2);
+    expect(tallyUnder(rows, { ...DEFAULT_LENS, readMs: 2000 }).scored).toBe(0);
+    expect(tallyUnder(rows, { ...DEFAULT_LENS, weight: "time" }).scored).toBe(0);
+  });
+
+  it("keeps the decision and sightings when duration recording is off", async () => {
+    const config = preset("paragraphs");
+    config.layers = { ...config.layers, dur: "none" };
+    const { keep, store } = keeper(config);
+    await keep.record(wire(), sender(), "content");
+    const date = "2026-10-04";
+    const data = await store.read(date, date, { units: true });
+    expect(data.units[0]!.expo).toMatchObject({ read: true, sightings: 1 });
+    expect(data.units[0]!.expo?.readAt).toBeUndefined();
+    const lens = { ...DEFAULT_LENS, weight: "paragraphs" as const };
+    expect(summarize(data, date, date, lens).total.scored).toBe(2);
+    // In older logs, sightings alone cannot tell us which paragraphs crossed the threshold.
+    for (const u of data.units) delete u.expo!.read;
+    expect(summarize(data, date, date, lens).fromParagraphs).toBe(false);
+  });
+
   it("count a paragraph under a floor of 75 as short", () => {
     const short = [u(0, 4000, AI, { len: { words: 60 } })];
     expect(tallyUnder(short, { ...DEFAULT_LENS, minWords: 75 })).toMatchObject({ scored: 0, short: 60 });
@@ -291,6 +344,17 @@ describe("lenses", () => {
 });
 
 describe("the summaries the statistics page shows", () => {
+  it("keeps a local PDF in the pages table when its paragraphs are recounted", async () => {
+    const { store, keep } = keeper(preset("full"));
+    await keep.record(wire({}, { surface: "pdf" }), { url: "chrome-extension://x/reader.html", tab: { id: 1, title: "Harbor.pdf" } }, "reader");
+    const day = "2026-10-04";
+    const range = await store.read(day, day, { units: true });
+    const report = summarize(range, day, day, { ...DEFAULT_LENS, weight: "paragraphs" });
+    expect(report.fromParagraphs).toBe(true);
+    expect(report.pages).toHaveLength(1);
+    expect(report.pages[0]).toMatchObject({ key: "file:Harbor.pdf", title: "Harbor.pdf", tally: { scored: 2 } });
+  });
+
   it("are the kept totals under the default lens, and the paragraphs' under another", async () => {
     const { store, keep } = keeper(preset("paragraphs"));
     await keep.record(wire(), sender(), "content");
@@ -306,6 +370,21 @@ describe("the summaries the statistics page shows", () => {
     expect(plain.trend).toEqual([{ date: "2026-10-04", tally: plain.total }]);
     expect(plain.kinds.map((k) => k.kind)).toEqual(["article"]);
   });
+});
+
+it("rejects a pre-clear visit even from a restarted worker and accepts a new visit", async () => {
+  const { keep, store } = keeper(preset("fullText"));
+  await keep.record(wire(), sender(), "content");
+  expect(store.dump().texts.length).toBeGreaterThan(0);
+  await store.clear();
+  const again = keeper(preset("fullText"), { store }).keep;
+  expect(await again.record(wire(), sender(), "content")).toBe(false);
+  expect(store.dump().visits).toEqual([]);
+  expect(store.dump().totals).toEqual([]);
+  expect(store.dump().texts).toEqual([]);
+  const start = Date.now() + 1;
+  expect(await again.record(wire({}, { id: "abababababababababababababababab", start }), sender(), "content")).toBe(true);
+  expect(store.dump().visits).toHaveLength(1);
 });
 
 describe("the export", () => {
@@ -361,6 +440,124 @@ describe("the export", () => {
     expect(sketchSimilarity(s0!, t0!)).toBeLessThan(0.2);
   });
 
+  it("coarsens and combines page totals on export and on deletion, including aggregate-only history", async () => {
+    const source = await recorded("fullText");
+    const page = source.totals.find((t) => t.scope === "page")!;
+    source.totals.push({ ...page, key: page.key.replace("?ref=top#c", "?secret=another") });
+    const file = buildExport(source, opts("pages"), key(1));
+    const table = file.tables.totals!;
+    const pages = table.rows.filter((r) => r[table.columns.indexOf("scope")] === "page");
+    expect(pages).toHaveLength(1);
+    expect(pages[0]![table.columns.indexOf("key")]).toBe(page.key.split("?")[0]);
+    expect(pages[0]![table.columns.indexOf("tally.scored")]).toBe(page.tally.scored * 2);
+    const store = memoryStatsStore();
+    await store.write({ totals: source.totals });
+    await stripTo(store, preset("daily"), key(1));
+    expect(store.dump().totals.map((r) => r.scope).sort()).toEqual(["day", "kind"]);
+  });
+
+  it("keeps local PDFs separate at the permitted title layer and combines unnamed files", async () => {
+    const source = await recorded("pages");
+    const page = source.totals.find((t) => t.scope === "page")!;
+    source.totals = ["Harbor.pdf", "Library.pdf"].map((title, i) => ({
+      ...page, key: `file:/private/path/${title}`, title, tally: { ...page.tally, scored: 100 * (i + 1) },
+    }));
+    const pages = (options: ExportOptions, salt: number) => {
+      const table = buildExport(source, options, key(salt)).tables.totals!;
+      return table.rows.map((r) => Object.fromEntries(table.columns.map((col, i) => [col, r[i]])));
+    };
+    const named = pages(opts("pages"), 1);
+    expect(named.map((r) => [r.title, r["tally.scored"]])).toEqual([["Harbor.pdf", 100], ["Library.pdf", 200]]);
+    expect(new Set(named.map((r) => r.key)).size).toBe(2);
+    expect(buildExport(source, opts("pages"), key(1)).tables.totals!.columns.slice(0, 5))
+      .toEqual(["date", "scope", "key", "title", "tally.scored"]);
+    expect(JSON.stringify(named)).not.toContain("/private/path");
+    const hashed = opts("pages", { hashed: ["title"] });
+    expect(JSON.stringify(pages(hashed, 1))).not.toContain(".pdf");
+    expect(pages(hashed, 1).map((r) => r.key)).not.toEqual(pages(hashed, 2).map((r) => r.key));
+    const anonymous = pages(opts("pages", { layers: { ...opts("pages").layers, title: "none" } }), 1);
+    expect(anonymous).toHaveLength(1);
+    expect(anonymous[0]).toMatchObject({ key: "file:", "tally.scored": 300 });
+    expect(JSON.stringify(anonymous)).not.toContain(".pdf");
+  });
+
+  it("coarsens hashed totals before deleting the only visits that link their address layers", async () => {
+    const { store, keep } = keeper({ ...preset("full"), hashed: ["place"] });
+    await keep.record(wire(), sender(), "content");
+    const before = store.dump().visits[0]!;
+    await stripTo(store, preset("pages"), key(1));
+    const d = store.dump(), page = d.totals.find((r) => r.scope === "page");
+    expect(d.visits).toEqual([]);
+    expect(page).toMatchObject({ hashed: true, key: before.places!.path, siteHash: before.site, placeLayer: "path", tally: { scored: 105 } });
+    expect(JSON.stringify(d)).not.toContain(before.url);
+  });
+
+  it("counts a spanning visit on each reading day, including reads delivered after the unit snapshot", async () => {
+    const start = new Date(2026, 9, 4, 23, 57).getTime(), first = "2026-10-04", second = "2026-10-05";
+    let clock = start + 60_000;
+    const { store, keep } = keeper(preset("full"), { now: () => new Date(clock) });
+    await keep.record(wire({ reads: [{ n: 0, w: 52, p: AI }] }, { start }), sender(), "content");
+    clock += 180_000;
+    await keep.record(wire({ seq: 1, units: [], reads: [{ n: 1, w: 53, p: HUMAN }] }, { start }), sender(), "content");
+    await keep.record(wire({ seq: 2, units: [unit(1)], reads: [] }, { start }), sender(), "content");
+    const lens = { ...DEFAULT_LENS, readMs: 1250 };
+    const range = await store.read(first, second, { units: true, byReadDate: true });
+    const report = summarize(range, first, second, lens);
+    expect(report.trend.map((d) => d.tally.scored)).toEqual([52, 53]);
+    // Simulate old history written in a time zone where the opening date was already tomorrow.
+    const oldUnit = { ...range.units[0]!, date: second, readDate: undefined };
+    expect(readingDay(oldUnit, { ...range.visits[0]!, date: second })).toBe(second);
+    expect(report.pages.map((p) => p.start)).toEqual([first + " 23:57", first + " 23:57"]);
+    const today = await store.read(second, second, { units: true, byReadDate: true });
+    expect(today.visits).toHaveLength(1);
+    expect(today.units.map((u) => u.n)).toEqual([1]);
+    expect(summarize(today, second, second, lens)).toMatchObject({ total: { scored: 53 }, omittedWords: 0 });
+    const raw = await store.read(second, second, { units: true });
+    const file = buildExport({ ...raw, lensRange: today, tabs: [], contexts: [], events: [], texts: [] }, opts("full", { from: second, to: second, lens }), key(1));
+    const table = file.tables.lens!;
+    expect(table.rows.map((r) => [r[table.columns.indexOf("date")], r[table.columns.indexOf("tally.scored")]])).toEqual([[second, 53]]);
+    expect(file.tables.units).toBeUndefined();
+    const config = preset("full");
+    await stripTo(store, { ...config, layers: { ...config.layers, expo: "none" } }, key(1));
+    expect(store.dump().units.every((u) => u.readDate === u.date && !u.expo)).toBe(true);
+  });
+
+  it("keeps aggregate-only days for headline changes and shares duplicate decisions across kind rows", async () => {
+    const source = await recorded("full");
+    const day = source.totals.find((t) => t.scope === "day")!;
+    source.totals.push({ ...day, date: "2026-10-03" });
+    const s = summarize(source, "2026-10-03", day.date, { ...DEFAULT_LENS, headline: "heavyAndAi" });
+    expect(s.total.scored).toBe(2 * day.tally.scored);
+    const visit = source.visits[0]!;
+    source.visits.push({ ...visit, id: "repeat", start: visit.start + 5000, kind: "forum" });
+    source.units.push(...source.units.map((u) => ({ ...u, visit: "repeat" })));
+    const lens = { ...DEFAULT_LENS, once: "day" as const };
+    const report = summarize(source, "2026-10-03", day.date, lens);
+    const table = buildExport(source, opts("full", { lens }), key(1)).tables.lens!;
+    expect(table.rows.reduce((n, r) => n + Number(r[table.columns.indexOf("tally.scored")]), 0)).toBe(report.total.scored);
+    expect(report.total.scored).toBe(day.tally.scored);
+  });
+
+  it("recounts retained verdict labels and uses saved totals when probabilities are required", async () => {
+    const source = await recorded("full");
+    const date = source.visits[0]!.date;
+    for (const unit of source.units) unit.verdict = { band: 3, argmax: 2 };
+    const expected = { ...DEFAULT_LENS, weight: "paragraphs" as const };
+    const saved = summarize(source, date, date, expected);
+    expect(saved.fromParagraphs).toBe(false);
+    expect(saved.total.scored).toBe(source.visits[0]!.tally.scored);
+    for (const estimator of ["chip", "argmax"] as const) {
+      const lens = { ...expected, estimator };
+      const summary = summarize(source, date, date, lens);
+      expect(summary.fromParagraphs).toBe(true);
+      expect(summary.total.scored).toBe(2);
+      expect(headlineOf(summary.total, lens)).toBe(estimator === "chip" ? 1 : 0);
+      const file = buildExport(source, opts("full", { lens }), key(1));
+      expect(file.manifest.lensBasis).toBe("paragraphs");
+      expect(file.tables.lens!.columns).not.toContain("tally.expected");
+    }
+  });
+
   it("writes every table as CSV beside its manifest, and previews it", async () => {
     const file = buildExport(await recorded("paragraphs"), opts("paragraphs"), key(1));
     const files = exportCsvFiles(file);
@@ -408,6 +605,15 @@ describe("the message a page sends", () => {
 });
 
 describe("dates", () => {
+  it("includes the end of a range spanning more than 400 retained days", () => {
+    const start = "2024-01-01", end = addDays(start, 419);
+    const days = datesBetween(start, end);
+    expect(days).toHaveLength(420);
+    expect(days.at(-1)).toBe(end);
+    expect(datesBetween("2025-02-30", end)).toEqual([]);
+    expect(datesBetween("invalid", "invalid")).toEqual([]);
+  });
+
   it("counts days on the calendar across a change of the clocks", () => {
     expect(addDays("2026-03-28", 2)).toBe("2026-03-30");
     expect(addDays("2026-11-01", -1)).toBe("2026-10-31");

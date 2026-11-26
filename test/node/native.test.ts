@@ -1,3 +1,4 @@
+import {defaultRelease} from "../../lib/detectorReleases";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import { CRASH_LIMIT, NativeTransport, RESTART_BACKOFF_MS, nativeTransport, type NativePort } from "../../lib/backend/nativeTransport";
@@ -344,6 +345,7 @@ describe("privileged native operation boundary", () => {
     const request = vi.spyOn(nativeTransport(),"request").mockResolvedValue({v:1,id:"bridge",ok:true,status:200,data:{}});
     const payloads: Record<string, Record<string, unknown>> = {"runtime.config":{id:"cpu"},"runtime.benchmark":{budget_s:30},
       "engine.settings":{idle_unload_s:600},"models.delete":{confirm:true},"component.uninstall":{confirm:true}};
+    payloads["models.select"]={release:defaultRelease};
     const invalidated: string[] = [];
     for (const op of PAGE_OPERATIONS) {
       const controls = {invalidate:vi.fn(),clear:vi.fn()};

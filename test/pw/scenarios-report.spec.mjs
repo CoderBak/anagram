@@ -67,7 +67,7 @@ test("selection card: ✕ closes it while the fixture is still thinking", async 
   expect(Date.now() - t0, `${closes} (before the host answered)`).toBeLessThan(STALL_MS);
 });
 
-test("selection card: a long selection is analyzed whole, in overlapping passes — words analyzed = words selected", async ({ page, pages, nativeHost, tell }) => {
+test("selection card: a long selection is analyzed whole, in overlapping passes — the word count appears once", async ({ page, pages, nativeHost, tell }) => {
   pages.serve({
     "/longsel.html": PAGE("long selection fixture", `<h1>A selection longer than the model reads in one pass</h1>
 <textarea id="draft" style="width:100%;height:420px">${WINDOWED_TEXT}</textarea>`),
@@ -75,14 +75,14 @@ test("selection card: a long selection is analyzed whole, in overlapping passes 
   const mark = nativeHost.textMark();
   await page.goto(pages.url("/longsel.html"), { waitUntil: "load" });
   await analyzeSelection(page, tell);
-  const whole = "selection card: a long selection is analyzed whole, in overlapping passes — words analyzed = words selected";
+  const whole = "selection card: a long selection is analyzed whole, in overlapping passes — the word count appears once";
   await expect.poll(async () => (await selectionCard(page))?.read, { message: whole }).toBe(true);
   const { rows } = await selectionCard(page);
   const blocks = piecesOf(nativeHost.textsSince(mark), WINDOWED_TEXT);
   const note = `${whole}: ${JSON.stringify({ rows, blocks: blocks.map((t) => t.length) })}`;
   const passRow = Object.keys(rows).find((k) => /^Read in \d+ passes$/.test(k));
   expect.soft(Number(rows["Words selected"]), note).toBeGreaterThan(600);
-  expect.soft(rows["Words analyzed"], note).toBe(rows["Words selected"]);
+  expect.soft(rows["Words analyzed"], note).toBeUndefined();
   expect.soft(passRow, note).toBe(`Read in ${blocks.length} passes`);
   expect.soft(rows[passRow], note).toMatch(new RegExp(`^(\\.\\d\\d|1\\.0)(,\\s(\\.\\d\\d|1\\.0)){${blocks.length - 1}}$`));
   expect.soft(Object.keys(rows), note).not.toContain("Model window");
@@ -284,6 +284,26 @@ keyboard("the toolbar menu lists the flagged paragraphs as buttons named with th
   await expect.poll(() => flashedAt(page), { message: `${list} (the second row lands on the second flagged paragraph)` }).toBe(at[1]);
 });
 
+keyboard("the browser sizes the toolbar popup to its report, including the expanded breakdown", async ({ keys: page, extension }) => {
+  const observer = await extension.context.newPage();
+  await observer.goto(extension.url("options.html"));
+  await page.bringToFront();
+  await extension.worker().evaluate(() => chrome.action.openPopup());
+
+  // Opening popup.html in a tab would bypass Chromium's content-driven window sizing.
+  const layout = () => observer.evaluate(() => {
+    const popup = chrome.extension.getViews({ type: "popup" })[0];
+    if (!popup?.document.querySelector(".report-result")) return null;
+    const root = popup.document.documentElement;
+    return { width: popup.innerWidth, height: popup.innerHeight, fits: root.scrollWidth <= root.clientWidth };
+  });
+  await expect.poll(layout).toMatchObject({ width: 300, fits: true });
+  const collapsed = await layout();
+  await observer.evaluate(() => chrome.extension.getViews({ type: "popup" })[0].document.querySelector("#pageReport summary").click());
+  await expect.poll(async () => (await layout())?.height).toBeGreaterThan(collapsed.height);
+  expect(await layout()).toMatchObject({ width: 300, fits: true });
+});
+
 keyboard("next/prev-flagged walk the flagged paragraphs in document order and wrap around", async ({ keys: page, tell }) => {
   const at = await flaggedAt(page);
   const walk = "next/prev-flagged walk the flagged paragraphs in document order and wrap around";
@@ -319,10 +339,22 @@ keyboard("the report's title says flagged out of read, with no coverage line on 
   const menu = await popupOver(page);
   // Four flagged, every paragraph of the page read: "(4/4)". Nothing on the page is short.
   await expect.poll(() => menuReport(menu), { message: title }).toMatchObject({ title: "Flagged paragraphs (4/4)" });
+  const summary = menu.locator("#pageReport summary");
+  const legend = menu.locator("#pageReport .legend");
+  await expect(legend).toBeHidden();
+  await summary.focus();
+  await menu.keyboard.press("Enter");
+  await expect(legend).toBeVisible();
   const shown = await menuReport(menu);
   expect.soft(shown.notes, `${title} (nothing short: no coverage line)`).toEqual([]);
   expect.soft(shown.bands.reduce((a, n) => a + n, 0), `${title} (the four counts under the bar are what was read)`).toBe(4);
   expect.soft(await menu.locator("#pageReport").textContent(), title).not.toMatch(/Copy report|Turn off on/);
+  await page.locator("#k4").evaluate((p) => p.remove());
+  await expect(menu.locator("#reportTitle")).toHaveText("Flagged paragraphs (3/3)");
+  await expect(legend).toBeVisible();
+  await expect(summary).toBeFocused();
+  await menu.keyboard.press("Space");
+  await expect(legend).toBeHidden();
 });
 
 test("the report's coverage line: what was too short to score, and what was scored under 75 words is less reliable", async ({ page, pages }) => {
@@ -344,6 +376,10 @@ test("the report's coverage line: what was too short to score, and what was scor
   await expect.poll(async () => (await menuReport(menu))?.bands.reduce((a, n) => a + n, 0), { message: cov }).toBe(2);
   const shown = await menuReport(menu);
   expect.soft(shown.title, cov).toMatch(/^(Flagged paragraphs \(\d\/2\)|Nothing flagged on this page\.)$/);
+  const coverage = menu.locator("details .report-coverage");
+  await expect(coverage).toBeHidden();
+  await menu.locator("#pageReport summary").click();
+  await expect(coverage).toBeVisible();
   expect.soft(shown.notes, cov).toEqual(["1 too short, 1 under 75 words"]);
   expect.soft(shown.notes.join(" "), cov).not.toMatch(/\bread\b/);
 });

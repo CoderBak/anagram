@@ -201,7 +201,7 @@ const GROUPS = [
   },
   {
     title: "The in-browser engine",
-    intro: "The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names EditLens's preprocessing spells emoji out with, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; they are the modelkit listed under the component package below.",
+    intro: "The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names used by the legacy EditLens pipeline, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; the detector releases are listed under the component package below.",
     components: () => [
       { name: "ONNX Runtime Web", version: npm("onnxruntime-web"), url: "https://github.com/microsoft/onnxruntime",
         licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
@@ -313,10 +313,13 @@ const GROUPS = [
       { name: "Python and the engine's Python packages", version: "locked in anagramd/uv.lock", url: "https://pypi.org/",
         licence: "Each package's own", copyright: "Their respective authors",
         where: "A Python runtime from uv's distributions and the packages anagramd/pyproject.toml names (MLX on Apple silicon, PyTorch and Transformers on Windows and on Linux with an NVIDIA GPU, ONNX Runtime, tokenizers, fastText and others), installed from PyPI by uv at the exact versions of anagramd/uv.lock." },
+      { name: "Anagram detector releases", version: "selected in Settings, initially pinned in anagramd/detector-release.json", url: "https://huggingface.co/CoderBak/anagram-detectors",
+        licence: "See the selected model release", copyright: "See the selected model release",
+        where: "Downloaded separately by the selected engine and verified against the release’s SHA-256 hashes. Settings links to the exact revision." },
       { name: "EditLens RoBERTa-large", version: "pinned in anagramd/modelkit.json", url: "https://huggingface.co/pangram/editlens_roberta-large",
         urls: ["https://huggingface.co/CoderBak/editlens_roberta_modelkit"],
         licence: "CC-BY-NC-SA-4.0", copyright: "Pangram Labs",
-        where: "The scoring model, downloaded with SHA-256 verification from the CoderBak/editlens_roberta_modelkit redistribution. Non-commercial use only." },
+        where: "The legacy scoring model, distributed with SHA-256 verification from the CoderBak/editlens_roberta_modelkit redistribution. Non-commercial use only." },
     ],
   },
 ];

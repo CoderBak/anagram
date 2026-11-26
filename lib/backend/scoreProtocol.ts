@@ -32,7 +32,7 @@ const ResultSchema = v.object({
   bucket: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(BUCKET_COUNT - 1)),
   probs: v.pipe(
     v.array(Prob),
-    v.length(BUCKET_COUNT),
+    v.check(p=>p.length===3 || p.length===BUCKET_COUNT),
     v.check((p) => Math.abs(p.reduce((a, b) => a + b, 0) - 1) <= PROB_SUM_TOLERANCE, "probabilities must sum to 1"),
   ),
   score: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
@@ -40,6 +40,8 @@ const ResultSchema = v.object({
   truncated: v.optional(v.boolean()),
   lang: v.optional(v.pipe(v.string(), v.regex(LANG_CODE, "must be a language code"))),
   lang_prob: v.optional(Prob),
+  sentenceLabels:v.optional(v.pipe(v.array(v.picklist([0,1,2])),v.minLength(1),v.maxLength(16000))),
+  insufficient: v.optional(v.boolean()),
   unsupported: v.optional(v.boolean()),
   degraded: v.optional(v.boolean()),
 });
@@ -54,7 +56,7 @@ const HealthSchema = v.object({
   ok: v.literal(true),
   contract: v.string(),
   model: ModelSchema,
-  n_buckets: v.literal(BUCKET_COUNT),
+  n_buckets: v.union([v.literal(3),v.literal(BUCKET_COUNT)]),
   buckets: v.array(v.string()),
   max_tokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
   device: v.string(),
@@ -108,7 +110,7 @@ export function parseHealth(body: unknown): HealthResult {
     return { ok: false, reason: "contract", contract: reported };
   }
   const parsed = v.safeParse(HealthSchema, body);
-  if (!parsed.success) return UNREACHABLE;
+  if (!parsed.success || parsed.output.n_buckets !== (parsed.output.model.calibration==="anagram-detector/1" ? 3 : BUCKET_COUNT) || parsed.output.buckets.length !== parsed.output.n_buckets) return UNREACHABLE;
   return { ok: true, health: parsed.output };
 }
 
@@ -120,6 +122,8 @@ function toResult(r: v.InferOutput<typeof ResultSchema>): ScoreResult {
   if (r.degraded) out.degraded = true;
   if (r.lang) out.lang = r.lang;
   if (typeof r.lang_prob === "number") out.lang_prob = r.lang_prob;
+  if (r.insufficient) out.insufficient = true;
+  if (r.sentenceLabels) out.sentenceLabels = r.sentenceLabels;
   if (r.unsupported) out.unsupported = true;
   return out;
 }
@@ -151,6 +155,7 @@ export function parseScoreResponse(body: unknown, blocks: ScoreBlock[]): ScoredB
   const seen = new Set<string>();
   for (const r of parsed.output.results) {
     if (!wanted.has(r.id) || seen.has(r.id)) continue; // stray or duplicate id — ignored
+    if (r.probs.length !== (parsed.output.model.calibration === "anagram-detector/1" ? 3 : BUCKET_COUNT) || r.bucket >= r.probs.length) throw new ProtocolError("Unexpected model classes");
     seen.add(r.id);
     results.push(toResult(r));
   }

@@ -621,7 +621,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(caught.exception.status, 422)
         HomeLock(self.home).close()
         state.unlink()
-        with patch("native_component.load_pin", side_effect=ValueError("damaged modelkit pin")), \
+        with patch("detector.selected", side_effect=ValueError("damaged detector pin")), \
                 self.assertRaisesRegex(ValueError, "damaged"):
             NativeComponent(self.home)
         HomeLock(self.home).close()

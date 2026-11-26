@@ -1,5 +1,7 @@
+import {sentenceReadout} from "../../lib/render/dist";
 import { browser } from "#imports";
 import "../../lib/ui/basecoat-vega.cdn.min.css";
+import { bindDisclosure } from "../../lib/ui/disclosure";
 import { localizePage } from "../../lib/ui/localize";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { t, tn } from "../../lib/i18n";
@@ -12,22 +14,26 @@ import { meanVerdict, readInWindows, unitVerdict, type UnitVerdict } from "../..
 import { groupBlocks } from "../../lib/plan/group";
 import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
 import { cancelDocumentSession } from "../../lib/access/session";
-import { band, bandLabel, BUCKET_BANDS, flagFromOf, isFlagged, isNoVerdict, type FlagFrom } from "../../lib/render/band";
+import { resultBands, resultLevel, band, bandLabel, BUCKET_BANDS, flagFromOf, isFlaggedBand, isNoVerdict, type FlagFrom } from "../../lib/render/band";
 import { formatScore } from "../../lib/render/score";
-import { adoptBandColorRules, levelOf } from "../../lib/render/scale";
+import { adoptBandColorRules } from "../../lib/render/scale";
 
 localizePage(); followSystemTheme();
-// The four words' colours are the chips' and the marks' own.
 adoptBandColorRules();
 const input = document.getElementById("text") as HTMLTextAreaElement;
 input.maxLength = MAX_UNIT_TEXT_CHARS;
 const fileInput = document.getElementById("file") as HTMLInputElement;
 const analyze = document.getElementById("analyze") as HTMLButtonElement;
+const edit = document.getElementById("edit") as HTMLButtonElement;
 const status = document.getElementById("status")!;
 const results = document.getElementById("results")!;
 const reading = document.getElementById("reading")!;
 const includeText = document.getElementById("includeText") as HTMLInputElement;
+const clear = document.getElementById("clear") as HTMLButtonElement;
 const wordCount = document.getElementById("words")!;
+const scoreToggle = document.getElementById("scoreToggle") as HTMLButtonElement;
+const scoreDetails = document.getElementById("scoreDetails")!;
+bindDisclosure(scoreToggle, scoreDetails);
 let generation = 0;
 
 /** A paragraph of the text: blank lines part them, as in CommonMark; a single line break is a
@@ -41,25 +47,48 @@ function paragraphsOf(text: string): Paragraph[] {
   return text.split(/\n[ \t]*\n\s*/u).map((p) => p.trim()).filter((p) => p !== "").map((p) => ({ text: p, words: countWords(p) }));
 }
 
-function clearResult(): void { report = undefined; results.hidden = true; reading.replaceChildren(); }
+const copyStatus = document.getElementById("copyStatus")!;
+
+function clearResult(): void {
+  copyStatus.textContent = "";
+  report = undefined;
+  scoreDetails.hidden = true;
+  scoreToggle.setAttribute("aria-expanded", "false");
+  includeText.checked = false;
+  results.hidden = edit.hidden = true;
+  input.hidden = analyze.hidden = false;
+  reading.replaceChildren();
+}
 function countShown(): void {
+  clear.hidden = input.value.length === 0 && fileInput.value === "";
   const n = countWords(input.value);
-  wordCount.textContent = n > 0 ? tn("pasteWords", n) : "";
+  analyze.disabled = n < MIN_WORDS;
+  wordCount.textContent = n === 0 ? t("pasteMinimum", MIN_WORDS)
+    : n < MIN_WORDS ? t("pasteProgress", n, MIN_WORDS) : tn("pasteWords", n);
 }
 function readout(r: ScoreResult): string {
   const label = bandLabel(band(r));
-  return isNoVerdict(band(r)) ? label : `${label}, ${formatScore(r.score)}, ${r.probs.map((p, i) => `${bandLabel(BUCKET_BANDS[i]!)} ${Math.round(p * 100)}%`).join(" / ")}`;
+  const summary = isNoVerdict(band(r)) ? label : `${label}, ${formatScore(r.score)}, ${r.probs.map((p, i) => `${bandLabel(resultBands(r)[i]!)} ${Math.round(p * 100)}%`).join(" / ")}`;
+  return r.sentenceLabels?.length ? summary + ". " + t("detectorSentences")+" — "+sentenceReadout(r.sentenceLabels) : summary;
 }
-function cancel(): void { ++generation; cancelDocumentSession(); analyze.disabled = false; }
+function cancel(): void { ++generation; cancelDocumentSession(); }
 input.addEventListener("input", () => { cancel(); clearResult(); status.textContent = ""; countShown(); });
 document.getElementById("pick")!.addEventListener("click", () => fileInput.click());
 document.getElementById("settings")!.addEventListener("click", () => void browser.runtime.openOptionsPage());
-document.getElementById("clear")!.addEventListener("click", () => {
-  cancel(); input.value = ""; fileInput.value = ""; status.textContent = ""; clearResult(); countShown(); input.focus();
+function clearDraft(): void {
+  cancel(); input.value = ""; fileInput.value = ""; status.textContent = ""; clearResult(); countShown();
+}
+edit.addEventListener("click", () => {
+  clearResult();
+  status.textContent = "";
+  input.focus();
 });
+clear.addEventListener("click", () => { clearDraft(); input.focus(); });
+window.addEventListener("pagehide", clearDraft);
 fileInput.addEventListener("change", async () => {
-  cancel(); const seq = generation;
+  cancel(); countShown(); const seq = generation;
   const file = fileInput.files?.[0]; if (!file) return;
+  clear.hidden = false;
   clearResult();
   if (file.size > 1024 ** 2) { status.textContent = t("pasteTooLarge"); return; }
   try {
@@ -112,7 +141,7 @@ analyze.addEventListener("click", async () => {
     units.forEach((unit, k) => {
       const read = windows.get(unit.id);
       if (!read?.length) throw new Error("incomplete");
-      verdicts.set(k, unitVerdict(unit.id, unit.text.length, read));
+      verdicts.set(k, unitVerdict(unit.id, unit.text.length, read, unit.text));
     });
     // Every paragraph in reading order, each with the unit it was read in; one too short to be
     // read with anything stands alone, with no verdict.
@@ -125,35 +154,46 @@ analyze.addEventListener("click", async () => {
       } else if (!grouped.has(i)) reads.push({ paragraphs: [paragraphs[i]!], text: paragraphs[i]!.text, verdict: null });
     }
     const whole = meanVerdict("paste", reads.flatMap((r) => (r.verdict ? [{ result: r.verdict.result, chars: r.text.length }] : [])));
-    const coverage = coverageLine(reads, words, text);
+    const coverage = coverageLine(reads, text);
     report = {reads, whole, model: producing, coverage};
     await show(report);
-    results.hidden = false; status.textContent = "";
+    if (seq !== generation) return;
+    input.hidden = analyze.hidden = true;
+    results.hidden = edit.hidden = false;
+    document.getElementById("readingTitle")!.hidden = paragraphs.length === 1;
+    status.textContent = "";
+    if (document.activeElement === document.body || document.activeElement === analyze) document.getElementById("summary")!.focus({ preventScroll: true });
   } catch { if (seq === generation) status.textContent = t("pasteFailed"); }
   finally { if (seq === generation) analyze.disabled = false; }
 });
 
 /** How much of the text was read: the paragraphs with a verdict of all of them, and why the
  *  others have none (too short to read, another language, the engine failed them). */
-function coverageLine(reads: readonly Read[], words: number, text: string): string {
+function unitWarning(read: Read): string {
+  return read.verdict && read.verdict.result.probs.length!==3 && !isNoVerdict(band(read.verdict.result))
+    ? shortTextNote(read.paragraphs.reduce((sum, p) => sum + p.words, 0)).trim() : "";
+}
+
+function coverageLine(reads: readonly Read[], text: string): string {
   const count = (test: (r: Read) => boolean): number => reads.filter(test).reduce((n, r) => n + r.paragraphs.length, 0);
   const all = count(() => true);
   const scored = count((r) => !!r.verdict && !isNoVerdict(band(r.verdict.result)));
-  const parts = [t("pasteCoverageRead", scored, all)];
+  const parts = [scored === 1 && all === 1 ? t("pasteOneRead") : t("pasteCoverageRead", scored, all)];
   const short = count((r) => !r.verdict);
   const foreign = count((r) => !!r.verdict?.result.unsupported);
   const failed = count((r) => !!r.verdict?.result.degraded);
   if (short) parts.push(t("pasteCoverageShort", short));
   if (foreign) parts.push(t("pasteCoverageForeign", foreign));
   if (failed) parts.push(t("pasteCoverageFailed", failed));
-  if (shortTextNote(words)) parts.push(shortTextNote(words).trim());
+  const warning = reads.map(unitWarning).find(Boolean);
+  if (warning) parts.push(warning);
   if (hasLookalikes(text)) parts.push(t("coverageLookalikes").trim());
   return parts.join(", ");
 }
 
 /** The class carrying a verdict's colour (--c), or none where there is no verdict. */
 function colourOf(r: ScoreResult): string {
-  return isNoVerdict(band(r)) ? "" : `b${levelOf(r.score)}`;
+  return isNoVerdict(band(r)) ? "" : `b${resultLevel(r)}`;
 }
 /** A verdict's chip, its readout as its name. */
 function chipOf(r: ScoreResult): HTMLElement {
@@ -164,35 +204,78 @@ function chipOf(r: ScoreResult): HTMLElement {
   return chip;
 }
 
+let paintRevision = 0;
 async function show({reads, whole, coverage}: NonNullable<typeof report>): Promise<void> {
+  const revision = ++paintRevision;
   const [flagFrom, underlines, scope] = await Promise.all([
     settings.flagFrom.getValue().then(flagFromOf).catch((): FlagFrom => "heavy"),
     settings.showHighlights.getValue().catch(() => true),
     settings.underlineScope.getValue().catch(() => "flagged" as const),
   ]);
-  showWhole(whole, reads);
-  document.getElementById("coverage")!.textContent = coverage;
-  // The text as it was given, a chip after each paragraph read; flagged ones underlined in
-  // their word's colour, as on a page (Settings, Flag and Underlines).
+  if (reads !== report?.reads || revision !== paintRevision) return;
+  showWhole(whole);
+  const coverageEl = document.getElementById("coverage")!;
+  coverageEl.textContent = coverage;
+  coverageEl.hidden = coverage === t("pasteOneRead");
+  const onlyResult = reads.length === 1 && reads[0]!.paragraphs.length === 1 ? reads[0]!.verdict?.result : undefined;
+  const sameScore = onlyResult && whole && band(onlyResult) === band(whole) && formatScore(onlyResult.score) === formatScore(whole.score);
+  const headlineScore = document.getElementById("score")!;
+  if (sameScore) {
+    headlineScore.title = readout(onlyResult);
+    headlineScore.setAttribute("role", "img");
+    headlineScore.setAttribute("aria-label", headlineScore.title);
+  } else {
+    headlineScore.removeAttribute("title");
+    headlineScore.removeAttribute("role");
+    headlineScore.removeAttribute("aria-label");
+  }
+  // Paragraphs in one scoring unit are joined by two newlines. Keep those offsets when painting the stretches.
   reading.replaceChildren(...reads.map((read) => {
     const block = document.createElement("div");
     block.className = "read";
     const r = read.verdict?.result;
     if (!r || isNoVerdict(band(r))) block.classList.add("unread");
-    else {
-      block.classList.add(colourOf(r));
-      if (underlines && (scope === "all" || isFlagged(r, flagFrom))) block.classList.add("marked");
-    }
+    else block.classList.add(colourOf(r));
+    const stretches = underlines ? (read.verdict?.stretches ?? []).filter(({result}) =>
+      !isNoVerdict(band(result)) && (scope === "all" || isFlaggedBand(band(result), flagFrom))) : [];
+    let offset = 0;
+    let next = 0;
     read.paragraphs.forEach((paragraph, i) => {
       const p = document.createElement("p");
-      p.textContent = paragraph.text;
-      if (r && i === read.paragraphs.length - 1) {
+      const end = offset + paragraph.text.length;
+      let cursor = offset;
+      while (next < stretches.length) {
+        const stretch = stretches[next]!;
+        if (stretch.start >= end) break;
+        if (stretch.end > cursor) {
+          const start = Math.max(cursor, stretch.start);
+          p.append(read.text.slice(cursor, start));
+          const mark = document.createElement("span");
+          mark.className = `marked ${colourOf(stretch.result)}`;
+          mark.title = bandLabel(band(stretch.result));
+          cursor = Math.min(end, stretch.end);
+          mark.textContent = read.text.slice(start, cursor);
+          p.append(mark);
+        }
+        if (stretch.end > end) break;
+        next++;
+      }
+      p.append(read.text.slice(cursor, end));
+      offset = end + 2;
+      if (r && !sameScore && i === read.paragraphs.length - 1) {
         p.append(" ");
         if (isNoVerdict(band(r))) {
           const word = document.createElement("span"); word.className = "note"; word.textContent = bandLabel(band(r));
           p.append(word);
         } else {
           p.append(chipOf(r));
+          const warning = unitWarning(read);
+          if (warning && reads.length > 1) {
+            const note = document.createElement("span");
+            note.className = "note";
+            note.textContent = " " + warning;
+            p.append(note);
+          }
           if (read.paragraphs.length > 1) {
             const times = document.createElement("span"); times.className = "note"; times.textContent = `×${read.paragraphs.length}`;
             p.append(times);
@@ -205,39 +288,49 @@ async function show({reads, whole, coverage}: NonNullable<typeof report>): Promi
   }));
 }
 
-/** The whole text's verdict, its word and score, and how much of the text read as each word:
- *  the share of the words in paragraphs of each word, as the toolbar menu shows a page's. */
-function showWhole(r: ScoreResult | null, reads: readonly Read[]): void {
+function refreshMarks(): void {
+  if (report) void show(report);
+}
+settings.flagFrom.watch(refreshMarks);
+settings.showHighlights.watch(refreshMarks);
+settings.underlineScope.watch(refreshMarks);
+
+function scoreExplanation(r: ScoreResult): string {
+  return t(r.probs.length === 3 ? "reportEstimate" : "reportLegacyEstimate");
+}
+
+/** The class shares behind the headline score, in model order. */
+function showWhole(r: ScoreResult | null): void {
   document.getElementById("summary")!.textContent = r ? bandLabel(band(r)) : t("pasteNothingRead");
   const score = document.getElementById("score")!;
   score.className = r ? `chip ${colourOf(r)}` : "chip";
   score.textContent = r ? formatScore(r.score) : "";
-  const shares = [0, 0, 0, 0];
-  for (const read of reads) {
-    const v = read.verdict?.result;
-    if (!v || isNoVerdict(band(v))) continue;
-    shares[levelOf(v.score)]! += read.paragraphs.reduce((n, p) => n + p.words, 0);
-  }
-  const total = shares.reduce((a, b) => a + b, 0);
+  scoreToggle.hidden = !r;
+  document.getElementById("estimate")!.textContent = r ? scoreExplanation(r) : "";
   const mix = document.getElementById("mix")!, legend = document.getElementById("legend")!;
-  mix.hidden = legend.hidden = total === 0;
-  mix.replaceChildren(...shares.map((n, i) => {
-    const part = document.createElement("span"); part.className = `b${i}`; part.style.flex = String(n);
+  const shares = r?.probs ?? [];
+  const bands = r ? resultBands(r) : [];
+  const colours = bands.map((b) => b === "assisted" ? 1 : BUCKET_BANDS.indexOf(b));
+  mix.replaceChildren(...shares.flatMap((n, i) => {
+    if (n === 0) return [];
+    const part = document.createElement("span"); part.className = `b${colours[i]}`; part.style.flex = String(n);
     return part;
   }));
   legend.replaceChildren(...shares.map((n, i) => {
-    const row = document.createElement("li"); row.className = `b${i}`;
+    const row = document.createElement("li"); row.className = `b${colours[i]}`;
     const dot = document.createElement("span"); dot.className = "dot";
-    const label = document.createElement("span"); label.className = "lbl"; label.textContent = bandLabel(BUCKET_BANDS[i]!);
-    const share = document.createElement("span"); share.className = "n"; share.textContent = `${total ? Math.round((n / total) * 100) : 0}%`;
+    const label = document.createElement("span"); label.className = "lbl"; label.textContent = bandLabel(bands[i]!);
+    const share = document.createElement("span"); share.className = "n"; share.textContent = `${Math.round(n * 100)}%`;
     row.append(dot, label, share);
     return row;
   }));
 }
 
 document.getElementById("copy")!.addEventListener("click", async () => {
+  const currentReport = report;
   if (!report) return;
-  const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version}, contract ${CONTRACT_VERSION}`, report.coverage, t("reportCaveat"), t("reportEstimate")];
+  const lines = [t("reportPrivateTitle"), `Anagram ${browser.runtime.getManifest().version}, contract ${CONTRACT_VERSION}`, report.coverage, t("reportCaveat")];
+  if (report.whole) lines.push(scoreExplanation(report.whole));
   if (report.model) lines.push(JSON.stringify(report.model));
   if (report.whole) lines.push(readout(report.whole));
   report.reads.forEach((read, index) => {
@@ -245,7 +338,11 @@ document.getElementById("copy")!.addEventListener("click", async () => {
     lines.push(`${index + 1}. ${r ? readout(r) : t("pasteTooShortToRead")}${r?.truncated ? `, ${t("reportUnread")}` : ""}${read.paragraphs.length > 1 ? ` (×${read.paragraphs.length})` : ""}`);
     if (includeText.checked) lines.push(read.text);
   });
-  try { await navigator.clipboard.writeText(lines.join("\n\n")); status.textContent = t("copied"); }
-  catch { status.textContent = t("reportCopyFailed"); }
+  try {
+    await navigator.clipboard.writeText(lines.join("\n\n"));
+    if (report === currentReport) copyStatus.textContent = t("copied");
+  } catch {
+    if (report === currentReport) copyStatus.textContent = t("reportCopyFailed");
+  }
 });
 countShown();

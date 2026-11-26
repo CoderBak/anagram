@@ -2608,6 +2608,47 @@ const results = await page.evaluate(() => {
   await ob.close();
 }
 
+// A post arriving alone is read promptly. Several changes in a burst share one walk.
+{
+  const ob = await browser.newPage();
+  await ob.setContent("<!doctype html><body></body>");
+  await ob.addScriptTag({ path: BUNDLE });
+  for (const tag of ["article", "section"]) {
+    const delays = await ob.evaluate(async (tag) => {
+      const observers = PW.createObservers({ onVisible() {}, onNear() {}, onDirty() {} });
+      const scheduled = [];
+      const timer = window.setTimeout;
+      observers.start();
+      window.setTimeout = (run, delay, ...args) => {
+        scheduled.push(delay);
+        return timer(run, delay, ...args);
+      };
+      try {
+        const own = document.createElement("span");
+        own.setAttribute("data-anagram", "host");
+        document.body.append(own);
+        await Promise.resolve();
+        const post = document.createElement(tag);
+        if (tag === "section") post.setAttribute("role", "article");
+        document.body.append(post);
+        await Promise.resolve();
+        post.append(document.createElement("p"));
+        await Promise.resolve();
+        return scheduled;
+      } finally {
+        window.setTimeout = timer;
+        observers.stop();
+      }
+    }, tag);
+    results.push({
+      name: `one ${tag} post starts promptly and a second mutation batches the work`,
+      ok: delays.length === 2 && delays[0] <= 32 && delays[1] >= 200,
+      note: JSON.stringify(delays),
+    });
+  }
+  await ob.close();
+}
+
 // ---- the page's shadow roots are watched, never Anagram's own ------------------------------
 // Every shadow root on the page is watched from the start, walked into or not. The ball and
 // the chips are shadow hosts too, and a ball that redraws its count must not wake the

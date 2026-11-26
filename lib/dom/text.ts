@@ -74,6 +74,9 @@ export interface Unit {
    * go are kept by the orchestrator, so its report covers the document read so far.
    */
   page?: number;
+  /** The original glyph bounds on each drawn PDF page. The reading log uses these
+   *  in memory to recognize a passage when reflow revises a line-break spelling. */
+  pdfRanges?: readonly string[];
 }
 
 /**

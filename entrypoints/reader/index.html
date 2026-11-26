@@ -41,12 +41,20 @@ See https://github.com/adobe-type-tools/cmap-resources
     <link rel="stylesheet" href="/vendor/pdfjs/web/viewer.css" />
 
   <script src="./main.ts" type="module"></script>
+    <link rel="stylesheet" href="/pages/fonts.css" />
   </head>
 
   <body tabindex="0">
     <aside id="anagramReaderStatus" data-anagram="host" aria-live="polite">
       <p id="notice" role="status"></p>
-      <section id="drop" hidden><p id="dropLabel"></p><p id="dropNote"></p><button id="choose" type="button"></button><input id="file" type="file" accept="application/pdf,.pdf" hidden /></section>
+      <section id="drop" aria-labelledby="dropLabel" hidden>
+        <div class="drop-heading">
+          <h1 id="dropLabel"></h1>
+          <button id="choose" type="button" aria-describedby="dropNote"></button>
+        </div>
+        <p id="dropNote"></p>
+        <input id="file" type="file" accept="application/pdf,.pdf" hidden />
+      </section>
     </aside>
     <div id="outerContainer">
       <span id="viewer-alert" class="visuallyHidden" role="alert"></span>
@@ -583,12 +591,15 @@ See https://github.com/adobe-type-tools/cmap-resources
 
                 <div id="editorModeSeparator" class="verticalToolbarSeparator"></div>
 
-                <div class="toolbarHorizontalGroup hiddenMediumView">
-                  <button id="printButton" class="toolbarButton" type="button" tabindex="0" data-l10n-id="pdfjs-print-button">
+                <div id="fileTools" class="toolbarHorizontalGroup">
+                  <button id="printButton" class="toolbarButton hiddenMediumView" type="button" tabindex="0" data-l10n-id="pdfjs-print-button">
                     <span data-l10n-id="pdfjs-print-button-label"></span>
                   </button>
 
-                  <button id="downloadButton" class="toolbarButton" type="button" tabindex="0" data-l10n-id="pdfjs-save-button">
+                  <button id="anagramOpenFile" class="toolbarButton labeled" type="button" data-l10n-id="pdfjs-open-file-button">
+                    <span data-l10n-id="pdfjs-open-file-button-label"></span>
+                  </button>
+                  <button id="downloadButton" class="toolbarButton labeled" type="button" tabindex="0" data-l10n-id="pdfjs-save-button">
                     <span data-l10n-id="pdfjs-save-button-label"></span>
                   </button>
                 </div>

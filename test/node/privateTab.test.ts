@@ -1,11 +1,8 @@
 // test/node/privateTab.test.ts — the invariant: NOTHING that exists only because of a
 // private tab is ever written to the disk.
 //
-// A private tab may read the cache (a hit writes nothing), and what its batches produce
-// lives in this worker's memory until an ordinary tab asks for the same text — which it
-// would have produced identically, so from that moment it is nobody's trace. The store is
-// a fake here: vitest has no IndexedDB, and what these checks are about is which rows
-// reach the persistent layer at all, not how it keeps them.
+// Private reads use worker memory. The background also gives private documents their own
+// partition. These tests exercise the router's disk gate, including when callers share a key.
 import { describe, expect, it, beforeEach } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import { createSwCache } from "../../lib/backend/swCache";
@@ -80,7 +77,7 @@ describe("a private tab leaves nothing on the disk", () => {
     expect(store.rows.size).toBe(0);
   });
 
-  it("serves a private tab from the disk without writing anything", async () => {
+  it("scores a private read again after the worker restarts, even if the disk holds a matching key", async () => {
     const store = fakeStore();
     const client = fakeClient();
     const router = createRouter(client, createSwCache(store));
@@ -89,9 +86,10 @@ describe("a private tab leaves nothing on the disk", () => {
     expect(store.rows.size).toBe(1);
     const written = [...store.rows.values()][0]!.t;
 
-    await router.handle(req(["read in an ordinary window first"]), { private: true });
+    const freshRouter = createRouter(client, createSwCache(store));
+    await freshRouter.handle(req(["read in an ordinary window first"]), { private: true });
     await flushed();
-    expect(client.calls.length).toBe(1); // a hit
+    expect(client.calls.length).toBe(2);
     expect(store.rows.size).toBe(1);
     expect([...store.rows.values()][0]!.t).toBe(written); // the read did not rewrite it
   });

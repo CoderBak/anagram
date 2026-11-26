@@ -1,3 +1,4 @@
+import {validRelease,type DetectorRelease} from "../detectorReleases";
 // lib/webengine/autoSetup.ts — the model's download, started by itself when the in-browser
 // engine is the one in use.
 //
@@ -26,6 +27,8 @@ const OPEN_AFTER_MS = 10_000;
 
 /** The part of the engine's saved state that says what the person chose. */
 export interface SavedSetup {
+  release?: DetectorRelease;
+  pending_release?: DetectorRelease;
   download_paused?: boolean;
   download_failed?: boolean;
   engine_stopped?: boolean;
@@ -57,24 +60,25 @@ export function blockedBy(env: { saveData?: boolean; quota?: number; usage?: num
 
 /** The engine's saved state and the bytes of its files but that state, read without starting it:
  *  null state for a fresh install, "unreadable" for a file the engine would not trust either. */
-async function readSaved(): Promise<{ saved: SavedSetup | null; bytes: number } | "unreadable"> {
+async function readSaved(): Promise<{ saved: SavedSetup | null; bytes: number; sizes: Record<string,number> } | "unreadable"> {
   let dir: FileSystemDirectoryHandle;
   try {
     dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(DIRECTORY);
   } catch (error) {
-    return (error as { name?: string }).name === "NotFoundError" ? { saved: null, bytes: 0 } : "unreadable";
+    return (error as { name?: string }).name === "NotFoundError" ? { saved: null, bytes: 0, sizes:{} } : "unreadable";
   }
   try {
     let bytes = 0, text: string | null = null;
+    const sizes: Record<string,number> = {};
     for await (const [name, handle] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
       if (handle.kind !== "file") continue;
       const file = await (handle as FileSystemFileHandle).getFile();
       if (name === STATE_FILE) text = await file.text();
-      else bytes += file.size;
+      else { bytes += file.size; sizes[name]=file.size; }
     }
-    if (text === null) return { saved: null, bytes };
+    if (text === null) return { saved: null, bytes, sizes };
     const saved = JSON.parse(text) as unknown;
-    return saved && typeof saved === "object" ? { saved: saved as SavedSetup, bytes } : "unreadable";
+    return saved && typeof saved === "object" ? { saved: saved as SavedSetup, bytes, sizes } : "unreadable";
   } catch {
     return "unreadable";
   }
@@ -108,12 +112,19 @@ export async function startSetupByItself(request: (op: "models.download") => Pro
     if (read === "unreadable") return "unreadable";
     // Asked for (the person picked the engine): whatever they chose before, and whatever the
     // browser says about saving data. Room is still room.
-    if (!asked && !wantsDownload(read.saved, pinnedFiles(tier))) return "not_wanted";
-    const total = pinnedFiles(tier).reduce((n, f) => n + f.size_bytes, 0);
+    const selection = read.saved?.pending_release ?? read.saved?.release;
+    const files = pinnedFiles(tier,validRelease(selection) ? selection : undefined);
+    if (!asked && read.saved?.verified?.["model.onnx"] && !selection) return "not_wanted";
+    if (!asked && !wantsDownload(read.saved, files)) return "not_wanted";
+    const needed = files.reduce((n,f) => {
+      if(read.saved?.verified?.[f.name] === f.sha256 && read.sizes[f.name] === f.size_bytes) return n;
+      const partial=read.sizes[f.name+".part"] ?? 0;
+      return n+f.size_bytes-(partial<=f.size_bytes ? partial : 0);
+    },0);
     let estimate: { quota?: number; usage?: number } = {};
     try { estimate = await navigator.storage.estimate(); } catch { /* no estimate: room is not known to be short */ }
     const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
-    const blocked = blockedBy({ saveData: !asked && connection?.saveData, ...estimate }, Math.max(0, total - read.bytes));
+    const blocked = blockedBy({ saveData: !asked && connection?.saveData, ...estimate }, needed);
     if (blocked) return blocked;
     const taken = request("models.download").then(() => "started" as const, () => "unavailable" as const);
     return await Promise.race([taken, new Promise<"started">((resolve) => setTimeout(() => resolve("started"), OPEN_AFTER_MS))]);

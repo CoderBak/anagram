@@ -25,8 +25,7 @@ const readCard = (page) =>
   page.evaluate(() => {
     const txt = (sel) => document.querySelector(sel)?.textContent ?? null;
     return {
-      // Settings puts the engine's name in front of the stage ("Local engine: Ready").
-      status: txt("#componentSettings .component-status")?.replace(/^Local engine: /, "") ?? null,
+      status: txt("#componentSettings .component-status"),
       access: txt("#accessState"),
       install: document.getElementById("install")?.hidden === false ? txt("#install-cmd") : null,
       primary: document.getElementById("component-primary")?.hidden === false ? txt("#component-primary") : null,
@@ -62,19 +61,33 @@ test("the setup page says Ready, offers the scoped installer when the engine is 
   expect.soft({ install: recovered.install }, back).toEqual({ install: null });
 });
 
-test("an engine error leaves setup incomplete, shows Retry and, in Settings, the Update engine action", async ({ page, extension, nativeHost }) => {
+test("an incompatible local engine offers updating as its next action", async ({ page, extension, nativeHost }) => {
   await page.goto(extension.url("options.html"), { waitUntil: "load" });
   await cardReady(page, "Settings starts Ready");
   const healthy = nativeHost.state().component;
   nativeHost.setState({ component: { ...healthy, state: "error", error: { code: "incompatible", message: "Fixture component requires update" } } });
-  const broken = "an engine error leaves setup incomplete, shows Retry and the Update engine action";
+  const broken = "an incompatible engine offers an update";
   // A ready page polls every 15 s, so the change is seen on the next tick.
   await expect.poll(async () => (await readCard(page)).status, { message: broken, timeout: 40_000 }).toBe("Needs attention");
   const card = await readCard(page);
-  expect.soft({ update: card.update, primary: card.primary, install: card.install }, broken).toEqual({ update: true, primary: "Retry", install: null });
+  expect.soft({ update: card.update, primary: card.primary, install: card.install }, broken).toEqual({ update: true, primary: "Update engine", install: null });
   expect.soft(card.error, broken).toBeTruthy();
   nativeHost.setState({ component: healthy });
   await expect.poll(async () => (await readCard(page)).status, { message: `${broken} (and Ready again once mended)`, timeout: 40_000 }).toBe("Ready");
+});
+
+for (const view of ["onboarding", "options"]) test(`${view} offers the matching engine update and confirms its version after reconnection`, async ({ page, extension, nativeHost }) => {
+  const healthy = nativeHost.state().component;
+  nativeHost.setState({ component: { ...healthy, version: "0.1.0" } });
+  await page.goto(extension.url(`${view}.html`));
+  const info = page.locator(".component-version");
+  const update = page.getByRole("button", { name: "Update engine", exact: true });
+  await expect(info).toContainText(`Version 0.1.0 installed. Update to ${healthy.version}.`);
+  await update.click();
+  await expect(page.locator(".component-status")).toContainText("Updating");
+  nativeHost.setState({ component: healthy });
+  await expect(info).toHaveText(`Updated to ${healthy.version}`);
+  await expect(update).toHaveCount(0);
 });
 
 // A rescan of an unchanged page is answered from the worker's cache and the host never hears
@@ -82,6 +95,11 @@ test("an engine error leaves setup incomplete, shows Retry and, in Settings, the
 // reach the host again.
 test("cached verdicts: a rescan is answered from the worker cache, the options page counts them, and once cleared the rescan asks the fixture again", async ({ context, page, pages, extension, nativeHost, tell }) => {
   pages.serve({ "/cached.html": CONTROLS_PAGE("CACHED") });
+  const opt = await context.newPage();
+  await opt.goto(extension.url("options.html"));
+  await expect(opt.locator("#cacheMode")).toHaveValue("session");
+  await opt.selectOption("#cacheMode", "persistent");
+  await expect(opt.locator("#cacheMode")).toBeEnabled();
   const asked = () => ({ requests: nativeHost.stats.requests, blocks: nativeHost.stats.blocks });
   // Exactly what the popup's Rescan does: the chips go at once (the handler drops them
   // before it returns) and come back with their verdicts; a host asked is asked before that.
@@ -96,20 +114,36 @@ test("cached verdicts: a rescan is answered from the worker cache, the options p
   const cached = "cached verdicts: a rescan is answered from the worker cache, and asks the fixture again once cleared";
   expect.soft(asked(), `${cached} (from the cache)`).toEqual(before);
 
-  const opt = await context.newPage();
-  await opt.goto(extension.url("options.html"), { waitUntil: "load" });
   const counted = "cached verdicts: the options page says how many are stored, and says zero once they are cleared";
   // The worker writes its verdicts to the disk a moment after it has them, and the page
   // counts the disk once, when it opens: it is opened again once the three are there.
   await expect
     .poll(() => opt.evaluate(async () => (await chrome.runtime.sendMessage({ action: "getCacheCount" }))?.entries), { message: `${counted} (on the disk)` })
     .toBeGreaterThanOrEqual(3);
+  const keys = await opt.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const open = indexedDB.open("anagram-scores");
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+    try {
+      return await new Promise((resolve, reject) => {
+        const request = db.transaction("scores").objectStore("scores").getAllKeys();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  });
+  expect(keys.length).toBeGreaterThanOrEqual(3);
+  for (const key of keys) expect(key).toMatch(/^[a-zA-Z0-9+/]{43}=$/);
   await opt.reload({ waitUntil: "load" });
   await expect(opt.locator("#cacheCount"), counted).toHaveText(/^[\d,]+ entr(y|ies)$/);
   await expect(opt.locator("#cacheCount"), counted).not.toHaveText("0 entries");
+  await expect(opt.locator("#cacheCount")).toBeVisible();
   await opt.click("#clearCache");
   await expect(opt.locator("#cacheStatus"), cached).toContainText("Cleared");
   await expect(opt.locator("#cacheCount"), counted).toHaveText("0 entries");
+  await expect(opt.locator("#cacheCount")).toBeHidden();
   await opt.close();
 
   await rescan();
@@ -199,7 +233,7 @@ const popupSays = (popup) =>
     status: document.getElementById("status")?.textContent ?? "",
     button: document.getElementById("action")?.textContent ?? "",
     // The one filled button, or an outline one where the action is merely available.
-    primary: document.getElementById("action")?.dataset.variant !== "outline",
+    primary: !document.getElementById("action")?.hasAttribute("data-variant"),
     engine: document.getElementById("backend")?.hidden === false ? document.getElementById("backend")?.textContent : null,
     fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
     // Never two main events at once: at most one filled button on the whole page.
@@ -216,15 +250,23 @@ async function popupOver(context, extension, page) {
 }
 const ONE_ACTION = "the popup offers one action per state, names the engine's state, and an unavailable engine opens Settings without a terminal command";
 
-test("the popup on a page being read offers Rescan and names the engine", async ({ context, page, pages, extension }) => {
+test("the popup on a page being read offers Rescan next to the result and omits routine status", async ({ context, page, pages, extension }) => {
   pages.serve({ "/popup-state.html": CONTROLS_PAGE("POPUPSTATE") });
   await page.goto(pages.url("/popup-state.html"), { waitUntil: "load" });
   await chipsSettle(page, 3);
   const popup = await popupOver(context, extension, page);
-  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: "Local engine: Ready" });
+  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (running)` }).toMatchObject({ button: "Rescan", primary: false, engine: null });
+  await expect(popup.locator(".report-heading #action")).toBeVisible();
+  await expect(popup.locator("#siteRuleNote")).toBeHidden();
+  await expect(popup.locator("body")).not.toContainText("localhost", { useInnerText: true });
   const seen = await popupSays(popup);
   expect.soft(seen.status, `${ONE_ACTION} (running)`).toMatch(/paragraphs analyzed/);
   expect.soft(seen.filled, `${ONE_ACTION} (running)`).toBeLessThanOrEqual(1);
+  const rescan = popup.locator("#action");
+  await rescan.focus();
+  await rescan.press("Enter");
+  await expect(popup.locator(".report-heading #action")).toBeVisible();
+  await expect(rescan).toBeFocused();
 });
 
 test("the popup on a page Anagram is off for offers to analyze it", async ({ context, page, pages, extension, storage, tell }) => {
@@ -233,7 +275,7 @@ test("the popup on a page Anagram is off for offers to analyze it", async ({ con
   await page.goto(pages.url("/popup-state.html"), { waitUntil: "load" });
   await runsHere(page, tell, false);
   const popup = await popupOver(context, extension, page);
-  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (off)` }).toMatchObject({ button: "Analyze this page", primary: true, status: "Anagram is off for this page." });
+  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (off)` }).toMatchObject({ button: "Analyze this page", primary: true, status: "" });
   expect.soft((await popupSays(popup)).filled, `${ONE_ACTION} (off)`).toBeLessThanOrEqual(1);
 });
 
@@ -249,7 +291,7 @@ test("the popup on a PDF tab offers the reader", async ({ context, page, pages, 
 
 test("the popup where nothing can run offers a PDF file from this computer", async ({ context, extension }) => {
   const popup = await popupOver(context, extension, null);
-  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (nothing)` }).toMatchObject({ button: "Read a PDF file…", primary: false, status: "Not available on this page." });
+  await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (nothing)` }).toMatchObject({ button: "Open a PDF…", primary: false, status: "Not available on this page." });
   expect.soft((await popupSays(popup)).filled, `${ONE_ACTION} (nothing)`).toBeLessThanOrEqual(1);
 });
 
@@ -270,7 +312,7 @@ test("the popup with the engine gone opens Settings, and offers no terminal comm
   expect.soft((await popupSays(popup)).filled, down).toBeLessThanOrEqual(1);
   // Settings runs in its own extension page, so native setup has a trusted top-level sender.
   await popup.click("#action");
-  const settingsUrl = extension.url("options.html");
+  const settingsUrl = extension.url("options.html#engineGroup");
   await expect.poll(() => context.pages().some((p) => p.url() === settingsUrl), { message: `${down}: Settings opens` }).toBe(true);
-  await expect(context.pages().find((p) => p.url() === settingsUrl).locator("#engineLabel"), `${down}: Settings opens`).toBeVisible();
+  await expect(context.pages().find((p) => p.url() === settingsUrl).locator("#engineLabel"), `${down}: engine controls are in view`).toBeInViewport();
 });

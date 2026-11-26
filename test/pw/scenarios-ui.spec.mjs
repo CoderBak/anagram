@@ -192,7 +192,12 @@ test("copying: a selection never carries the chip's number, and the card's Copy 
     return { meter: !!card.querySelector(".dist .scale .marker") && card.querySelectorAll(".dist .drow").length === 4, hasCopy: !!card.querySelector(".act.copy") };
   }, BADGE_SEL);
   expect.soft(parts, card).toEqual({ meter: true, hasCopy: true });
-  await page.locator(`#copysrc ${BADGE_SEL} .act.copy`).click();
+  const copyButton = page.locator(`#copysrc ${BADGE_SEL} .act.copy`);
+  await expect(copyButton).toHaveAttribute("aria-label", "Copy text");
+  await expect(copyButton).toHaveAttribute("title", "Copy text");
+  await copyButton.click();
+  await expect(copyButton).toHaveClass(/done/);
+  await expect(copyButton).toHaveAttribute("title", "Copy text", { timeout: 4000 });
   await expect.poll(() => clipboard.read(page), { message: card }).toContain("COPYSRC paragraph exists");
   expect.soft(await clipboard.read(page), card).not.toMatch(CHIP_NUMBER);
 });
