@@ -44,7 +44,8 @@ export class Tokenizer {
   private readonly ranks = new Map<string, number>();
   private readonly bytes = byteAlphabet();
   private readonly encoder = new TextEncoder();
-  private readonly added: AddedToken[];
+  private readonly addedBySpelling = new Map<string, AddedToken>();
+  private readonly addedPattern: RegExp;
   private readonly cache = new Map<string, number[]>();
   private readonly widths = new Map<number,number>();
   private readonly nfc: boolean;
@@ -62,13 +63,19 @@ export class Tokenizer {
       const [a, b] = Array.isArray(merge) ? merge : merge.split(" ");
       this.ranks.set(`${a}\u0000${b}`, rank);
     });
-    this.added = [...file.added_tokens].sort((x, y) => y.content.length - x.content.length);
+    // Regex alternatives at the same position are tried in order. Escape each spelling
+    // as a literal so normal prose can skip straight to the next actual added token.
+    for (const token of file.added_tokens.toSorted((x, y) => y.content.length - x.content.length)) {
+      if (token.content && !this.addedBySpelling.has(token.content)) this.addedBySpelling.set(token.content, token);
+    }
+    const spellings = [...this.addedBySpelling.keys()].map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    this.addedPattern = new RegExp(spellings.join("|") || "(?!)", "g");
     const special = (name:string) => file.added_tokens.find(t=>t.content===name);
     this.clsId = file.post_processor?.cls?.[1] ?? special("[CLS]")?.id ?? -1;
     this.sepId = file.post_processor?.sep?.[1] ?? special("[SEP]")?.id ?? -1;
     if (this.clsId < 0 || this.sepId < 0) throw new Error("Missing sequence tokens");
     for (const [token,id] of this.vocab) this.widths.set(id,Array.from(token).length);
-    for (const token of this.added) this.widths.set(token.id,this.encoder.encode(token.content).length);
+    for (const token of file.added_tokens) this.widths.set(token.id,this.encoder.encode(token.content).length);
     const pad = special("<pad>") ?? special("[PAD]");
     if (!pad) throw new Error("tokenizer has no <pad> token");
     this.padId = pad.id;
@@ -92,40 +99,43 @@ export class Tokenizer {
 
   /** Character offsets for the release's byte-level vocabulary, including split Unicode scalars. */
   offsets(text: string, ids: number[]): [number,number][] {
-    const owner: number[] = [];
-    let index = 0;
-    for (const ch of text) { for (const _ of this.encoder.encode(ch)) owner.push(index); index++; }
-    let byte = 0;
-    const offsets = ids.map((id): [number,number] => {
-      const start = byte;
-      byte += this.widths.get(id) ?? 0;
-      return [owner[start] ?? index, (owner[byte-1] ?? index-1)+1];
+    let tokenEnd = 0, scalarEnd = 0, units = 0, scalars = 0;
+    const offsets = ids.map((id): [number, number] => {
+      // If the previous token ended inside a scalar, this token shares its start.
+      const start = tokenEnd < scalarEnd ? scalars - 1 : scalars;
+      tokenEnd += this.widths.get(id) ?? 0;
+      while (scalarEnd < tokenEnd && units < text.length) {
+        const cp = text.codePointAt(units)!;
+        units += cp > 0xffff ? 2 : 1;
+        scalarEnd += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp <= 0xffff ? 3 : 4;
+        scalars++;
+      }
+      return [start, scalars];
     });
-    if (byte !== owner.length) throw new Error("Tokenizer offsets do not match the passage");
+    if (tokenEnd !== scalarEnd || units !== text.length) throw new Error("Tokenizer offsets do not match the passage");
     return offsets;
   }
 
   /** Leftmost-longest occurrences of the added tokens, with their strip rules applied. */
   private addedMatches(text: string): Array<{ start: number; end: number; id: number }> {
     const out: Array<{ start: number; end: number; id: number }> = [];
-    let i = 0;
-    while (i < text.length) {
-      let found: AddedToken | undefined;
-      for (const token of this.added) if (text.startsWith(token.content, i)) { found = token; break; }
-      if (!found) { i++; continue; }
-      let start = i;
-      let end = i + found.content.length;
+    this.addedPattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = this.addedPattern.exec(text)) !== null) {
+      const found = this.addedBySpelling.get(match[0])!;
+      let start = match.index;
+      let end = this.addedPattern.lastIndex;
       if (found.single_word) {
         const before = start > 0 ? text[start - 1] : "";
         const after = end < text.length ? text[end] : "";
-        if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) { i++; continue; }
+        if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) { this.addedPattern.lastIndex = start + 1; continue; }
       }
       if (found.lstrip) while (start > 0 && WHITESPACE.test(text[start - 1]!)) start--;
       if (found.rstrip) while (end < text.length && WHITESPACE.test(text[end]!)) end++;
       const previous = out[out.length - 1];
       if (previous && previous.end > start) previous.end = start;
       out.push({ start, end, id: found.id });
-      i = end;
+      this.addedPattern.lastIndex = end;
     }
     return out;
   }

@@ -66,6 +66,26 @@ describe("byte-level BPE", () => {
     expect(t.sepId).toBe(2);
     expect(t.padId).toBe(1);
   });
+  it("matches literal added tokens longest first and can resume inside a rejected word", () => {
+    const file = tinyTokenizerJson();
+    const added = (content: string, id: number, single_word = false) => ({
+      ...file.added_tokens[0]!, content, id, single_word,
+    });
+    file.added_tokens.push(added("[x]", 400), added("[x]?+", 401), added("ab[x]", 402, true));
+    const t = new Tokenizer(file as never);
+    expect(t.encode("[x]?+[x]", false)).toEqual([401, 400]);
+    expect(t.encode("zab[x]", false)).toEqual([...t.encode("zab", false), 400]);
+    expect(t.encode("ab[x]", false)).toEqual([402]);
+  });
+  it("keeps scalar offsets when tokens split multibyte characters and surrogate pairs", () => {
+    const t = tokenizer();
+    const text = "theé中🙂\ud800z";
+    expect(t.offsets(text, t.encode(text, false))).toEqual([
+      [0, 3], [3, 4], [3, 4], [4, 5], [4, 5], [4, 5],
+      [5, 6], [5, 6], [5, 6], [5, 6], [6, 7], [6, 7], [6, 7], [7, 8],
+    ]);
+    expect(() => t.offsets("abc", [])).toThrow(/offsets/);
+  });
   it("counts tokens alone and following a space", () => {
     const counts = countTokens(tokenizer(), ["The word", "", "  "]);
     expect(counts).toEqual({ alone: [2, 0, 0], following: [2, 0, 0], window: 510 });
