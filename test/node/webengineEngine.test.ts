@@ -617,6 +617,28 @@ describe("the engine's lifecycle", () => {
     expect((await saved()).idle_unload_s).toBe(480);
   });
 
+  it("keeps a shared model load when setup is requested again", async () => {
+    const first = track(make());
+    await first.engine.handle("models.download", {});
+    await ready(first.engine);
+    await first.engine.close();
+    let allow!: () => void;
+    const m = track(make({ store: first.store, hold: new Promise<void>(resolve => { allow = resolve; }) }));
+    await m.engine.start();
+    const writes = vi.spyOn(m.store, "replace");
+    try {
+      expect((await m.engine.handle("models.download", {})).data).toMatchObject({ state: "loading" });
+    } finally { allow(); }
+    await ready(m.engine);
+    expect((await m.engine.handle("models.download", {})).data).toMatchObject({ state: "ready" });
+    expect(writes).not.toHaveBeenCalled();
+    expect(m.log).toEqual(["create webgpu:fp32"]);
+    await m.store.delete("model.onnx");
+    await m.engine.handle("models.download", {});
+    expect((await ready(m.engine)).state).toBe("ready");
+    expect(await m.store.read("model.onnx")).toEqual(MODEL);
+  });
+
   it("bounds the score queue", async () => {
     const m = track(make());
     await m.engine.handle("models.download", {});
@@ -712,11 +734,15 @@ it("switches dated releases, reuses unchanged weights and restores the last work
     expect((await ready(engine)).state).toBe("ready");
     expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}});
     expect(server.requests).toHaveLength(requests);
+    expect((await engine.handle("models.select", { release: next })).data).toMatchObject({ state: "ready" });
     const payload = { v: "3.0", texts: ["The", "the", ""] };
     const warm = await engine.handle("tokens", payload);
     await engine.close();
     engine = makeEngine(true);
     const weights = vi.spyOn(store, "file");
+    await engine.handle("models.select", { release: next });
+    await engine.handle("models.download", {});
+    expect(engine.idle).toBe(true);
     expect(await engine.handle("tokens", payload)).toEqual(warm);
     expect(warm.data).toMatchObject({ window: 512 });
     expect(engine.idle).toBe(true);

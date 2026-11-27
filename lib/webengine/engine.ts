@@ -737,6 +737,9 @@ export class Engine {
       case "models.select":
         checkPayloadKeys(payload,["release"]);
         if (!validRelease(payload.release)) throw new EngineError("invalid_request","Invalid detector release",422);
+        if (await this.canReuseSetup(payload.release)) {
+          return { status: 200, data: this.status() };
+        }
         if (this.selecting || this.downloading || this.loading || this.pendingScores) throw new EngineError("busy","The engine is busy",409);
         this.selecting=true;
         try {
@@ -748,7 +751,7 @@ export class Engine {
       case "models.download":
         if (this.selecting) throw new EngineError("busy","Model selection in progress",409);
         checkPayloadKeys(payload);
-        return { status: 200, data: await this.startDownload() };
+        return { status: 200, data: await this.canReuseSetup() ? this.status() : await this.startDownload() };
       case "models.pause": {
         checkPayloadKeys(payload);
         if (this.download.status !== "running") throw new EngineError("busy", "There is no active download to pause", 409);
@@ -808,6 +811,18 @@ export class Engine {
         return { status: 200, data: this.status() };
       }
     }
+  }
+
+  /** A repeated setup request can use the installed model, including while it wakes or sleeps. */
+  private async canReuseSetup(release?: DetectorRelease): Promise<boolean> {
+    const pin = this.pin;
+    if (release && (release.revision !== pin.release?.revision || release.release !== pin.release.release)) return false;
+    const active = () => !this.selecting && !this.settings.engine_stopped && this.operation?.status !== "running" &&
+      (this.state === "ready" || this.state === "loading" || this.state === "idle");
+    if (!active()) return false;
+    const present = await this.modelsPresent();
+    if (this.pin !== pin || !active()) throw new EngineError("busy", "Model setup changed", 409);
+    return present;
   }
 
   private async startDownload() {
