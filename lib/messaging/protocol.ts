@@ -162,6 +162,7 @@ export interface BackendStatus {
     code?: string;
     ok: boolean;
     checkedAt: number;
+    interleavesPasses?: boolean;
     device?: string;
     dtype?: string;
     error?: string;

@@ -1,5 +1,5 @@
 import { browser } from "#imports";
-import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, type ScoredBatch, type TokenCounts } from "../contract";
+import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, type ScanPriority, type ScoredBatch, type TokenCounts } from "../contract";
 import type { BackendStatus } from "../messaging/protocol";
 import { componentIsBehind, parseHealth, parseScoreResponse, parseTokenCounts } from "./scoreProtocol";
 import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
@@ -37,6 +37,7 @@ export class NativeScoreClient implements ScoreClient {
       server:{ok:false,checkedAt:Date.now(),reason:"unreachable",code:error.code,error:error.message}};
     this.probing = undefined;
   }
+  interleavesPasses(): boolean { return this.current.server.ok && this.current.server.interleavesPasses === true; }
   isUp(): boolean { return this.current.server.ok; }
   /** The engine's state as last read, without asking it: asking starts an engine that is not running. */
   known(): BackendStatus["active"] { return this.current.active; }
@@ -65,7 +66,7 @@ export class NativeScoreClient implements ScoreClient {
           const h = result.health;
           this.observeModel(h.model);
           this.current = {active:"server",model:{...h.model},
-            server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,
+            server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,interleavesPasses:h.interleaves_passes,
               outdated:componentIsBehind(h.app_version,extensionVersion())}};
         } else {
           // Idle is unload-for-memory, not an explicit stop. Preserve known provenance;
@@ -105,12 +106,12 @@ export class NativeScoreClient implements ScoreClient {
       return null;
     }
   }
-  async scoreBatch(blocks: ScoreBlock[], signal?: AbortSignal): Promise<ScoredBatch> {
+  async scoreBatch(blocks: ScoreBlock[], signal?: AbortSignal, priority?: ScanPriority): Promise<ScoredBatch> {
     await this.probe();
     if (!this.isUp() && this.current.active === "down") throw new Error("Local inference is not ready");
     const generation = this.generation;
     try {
-      const reply = await this.request("score",{v:CONTRACT_VERSION,blocks:blocks.map(({id,text}) => ({id,text}))}, signal);
+      const reply = await this.request("score",{v:CONTRACT_VERSION, ...(priority && { priority }), blocks:blocks.map(({id,text}) => ({id,text}))}, signal);
       if (!reply.ok) throw new NativeScoreError(reply.status, reply.error?.code ?? "inference_failed", reply.error?.message ?? "Local inference failed");
       const batch = parseScoreResponse(reply.data, blocks);
       if (generation !== this.generation) throw new NativeScoreError(409, "cancelled", "Runtime changed during inference");

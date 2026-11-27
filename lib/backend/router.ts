@@ -82,7 +82,7 @@ interface Entry {
   promise: Promise<Produced>; resolve(value: Produced): void;
 }
 interface Batch {
-  priority: number; queuedAt: number; owner?: string;
+  priority: ScanPriority; queuedAt: number; owner?: string;
   entries: Entry[]; controller: AbortController; epoch: number; cacheEpoch: number;
   revision: number | undefined;
 }
@@ -153,7 +153,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       if (batch.controller.signal.aborted || batch.epoch !== epoch || !revisionMatches(batch.revision)) return null;
       try {
         const sentAt = Date.now();
-        const produced = await client.scoreBatch(blocks, batch.controller.signal);
+        const produced = await client.scoreBatch(blocks, batch.controller.signal, batch.priority);
         noteEngine(sentAt, blocks, produced);
         return produced;
       }
@@ -202,12 +202,15 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       let chosen = -1, chosenOwner = "", bestPriority = -Infinity, bestTurn = Infinity;
       for (let i = 0; i < waiting.length; i++) {
         const batch = waiting[i]!;
+        // Leave admission for a newly visible paragraph even if several tabs are prefetching.
+        const reserve = client.interleavesPasses?.() && batch.priority !== "viewport" ? 1 : 0;
+        if (running >= MAX_IN_FLIGHT - reserve) continue;
         const owners = new Set(batch.entries.flatMap((entry) => [...entry.readers].map((reader) => reader.document)));
-        const owner = [...owners].filter((doc) => (runningByDocument.get(doc) ?? 0) < MAX_DOCUMENT_IN_FLIGHT)
+        const owner = [...owners].filter((doc) => (runningByDocument.get(doc) ?? 0) < MAX_DOCUMENT_IN_FLIGHT - reserve)
           .sort((a, b) => (lastServed.get(a) ?? 0) - (lastServed.get(b) ?? 0))[0];
         if (!owner) continue;
         // Aging prevents a sustained stream of viewport work starving old background work.
-        const priority = batch.priority + Math.floor((Date.now() - batch.queuedAt) / 1000);
+        const priority = PRIORITY[batch.priority] + Math.floor((Date.now() - batch.queuedAt) / 1000);
         const served = lastServed.get(owner) ?? 0;
         if (priority > bestPriority || (priority === bestPriority && served < bestTurn)) {
           chosen = i; chosenOwner = owner; bestPriority = priority; bestTurn = served;
@@ -289,7 +292,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
         let entry = inFlight.get(key);
         if (!entry) {
           if (!batch || (size && size + first.text.length > most)) {
-            batch = { priority: PRIORITY[req.priority] ?? 0, queuedAt: Date.now(),
+            batch = { priority: req.priority, queuedAt: Date.now(),
               entries: [], controller: new AbortController(), epoch: requestEpoch, cacheEpoch, revision };
             batches.push(batch); size = 0;
           }
@@ -299,7 +302,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
           batch.entries.push(entry); size += first.text.length; inFlight.set(key, entry);
         }
         entry.readers.add(reader); reader.entries.add(entry);
-        entry.batch.priority = Math.max(entry.batch.priority, PRIORITY[req.priority] ?? 0);
+        if (PRIORITY[req.priority] > PRIORITY[entry.batch.priority]) entry.batch.priority = req.priority;
         promises.push(entry.promise.then(({ result, model: producer }) => {
           if (!alive()) return;
           if (producer) producers.set(modelDim(producer), snapshot(producer));

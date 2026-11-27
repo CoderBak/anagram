@@ -64,6 +64,7 @@ const HealthSchema = v.object({
   lid: v.optional(v.nullable(v.string())),
   dtype: v.optional(v.string()),
   /** Component release used to show update availability. */
+  interleaves_passes: v.optional(v.boolean()),
   app_version: v.optional(v.nullable(v.pipe(v.string(), v.maxLength(64)))),
 });
 

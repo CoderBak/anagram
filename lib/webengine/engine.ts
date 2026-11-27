@@ -5,8 +5,8 @@
 // model on the runtime lib/webengine/session.ts picks, answers the contract's operations
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
-import { yieldToMessages } from "./scheduling";
-import { IDLE_UNLOAD_RULE, validIdleUnload, type ScoreResult } from "../contract";
+import { InferencePassQueue, yieldToMessages } from "./scheduling";
+import { IDLE_UNLOAD_RULE, validIdleUnload, type ScanPriority, type ScoreResult } from "../contract";
 import { downloadFile, DownloadFailed, DownloadPaused, mirrorOf, noRoomFor, outOfSpace, readPackaged } from "./download";
 import { FastText } from "./fasttext";
 import { BUCKET_LABELS, CALIBRATION, SUPPORTED_LANGUAGES, modelFileName, type ModelTier, type Pin, type PinnedFile } from "./pin";
@@ -138,9 +138,10 @@ export class Engine {
   private loadAbort: AbortController | null = null;
   private storageBytes = 0;
   private lastActivity = 0;
-  private pendingScores = 0;
+  private readonly scores = new Set<Promise<unknown>>();
+  private get pendingScores(): number { return this.scores.size; }
   private settingsSaved: Promise<void> = Promise.resolve();
-  private scoreChain: Promise<unknown> = Promise.resolve();
+  private readonly passes = new InferencePassQueue();
   private scoreGeneration = 0;
   private releasing: Promise<void> | null = null;
   private idleTimer?: ReturnType<typeof setTimeout>;
@@ -581,7 +582,7 @@ export class Engine {
     this.scoreGeneration++;
     this.clearIdleTimer();
     this.loadAbort?.abort();
-    const scores = this.scoreChain;
+    const scores = Promise.allSettled(this.scores);
     this.releasing = (async () => {
       if (this.loading) await this.loading.catch(() => {});
       const loaded = this.loaded;
@@ -676,6 +677,7 @@ export class Engine {
       contract: CONTRACT_VERSION,
       app_version: this.init.version,
       model: { id: this.pin.model.id, ver: loaded.version, calibration: this.pin.model.calibration },
+      interleaves_passes: !!loaded.detector,
       n_buckets: loaded.detector ? 3 : N_BUCKETS,
       buckets: loaded.detector?.meta.classes ?? BUCKET_LABELS,
       languages: SUPPORTED_LANGUAGES,
@@ -736,8 +738,12 @@ export class Engine {
           window: meta.window,
         } };
       }
-      case "score":
-        return { status: 200, data: await this.score(parseScorePayload(payload).blocks, signal) };
+      case "score": {
+        const { priority = "viewport" } = payload;
+        if (priority !== "viewport" && priority !== "near" && priority !== "background")
+          throw new EngineError("invalid_request", "Invalid score priority", 422);
+        return { status: 200, data: await this.score(parseScorePayload(payload).blocks, priority, signal) };
+      }
       case "warm":
         // A page the engine will read is opening (lib/backend/warmup.ts): a model let go while
         // idle starts loading now, beside the page, as the page's first score would start it.
@@ -908,7 +914,7 @@ export class Engine {
     return { tokenizer: this.loaded!.tokenizer, meta: this.loaded!.detector?.meta };
   }
 
-  private async score(blocks: Array<{ id: string; text: string }>, signal?: AbortSignal) {
+  private async score(blocks: Array<{ id: string; text: string }>, priority: ScanPriority, signal?: AbortSignal) {
     if (this.releasing || this.closed || this.settings.engine_stopped || this.operation?.status === "running")
       throw new EngineError("not_ready", "The engine is stopped or stopping", 503);
     if (this.pendingScores >= MAX_PENDING_SCORES) throw new EngineError("busy", "Too many pending score requests", 409);
@@ -921,8 +927,9 @@ export class Engine {
       if (signal) await yieldToMessages();
       check();
     };
-    this.pendingScores++;
-    const turn = this.scoreChain.then(async () => {
+    const pass = <T>(work: () => Promise<T>) =>
+      this.passes.run(priority, () => { check(); return work(); }, !!signal);
+    const turn = Promise.resolve().then(async () => {
       check();
       await this.wakeAndWait();
       check();
@@ -948,15 +955,12 @@ export class Engine {
       const detector = loaded.detector;
       const scored = detector ? await (async () => {
         const out = [];
-        const run = async (ids: number[]) => {
-          await beforePass();
-          return detector.session.heads(ids);
-        };
+        const run = (ids: number[]) => pass(() => detector.session.heads(ids));
         for (const block of todo) {
           out.push(await detectorScore(block.text, loaded.tokenizer, detector.meta, detector.crf, run));
         }
         return out;
-      })() : todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text), signal, beforePass) : [];
+      })() : todo.length ? await pass(() => scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text), signal, beforePass)) : [];
       check();
       todo.forEach((block, i) => {
         const r = scored[i]!; // one result per text, in order (scoreTexts)
@@ -970,8 +974,8 @@ export class Engine {
           { id: block.id, bucket: 0, probs: new Array<number>(loaded.detector ? 3 : N_BUCKETS).fill(1 / (loaded.detector ? 3 : N_BUCKETS)), score: 0, tokens: 0, truncated: false, degraded: true }),
       };
     });
-    this.scoreChain = turn.catch(() => {});
+    this.scores.add(turn);
     try { return await turn; }
-    finally { this.pendingScores--; this.scheduleIdleUnload(); }
+    finally { this.scores.delete(turn); this.scheduleIdleUnload(); }
   }
 }

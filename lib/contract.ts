@@ -143,8 +143,9 @@ export interface ScoredBatch {
  * one (lib/backend/). Failed batches become degraded results.
  */
 export interface ScoreClient {
+  interleavesPasses?(): boolean;
   /** Score a batch of blocks. Returns one ScoreResult per input block (by id). */
-  scoreBatch(blocks: ScoreBlock[], signal?: AbortSignal): Promise<ScoredBatch>;
+  scoreBatch(blocks: ScoreBlock[], signal?: AbortSignal, priority?: ScanPriority): Promise<ScoredBatch>;
   /** Best-known identity of the backend that will answer the next scoreBatch (sync). */
   model(): ModelInfo;
   /** Runtime/disconnect generation, including changes that retain the same model label. */

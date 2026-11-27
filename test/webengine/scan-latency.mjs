@@ -1,5 +1,6 @@
 // Optional measurements for test/inbrowser.mjs --real --measure-scans. The model is already
 // warm. Every measured request uses fresh text so the verdict cache cannot answer it.
+import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 
 const passage = "We spent the morning measuring the flow of the river at the old stone bridge. " +
@@ -30,17 +31,17 @@ async function documentSession(context, url) {
   }
 }
 
-async function score({ page, session }, text) {
+async function score({ page, session }, text, priority = "viewport") {
   const began = performance.now();
-  const result = await page.evaluate(async ({ session, text }) => {
+  const result = await page.evaluate(async ({ session, text, priority }) => {
     const reply = await chrome.runtime.sendMessage({
       action: "scoreBatch", session,
-      req: { v: "3.0", session, priority: "viewport", blocks: [{ id: crypto.randomUUID(), text }] },
+      req: { v: "3.0", session, priority, blocks: [{ id: crypto.randomUUID(), text }] },
     });
     const first = reply?.results?.[0];
     if (!first?.tokens || first.degraded || first.insufficient) throw new Error("The model did not score the benchmark passage");
     return { tokens: first.tokens, score: first.score };
-  }, { session, text });
+  }, { session, text, priority });
   return { ...result, ms: Math.round(performance.now() - began) };
 }
 
@@ -70,6 +71,40 @@ export async function measureScanLatency(context, extensionId, runtime, model) {
         replacements.push({ ...measured, ms, oldScanFinishedBeforeClose: alreadyFinished });
       } finally { if (!previous.page.isClosed()) await previous.page.close(); }
     }
-    return { browser: context.browser()?.version(), platform: process.platform, runtime, model, delayMs, control, replacements };
+    const simultaneous = [];
+    const other = await documentSession(context, url);
+    try {
+      for (const reading of [21, 22, 23]) {
+        let finished = false;
+        const input = long + ` The observer checked reading ${reading} before lunch.`;
+        const background = score(other, input, "background").then(result => { finished = true; return result; });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        const visible = await score(current, passage.repeat(2) + ` The recorder checked reading ${reading}.`);
+        const beforeBackground = !finished;
+        const resumed = await background;
+        assert(beforeBackground, "The visible scan waited for the entire background passage");
+        simultaneous.push({ visible, resumed });
+      }
+    } finally { await other.page.close(); }
+
+    const sentence = "At station 0 the team recorded the river level and the wind speed for the survey. " +
+      "The observer checked the reading twice and left a note for the crew returning from the stone bridge after lunch.";
+    const sample = Array.from({ length: 14 }, (_, i) => sentence + ` This was visit ${i}.`).join(" ").split(" ").slice(0, 477).join(" ");
+    const boundary = [];
+    for (const text of [sample, sample + " river"]) {
+      const reference = await score(current, text);
+      const paste = await context.newPage();
+      try {
+        await paste.goto(url);
+        await paste.fill("#text", text);
+        await paste.locator("#analyze").click();
+        await paste.locator("#score:visible").waitFor({ timeout: 60000 });
+        const shown = Number(await paste.locator("#score").innerText());
+        assert.equal(shown, Number(reference.score.toFixed(2)), "Paste and direct paragraph scores differ");
+        boundary.push({ tokens: reference.tokens, score: reference.score, shown });
+      } finally { await paste.close(); }
+    }
+    assert.deepEqual(boundary.map(p => p.tokens), [512, 513]);
+    return { simultaneous, boundary, browser: context.browser()?.version(), platform: process.platform, runtime, model, delayMs, control, replacements };
   } finally { await current.page.close(); }
 }
