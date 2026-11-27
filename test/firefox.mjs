@@ -865,6 +865,9 @@ for (const how of ["lang", "ids"]) {
   });
   await p.goto(server.url("/pdfjs-viewer.html"), { waitUntil: "load" });
   const chipped = await waitFor(p, (sel) => document.querySelectorAll(`.page > [data-anagram] > [data-chip] > ${sel}`).length >= 4, { timeout: 25000, arg: BADGE_SEL });
+  // Pending chips appear before the four reconstructed passages reach the engine.
+  const deadline = Date.now() + 25000;
+  while (fixture.textsSince(before).length < 4 && Date.now() < deadline) await sleep(100);
   const r = {
     chipped,
     inLayer: await p.evaluate((sel) => document.querySelectorAll(`.textLayer ${sel}, .textLayer [data-anagram]`).length, BADGE_SEL),
