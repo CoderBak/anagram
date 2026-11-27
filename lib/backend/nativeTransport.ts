@@ -12,7 +12,9 @@ export { CRASH_LIMIT, CRASH_WINDOW_MS, RESTART_BACKOFF_MS, type NativePort } fro
 
 export class NativeTransport extends PortTransport {
   constructor(connect: () => NativePort = () => import.meta.env.BROWSER === "safari" ? safariPort() : browser.runtime.connectNative(NATIVE_HOST)) {
-    super(connect, { cannotStart: "Local component is not installed or cannot start" });
+    // The installed host performs one score at a time. Keep later text in the browser so a
+    // tab that closes while waiting can withdraw it, including on older installed hosts.
+    super(connect, { cannotStart: "Local component is not installed or cannot start", scoreQueueLimit: 8 });
   }
   protected override lastError(): string | undefined { return browser.runtime.lastError?.message; }
 }

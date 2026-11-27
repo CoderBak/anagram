@@ -40,6 +40,44 @@ describe("native port multiplexing and failure recovery", () => {
     expect((await first).data).toEqual({name:"status"});
     expect((await second).data).toEqual({name:"health"}); transport.close();
   });
+  it("withdraws queued text before it reaches the native host while token counts still run", async () => {
+    const p = port(), transport = new NativeTransport(() => p.p);
+    const controller = new AbortController();
+    const first = transport.request("score", { blocks: [{ id: "a", text: "active" }] });
+    const abandoned = transport.request("score", { blocks: [{ id: "b", text: "withdrawn" }] }, controller.signal);
+    const cancelled = expect(abandoned).rejects.toMatchObject({ code: "cancelled" });
+    const third = transport.request("score", { blocks: [{ id: "c", text: "current" }] });
+    const tokens = transport.request("tokens");
+    expect(p.messages.map(m => m.op)).toEqual(["score", "tokens"]);
+    controller.abort();
+    await cancelled;
+    p.answer(1); await tokens;
+    p.answer(0); await first;
+    expect(p.messages.map(m => m.op)).toEqual(["score", "tokens", "score"]);
+    expect(p.messages[2]!.payload).toMatchObject({ blocks: [{ text: "current" }] });
+    p.answer(2); await third;
+    transport.close();
+  });
+
+  it("bounds held scores and advances a live one if the active host never replies", async () => {
+    vi.useFakeTimers();
+    const p = port(), transport = new NativeTransport(() => p.p);
+    const first = expect(transport.request("score", {}, undefined, 100)).rejects.toMatchObject({ code: "native_timeout" });
+    const waiting = Array.from({ length: 7 }, () => transport.request("score"));
+    await expect(transport.request("score")).rejects.toMatchObject({ code: "busy" });
+    expect(p.messages).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(100);
+    await first;
+    expect(p.messages).toHaveLength(2);
+    p.answer(0); // A late reply to the first score must leave the second one alone.
+    expect(p.messages).toHaveLength(2);
+    for (let i = 0; i < waiting.length; i++) {
+      p.answer(i + 1);
+      await waiting[i];
+    }
+    transport.close();
+  });
+
   it("rejects outstanding work on disconnect and reconnects on a later request", async () => {
     vi.useFakeTimers(); const first = port(); const second = port();
     const connect = vi.fn().mockReturnValueOnce(first.p).mockReturnValue(second.p);
@@ -284,6 +322,23 @@ describe("a host that dies with work in flight", () => {
     expect(disconnected).not.toHaveBeenCalled();
     const second = await restarted(h, RESTART_BACKOFF_MS);
     expect(second.messages.map((m) => m.op)).toEqual(["status"]); // and it is not asked again
+    h.transport.close();
+  });
+
+  it("does not count an unsent score as a failed attempt when an earlier score crashes the host twice", async () => {
+    vi.useFakeTimers();
+    const h = hosts(); await running(h);
+    const first = h.transport.request("score");
+    const fails = expect(first).rejects.toMatchObject({ code: "engine_crashed" });
+    const waiting = h.transport.request("score");
+    h.started[0]!.disconnect();
+    const second = await restarted(h, RESTART_BACKOFF_MS);
+    expect(second.messages.map(m => m.op)).toEqual(["status", "score"]);
+    second.disconnect(); await fails;
+    const third = await restarted(h, 2 * RESTART_BACKOFF_MS);
+    expect(third.messages.map(m => m.op)).toEqual(["status", "score"]);
+    scoreReply(third, 1);
+    expect((await waiting).ok).toBe(true);
     h.transport.close();
   });
 
