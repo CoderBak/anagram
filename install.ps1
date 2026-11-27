@@ -313,7 +313,8 @@ import base64
 import hashlib
 import json
 import logging
-import os
+from pathlib import Path
+from unittest.mock import patch
 import re
 import sys
 import tempfile
@@ -344,19 +345,25 @@ def signed_version(bundle_json, signer=SIGNER, asked=None):
 def verify(archive, bundle_json, identity, issuer=ISSUER, offline=None):
     """Raise unless the bundle is a valid signature of `archive` by `identity`. `offline`: None
     tries Sigstore's update server first."""
+    from sigstore._internal import tuf
     from sigstore.hashes import Hashed
     from sigstore.models import Bundle
     from sigstore.verify import Verifier, policy
     from sigstore_models.common.v1 import HashAlgorithm
 
-    if offline is None:
-        try:
-            verifier = Verifier.production(offline=False)
-        except Exception as error:  # unreachable, or refused: the trust root sigstore-python carries
-            print(f"Sigstore's update server did not answer ({type(error).__name__}); using the trust root this verifier carries.", file=sys.stderr)
-            verifier = Verifier.production(offline=True)
-    else:
-        verifier = Verifier.production(offline=offline)
+    # The pinned Sigstore version chooses its TUF directories via platformdirs
+    # and exposes no per-verification cache option. Redirect only that lookup.
+    with tempfile.TemporaryDirectory(prefix="anagram-sigstore-") as folder:
+        root = Path(folder)
+        with patch.object(tuf, "_get_dirs", return_value=(root / "metadata", root / "targets")):
+            if offline is None:
+                try:
+                    verifier = Verifier.production(offline=False)
+                except Exception as error:  # unreachable, or refused: the trust root sigstore-python carries
+                    print(f"Sigstore's update server did not answer ({type(error).__name__}); using the trust root this verifier carries.", file=sys.stderr)
+                    verifier = Verifier.production(offline=True)
+            else:
+                verifier = Verifier.production(offline=offline)
     digest = hashlib.sha256()
     with open(archive, "rb") as stream:
         for block in iter(lambda: stream.read(1 << 20), b""):
@@ -372,9 +379,6 @@ def main(argv):
     archive, bundle, asked = argv[0], argv[1], (argv[2] if len(argv) == 3 else None)
     # What the installer says is enough: not sigstore-python's notes on how it got its trust root.
     logging.getLogger("sigstore").setLevel(logging.ERROR)
-    # Sigstore's trust cache in a place of its own, not the person's home.
-    cache = tempfile.mkdtemp(prefix="anagram-sigstore-")
-    os.environ.update(XDG_CACHE_HOME=os.path.join(cache, "cache"), XDG_DATA_HOME=os.path.join(cache, "data"))
     with open(bundle, "rb") as stream:
         bundle_json = stream.read()
     try:

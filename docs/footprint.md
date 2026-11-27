@@ -55,9 +55,7 @@ Before it opens a release fetched over HTTPS, the installer (`install.sh`, `inst
 checks its Sigstore signature with sigstore-python, installed from PyPI (or the configured
 mirror) into a throwaway environment in its temporary folder, every file's hash pinned
 (`installer/sigstore.txt`). sigstore-python asks `tuf-repo-cdn.sigstore.dev` for Sigstore's
-current trust root, and uses the one it carries where that host does not answer. Its cache
-stays in the temporary folder, except on Windows, where sigstore-python keeps it under
-`%LOCALAPPDATA%\sigstore\sigstore-python`.
+current trust root, and uses the one it carries where that host does not answer. The verifier uses a fresh temporary folder for its trust metadata and removes it after verification on every platform.
 
 There is no analytics, error-reporting or telemetry endpoint. The component update
 notice compares versions locally; it does not poll GitHub. ONNX Runtime, which the component
