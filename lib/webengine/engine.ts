@@ -466,7 +466,7 @@ export class Engine {
         ]);
         const lid = new FastText(lidBytes);
         // Tokenizer offsets and extraction order affect sentence labels in cached verdicts.
-        const version = release ? release.revision+"-crf3" : this.modelVersion(files, bytes, lidBytes);
+        const version = release ? release.revision+"-crf4" : this.modelVersion(files, bytes, lidBytes);
         const entry = release ? entryFor("backbone/model.safetensors") : files.get(modelFileName(this.tier))!;
         let session: LoadedSession | null = null;
         let lastError: unknown = null;
@@ -690,7 +690,7 @@ export class Engine {
 
   // ---- operations -----------------------------------------------------------------------------
 
-  async handle(op: EngineOperation, payload: Record<string, unknown>, signal?: AbortSignal): Promise<{ status: number; data: unknown }> {
+  async handle(op: EngineOperation, payload: Record<string, unknown>, signal?: AbortSignal, onPass?: () => void): Promise<{ status: number; data: unknown }> {
     await this.start();
     switch (op) {
       case "status":
@@ -742,7 +742,7 @@ export class Engine {
         const { priority = "viewport" } = payload;
         if (priority !== "viewport" && priority !== "near" && priority !== "background")
           throw new EngineError("invalid_request", "Invalid score priority", 422);
-        return { status: 200, data: await this.score(parseScorePayload(payload).blocks, priority, signal) };
+        return { status: 200, data: await this.score(parseScorePayload(payload).blocks, priority, signal, onPass) };
       }
       case "warm":
         // A page the engine will read is opening (lib/backend/warmup.ts): a model let go while
@@ -914,7 +914,7 @@ export class Engine {
     return { tokenizer: this.loaded!.tokenizer, meta: this.loaded!.detector?.meta };
   }
 
-  private async score(blocks: Array<{ id: string; text: string }>, priority: ScanPriority, signal?: AbortSignal) {
+  private async score(blocks: Array<{ id: string; text: string }>, priority: ScanPriority, signal?: AbortSignal, onPass?: () => void) {
     if (this.releasing || this.closed || this.settings.engine_stopped || this.operation?.status === "running")
       throw new EngineError("not_ready", "The engine is stopped or stopping", 503);
     if (this.pendingScores >= MAX_PENDING_SCORES) throw new EngineError("busy", "Too many pending score requests", 409);
@@ -955,7 +955,11 @@ export class Engine {
       const detector = loaded.detector;
       const scored = detector ? await (async () => {
         const out = [];
-        const run = (ids: number[]) => pass(() => detector.session.heads(ids));
+        const run = async (ids: number[]) => {
+          const heads = await pass(() => detector.session.heads(ids));
+          onPass?.();
+          return heads;
+        };
         for (const block of todo) {
           out.push(await detectorScore(block.text, loaded.tokenizer, detector.meta, detector.crf, run));
         }

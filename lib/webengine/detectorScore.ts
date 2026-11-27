@@ -109,7 +109,6 @@ export async function detectorScore(
     labels[i] = label;
     label = back[i * 3 + label]!;
   }
-  const length = offsets.at(-1)?.[1] ?? 0;
   const ends: number[] = [];
   let units = 0,
     scalars = 0;
@@ -162,12 +161,16 @@ export async function detectorScore(
     }
   }
   const countsByLabel = [0, 0, 0];
-  // The last token starting at a scalar owns it, including tokens splitting one scalar.
-  for (let i = 0; i < n; i++) {
-    const start = i ? offsets[i]![0] : 0;
-    const end = i + 1 < n ? offsets[i + 1]![0] : length;
-    countsByLabel[labels[i]!]! += end - start;
+  // Published document fractions exclude whitespace. Token offsets count Unicode scalars.
+  let tokenIndex = 0, position = 0, total = 0;
+  for (const character of text) {
+    while (tokenIndex + 1 < n && offsets[tokenIndex + 1]![0] <= position) tokenIndex++;
+    if (!/[\p{White_Space}\u001c-\u001f]/u.test(character)) {
+      countsByLabel[labels[tokenIndex]!]!++;
+      total++;
+    }
+    position++;
   }
-  const probs = countsByLabel.map(v => v / length);
+  const probs = countsByLabel.map(v => v / Math.max(1, total));
   return { sentenceLabels:sentenceStarts.map(start=>labels[start]!), bucket: maxIndex(probs), probs, score: probs[2]! + probs[1]! / 2, tokens: n, truncated: false };
 }

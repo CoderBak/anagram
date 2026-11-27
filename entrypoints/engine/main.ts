@@ -31,7 +31,7 @@ host.onMessage.addListener((reply) => {
   const id = (reply as { id?: unknown })?.id;
   if (typeof id !== "string") return;
   const port = owners.get(id)?.port;
-  owners.delete(id);
+  if ((reply as { type?: unknown }).type !== "scoreProgress") owners.delete(id);
   try { port?.postMessage(reply); } catch { /* the port closed */ }
 });
 host.onDisconnect.addListener(() => {

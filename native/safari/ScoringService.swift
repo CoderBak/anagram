@@ -32,7 +32,8 @@ final class ScoringService: NSObject, AnagramScoring {
                 var frame = withUnsafeBytes(of: &size) { Data($0) }
                 frame.append(data)
                 try self.input!.write(contentsOf: frame)
-                self.queue.asyncAfter(deadline: .now() + 120) {
+                let timeout: TimeInterval = value["op"] as? String == "score" ? 310 : 120
+                self.queue.asyncAfter(deadline: .now() + timeout) {
                     if self.pending[id] != nil { self.stop("Local engine timed out") }
                 }
             } catch {

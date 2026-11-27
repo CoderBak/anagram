@@ -23,7 +23,7 @@ export interface WorkerInit {
   gpuOnly?: boolean;
 }
 export type WorkerMessage = WorkerInit | ScoreCancellation | { type: "request"; request: unknown };
-export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" } | { type: "failed"; message: string };
+export type WorkerReply = { type: "scoreProgress"; id: string } | { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" } | { type: "failed"; message: string };
 
 let engine: Engine | null = null;
 const pending = new Map<string, AbortController | null>();
@@ -39,7 +39,7 @@ async function answer(request: unknown): Promise<EngineReply> {
   const controller = parsed.op === "score" ? new AbortController() : null;
   pending.set(parsed.id, controller);
   try {
-    const { status, data } = await engine!.handle(parsed.op, parsed.payload, controller?.signal);
+    const { status, data } = await engine!.handle(parsed.op, parsed.payload, controller?.signal, () => post({ type: "scoreProgress", id: parsed.id }));
     const reply = ok(parsed.id, data, status);
     if (JSON.stringify(reply).length > MAX_RESPONSE_BYTES) return fail(parsed.id, "response_too_large", "The native response exceeds the allowed size", 413);
     return reply;

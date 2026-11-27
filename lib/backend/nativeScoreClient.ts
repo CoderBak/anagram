@@ -116,8 +116,9 @@ export class NativeScoreClient implements ScoreClient {
       const batch = parseScoreResponse(reply.data, blocks);
       if (generation !== this.generation) throw new NativeScoreError(409, "cancelled", "Runtime changed during inference");
       this.observeModel(batch.model);
+      const needsCapabilities = !this.isUp() && batch.model.calibration === "anagram-detector/1";
       this.current = {...this.current, active:"server", model:{...batch.model},
-        server:{...this.current.server,ok:true,checkedAt:Date.now(),reason:undefined,code:undefined,error:undefined}};
+        server:{...this.current.server,ok:true,checkedAt:needsCapabilities ? 0 : Date.now(),reason:undefined,code:undefined,error:undefined}};
       return batch;
     } catch (error) {
       // Loading and idle-wakeup are retryable without changing the model generation, and so

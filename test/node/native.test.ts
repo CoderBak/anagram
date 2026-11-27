@@ -59,6 +59,25 @@ describe("native port multiplexing and failure recovery", () => {
     transport.close();
   });
 
+  it("lets visible work overtake a prefetch only after the host advertises pass scheduling", async () => {
+    const p = port(), transport = new NativeTransport(() => p.p);
+    const health = transport.request("health");
+    p.answer(0, { interleaves_passes: true }); await health;
+    const ctl = new AbortController();
+    const active = transport.request("score", { priority: "background" }, ctl.signal);
+    const cancelled = expect(active).rejects.toMatchObject({ code: "cancelled" });
+    const waiting = transport.request("score", { priority: "background" });
+    const visible = transport.request("score", { priority: "viewport" });
+    expect(p.messages.map(m => m.op)).toEqual(["health", "score", "score"]);
+    expect(p.messages[2]?.payload).toEqual({ priority: "viewport", interleave: true });
+    ctl.abort(); await cancelled;
+    expect(p.messages[3]).toMatchObject({ op: "score.cancel", payload: { id: p.messages[1]!.id } });
+    p.answer(3); p.answer(2); await visible;
+    expect(p.messages).toHaveLength(4);
+    p.answer(1); expect(p.messages[4]?.payload).toEqual({ priority: "background" });
+    p.answer(4); await waiting; transport.close();
+  });
+
   it("bounds held scores and advances a live one if the active host never replies", async () => {
     vi.useFakeTimers();
     const p = port(), transport = new NativeTransport(() => p.p);

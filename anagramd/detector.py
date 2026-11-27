@@ -9,6 +9,8 @@ import threading
 import time
 import unicodedata
 
+from inference_passes import PassQueue
+
 SOURCE = "CoderBak/anagram-detectors"
 LABELS = ["human", "ai_assisted", "ai_generated"]
 DEFAULT = Path(__file__).with_name("detector-release.json")
@@ -136,7 +138,13 @@ class Detector:
     dtype_name = "fp32"
     device = "cpu"
     n_buckets = 3
-    last_run_ms = last_wait_ms = 0
+    @property
+    def last_run_ms(self):
+        return getattr(self.timings, "run", 0.0)
+
+    @property
+    def last_wait_ms(self):
+        return getattr(self.timings, "wait", 0.0)
 
     def __init__(self, root, pin, lid):
         import numpy as np
@@ -152,7 +160,7 @@ class Detector:
         self.crf = json.loads((root / "crf.json").read_text())
         check_metadata(self.meta, self.crf, pin)
         self.max_length = self.meta["window"] + 2
-        self.version = pin["revision"] + "-ort-cpu-crf2"
+        self.version = pin["revision"] + "-ort-cpu-crf3"
         self.tokenizer = Tokenizer.from_file(str(root / "tokenizer/tokenizer.json"))
         cfg = json.loads((root / "backbone/config.json").read_text())
         self.cls, self.sep = cfg["cls_token_id"], cfg["sep_token_id"]
@@ -167,7 +175,8 @@ class Detector:
         opts.intra_op_num_threads = min(8, os.cpu_count() or 1)
         opts.add_session_config_entry("session.disable_prepacking", "1")
         self.session = ort.InferenceSession(str(graph), opts, providers=["CPUExecutionProvider"])
-        self.lock = threading.Lock()
+        self.passes = PassQueue()
+        self.timings = threading.local()
         buckets = np.arange(15) / 14
         self.phi = np.maximum(0, 1 - 2 * np.abs(buckets[:, None] - np.array([0, 0.5, 1])))
         self.w = np.asarray(self.crf["W"])
@@ -187,11 +196,9 @@ class Detector:
 
     def score(self, texts):
         start = time.perf_counter()
-        with self.lock:
-            began = time.perf_counter()
-            results = [self._one(text) for text in texts]
-            self.last_run_ms = (time.perf_counter() - began) * 1000
-            self.last_wait_ms = (began - start) * 1000
+        self.timings.wait = 0.0
+        results = [self._one(text) for text in texts]
+        self.timings.run = (time.perf_counter() - start) * 1000 - self.timings.wait
         return results
 
     def _one(self, text):
@@ -213,9 +220,12 @@ class Detector:
         mix, weight = np.zeros(n), np.zeros(n)
         for start in starts:
             end = min(start + width, n)
-            tokens, seg, mixed = self.session.run(
-                None, {"input_ids": np.asarray([self.cls, *ids[start:end], self.sep], dtype=np.int64)}
-            )
+            queued = time.perf_counter()
+            with self.passes.acquire():
+                self.timings.wait += (time.perf_counter() - queued) * 1000
+                tokens, seg, mixed = self.session.run(
+                    None, {"input_ids": np.asarray([self.cls, *ids[start:end], self.sep], dtype=np.int64)}
+                )
             segment = np.exp(seg[0] - seg.max()) @ self.phi
             features[start:end, :3] += tokens[1:-1]
             features[start:end, 3:] += np.log(np.maximum(1e-6, segment / segment.sum()))
@@ -266,7 +276,8 @@ class Detector:
                     runs.pop(i)
             path = np.repeat([k for k, _ in runs], [length for _, length in runs])
         owner = np.maximum(0, np.searchsorted(offsets[:, 0], np.arange(len(text)), side="right") - 1)
-        shares = np.bincount(path[owner], minlength=3) / len(text)
+        solid = np.fromiter((not c.isspace() for c in text), dtype=bool, count=len(text))
+        shares = np.bincount(path[owner[solid]], minlength=3) / max(1, int(solid.sum()))
         return dict(
             sentenceLabels=[int(path[a]) for a in cuts[:-1]],
             bucket=int(shares.argmax()),
@@ -284,6 +295,7 @@ class Detector:
             contract=CONTRACT_VERSION,
             app_version=APP_VERSION,
             model=dict(id=self.pin["release"], ver=self.version, calibration="anagram-detector/1"),
+            interleaves_passes=True,
             n_buckets=3,
             buckets=LABELS,
             languages=["en"],
@@ -311,6 +323,6 @@ def controller(root, home, pin, lid_path):
     candidate = Candidate("onnx:cpu:fp32", "CPU · ONNX Runtime", "cpu", "onnx", "fp32")
     return RuntimeController(
         home / "runtime.json",
-        lambda: ([candidate], pin["revision"] + "-crf2"),
+        lambda: ([candidate], pin["revision"] + "-crf3"),
         lambda _: Detector(root, pin, gate),
     )

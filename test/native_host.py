@@ -157,6 +157,52 @@ class FramingTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertEqual({r["id"] for r in replies(writer.getvalue())}, {"quick", "slow"})
 
+    def test_visible_work_and_cancellation_share_one_native_pass_queue(self):
+        from inference_passes import PassQueue
+        passes = PassQueue()
+        active, release, visible, written = (threading.Event() for _ in range(4))
+        ran = []
+
+        class Component:
+            def start(self):
+                pass
+            def close(self):
+                release.set()
+            def handle(self, op, payload):
+                if payload["priority"] == "viewport":
+                    visible.set()
+                for i in range(payload["count"]):
+                    with passes.acquire():
+                        ran.append((payload["priority"], i))
+                        if payload["priority"] == "background" and i == 0:
+                            active.set()
+                            release.wait(3)
+                return 200, {}
+
+        class Writer(io.BytesIO):
+            def flush(self):
+                written.set()
+        reader, writer = QueuedReader(), Writer()
+        thread = threading.Thread(target=host.run_host, args=(reader, writer, Component()))
+        thread.start()
+        try:
+            reader.queue.put(frame(request("score", "bg", {"priority": "background", "count": 3})))
+            self.assertTrue(active.wait(2))
+            reader.queue.put(frame(request("score", "fg", {"priority": "viewport", "count": 1, "interleave": True})))
+            self.assertTrue(visible.wait(2))
+            reader.queue.put(frame(request("score.cancel", "withdraw", {"id": "bg"})))
+            self.assertTrue(written.wait(2))
+            self.assertEqual(replies(writer.getvalue())[0]["id"], "withdraw")
+        finally:
+            release.set()
+            reader.queue.put(None)
+            thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(ran, [("background", 0), ("viewport", 0)])
+        results = {r["id"]: r for r in replies(writer.getvalue())}
+        self.assertEqual(results["fg"]["status"], 200)
+        self.assertEqual(results["bg"]["error"]["code"], "cancelled")
+
     def test_score_abandoned_by_the_browser_in_the_queue_is_not_scored(self):
         entered, release = threading.Event(), threading.Event()
         scored = []

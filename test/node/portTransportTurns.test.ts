@@ -76,6 +76,20 @@ describe("a request's timeout starts at its turn", () => {
     transport.close();
   });
 
+  it("gives a browser score another timeout interval when its worker finishes a model pass", async () => {
+    const port = serialEngine(45_000);
+    const messages = vi.spyOn(port, "postMessage");
+    const attach = vi.spyOn(port.onMessage, "addListener");
+    const transport = new PortTransport(() => port, { cannotStart: "x", cancelScore: () => {} });
+    const outcome = score(transport);
+    const { id } = messages.mock.calls[0]![0] as { id: string };
+    await vi.advanceTimersByTimeAsync(25_000);
+    attach.mock.calls[0]![0]({ type: "scoreProgress", id });
+    await vi.advanceTimersByTimeAsync(21_000);
+    expect(outcome()).toBe("answered");
+    transport.close();
+  });
+
   it("still times out a request the engine works on for longer than its timeout", async () => {
     const transport = new PortTransport(() => serialEngine(40_000), { cannotStart: "x" });
     const first = score(transport), second = score(transport);

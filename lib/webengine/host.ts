@@ -59,6 +59,8 @@ export class EngineHost implements NativePort {
         const queued = this.queue;
         this.queue = [];
         for (const message of queued) worker.postMessage(message);
+      } else if (message.type === "scoreProgress") {
+        for (const listener of this.messageListeners) listener(message);
       } else if (message.type === "reply") {
         this.unanswered--;
         if (!message.idle) this.ending = false;

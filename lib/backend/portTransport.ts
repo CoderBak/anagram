@@ -16,15 +16,8 @@
 // no batch answered in between, the engine is given up on: scoring is refused without
 // starting it until retry().
 //
-// A request's timeout runs while the engine works on it, not while it waits its turn. Both
-// engines score one request at a time in the order they came (anagramd/native_host.py's score
-// lane, lib/webengine/engine.ts's scoreChain), and the router keeps several batches with the
-// engine (lib/backend/router.ts MAX_IN_FLIGHT): timed from posting, the fourth of four batches
-// on a processor that takes ten seconds a batch failed as Unavailable although the engine was
-// sound. So each lane (LANES) keeps requests in arrival order, and a request's timer starts when
-// the one before it has been answered — or has run out of time itself. A cancelled request the
-// engine is still working through keeps its place, with a timer of its own: if the engine
-// never answers it, the request after it is not left waiting for ever.
+// Queue deadlines begin at admission. An updated native host can also admit a viewport
+// request alongside a background one. Both engines run only one model pass at a time.
 import { MAX_NATIVE_BYTES, isRecord, parseNativeReply, type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
 import { NativeTransportError, RECONNECT_MS, type EngineTransport } from "./transport";
 
@@ -92,6 +85,8 @@ export class PortTransport implements EngineTransport {
   private port: NativePort | null = null;
   /** The current port has answered something: its engine was running, not failing to start. */
   private answered = false;
+  private nativePasses = false;
+  private expedited: string | null = null;
   /** What the current engine was given and has not answered, whether or not anybody still
    *  waits for it (a cancelled batch is still being worked on). */
   private working = new Set<string>();
@@ -129,6 +124,8 @@ export class PortTransport implements EngineTransport {
     catch { this.connectionError = this.messages.cannotStart; this.retryAt = Date.now() + RECONNECT_MS; throw new NativeTransportError("native_unavailable", this.messages.cannotStart); }
     this.port = port;
     this.answered = false;
+    this.nativePasses = false;
+    this.expedited = null;
     this.working.clear();
     this.clearLanes();
     port.onMessage.addListener((value) => this.received(port, value));
@@ -142,11 +139,18 @@ export class PortTransport implements EngineTransport {
 
   private received(port: NativePort, value: unknown): void {
     if (this.port !== port) return;
+    if (this.messages.cancelScore && isRecord(value) && value.type === "scoreProgress" && typeof value.id === "string") {
+      const active = this.pending.get(value.id);
+      if (active?.op === "score" && active.port === port) active.arm();
+      return;
+    }
     const reply = parseNativeReply(value);
     if (!reply) { this.close("native_protocol", "Invalid local component response"); return; }
     if (!this.working.delete(reply.id)) return;
     this.answered = true;
     const request = this.pending.get(reply.id);
+    if (request?.op === "health" && reply.ok && this.messages.scoreQueueLimit)
+      this.nativePasses = isRecord(reply.data) && reply.data.interleaves_passes === true;
     if (request) {
       this.pending.delete(reply.id);
       request.cleanup();
@@ -256,9 +260,16 @@ export class PortTransport implements EngineTransport {
     this.restarting = null;
   }
 
-  request(op: NativeOperation, payload: NativePayload = {}, signal?: AbortSignal, timeout = 30_000): Promise<NativeReply> {
+  request(op: NativeOperation, payload: NativePayload = {}, signal?: AbortSignal, timeout?: number): Promise<NativeReply> {
     if (this.gaveUp && ENGINE_WORK.has(op)) return Promise.reject(this.crashError());
-    return this.create(op, payload, signal, timeout, null, false);
+    // Stdio returns one frame per request. Budget long native batches by their size.
+    let deadline = timeout ?? 30_000;
+    if (timeout === undefined && this.messages.scoreQueueLimit && op === "score" && Array.isArray(payload.blocks)) {
+      const chars = payload.blocks.reduce((n: number, block: unknown) =>
+        n + (isRecord(block) && typeof block.text === "string" ? block.text.length : 0), 0);
+      deadline *= Math.min(10, Math.max(1, Math.ceil(chars / 3000)));
+    }
+    return this.create(op, payload, signal, deadline, null, false);
   }
 
   /** `port`: post there now whatever else is going on (the restart's own question);
@@ -276,32 +287,37 @@ export class PortTransport implements EngineTransport {
       const target = port ?? (this.restarting ? null : this.connectPort());
       return new Promise((resolve, reject) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let timerVersion = 0;
         const abort = () => {
           settle(new NativeTransportError("cancelled", "Request cancelled"));
           if (request.port) this.keepTurn(id);
           else this.passTurn(id);
         };
-        const disarm = () => clearTimeout(timer);
+        const disarm = () => { timerVersion++; clearTimeout(timer); };
         const cleanup = () => { disarm(); signal?.removeEventListener("abort", abort); };
         const settle = (error: Error) => {
           if (!this.pending.delete(id)) return;
           cleanup(); reject(error);
           if (op === "score" && request.port) {
-            try { this.messages.cancelScore?.(request.port, id); } catch { /* the port already closed */ }
+            try {
+              if (this.nativePasses) request.port.postMessage({ v: 1, id: id + "-cancel", op: "score.cancel", payload: { id } });
+              else this.messages.cancelScore?.(request.port, id);
+            } catch { /* the port already closed */ }
           }
         };
         const began = Date.now();
         /** Out of time: the engine may still be at it, but the next in its lane starts its own. */
         const expire = () => { settle(new NativeTransportError("native_timeout", "Local component did not answer in time")); this.passTurn(id); };
         const arm = () => {
-          clearTimeout(timer);
+          disarm();
+          const version = timerVersion;
           timer = setTimeout(() => {
             const wait = this.messages.loadWaitMs;
             const on = request.port;
             if (wait && on && !request.internal && (op === "score" || op === "tokens") && Date.now() - began < wait) {
               // Out of time, but the model may be on its way in: ask, and keep waiting while it is.
               void this.isLoading(on).then((loading) => {
-                if (!this.pending.has(id) || request.port !== on) return;
+                if (!this.pending.has(id) || request.port !== on || version !== timerVersion) return;
                 if (loading && Date.now() - began < wait) arm();
                 else expire();
               });
@@ -339,16 +355,35 @@ export class PortTransport implements EngineTransport {
       }
       this.lanes.set(request.op, lane);
       lane.push({id: request.message.id, timeout: request.timeout});
-      if (limit && lane.length > 1) return;
+      if (limit && lane.length > 1) { this.expediteViewport(lane); return; }
     }
     this.send(port, request, !lane || lane.length === 1);
+  }
+
+  /** A negotiated host has a second request handler. Let one visible score take the
+   * next pass of an active prefetch. Other waiting text stays in the browser. */
+  private expediteViewport(lane: Turn[]): void {
+    if (!this.nativePasses || this.expedited || !this.port || !lane.length) return;
+    const active = this.pending.get(lane[0]!.id);
+    if (!active?.port || active.op !== "score" || !["background", "near"].includes(String(active.message.payload.priority))) return;
+    for (const turn of lane.slice(1)) {
+      const next = this.pending.get(turn.id);
+      if (!next || next.port || next.message.payload.priority !== "viewport") continue;
+      this.expedited = turn.id;
+      this.send(this.port, next, true);
+      return;
+    }
   }
 
   private send(port: NativePort, request: Pending, startTimer: boolean): void {
     request.port = port;
     this.working.add(request.message.id);
     if (startTimer) request.arm();
-    try { port.postMessage(request.message); }
+    try {
+      port.postMessage(this.expedited === request.message.id
+        ? { ...request.message, payload: { ...request.message.payload, interleave: true } }
+        : request.message);
+    }
     catch { this.close("native_unavailable", "Local component disconnected"); }
   }
 
@@ -359,7 +394,9 @@ export class PortTransport implements EngineTransport {
       if (at < 0) continue;
       clearTimeout(lane[at]!.timer);
       lane.splice(at, 1);
+      if (id === this.expedited) this.expedited = null;
       if (at === 0) this.startTurn(lane);
+      if (lane === this.lanes.get("score")) this.expediteViewport(lane);
       return;
     }
   }
@@ -372,14 +409,16 @@ export class PortTransport implements EngineTransport {
     const request = this.pending.get(head.id);
     if (request?.port) request.arm();
     else if (request && this.port) this.send(this.port, request, true);
-    else head.timer = setTimeout(() => this.passTurn(head.id), head.timeout);
+    else if (head.timer === undefined) head.timer = setTimeout(() => this.passTurn(head.id), head.timeout);
   }
 
   /** A cancelled request leaves `pending` but not its lane: the engine has it. If it was the
    *  one being worked on, the lane times it from here. */
   private keepTurn(id: string): void {
     for (const lane of this.lanes.values()) {
-      if (lane[0]?.id === id && lane[0].timer === undefined) lane[0].timer = setTimeout(() => this.passTurn(id), lane[0].timeout);
+      const turn = lane.find(t => t.id === id);
+      if (turn && (lane[0] === turn || this.expedited === id) && turn.timer === undefined)
+        turn.timer = setTimeout(() => this.passTurn(id), turn.timeout);
     }
   }
 

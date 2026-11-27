@@ -34,7 +34,7 @@ QUEUE_TIMEOUT_S = 30
 # So a request can wait its turn behind every other one in its lane, each taking all of its
 # time, and still be wanted; past that the browser has stopped waiting for it.
 MOST_QUEUE_WAIT_S = QUEUE_TIMEOUT_S * max(MAX_PENDING_SCORES, MAX_PENDING_TOKENS)
-OPS = {"status", "health", "score", "tokens", "runtime", "runtime.benchmark", "runtime.config",
+OPS = {"score.cancel", "status", "health", "score", "tokens", "runtime", "runtime.benchmark", "runtime.config",
        "runtime.cancel", "models.select", "models.download", "models.pause", "models.delete",
        "engine.stop", "engine.resume", "engine.settings", "component.update", "component.uninstall"}
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
@@ -118,10 +118,13 @@ class FrameWriter:
 
 def dispatch(component, request):
     from native_component import ComponentError
+    from inference_passes import ScoreCancelled
     from runtime_controller import RuntimeBusy, RuntimeFailure, RuntimeUnavailable
     try:
         status, data = component.handle(request["op"], request["payload"])
         return {"v": 1, "id": request["id"], "ok": True, "status": status, "data": data}
+    except ScoreCancelled:
+        return error_reply(request["id"], "cancelled", "Score cancelled", 409)
     except ComponentError as exc:
         return error_reply(request["id"], exc.code, exc.message, exc.status)
     except RuntimeBusy as exc:
@@ -147,7 +150,10 @@ def dispatch(component, request):
 
 
 def run_host(reader, writer, component=None, startup_error=None):
+    from inference_passes import request_context
     output = FrameWriter(writer)
+    cancellations = {}
+    urgent = ThreadPoolExecutor(max_workers=1, thread_name_prefix="anagram-visible")
     pending, pending_lock = set(), threading.Lock()
     # Each op waits for the engine on its own worker. Counting tokens never
     # queues behind a score batch, and neither blocks this reading thread.
@@ -157,16 +163,22 @@ def run_host(reader, writer, component=None, startup_error=None):
     if component is not None:
         component.start()
 
-    def queued_work(request, received, capacity):
+    def queued_work(request, received, capacity, cancelled):
+        priority = request["payload"].get("priority")
+        token = request_context.set((priority if priority in ("viewport", "near", "background") else "viewport", cancelled))
         try:
-            if time.monotonic() - received >= MOST_QUEUE_WAIT_S:
+            if cancelled is not None and cancelled.is_set():
+                output.write(error_reply(request["id"], "cancelled", "Score cancelled", 409))
+            elif time.monotonic() - received >= MOST_QUEUE_WAIT_S:
                 # The browser has already given up on it; keep the worker for live requests.
                 output.write(error_reply(request["id"], "busy", f"The {request['op']} request waited too long in the queue", 409))
             else:
                 output.write(dispatch(component, request))
         finally:
+            request_context.reset(token)
             with pending_lock:
                 pending.discard(request["id"])
+                cancellations.pop(request["id"], None)
             capacity.release()
 
     try:
@@ -197,14 +209,30 @@ def run_host(reader, writer, component=None, startup_error=None):
             if duplicate:
                 output.write(error_reply(request["id"], "busy", "A request with this identifier is already pending", 409))
                 continue
+            if request["op"] == "score.cancel":
+                target = request["payload"].get("id")
+                if not isinstance(target, str) or not IDENTIFIER.fullmatch(target):
+                    output.write(error_reply(request["id"], "invalid_request", "Invalid score identifier", 422))
+                    continue
+                with pending_lock:
+                    event = cancellations.get(target)
+                    if event is not None:
+                        event.set()
+                output.write({"v": 1, "id": request["id"], "ok": True, "status": 200, "data": {}})
+                continue
             if request["op"] in lanes:
                 capacity, executor = lanes[request["op"]]
                 if not capacity.acquire(blocking=False):
                     output.write(error_reply(request["id"], "busy", f"Too many pending {request['op']} requests", 409))
                     continue
+                event = threading.Event() if request["op"] == "score" else None
                 with pending_lock:
                     pending.add(request["id"])
-                executor.submit(queued_work, request, time.monotonic(), capacity)
+                    if event is not None:
+                        cancellations[request["id"]] = event
+                if event is not None and request["payload"].get("interleave") is True:
+                    executor = urgent
+                executor.submit(queued_work, request, time.monotonic(), capacity, event)
             else:
                 response = dispatch(component, request)
                 output.write(response)
@@ -219,6 +247,7 @@ def run_host(reader, writer, component=None, startup_error=None):
     finally:
         if component is not None:
             component.close()
+        urgent.shutdown(wait=True, cancel_futures=True)
         for _, executor in lanes.values():
             executor.shutdown(wait=True, cancel_futures=True)
 

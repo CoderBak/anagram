@@ -700,11 +700,15 @@ export async function readDetectorPassages(items: Readable[], scoreBlocks: Score
     const starts = sentenceStarts(source.slice(0, stop));
     for (let start = 0; start < stop;) {
       let end = Math.min(stop, start + limit);
-      // Normalizing a ligature can expand it. Shrink before choosing a sentence or word edge.
-      while (modelText(source.slice(start, end)).length > limit) end = start + Math.floor((end - start) * 0.9);
-      if (end < stop) end = pickCut(source, starts, end, Math.max(start + 1, end - JOINT_REACH_CHARS), end);
-      if (end < stop && /[\uDC00-\uDFFF]/.test(source[end]!)) end--;
-      slots.push({ owner, span: { start, end }, block: { id: `${owner.id}:${start}-${end}`, text: modelText(source.slice(start, end)) } });
+      let text: string;
+      for (;;) {
+        if (end < stop) end = pickCut(source, starts, end, Math.max(start + 1, end - JOINT_REACH_CHARS), end);
+        if (end < stop && /[\uDC00-\uDFFF]/.test(source[end]!)) end--;
+        text = modelText(source.slice(start, end));
+        if (text.length <= limit) break;
+        end = start + Math.floor((end - start) * 0.9);
+      }
+      slots.push({ owner, span: { start, end }, block: { id: `${owner.id}:${start}-${end}`, text } });
       start = end;
     }
   }
