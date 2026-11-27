@@ -889,10 +889,38 @@ if (REAL) {
   else await realRun(files);
 }
 
+/** Simulate a quota failure after OPFS accepts bytes, without filling the test machine's disk. */
+async function checkFailedPreferenceSave(run, setup) {
+  const read = () => setup.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle("anagram-engine");
+    return (await (await dir.getFileHandle("state.json")).getFile()).text();
+  });
+  const previous = await read();
+  const seconds = JSON.parse(previous).idle_unload_s === 900 ? 1200 : 900;
+  const worker = await engineWorker(run.profile);
+  try {
+    const armed = await worker.evaluate(`(() => {
+      const proto = FileSystemWritableFileStream.prototype, write = proto.write;
+      proto.write = async function () {
+        proto.write = write;
+        await write.call(this, new Uint8Array([123, 34]));
+        throw new DOMException("Simulated full disk", "QuotaExceededError");
+      };
+      return true;
+    })()`);
+    if (!armed) throw new Error("Could not simulate a failed preference save");
+    await engine(setup, "engine.settings", { idle_unload_s: seconds });
+    check("real: a partially written settings update preserves the entire previous file", await read() === previous);
+    await engine(setup, "engine.settings", { idle_unload_s: seconds });
+    check("real: the next settings update reaches disk", JSON.parse(await read()).idle_unload_s === seconds);
+  } finally { await worker.close(); }
+}
+
 async function realRun(files) {
   const w = words("en");
   const server = await modelServer({ files });
-  const run = await launch("en", server);
+  const run = await launch("en", server, undefined, EXT, undefined, [DEVTOOLS_PORT]);
   const problems = [];
   try {
     const began = Date.now();
@@ -923,6 +951,16 @@ async function realRun(files) {
     const verdict = await until(() => paste.evaluate(() => !document.getElementById("results").hidden && document.getElementById("summary").textContent), 120_000, 500);
     check("real: the paste page scores with the downloaded model", !!verdict, verdict);
     await paste.close();
+    await checkFailedPreferenceSave(run, setup);
+    // A different feature's file shares the extension origin, outside the model directory.
+    const sibling = await setup.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      const name = crypto.randomUUID();
+      const stream = await (await root.getFileHandle(name, { create: true })).createWritable();
+      await stream.write("another feature's data");
+      await stream.close();
+      return name;
+    });
     // Delete, from Manage.
     const managing = await extPage(run.context, extId, "options.html", problems);
     await managing.click("#engine-manage");
@@ -933,6 +971,11 @@ async function realRun(files) {
     const gone = await until(async () => (await statusOf(setup)) === w("engineNotSetUp"), 60_000);
     const after = await engine(setup, "status");
     check("real: Delete model files empties the engine's storage", gone && after?.data?.storage?.models_bytes < 10000, JSON.stringify(after?.data?.storage));
+    const preserved = await setup.evaluate(async name => {
+      const root = await navigator.storage.getDirectory();
+      return (await (await root.getFileHandle(name)).getFile()).text();
+    }, sibling);
+    check("real: removing the model keeps other files in the extension origin", preserved === "another feature's data");
     check("real: no errors in the pages", problems.length === 0, problems.join(" | "));
   } finally {
     await run.close();
