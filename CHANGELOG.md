@@ -9,6 +9,7 @@ local component and the installer all carry the same version.
 
 - Upgrading from v0.9.2 adds sentence-level labels for human, AI-assisted and AI-generated text, a recommended model picker, resumable browser downloads and recovery for the optional native installer. [Changes since v0.9.2](https://github.com/CoderBak/anagram/compare/v0.9.2...v0.10.1)
 - The installer source link has a larger click target. The Analyze text toolbar and Settings controls fit narrow windows across a wider range of system fonts.
+- Paragraph chips follow vertical text, so annotating a narrow page does not add horizontal scrolling.
 
 ## [0.10.0] — 2026-11-27
 

@@ -34,6 +34,7 @@ export const BADGE_CSS: string = `
 :host {
   all: initial;
   font-size: inherit; /* after all:initial — chip scales with the annotated text */
+  writing-mode: inherit;
   display: inline-block !important;
   position: relative !important;
   vertical-align: middle;
@@ -130,6 +131,7 @@ ${bandColorRules(".pill.scored", ":host(.pg-dark)", "--c")}
    margin:auto, overflow:auto, border, padding, colors) are all overridden here. */
 
 .card {
+  writing-mode: horizontal-tb;
   position: absolute;
   inset: auto;
   top: 0;
