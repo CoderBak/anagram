@@ -5,7 +5,14 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [0.10.1] — 2026-11-27
+
+- Upgrading from v0.9.2 adds sentence-level labels for human, AI-assisted and AI-generated text, a recommended model picker, resumable browser downloads and recovery for the optional native installer. [Changes since v0.9.2](https://github.com/CoderBak/anagram/compare/v0.9.2...v0.10.1)
+- The installer source link has a larger click target. The Analyze text toolbar and Settings controls fit narrow windows across a wider range of system fonts.
+
 ## [0.10.0] — 2026-11-27
+
+Source tag used for release testing.
 
 - The new detector labels individual sentences as human, AI-assisted or AI-generated. Hover or focus a paragraph chip to see those sentences and the share in each class. Earlier reading history keeps its original labels and model revision.
 - Setup preselects the recommended detector from Hugging Face’s `default` branch and shows its download size. You can choose another dated release in setup or Settings. Both engines verify the files for the selected revision and score text on your computer.

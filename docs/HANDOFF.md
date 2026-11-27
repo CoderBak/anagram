@@ -1,10 +1,10 @@
 # Handoff
 
-This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-26.
+This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-27.
 
-The 0.10.0 candidate distinguishes current AI-assisted text from historical editing bands throughout
+The 0.10.1 candidate distinguishes current AI-assisted text from historical editing bands throughout
 Statistics and links model terms to the selected revision. The packaged installer lifecycle check lives in
-`test/packaged-install.py`. Public model access, a signed 0.10.0 publication and hardware-specific runtime
+`test/packaged-install.py`. Public model access, a signed 0.10.1 publication and hardware-specific runtime
 checks remain separate from local candidate validation.
 
 It is not a design document. Background lives in:
