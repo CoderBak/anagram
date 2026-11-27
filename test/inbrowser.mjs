@@ -67,7 +67,8 @@ import { LID } from "../scripts/webengine.mjs";
 
 /** A device with no choice: the in-browser engine, set up from install. */
 const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
-const REAL = process.argv.includes("--real");
+const MEASURE_SCANS = process.argv.includes("--measure-scans");
+const REAL = MEASURE_SCANS || process.argv.includes("--real");
 const HUGGING_FACE = /^(huggingface\.co|[\w.-]+\.hf\.co)$/;
 
 // Setup reads these two catalog endpoints to label the recommended release and its size.
@@ -885,6 +886,7 @@ for (const lang of ["en", "zh-CN"]) {
 
 if (REAL) {
   const files = realFiles(process.env.ANAGRAM_MODELKIT ?? join(homedir(), "anagram-bench", "bench", "model"));
+  if (MEASURE_SCANS && (process.env.CI || !files)) throw new Error("Run the scan benchmark locally with ANAGRAM_MODELKIT pointing to the pinned detector snapshot");
   if (process.env.CI || !files) console.log("SKIP  the real download — set ANAGRAM_MODELKIT to the pinned modelkit");
   else await realRun(files);
 }
@@ -957,6 +959,13 @@ async function realRun(files) {
     await paste.click("#analyze");
     const verdict = await until(() => paste.evaluate(() => !document.getElementById("results").hidden && document.getElementById("summary").textContent), 120_000, 500);
     check("real: the paste page scores with the downloaded model", !!verdict, verdict);
+    if (MEASURE_SCANS) {
+      const { measureScanLatency } = await import("./webengine/scan-latency.mjs");
+      const backend = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
+      if (!backend?.model) throw new Error("Missing detector identity for the scan benchmark");
+      const timings = await measureScanLatency(run.context, extId, status.data.runtime?.active_id, backend.model);
+      console.log("scan-latency", JSON.stringify(timings));
+    }
     await paste.close();
     // A different feature's file shares the extension origin, outside the model directory.
     const sibling = await setup.evaluate(async () => {

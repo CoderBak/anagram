@@ -90,6 +90,7 @@ npm run test:scenarios -- --project chromium   # the same without the real sites
 npm run test:a11y
 npm run test:native                # real stdio host fixture, EN and ZH setup
 npm run test:inbrowser             # the engine choice per device and the in-browser engine's setup, with Hugging Face served locally (test/webengine/model-server.mjs), EN and ZH; --real downloads the real files to Ready
+ANAGRAM_MODELKIT=/path/to/snapshot node test/inbrowser.mjs --measure-scans  # warm and replacement scans, with the runtime and detector revision
 npm run test:paste                 # the paste page, pass readout and report
 npm run test:pseudo-locale         # every page in a stretched pseudo-locale, Chinese and English: nothing cut off, off-page or overlapping
 node test/ui-screens.mjs <dir>       # screenshots of the setup page, Settings, popup and a page with chips, EN and ZH, light and dark, on stand-in devices with scripted engine states (test/pw/devices.mjs, test/webengine/scripted-engine.mjs)
