@@ -67,8 +67,11 @@ import { LID } from "../scripts/webengine.mjs";
 
 /** A device with no choice: the in-browser engine, set up from install. */
 const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
-const MEASURE_SCANS = process.argv.includes("--measure-scans");
-const REAL = MEASURE_SCANS || process.argv.includes("--real");
+// --measure-webgpu uses the actual adapter, requires hardware WebGPU and records its identity.
+const MEASURE_GPU = process.argv.includes("--measure-webgpu");
+const MEASURE_SCANS = MEASURE_GPU || process.argv.includes("--measure-scans");
+const REAL_ONLY = MEASURE_GPU || process.argv.includes("--real-only");
+const REAL = REAL_ONLY || MEASURE_SCANS || process.argv.includes("--real");
 const HUGGING_FACE = /^(huggingface\.co|[\w.-]+\.hf\.co)$/;
 
 // Setup reads these two catalog endpoints to label the recommended release and its size.
@@ -170,6 +173,7 @@ const updated = (sw) => sw.evaluate(() => chrome.runtime.onInstalled.dispatch({ 
  *  so its answer is stood in for, where the worker reads it. */
 const saveData = (sw, on) => sw.evaluate((on) => Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData: on } }), on);
 
+if (!REAL_ONLY) {
 // ---- as shipped: no host granted at all -----------------------------------------------------------
 
 // The test build requires every site (test/test-build.mjs), which lets the extension read any
@@ -736,7 +740,7 @@ for (const lang of ["en", "zh-CN"]) {
     await updated(sw);
     const resumed = await until(async () => server.requests.slice(restartAt).find((r) => r.file === "model.onnx" && !r.preflight && r.range), 20000);
     check(`${lang}: an update resumes a download that was under way, from the bytes on disk`,
-      bytesOnDisk > 0 && Number(/^bytes=(\d+)-$/.exec(resumed?.range ?? "")?.[1]) > 0, JSON.stringify(resumed));
+      bytesOnDisk > 0 && Number(/^bytes=(\d+)-$/.exec(resumed?.range ?? "")?.[1]) > 0, JSON.stringify({bytesOnDisk, resumed, requests: server.requests.slice(restartAt).map(({file,range}) => ({file,range}))}));
     // Cancelled, nothing starts it again: not an update (above), not a relaunch of the browser.
     const settings = await extPage(context, extId, "options.html", problems);
     const gone = await engine(settings, "models.delete", { confirm: true });
@@ -882,6 +886,8 @@ for (const lang of ["en", "zh-CN"]) {
   }
 }
 
+}
+
 // ---- once, with the real files: the whole way to Ready, a score and deletion --------------------
 
 if (REAL) {
@@ -929,7 +935,8 @@ async function checkFailedPreferenceSave(run, setup) {
 async function realRun(files) {
   const w = words("en");
   const server = await modelServer({ files });
-  const run = await launch("en", server, undefined, EXT, undefined, [DEVTOOLS_PORT]);
+  const extension = MEASURE_GPU ? deviceBuild("hardware", {}) : deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
+  const run = await launch("en", server, undefined, extension, undefined, [DEVTOOLS_PORT]);
   const problems = [];
   try {
     const began = Date.now();
@@ -938,7 +945,19 @@ async function realRun(files) {
       await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 });
     watch(setup, "onboarding.html", problems);
     await setup.bringToFront();
+    let adapter = null;
+    if (MEASURE_GPU) {
+      adapter = await setup.evaluate(async () => {
+        const gpu = await navigator.gpu?.requestAdapter();
+        if (!gpu || gpu.info?.isFallbackAdapter || gpu.isFallbackAdapter) return null;
+        const { vendor, architecture, description } = gpu.info ?? {};
+        return { vendor, architecture, description };
+      });
+      if (!adapter) throw new Error("This benchmark requires a hardware WebGPU adapter");
+    }
     const ready = await until(async () => {
+      if (MEASURE_GPU && await setup.locator("#engine-pick-inbrowser").isVisible() &&
+          await setup.locator("#engine-pick-inbrowser").isEnabled()) await setup.click("#engine-pick-inbrowser");
       const s = await statusOf(setup);
       return s === w("componentReady") || s === w("engineSetupFailed") || s === w("componentNeedsAttention") ? s : null;
     }, 15 * 60_000, 1000);
@@ -947,9 +966,10 @@ async function realRun(files) {
     check("real: the language identifier came from the package, not the network", server.requests.every((r) => HUGGING_FACE.test(r.host) && r.file !== "lid.176.ftz"),
       JSON.stringify(server.requests.map((r) => `${r.host}${r.path}`)));
     const where = await textOf(setup, "#componentSettings .engine-where");
-    check("real: the model runs on the GPU, said in plain words", where === w("engineOnGpu"), where);
+    if (MEASURE_GPU) check("real: the model runs on the GPU", where === w("engineOnGpu"), where);
     check("real: the storage used is the model's", (await textOf(setup, "#componentSettings .engine-stored")) === w("componentStorage", size(DOWNLOAD_BYTES)));
     const status = await engine(setup, "status");
+    if (MEASURE_GPU && !status?.data?.runtime?.active_id?.startsWith("webgpu:")) throw new Error("The detector did not load on hardware WebGPU");
     const wasm = status?.data?.runtime?.candidates?.find((c) => c.id === "wasm:fp32");
     check("real: the offscreen document is cross-origin isolated (WASM threads)", /\b[2-9] threads\b/.test(wasm?.label ?? ""), wasm?.label);
     check("real: the setup page offers to try a paragraph once ready", await setup.evaluate(() => !document.getElementById("tryParagraph").hidden));
@@ -964,7 +984,7 @@ async function realRun(files) {
       const backend = await setup.evaluate(() => chrome.runtime.sendMessage({ action: "getBackendStatus", probe: true }));
       if (!backend?.model) throw new Error("Missing detector identity for the scan benchmark");
       const timings = await measureScanLatency(run.context, extId, status.data.runtime?.active_id, backend.model);
-      console.log("scan-latency", JSON.stringify(timings));
+      console.log("scan-latency", JSON.stringify({ ...timings, adapter }));
     }
     await paste.close();
     // A different feature's file shares the extension origin, outside the model directory.
