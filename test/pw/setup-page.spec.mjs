@@ -211,6 +211,34 @@ test.describe("the setup page", () => {
 });
 
 test.describe("Settings", () => {
+  for (const engine of ["inbrowser", "native"]) {
+    test(`keeps the idle setting selected during a ${engine} status poll`, async ({ extension }) => {
+      const page = await openScripted(extension, "options.html", "ready_gpu", { engine });
+      await page.locator("#engine-manage").click();
+      const idle = page.locator("#idleUnload");
+      await expect(idle).toBeEnabled();
+      await page.evaluate(() => {
+        const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+        let hold = true;
+        chrome.runtime.sendMessage = (message, ...args) => {
+          if (message.action === "anagram.nativeRequest") {
+            if (message.op === "engine.settings") window.submittedIdle = message.payload.idle_unload_s;
+            if (message.op === "status" && hold) {
+              hold = false;
+              return new Promise(resolve => { window.releaseStatus = () => resolve(send(message, ...args)); });
+            }
+          }
+          return send(message, ...args);
+        };
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await page.waitForFunction(() => typeof window.releaseStatus === "function");
+      await idle.selectOption("900");
+      await page.evaluate(() => window.releaseStatus());
+      await expect.poll(() => page.evaluate(() => window.submittedIdle)).toBe(900);
+    });
+  }
+
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
   test("lays settings in a focused column without redundant navigation, with the three reading choices on one line", async ({ extension }) => {

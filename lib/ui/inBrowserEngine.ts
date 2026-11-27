@@ -324,7 +324,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       void roomNeeded().then((room) => { if (!destroyed && stage?.stage === "needed" && room !== null) { noRoom = room; repaint(); } });
     }
     summary.textContent = statusText();
-    if (s.settings) {
+    // A status poll can finish while a selection is waiting to be submitted.
+    if (s.settings && queued !== "engine.settings") {
       const value = String(s.settings.idle_unload_s);
       if (![...idleSelect.options].some((o) => o.value === value)) {
         const option = element("option", idleUnloadLabel(s.settings.idle_unload_s));
