@@ -89,7 +89,16 @@ export const HOST_NAME = "dev.coderbak.anagram";
 export const HOST_SCRIPT = fileURLToPath(import.meta.url);
 const atomicWrite = (path, value) => {
   const temp = `${path}.${process.pid}.tmp`;
-  writeFileSync(temp, JSON.stringify(value)); renameSync(temp, path);
+  writeFileSync(temp, JSON.stringify(value));
+  const deadline = Date.now() + 1000;
+  for (;;) {
+    try { renameSync(temp, path); return; }
+    catch (error) {
+      // A Windows reader can briefly hold the destination open without delete sharing.
+      if (process.platform !== "win32" || !["EPERM", "EBUSY", "EACCES"].includes(error.code) || Date.now() >= deadline) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
 };
 export function readyRuntime() {
   return { schema_version: 1, state: "ready", active_id: "fake-cpu-fp32", selected_id: "fake-cpu-fp32",

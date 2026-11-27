@@ -135,7 +135,9 @@ export async function launchExtension({
   if (!extDir) requireBuild();
   const fixture = nativeFixture ?? await createNativeFixture();
   const profile = mkdtempSync(join(tmpdir(), "anagram-browser-"));
-  const extension = testPort ? copyForTestPort(extDir ?? EXT, profile) : extDir ?? EXT;
+  const source = extDir ?? EXT;
+  const nativeGranted = JSON.parse(readFileSync(join(source, "manifest.json"), "utf8")).permissions?.includes("nativeMessaging") ?? false;
+  const extension = testPort ? copyForTestPort(source, profile) : source;
   if (!testPort) blockNativeHostInProfile(profile);
   const opts = {
     headless,
@@ -166,13 +168,12 @@ export async function launchExtension({
       ]);
       await manager.close();
     }
-    if (testPort) detach = await attachTestPort(sw, fixture);
+    if (testPort) detach = await attachTestPort(sw, fixture, nativeGranted);
     else registerTestHost(join(profile, "NativeMessagingHosts", HOST_NAME + ".json"), fixture, "chrome", extId);
     if (!extDir) await waitForRegistration(sw);
     // A build without Native Messaging granted (a copy that stands in for a device as shipped)
     // never reaches the fixture.
-    const native = JSON.parse(readFileSync(join(extension, "manifest.json"), "utf8")).permissions?.includes("nativeMessaging");
-    if (native && fixture.state().enabled && fixture.state().component.state === "ready") {
+    if (nativeGranted && fixture.state().enabled && fixture.state().component.state === "ready") {
       const probe = await context.newPage();
       await probe.goto(`chrome-extension://${extId}/options.html`);
       const deadline = Date.now() + 15000;

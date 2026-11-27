@@ -236,7 +236,8 @@ export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [],
     // This carrier stays open: its closures implement the test port on the isolated
     // background page. The actual scoring process still speaks framed stdio.
     const carrier = await openExtensionPage(browser, extUrl("options.html"));
-    detach = await attachTestPort(carrier, fixture);
+    const manifest = JSON.parse(readFileSync(join(extDir ?? EXT, "manifest.json"), "utf8"));
+    detach = await attachTestPort(carrier, fixture, manifest.permissions?.includes("nativeMessaging") ?? false);
   }
   cleanupAfterBrowserClose(browser, "disconnected", async () => {
     detach?.();

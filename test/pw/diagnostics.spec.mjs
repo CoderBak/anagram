@@ -103,7 +103,8 @@ test("the copy: the worker's click handler gets an answer, the text reaches the 
   const bytes = Buffer.byteLength(text, "utf8");
   expect.soft(bytes, "size: the report is under the 60 kB a chat will take").toBeGreaterThan(0);
   expect.soft(bytes, "size: the report is under the 60 kB a chat will take").toBeLessThanOrEqual(60_000);
-  expect.soft(reply?.bytes, "size: the reply says how big it was").toBe(bytes);
+  // The clipboard converts LF to CRLF on Windows. The worker counts the UTF-8 it submitted.
+  expect.soft(reply?.bytes, "size: the reply reports the UTF-8 sent to the clipboard").toBe(Buffer.byteLength(text.replaceAll("\r\n", "\n"), "utf8"));
   // The async clipboard, never a <textarea> in the page (lib/diagnostics/index.ts copyText).
   expect.soft(reply?.via, "copy: through the clipboard API, never through the page").toBe("clipboard");
 });

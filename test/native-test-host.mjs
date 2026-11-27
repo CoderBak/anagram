@@ -64,8 +64,8 @@ export function cleanupAfterBrowserClose(browser, event, cleanup) {
 }
 
 /** Test-runner-only native API adapter; evaluation target is the isolated background. */
-export async function attachTestPort(target, fixture) {
-  await target.evaluate(async () => {
+export async function attachTestPort(target, fixture, nativeGranted) {
+  await target.evaluate(async (nativeGranted) => {
     const scope = globalThis.browser?.runtime.getBackgroundPage ? await browser.runtime.getBackgroundPage() : globalThis;
     const ports = new Map(); let sequence = 0;
     scope.__anagramTestNative = { queue: [], receive(id, reply) { ports.get(id)?.messages.forEach((fn) => fn(reply)); },
@@ -81,8 +81,8 @@ export async function attachTestPort(target, fixture) {
     };
     // Without Native Messaging granted nothing chooses the local engine by itself
     // (lib/backend/engines.ts): the relay stands for it, so the suite chooses it.
-    await (scope.browser ?? scope.chrome).storage.local.set({ engine: "native" });
-  });
+    if (nativeGranted) await (scope.browser ?? scope.chrome).storage.local.set({ engine: "native" });
+  }, nativeGranted);
   let stopped = false, timer;
   const children = new Map();
   const relay = (id, message) => target.evaluate(async ({ id, message }) => { const scope = globalThis.browser?.runtime.getBackgroundPage ? await browser.runtime.getBackgroundPage() : globalThis; scope.__anagramTestNative?.receive(id, message); }, { id, message }).catch(() => {});
