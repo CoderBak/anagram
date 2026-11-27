@@ -35,13 +35,15 @@ sys.stdout.buffer.write(struct.pack('<I',len(reply))+reply);sys.stdout.buffer.fl
   $bytes=[Text.Encoding]::UTF8.GetBytes('{"id":"binary-frame","text":"hello\nworld"}')
   $writer=New-Object IO.BinaryWriter($process.StandardInput.BaseStream)
   $writer.Write([uint32]$bytes.Length);$writer.Write($bytes);$writer.Flush()
+  # This one-request fixture exits after writing its small reply. Keep the input pipe
+  # open as the browser does, and bound the wait before reading from the output pipe.
+  if (-not $process.WaitForExit(10000)) { throw 'Native launcher did not forward the frame while browser stdin was open' }
+  if ($process.ExitCode -ne 0) { throw ('Native launcher failed: ' + $process.StandardError.ReadToEnd()) }
   $reader=New-Object IO.BinaryReader($process.StandardOutput.BaseStream)
   $length=$reader.ReadUInt32()
   if ($length -gt 1048576) { throw 'Invalid native frame length' }
   $reply=[Text.Encoding]::UTF8.GetString($reader.ReadBytes($length)) | ConvertFrom-Json
   if ($reply.echo.id -ne 'binary-frame' -or $reply.echo.text -ne "hello`nworld" -or $reply.home -ne $component) { throw 'Native launcher corrupted a frame or argument' }
-  $process.StandardInput.Close()
-  if (-not $process.WaitForExit(10000) -or $process.ExitCode -ne 0) { throw ('Native launcher failed: ' + $process.StandardError.ReadToEnd()) }
   Write-Host 'PASS Windows PowerShell parsing, C# compilation, private-Python launcher, exact home argument, raw native framing'
 } finally {
   if ($process -and -not $process.HasExited) { $process.Kill(); $process.WaitForExit() }

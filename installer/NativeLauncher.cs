@@ -37,7 +37,15 @@ public static class AnagramNativeLauncher {
     }
     static Thread Pump(Stream source, Stream target, bool closeTarget) {
         var thread = new Thread(delegate() {
-            try { source.CopyTo(target); target.Flush(); }
+            try {
+                // The browser keeps stdin open while it waits for each reply.
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = source.Read(buffer, 0, buffer.Length)) > 0) {
+                    target.Write(buffer, 0, count);
+                    target.Flush();
+                }
+            }
             catch (IOException) {} catch (ObjectDisposedException) {}
             finally { if (closeTarget) try { target.Close(); } catch {} }
         });
