@@ -77,9 +77,11 @@ jobs:
         run: npm run test:matrix
       - name: the two WebAssembly PDF decoders
         run: node test/pdf-codecs-check.mjs
-      - name: native engine and lifecycle (no model)
+      - name: native engine and lifecycle with offline model fixtures
         if: runner.os != 'Windows'
-        run: npm run test:backend
+        run: |
+          python -m pip install --only-binary=:all: 'onnxruntime==1.30.0'
+          npm run test:backend
       - name: e2e again with a real window (Xvfb)
         if: runner.os == 'Linux'
         run: xvfb-run -a env HEADED=1 npm run test:e2e
