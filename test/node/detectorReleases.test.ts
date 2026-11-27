@@ -13,6 +13,20 @@ import { unitVerdict } from "../../lib/capture/windows";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("dated detector releases", () => {
+  it("weights decoded sentences by non-whitespace Unicode characters", async () => {
+    const result = await detectorScore("A. 🍎abc.", {
+      clsId: 0, sepId: 1, encodeWithOffsets: () => ({ ids: [2, 3], offsets: [[0, 2], [3, 8]] }),
+    }, { min_words: 1, window: 512, stride: 256 }, {
+      W: [[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0]],
+      alpha: [0, 0, 0], delta: [0, 0, 0], lambda: 0, gamma: 0, l_min: 1,
+    }, async () => ({
+      token: Float32Array.from([0, 0, 0, 5, 0, 0, 0, 0, 5, 0, 0, 0]),
+      segment: new Float32Array(15), mixed: new Float32Array(2),
+    }));
+    expect(result.sentenceLabels).toEqual([0, 2]);
+    expect(result.score).toBe(5 / 7);
+  });
+
   it("discovers newly published sizes and optional tags without fetching weights", async () => {
     const next = { name: "2026-12-02-1.2b-preview-2", targetCommit: "a".repeat(40) };
     const fetch = vi.fn(async () =>

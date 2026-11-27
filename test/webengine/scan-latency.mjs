@@ -1,6 +1,7 @@
 // Optional measurements for test/inbrowser.mjs --real --measure-scans. The model is already
 // warm. Every measured request uses fresh text so the verdict cache cannot answer it.
 import assert from "node:assert/strict";
+import { serveHtml } from "../harness.mjs";
 import { performance } from "node:perf_hooks";
 
 const passage = "We spent the morning measuring the flow of the river at the old stone bridge. " +
@@ -31,7 +32,7 @@ async function documentSession(context, url) {
   }
 }
 
-async function score({ page, session }, text, priority = "viewport") {
+async function score({ page, session }, text, priority = "viewport", withLabels = false) {
   const began = performance.now();
   const result = await page.evaluate(async ({ session, text, priority }) => {
     const reply = await chrome.runtime.sendMessage({
@@ -40,8 +41,9 @@ async function score({ page, session }, text, priority = "viewport") {
     });
     const first = reply?.results?.[0];
     if (!first?.tokens || first.degraded || first.insufficient) throw new Error("The model did not score the benchmark passage");
-    return { tokens: first.tokens, score: first.score };
+    return { tokens: first.tokens, score: first.score, sentenceLabels: first.sentenceLabels };
   }, { session, text, priority });
+  if (!withLabels) delete result.sentenceLabels;
   return { ...result, ms: Math.round(performance.now() - began) };
 }
 
@@ -92,7 +94,15 @@ export async function measureScanLatency(context, extensionId, runtime, model) {
     const sample = Array.from({ length: 14 }, (_, i) => sentence + ` This was visit ${i}.`).join(" ").split(" ").slice(0, 477).join(" ");
     const boundary = [];
     for (const text of [sample, sample + " river"]) {
-      const reference = await score(current, text);
+      const reference = await score(current, text, "viewport", true);
+      if (model.ver.startsWith("7ab191a18cd77354d0462d9ad2c1335d1ad1580e")) {
+        // Published PyTorch inference.py, FP32 on CPU, one window per batch.
+        const expected = text === sample ? 0.9163038219641993 : 0.9165057915057915;
+        assert(Math.abs(reference.score - expected) < 1e-10, "Score differs from the pinned detector");
+        assert.deepEqual(reference.sentenceLabels, [...Array(3).fill(0), ...Array(33).fill(2)]);
+      }
+      const server = await serveHtml({ "/": `<!doctype html><html lang="en"><title>River survey</title><article><p id="sample">${text}</p></article></html>` });
+      const webpage = await context.newPage();
       const paste = await context.newPage();
       try {
         await paste.goto(url);
@@ -101,8 +111,13 @@ export async function measureScanLatency(context, extensionId, runtime, model) {
         await paste.locator("#score:visible").waitFor({ timeout: 60000 });
         const shown = Number(await paste.locator("#score").innerText());
         assert.equal(shown, Number(reference.score.toFixed(2)), "Paste and direct paragraph scores differ");
-        boundary.push({ tokens: reference.tokens, score: reference.score, shown });
-      } finally { await paste.close(); }
+        await webpage.goto(server.url("/"));
+        const number = webpage.locator("#sample .pill:not(.pending) .num").first();
+        await number.waitFor({ timeout: 60000 });
+        const badge = Number(await number.innerText());
+        assert.equal(badge, shown, "The webpage badge and Paste scores differ");
+        boundary.push({ tokens: reference.tokens, score: reference.score, shown, badge });
+      } finally { await webpage.close(); await paste.close(); await server.close(); }
     }
     assert.deepEqual(boundary.map(p => p.tokens), [512, 513]);
     return { simultaneous, boundary, browser: context.browser()?.version(), platform: process.platform, runtime, model, delayMs, control, replacements };

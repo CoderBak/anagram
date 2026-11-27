@@ -33,8 +33,8 @@ export function enoughDetectorWords(text: string, minimum: number): boolean {
 
 export async function detectorScore(
   raw: string,
-  tok: Tokenizer,
-  meta: DetectorMeta,
+  tok: Pick<Tokenizer, "clsId" | "sepId" | "encodeWithOffsets">,
+  meta: Pick<DetectorMeta, "min_words" | "window" | "stride">,
   crf: Crf,
   run: (ids: number[]) => Promise<Heads>,
 ) {
