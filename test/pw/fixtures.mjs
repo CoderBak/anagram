@@ -79,10 +79,6 @@ export const test = base.extend({
     const extDir = build === "shipping" ? shippingWithNative() : isAbsolute(build) ? build : undefined;
     const language = uiLanguage ? uiLanguageLaunch(uiLanguage) : {};
     const launched = await launchExtension({ nativeFixture: nativeHost, extDir, ...language, ...launch });
-    if (!launched.extId) {
-      await launched.context.close();
-      throw new Error("the extension's worker never started");
-    }
     if (uiLanguage) {
       // The launch cannot promise the language (harness.mjs uiLanguage()): read it back.
       const got = (await uiLanguageOf(launched.sw))?.replace("_", "-").toLowerCase() ?? null;

@@ -142,20 +142,32 @@ export async function launchExtension({
   const opts = {
     headless,
     viewport,
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, "--no-first-run", "--no-default-browser-check", ...ENV_ARGS, ...args],
+    args: ["--enable-unsafe-extension-debugging", "--no-first-run", "--no-default-browser-check", ...ENV_ARGS, ...args],
     ...contextOptions,
   };
   // The bundled headless shell cannot load extensions; the full build's new headless can.
   // A caller that brought its own executable (uiLanguage() on macOS) has already picked one.
   if (headless && !opts.executablePath) opts.channel = "chromium";
-  if (classicScrollbars) opts.ignoreDefaultArgs = ["--hide-scrollbars"];
+  if (opts.ignoreDefaultArgs !== true) {
+    opts.ignoreDefaultArgs = [...(opts.ignoreDefaultArgs ?? []), "--disable-extensions", ...(classicScrollbars ? ["--hide-scrollbars"] : [])];
+  }
   for (const k of Object.keys(opts)) if (opts[k] === undefined) delete opts[k];
   const context = await chromium.launchPersistentContext(profile, opts);
-  let [sw] = context.serviceWorkers();
-  if (!sw) sw = await context.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
-  const extId = sw ? new URL(sw.url()).host : null;
   let detach;
-  if (sw && extId) {
+  cleanupAfterBrowserClose(context, "close", async () => {
+    detach?.();
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    if (!nativeFixture) fixture.dispose();
+  });
+  try {
+    // Install after Playwright has attached to the fresh browser. Chromium returns the
+    // extension ID or its installation error, even when Windows startup is slow.
+    const session = await context.browser().newBrowserCDPSession();
+    const { id: extId } = await session.send("Extensions.loadUnpacked", { path: extension });
+    await session.detach();
+    const isExtensionWorker = (worker) => new URL(worker.url()).host === extId;
+    let sw = context.serviceWorkers().find(isExtensionWorker)
+      ?? await context.waitForEvent("serviceworker", { predicate: isExtensionWorker, timeout: 30_000 });
     if (incognitoAccess) {
       // Chromium reloads the unpacked extension when its private-window switch changes.
       // Set it before connecting the fixture host to the worker that will score the page.
@@ -184,13 +196,11 @@ export async function launchExtension({
       }
       await probe.close();
     }
+    return { context, sw, extId, fixture };
+  } catch (error) {
+    await context.close();
+    throw error;
   }
-  cleanupAfterBrowserClose(context, "close", async () => {
-    detach?.();
-    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-    if (!nativeFixture) fixture.dispose();
-  });
-  return { context, sw, extId, fixture };
 }
 
 /**
