@@ -76,11 +76,12 @@ Update this file, or delete an item, when it is done.
   - The official 200-text Firefox parity check, which also requires the gated reference sample. The local browser did not expose a hardware WebGPU adapter.
   - Installing 0.9.0 from the release on a clean machine. Its assets were checked after publishing: each `.sigstore.json` verifies with `installer/verify_release.py` on the installer's Python 3.12.13 (a changed `install.sh` does not), and both extension ZIPs carry the published installers' SHA-256.
 
-## Waiting on the maintainer
+## Public model access
 
-Anonymous downloads from the detector repository still require the maintainer to change access.
-The recommended weights returned HTTP 401 for an anonymous request on 2026-11-27.
-Fresh setups in both engines need those files. [Detector repository](https://huggingface.co/CoderBak/anagram-detectors)
+On 2026-11-27 the detector repository enabled anonymous downloads. The `default` revision was
+`7ab191a18cd77354d0462d9ad2c1335d1ad1580e`. A fresh Chromium profile downloaded and
+verified 1,582,812,701 bytes for the recommended detector and reached Ready.
+[Detector repository](https://huggingface.co/CoderBak/anagram-detectors)
 
 ## Open, in order
 
