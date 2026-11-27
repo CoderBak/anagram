@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from runtime_controller import Candidate, Cancelled, RuntimeController, error_text, import_onnxruntime, process_rss

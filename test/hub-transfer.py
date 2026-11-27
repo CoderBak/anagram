@@ -1,5 +1,6 @@
 """Exercise the actual locked HF transport with HTTPX's in-memory network."""
 import contextlib
+import hashlib
 import io
 from pathlib import Path
 import sys
@@ -11,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "anagramd"))
 import httpx
 import hub_transfer
 from huggingface_hub import close_session
+from safe_files import checkpoint_partial, regular_stat
 
 
 class TransferTests(unittest.TestCase):
@@ -27,11 +29,16 @@ class TransferTests(unittest.TestCase):
             self.requests.append(req)
             self.assertNotIn("authorization", req.headers)
             return handler(req)
+        if not self.part.exists():
+            self.part.touch()
+        info = regular_stat(self.part)
+        digest = hashlib.sha256(self.data).hexdigest()
+        checkpoint_partial(self.part, digest, [[info.st_size, hashlib.sha256(self.part.read_bytes()).hexdigest()]])
         with contextlib.redirect_stderr(io.StringIO()):
             hub_transfer.transfer("https://fixture.test/model", self.part, len(self.data), offset,
                                   lambda n: self.assertLessEqual(n, len(self.data)),
                                   client_factory=lambda: httpx.Client(transport=httpx.MockTransport(request), follow_redirects=True),
-                                  sleep=lambda _: None)
+                                  sleep=lambda _: None, expected=digest, identity=(info.st_dev, info.st_ino))
 
     def test_range_resume_uses_the_existing_partial(self):
         self.part.write_bytes(self.data[:4])

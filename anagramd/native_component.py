@@ -12,7 +12,6 @@ from pathlib import Path
 import re
 import secrets
 import signal
-import shutil
 import stat
 import subprocess
 import sys
@@ -21,9 +20,9 @@ import time
 import tomllib
 
 from download_modelkit import (PIN, LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, DownloadPaused, download_asset,
-                               install_streaming, load_pin, plain_tree, selected_entries)
+                               install_streaming, load_pin, plain_tree, remove_model_trees, remove_verified, selected_entries)
 from runtime_controller import IDLE_RULE, error_text, forget_crashes, valid_idle
-from safe_files import atomic_json, is_link, private_tree, read_json, regular_stat, remember
+from safe_files import atomic_state_json, is_link, private_tree, read_json, regular_stat, remember, retire_state_json
 
 HOST_NAME = "dev.coderbak.anagram"
 #: How often a score asked while the component starts looks again (NativeComponent._runtime).
@@ -87,6 +86,10 @@ class HomeLock:
     """Exclusive OS lock; a second browser receives busy instead of racing files."""
     def __init__(self, home):
         def check_installer():
+            journal = home / ".anagram-install.json"
+            if os.name == "nt" and (journal.exists() or is_link(journal)):
+                raise ComponentError("busy", "Windows setup is in progress or was interrupted. "
+                                     "Run the install command again to finish recovery.", 409)
             installing = home / ".installer-lock"
             if installing.exists() or is_link(installing):
                 if installer_gone(installing):
@@ -101,6 +104,8 @@ class HomeLock:
             raise ComponentError("invalid_request", "Native host lock is a symbolic link", 422)
         if path.exists() and regular_stat(path).st_nlink != 1:
             raise ComponentError("invalid_request", "Native host lock is a hardlink", 422)
+        if path.exists() and path.stat().st_size > (1 if os.name == "nt" else 0):
+            raise ComponentError("invalid_request", "Unexpected data in the native host lock file", 422)
         self.path = path
         self.fd = None
         self.lock = None
@@ -238,7 +243,7 @@ class NativeComponent:
     def _save_settings(self):
         if is_link(self.state_path):
             raise ComponentError("invalid_request", "Component state is a symbolic link", 422)
-        atomic_json(self.state_path, dict(self.settings))
+        atomic_state_json(self.state_path, dict(self.settings))
 
     def start(self):
         with self.lock:
@@ -269,7 +274,7 @@ class NativeComponent:
                         self.download.update(status="failed", error=error_text(exc))
                         self.settings.update(download_pending=False, download_failed=True)
                         try:
-                            atomic_json(self.home / "download-error.json", {"message": error_text(exc)})
+                            atomic_state_json(self.home / "download-error.json", {"message": error_text(exc)})
                             self._save_settings()
                         except OSError:
                             pass
@@ -466,13 +471,11 @@ class NativeComponent:
             state = controller.snapshot()["state"]
             if state in ("ready", "idle"):
                 previous = selected(self.home, pending=False)
-                atomic_json(self.home / "active-detector.json", self.pin)
-                (self.home / "pending-detector.json").unlink(missing_ok=True)
+                atomic_state_json(self.home / "active-detector.json", self.pin)
+                retire_state_json(self.home / "pending-detector.json")
                 if previous["revision"] != self.pin["revision"]:
                     old = model_dir(self.home, previous)
-                    plain_tree(old)
-                    if old.exists():
-                        shutil.rmtree(old)
+                    remove_verified(old, previous["files"])
                 retire_legacy_files(self.home)
                 return
             if state == "error":
@@ -489,7 +492,7 @@ class NativeComponent:
         if previous["revision"] == self.pin["revision"]:
             return
         self._stop_runtime()
-        (self.home / "pending-detector.json").unlink(missing_ok=True)
+        retire_state_json(self.home / "pending-detector.json")
         self.pin, self.model_dir, self.plan = previous, model_dir(self.home, previous), None
         self.settings.update(download_failed=False, download_pending=False, download_paused=False)
         self._save_settings()
@@ -600,7 +603,7 @@ class NativeComponent:
                 raise ComponentError("invalid_request", "Invalid detector release", 422) from exc
             with self.lock:
                 self._ensure_idle()
-                atomic_json(self.home / "pending-detector.json", release)
+                atomic_state_json(self.home / "pending-detector.json", release)
                 self.pin = release
                 self.model_dir = model_dir(self.home, release)
                 return self.handle("models.download", {})
@@ -766,9 +769,18 @@ class NativeComponent:
             runtime_path = self.home / "runtime.json"
             if is_link(runtime_path):
                 raise ComponentError("invalid_request", "Runtime preferences are a symbolic link", 422)
-            if (self.home / "models").exists():
-                shutil.rmtree(self.home / "models")
-            runtime_path.unlink(missing_ok=True)
+            root = self.home / "models"
+            remove_model_trees(self.model_dir, self.pin["files"])
+            if "release" in self.pin:
+                from detector import archived_releases, model_dir, selected
+                seen = {self.pin["revision"]}
+                for pin in (selected(self.home, pending=False), *archived_releases(self.home)):
+                    if pin["revision"] not in seen:
+                        remove_model_trees(model_dir(self.home, pin), pin["files"])
+                        seen.add(pin["revision"])
+                remove_model_trees(root / "editlens_roberta-large", load_pin(PIN)["files"])
+            remove_verified(root, [LID_ENTRY])
+            retire_state_json(runtime_path)
             forget_crashes(runtime_path)
             with self.lock:
                 self.settings.update(initialized=True, models_deleted=True, engine_stopped=True,

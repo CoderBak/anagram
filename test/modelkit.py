@@ -62,6 +62,104 @@ class ModelkitTests(unittest.TestCase):
         self.mod = module()
         self.calls = []
 
+    def test_removal_plan_preserves_legacy_state_and_detects_edits_and_replacements(self):
+        from safe_files import atomic_state_json
+        registration = module(SOURCE.parents[1] / "installer/native_registration.py")
+        (self.root / ".anagram-home").touch()
+        state = self.root / "component-state.json"
+        state.write_bytes(b"previous preferences")
+        atomic_state_json(state, {"paused": False})
+        state_receipt = self.root / "run/.anagram-component-state.json.receipt.json"
+        self.assertEqual(state_receipt.read_bytes(), json.dumps(json.loads(state_receipt.read_bytes()), indent=2).encode())
+        self.assertEqual([p.read_bytes() for p in self.root.glob(".preserved-*/component-state.json")], [b"previous preferences"])
+        plan = registration.removal_files(self.root)
+        self.assertEqual(plan[state.name], hashlib.sha256(state.read_bytes()).hexdigest())
+        self.assertIn("run/.anagram-component-state.json.receipt.json", plan)
+
+        replacement = self.root / "replacement"
+        replacement.write_bytes(state.read_bytes())
+        replacement.replace(state)
+        self.assertNotIn(state.name, registration.removal_files(self.root))
+        atomic_state_json(state, {"paused": True})
+        state.write_bytes(b"my edits")
+        self.assertNotIn(state.name, registration.removal_files(self.root))
+
+    def test_removal_plan_recognizes_only_checkpointed_partial_bytes_and_archived_release(self):
+        from hub_transfer import CheckpointWriter
+        from safe_files import atomic_state_json, retire_state_json
+        registration = module(SOURCE.parents[1] / "installer/native_registration.py")
+        (self.root / ".anagram-home").touch()
+        default = pin_for({"nested/weights": b"package"})
+        write_files(self.root, {"app/detector-release.json": json.dumps(default).encode()})
+        files = {"app/detector-release.json": hashlib.sha256(json.dumps(default).encode()).hexdigest()}
+        (self.root / "app" / registration.FILES).write_text(json.dumps(registration.file_receipt(self.root, files)))
+        selected = {**pin_for({"nested/weights": b"selected"}), "revision": "b"*40}
+        pending = self.root / "pending-detector.json"
+        atomic_state_json(pending, selected)
+        retire_state_json(pending)
+        part = self.root / "models" / (".incoming-detector-" + selected["revision"]) / "nested" / "weights.part"
+        part.parent.mkdir(parents=True)
+        entry = selected["files"][0]
+        with part.open("w+b") as stream:
+            writer = CheckpointWriter(stream, part, entry["sha256"])
+            writer.write(b"sel")
+            writer.write(b"ec")
+        name = part.relative_to(self.root).as_posix()
+        plan = registration.removal_files(self.root)
+        self.assertEqual(plan[name], hashlib.sha256(b"selec").hexdigest())
+        self.assertIn(name + ".resume", plan)
+        self.assertTrue(any(path.startswith("run/.anagram-detector-") for path in plan))
+        self.assertEqual(plan[name.removesuffix(".part")], entry["sha256"])
+        # The receipt was published before the last chunk. A stopped write
+        # may have left the earlier complete chunk, or an unverified tail.
+        part.write_bytes(b"sel")
+        self.assertEqual(registration.removal_files(self.root)[name], hashlib.sha256(b"sel").hexdigest())
+        part.write_bytes(b"mine")
+        plan = registration.removal_files(self.root)
+        self.assertNotEqual(plan.get(name), hashlib.sha256(b"mine").hexdigest())
+        self.assertNotIn(name + ".resume", plan)
+
+    def test_delete_and_scope_reduction_remove_owned_partials_and_leave_other_files(self):
+        from hub_transfer import CheckpointWriter
+        from download_modelkit import remove_model_trees
+        entry, _ = self.pin["files"][:2]
+        staging = self.target.with_name(".incoming-" + self.target.name)
+        staging.mkdir()
+        part = staging / (entry["path"] + ".part")
+        part.touch()
+        with part.open("r+b") as stream:
+            CheckpointWriter(stream, part, entry["sha256"]).write(b"orig")
+        self.mod.prune_staging(staging, {"tokenizer.json"}, self.pin)
+        self.assertFalse(part.exists())
+        self.assertFalse(part.with_name(part.name + ".resume").exists())
+
+        def interrupted(url, part, size, offset, **kwargs):
+            part.write_bytes(b"ori")
+            raise self.mod.DownloadPaused()
+        with self.assertRaises(self.mod.DownloadPaused):
+            self.mod.install_streaming(self.target, self.pin, selected_paths=[entry["path"]], transfer=interrupted)
+        unknown = staging / "personal.txt"
+        unknown.write_bytes(b"notes")
+        remove_model_trees(self.target, self.pin["files"])
+        self.assertFalse(part.exists())
+        self.assertFalse(part.with_name(part.name + ".resume").exists())
+        self.assertFalse((self.root / ("." + self.target.name + ".download.lock")).exists())
+        self.assertEqual(unknown.read_bytes(), b"notes")
+
+    def test_changed_checkpoint_is_kept_during_transfer(self):
+        from hub_transfer import CheckpointWriter
+        entry = self.pin["files"][0]
+        part = self.root / (entry["path"] + ".part")
+        receipt = part.with_name(part.name + ".resume")
+        with part.open("w+b") as stream:
+            writer = CheckpointWriter(stream, part, entry["sha256"])
+            writer.write(b"ori")
+            receipt.write_bytes(b"personal edits")
+            with self.assertRaises(ValueError):
+                writer.write(b"ginal")
+        self.assertEqual(part.read_bytes(), b"ori")
+        self.assertEqual(receipt.read_bytes(), b"personal edits")
+
     def opener(self, request, timeout):
         self.assertFalse(request.has_header("Authorization"))
         prefix = "https://huggingface.co/fixture/model/resolve/" + self.pin["revision"] + "/"
@@ -140,7 +238,11 @@ class ModelkitTests(unittest.TestCase):
 
     def test_resume_carries_the_partial_and_range_to_the_mirror(self):
         name = "tokenizer.json"
-        write_files(self.root / ".incoming-model", {name + ".part": self.contents[name][:4]})
+        def interrupt(url, part, size, offset, *, cancel, progress):
+            part.write_bytes(self.contents[name][:4])
+            raise self.mod.DownloadPaused()
+        with self.assertRaises(self.mod.DownloadPaused):
+            self.mod.install_streaming(self.target, self.pin, selected_paths=[name], transfer=interrupt)
         log = []
         self.mod.install_streaming(self.target, self.pin, selected_paths=[name], transfer=self.unreachable_hub(log))
         self.assertEqual(log, [("huggingface.co", 4), ("hf-mirror.com", 4)])
@@ -170,6 +272,23 @@ class ModelkitTests(unittest.TestCase):
             part.write_bytes(b"lid")
         self.mod.download_asset(urls[0], self.root / "lid.176.ftz", entry, transfer=transfer, fallbacks=urls[1:])
         self.assertEqual(seen, ["dl.fbaipublicfiles.com", "huggingface.co", "hf-mirror.com"])
+
+    def test_unrecorded_or_edited_partial_is_preserved_before_transfer(self):
+        name = "tokenizer.json"
+        target = self.root / name
+        entry = next(e for e in self.pin["files"] if e["path"] == name)
+        part = self.root / (name + ".part")
+        def interrupt(url, path, size, offset, **kwargs):
+            self.assertEqual(offset, 0)
+            path.write_bytes(b"tok")
+            raise self.mod.DownloadPaused()
+        part.write_bytes(b"mine")
+        with self.assertRaises(self.mod.DownloadPaused):
+            self.mod.download_asset("https://example.test/model", target, entry, transfer=interrupt)
+        part.write_bytes(b"edited")
+        with self.assertRaises(self.mod.DownloadPaused):
+            self.mod.download_asset("https://example.test/model", target, entry, transfer=interrupt)
+        self.assertEqual({p.read_bytes() for p in self.root.glob(".preserved-*/tokenizer.json.part")}, {b"mine", b"edited"})
 
     def test_cli_only_checks_local_files_without_mutation(self):
         write_files(self.target, self.contents)
@@ -292,6 +411,10 @@ class ModelkitTests(unittest.TestCase):
             "tokenizer.json": self.contents["tokenizer.json"], "tokenizer.json.part": b"stale",
             ".cache/old": b"metadata", "untracked": b"stale",
         })
+        with self.assertRaisesRegex(ValueError, "unrelated file"):
+            self.install(selected_paths=["tokenizer.json", "NOTICE"])
+        self.assertEqual((self.target / "untracked").read_bytes(), b"old")
+        (self.target / "untracked").rename(self.root / "my-file")
         self.install(selected_paths=["tokenizer.json", "NOTICE"])
         self.assertEqual(self.calls, ["NOTICE"])
         self.assertEqual({p.relative_to(self.target).as_posix() for p in self.target.rglob("*") if p.is_file()},

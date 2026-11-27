@@ -64,12 +64,11 @@ installer_died() {
 maintenance() {
   [ -x "$PY" ] && [ -f "$ANAGRAM_HOME/app/native_registration.py" ] && [ -f "$ANAGRAM_HOME/.native-component.json" ] || die "Native maintenance helper or ownership marker is missing; reinstall the component before retrying"
   if installer_died; then
-    # No host can hold the lock now. The helper takes it itself; the installer an update
-    # runs recovers the folder, and uninstall removes the leftovers with the rest.
+    # The helper takes the host lock itself before maintenance.
     clean_env "$PY" -I "$ANAGRAM_HOME/app/native_registration.py" "$1" --home "$ANAGRAM_HOME"
     return
   fi
-  clean_env "$PY" -I - "$ANAGRAM_HOME" "$1" <<'PYEOF'
+  clean_env "$PY" -I -B - "$ANAGRAM_HOME" "$1" <<'PYEOF'
 import subprocess, sys
 from pathlib import Path
 home = Path(sys.argv[1]).resolve()
@@ -96,16 +95,74 @@ finally:
 PYEOF
 }
 
-# An interrupted uninstall already removed the browser registrations and renamed the
-# ownership marker, so no host can start here; only files remain. The helper deletes
-# the markers and this command last, so they are still here to finish the job.
+# The fallback is needed only if removal already reached the private interpreter.
+# Read data, never shell commands, from the receipt recorded before that phase.
+finish_without_python() {
+  digest=$1
+  case "$digest" in ''|*[!0-9a-f]*) die "invalid recovery receipt digest" ;; esac
+  [ "${#digest}" -eq 64 ] || die "invalid recovery receipt digest"
+  plan="$real/.anagram-removal-$digest.tsv"
+  [ -f "$plan" ] && [ ! -L "$plan" ] || die "recovery receipt missing; remaining files are in $real"
+  if command -v sha256sum >/dev/null 2>&1; then sha=sha256sum; else sha='shasum -a 256'; fi
+  file_hash() { $sha < "$1" | cut -d' ' -f1; }
+  [ "$(file_hash "$plan")" = "$digest" ] || die "recovery receipt changed; remaining files are in $real"
+  # Keep the recovery command usable if a later file is locked.
+  cli_hash=''
+  tab=$(printf '\t')
+  while IFS="$tab" read -r sig name; do
+    case "/$name/" in *'//'*|*'/../'*|*'/./'*) die "invalid path in recovery receipt" ;; esac
+    case "$name" in
+      bin/anagram) cli_hash="$sig"; continue ;;
+      python|python/*|venv|venv/*|app/native_registration.py|app/.anagram-installed-files.json|native-registration.json|.anagram-removal.json) ;;
+      *) die "unexpected recovery receipt entry" ;;
+    esac
+    file="$real/$name"
+    [ -e "$file" ] || [ -L "$file" ] || continue
+    parent=${file%/*}
+    plain=1
+    while [ "$parent" != "$real" ]; do
+      if [ -L "$parent" ] || [ ! -d "$parent" ]; then plain=0; break; fi
+      if command -v mountpoint >/dev/null 2>&1; then
+        if mountpoint -q "$parent"; then plain=0; break; fi
+      elif [ "$(stat -f %d "$parent")" != "$(stat -f %d "$real")" ]; then plain=0; break
+      fi
+      parent=${parent%/*}
+    done
+    [ "$plain" -eq 1 ] || continue
+    case "$sig" in
+      dir) [ -L "$file" ] || rmdir "$file" 2>/dev/null || : ;;
+      link:*) if [ -L "$file" ] && [ "$(readlink "$file")" = "${sig#link:}" ]; then rm "$file"; fi ;;
+      *) if [ ! -L "$file" ] && [ -f "$file" ] && [ "$(file_hash "$file")" = "$sig" ]; then rm "$file"; fi ;;
+    esac
+  done < "$plan"
+  if [ -n "$cli_hash" ] && [ ! -L "$real/bin/anagram" ] && [ -f "$real/bin/anagram" ] &&
+     [ "$(file_hash "$real/bin/anagram")" = "$cli_hash" ]; then rm "$real/bin/anagram"; fi
+  if [ -f "$real/.native-host.lock" ] && [ ! -L "$real/.native-host.lock" ] && [ ! -s "$real/.native-host.lock" ]; then rm "$real/.native-host.lock"; fi
+  rm "$plan" "$real/.native-uninstall.json"
+  if [ -f "$real/$MARKER" ] && [ ! -L "$real/$MARKER" ]; then
+    case "$(cat "$real/$MARKER")" in "Anagram installation: $real"|"Anagram installation folder."|"Anagram installation folder. Safe to delete with: bin/anagram uninstall") rm "$real/$MARKER" ;; esac
+  fi
+  for sub in app bin native models hf cache run; do rmdir "$real/$sub" 2>/dev/null || :; done
+  rmdir "$real" 2>/dev/null || say "Unverified files were kept in $real"
+}
+
 finish_uninstall() {
   { [ ! -e "$ANAGRAM_HOME/.installer-lock" ] && [ ! -L "$ANAGRAM_HOME/.installer-lock" ]; } || installer_died || die "an installer is using $ANAGRAM_HOME; retry after it finishes"
   real="$(cd "$ANAGRAM_HOME" && pwd -P)"
-  grep -qxF "  \"home\": \"$real\"" "$ANAGRAM_HOME/.native-uninstall.json" || die "the uninstall marker does not name $real"
-  find "$real" -mindepth 1 -maxdepth 1 ! -name .anagram-home ! -name .native-uninstall.json ! -name bin -exec rm -rf {} +
-  rm -rf "$real"
-  say "Removed $real"
+  retired="$real/.native-uninstall.json"
+  digest=$(sed -n 's/^  "recovery_sha256": "\([a-f0-9]*\)",$/\1/p' "$retired")
+  if [ -n "$digest" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then sha=sha256sum; else sha='shasum -a 256'; fi
+    home_sha=$(printf '%s' "$real" | $sha | cut -d' ' -f1)
+    grep -qxF "  \"recovery_home_sha256\": \"$home_sha\"," "$retired" || die "recovery receipt belongs to another folder"
+    finish_without_python "$digest"
+  elif [ -x "$PY" ] && [ -f "$real/app/native_registration.py" ] && [ -f "$real/.anagram-removal.json" ]; then
+    clean_env "$PY" -I "$real/app/native_registration.py" finish-removal --home "$real"
+  else
+  quoted_home="$(printf '%s' "$real" | sed 's/["\\]/\\&/g')"
+  grep -qxF "  \"home\": \"$quoted_home\"" "$retired" || die "the uninstall marker does not name $real"
+    say "Browser registration already removed. Remaining files preserved in $real"
+  fi
 }
 
 case "${1:-}" in
@@ -128,7 +185,7 @@ case "${1:-}" in
     [ -x "$PY" ] || die "Private Python is missing; reinstall the component"
     ! installer_died || die "an installation was interrupted; repair $ANAGRAM_HOME with: anagram update"
     [ -f "$ANAGRAM_HOME/app/native_host.py" ] && [ -f "$ANAGRAM_HOME/app/engine.py" ] || die "Native engine files are missing; reinstall the component"
-    clean_env PYTHONDONTWRITEBYTECODE=1 "$PY" -I - "$ANAGRAM_HOME" <<'PYEOF'
+    clean_env "$PY" -I -B - "$ANAGRAM_HOME" <<'PYEOF'
 import os, runpy, sys
 from pathlib import Path
 home = Path(sys.argv[1]).resolve()

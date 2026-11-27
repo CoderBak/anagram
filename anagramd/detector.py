@@ -94,6 +94,25 @@ def retire_legacy_files(home):
             folder.rmdir()
 
 
+def archived_releases(home):
+    """Verified detector selections whose files may survive a failed model switch."""
+    from safe_files import is_link, read_json, sha256_file
+    directory = home / "run"
+    if is_link(directory) or directory.is_mount():
+        return
+    for path in directory.glob(".anagram-detector-*.json"):
+        stamp = re.fullmatch(r"\.anagram-detector-([a-f0-9]{64})\.json", path.name)
+        if not stamp or is_link(path):
+            continue
+        try:
+            value = read_json(path, max_bytes=65536)
+            if (isinstance(value, dict) and value.get("home") == str(home)
+                    and sha256_file(path) == stamp[1]):
+                yield validate_release(value["pin"])
+        except (FileNotFoundError, KeyError, TypeError, ValueError):
+            continue
+
+
 def model_dir(home, pin):
     return home / "models" / ("detector-" + pin["revision"])
 

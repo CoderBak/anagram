@@ -496,6 +496,8 @@ class LifecycleTests(unittest.TestCase):
                                     verifier=kwargs.pop("verifier", lambda: (self.home / "models/fixture").is_file()),
                                     controller_factory=self.factory,
                                     planner=kwargs.pop("planner", plan), **kwargs)
+        if component.downloader == self.download:
+            component.model_dir = self.home / "models"
         self.components.append(component)
         return component
 

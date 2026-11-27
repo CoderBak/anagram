@@ -54,9 +54,9 @@ class RegistrationTests(unittest.TestCase):
             stub.start()
             self.addCleanup(stub.stop)
 
-    def register(self, browser='chrome', extension=ID, platform='linux', language='en'):
+    def register(self, browser='chrome', extension=ID, platform='linux', language='en', record=False):
         return reg.register(self.home, browser, extension, language, user_home=self.user,
-                            platform=platform, registry=self.registry)
+                            platform=platform, registry=self.registry, record_install=record)
 
     def unregister(self, platform='linux'):
         return reg.unregister(self.home, user_home=self.user, platform=platform, registry=self.registry)
@@ -107,6 +107,58 @@ class RegistrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'modified'):
             self.unregister('darwin')
         self.assertEqual(path.read_text(), 'another owner')
+
+    def test_inventory_precedes_publishing_manifest_and_records_commit_last(self):
+        target = reg.manifest_path(self.home, self.user, 'chrome', 'linux')
+        publish = reg.atomic_write
+        phases = []
+        def observe(path, data, mode=0o600):
+            if path == target:
+                journal = reg.inventory(self.home, self.user, 'linux')
+                self.assertEqual(journal['pending_transaction'], 'stage-1')
+                self.assertTrue(reg.registration_matches(journal['registrations'][0], data))
+                phases.append('publish')
+            publish(path, data, mode)
+        with patch.object(reg, 'atomic_write', side_effect=observe):
+            reg.register(self.home, 'chrome', ID, 'en', user_home=self.user, platform='linux', transaction='stage-1')
+        self.assertEqual(phases, ['publish'])
+        journal = reg.inventory(self.home, self.user, 'linux')
+        self.assertEqual(journal['install_transaction'], 'stage-1')
+        self.assertNotIn('pending_transaction', journal)
+
+    def test_interrupted_browser_registration_accepts_both_known_manifest_versions(self):
+        old = self.register(platform='linux')
+        target = Path(old['manifest'])
+        original = target.read_bytes()
+        new_id = 'p' * 32
+        updated = reg.register(self.home, 'chrome', new_id, 'en', platform='linux', user_home=self.user)
+        inventory = reg.inventory(self.home, self.user, 'linux')
+        inventory['pending_transaction'] = 'stage-2'
+        inventory['registrations'][0]['previous_sha256'] = old['sha256']
+        for published in (original, target.read_bytes()):
+            with self.subTest(published=published == original):
+                reg.atomic_write(self.home / reg.INVENTORY, reg.encoded(inventory))
+                target.write_bytes(published)
+                finished = reg.register(self.home, 'chrome', new_id, 'en', platform='linux',
+                                        user_home=self.user, transaction='stage-2')
+                self.assertEqual(finished, updated)
+                value = reg.inventory(self.home, self.user, 'linux')
+                self.assertEqual(value['install_transaction'], 'stage-2')
+                self.assertNotIn('previous_sha256', value['registrations'][0])
+
+    def test_posix_late_receipt_survives_partial_runtime_removal(self):
+        retired = self.home / reg.UNINSTALLING
+        reg.atomic_write(retired, reg.encoded({'schema_version': 1, 'host': reg.HOST, 'home': str(self.home)}))
+        files = {'venv/bin/python': 'link:/private/python', 'venv/bin': 'dir', 'venv': 'dir'}
+        plan = reg.late_removal_plan(self.home, files)
+        sha = json.loads(retired.read_bytes())['recovery_sha256']
+        self.assertEqual(reg.file_signature(plan), sha)
+        self.assertIn(b'link:/private/python\tvenv/bin/python\n', plan.read_bytes())
+        self.assertEqual(reg.late_removal_plan(self.home, {}), plan)
+        plan.write_bytes(b'edited')
+        with self.assertRaisesRegex(ValueError, 'edited'):
+            reg.late_removal_plan(self.home, files)
+        self.assertEqual(plan.read_bytes(), b'edited')
 
     def test_foreign_manifest_not_overwritten(self):
         path = reg.manifest_path(self.home,self.user,'chrome','linux')
@@ -209,6 +261,50 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(self.registry.values,{})
         self.assertFalse(Path(e['manifest']).exists())
 
+    def test_shared_windows_home_cleans_both_browsers(self):
+        a = self.register(platform='win32')
+        b = self.register('firefox', reg.FIREFOX_ID, platform='win32')
+        self.unregister('win32')
+        self.assertEqual(self.registry.values, {})
+        self.assertFalse(Path(a['manifest']).exists())
+        self.assertFalse(Path(b['manifest']).exists())
+
+    def test_windows_registration_works_when_both_views_share_a_key(self):
+        class SharedRegistry(FakeRegistry):
+            def read(self, browser, view):
+                return super().read(browser, 32)
+            def write(self, browser, view, value):
+                super().write(browser, 32, value)
+        self.registry = SharedRegistry()
+        entry = self.register(platform='win32')
+        self.assertEqual(self.registry.read('chrome', 64), entry['manifest'])
+        self.unregister('win32')
+        self.assertEqual(self.registry.values, {})
+
+    def test_changed_windows_maintenance_script_is_preserved_without_launch(self):
+        worker = self.home / 'app/maintenance.ps1'
+        worker.write_text('release fixture')
+        self.register(platform='win32', record=True)
+        worker.write_text('user edit')
+        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.sys, 'platform', 'win32'), \
+                patch.object(reg.subprocess, 'Popen') as process:
+            with self.assertRaisesRegex(ValueError, 'changed'):
+                reg.schedule_windows(self.home, 'update')
+            process.assert_not_called()
+        self.assertEqual(worker.read_text(), 'user edit')
+
+    def test_registration_retry_recovers_empty_windows_key_only_for_its_own_transaction(self):
+        entry = self.register(platform='win32')
+        self.registry.values[('chrome', 32)] = reg.EMPTY_REGISTRY_KEY
+        with self.assertRaisesRegex(ValueError, 'different native host'):
+            self.register(platform='win32')
+        value = reg.inventory(self.home, self.user, 'win32')
+        value.update(pending_transaction='stage-2', pending_browser='chrome')
+        reg.atomic_write(self.home / reg.INVENTORY, reg.encoded(value))
+        reg.register(self.home, 'chrome', ID, platform='win32', user_home=self.user,
+                     registry=self.registry, transaction='stage-2')
+        self.assertEqual(self.registry.values[('chrome', 32)], entry['manifest'])
+
     def test_failed_windows_registration_rolls_back(self):
         self.registry.fail = ('chrome',64)
         with self.assertRaises(OSError): self.register(platform='win32')
@@ -248,6 +344,20 @@ class RegistrationTests(unittest.TestCase):
                     self.assertTrue((self.home / reg.OWNER).is_file())
                     self.assertTrue((self.home / 'app/native_host.py').is_file())
 
+    def test_prepared_receipt_does_not_claim_files_added_after_staging(self):
+        stage = self.user / 'staged'
+        stage.mkdir()
+        (stage / 'program.py').write_text('verified bytes')
+        staged = reg.staged_payload(self.home, [('app', stage)], [])
+        staged.update({'extension':'dir', 'venv':'dir', 'VERSION':'1' * 64,
+                       'app/native_host.py':'2' * 64})
+        path = self.user / 'prepared.json'
+        path.write_bytes(reg.encoded(reg.file_receipt(self.home, staged)))
+        (self.home / 'app/notes.txt').write_text('added after publication')
+        files = reg.installed_files(self.home, False, False, path)
+        self.assertEqual(files['app/program.py'], reg.file_signature(stage / 'program.py'))
+        self.assertNotIn('app/notes.txt', files)
+
     def test_windows_worker_receives_a_fixed_update_plan_without_spawning(self):
         self.register(platform='win32', language='zh_CN')
         installer = self.home / 'app/install.ps1'
@@ -263,22 +373,64 @@ class RegistrationTests(unittest.TestCase):
     def test_windows_update_hands_the_pinned_release_to_the_worker(self):
         self.register(platform='win32')
         (self.home / 'app/maintenance.ps1').write_text('# inert audit fixture')
-        job = self.user / 'job'; job.mkdir()
         with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.sys, 'platform', 'win32'), \
                 patch.dict(os.environ, {'SystemRoot': str(self.user)}), patch.object(reg, 'subprocess') as process, \
-                patch.object(reg.tempfile, 'mkdtemp', return_value=str(job)):
+                patch.object(reg.tempfile, 'mkdtemp') as make_temp:
             reg.update(self.home, release='0.6.1')
             reg.update(self.home)
+        make_temp.assert_not_called()
         pinned, latest = [call.args[0] for call in process.Popen.call_args_list]
+        self.assertEqual(pinned[pinned.index('-File') + 1], str(self.home / 'app/maintenance.ps1'))
         self.assertEqual(pinned[pinned.index('-Release') + 1], '0.6.1')
         self.assertNotIn('-Release', latest)
 
     @unittest.skipIf(os.name == 'nt', 'Windows uses the detached maintenance worker')
+    def test_update_refuses_new_and_edited_files_before_replacement(self):
+        self.register(platform=sys.platform, record=True)
+        reg.check_update(self.home)
+        new = self.home / 'app/notes'
+        new.write_text('personal notes')
+        with self.assertRaisesRegex(ValueError, 'notes'):
+            reg.check_update(self.home)
+        self.assertEqual(new.read_text(), 'personal notes')
+        new.unlink()
+        edited = self.home / 'app/native_host.py'
+        edited.write_text('local edits')
+        with self.assertRaisesRegex(ValueError, 'native_host'):
+            reg.check_update(self.home)
+        self.assertEqual(edited.read_text(), 'local edits')
+
+    def test_update_preserves_legacy_files_without_a_receipt(self):
+        previous = self.home / 'app.old'
+        previous.mkdir()
+        (previous / 'notes.txt').write_text('notes from the older install')
+        backups = self.user / 'backups'
+        backups.mkdir()
+        (backups / 'version.backup').write_text('previous contents')
+        (self.home / 'VERSION').write_text('new version')
+        reg.finish_update(self.home, backups)
+        kept, = self.home.glob('.preserved-*')
+        self.assertEqual((kept / 'app/notes.txt').read_text(), 'notes from the older install')
+        self.assertEqual((kept / 'VERSION').read_text(), 'previous contents')
+        self.assertEqual((self.home / 'VERSION').read_text(), 'new version')
+
     def test_uninstall_removes_only_owned_home_and_manifest(self):
-        self.register(platform=sys.platform)
-        victim=self.user/'keep';victim.write_text('keep')
-        with patch.object(reg.Path,'home',return_value=self.user): reg.uninstall(self.home)
-        self.assertFalse(self.home.exists());self.assertEqual(victim.read_text(),'keep')
+        self.register(platform=sys.platform, record=True)
+        victim = self.user / 'keep'
+        victim.write_text('keep')
+        mine = self.home / 'app/notes.txt'
+        mine.write_text('notes')
+        edited = self.home / 'app/native_host.py'
+        edited.write_text('local edits')
+        marker = self.home / '.anagram-home'
+        marker.write_text('personal contents')
+        with patch.object(reg.Path, 'home', return_value=self.user): reg.uninstall(self.home)
+        self.assertEqual(victim.read_text(), 'keep')
+        self.assertEqual(mine.read_text(), 'notes')
+        self.assertEqual(edited.read_text(), 'local edits')
+        self.assertEqual(marker.read_text(), 'personal contents')
+        self.assertFalse((self.home / 'bin/anagram-native').exists())
+        self.assertFalse((self.home / reg.OWNER).exists())
 
     @unittest.skipIf(os.name == 'nt', 'unprivileged Windows symlinks vary by policy')
     def test_uninstall_never_follows_nested_file_or_directory_links(self):
@@ -316,37 +468,39 @@ class MaintenanceLockTests(unittest.TestCase):
         self.HomeLock(self.home).close()
 
     def test_uninstall_revokes_startup_marker_before_tree_deletion(self):
-        remove = reg.shutil.rmtree
-        def checked(path):
+        original = reg.prune_files
+        def checked(*args):
             self.assertFalse((self.home / reg.OWNER).exists())
             with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
-            return remove(path)
-        with patch.object(reg.Path, "home", return_value=self.user), patch.object(reg.shutil, "rmtree", side_effect=checked):
+            return original(*args)
+        with patch.object(reg.Path, "home", return_value=self.user), patch.object(reg, "prune_files", side_effect=checked):
             reg.uninstall(self.home)
-        self.assertFalse(self.home.exists())
+        self.assertFalse((self.home / reg.OWNER).exists())
 
     def test_interrupted_uninstall_is_finished_by_the_terminal_command(self):
         command = self.home / 'bin/anagram'
         shutil.copyfile(SOURCE.parent / 'anagram', command); command.chmod(0o700)
-        (self.home / 'models/editlens').mkdir(parents=True); (self.home / 'models/editlens/weights').write_bytes(b'x')
+        shutil.copyfile(SOURCE, self.home / 'app/native_registration.py')
         (self.home / 'venv/bin').mkdir(parents=True)
+        (self.home / 'venv/bin/python').symlink_to(sys.executable)
+        self.register(platform=sys.platform, record=True)
+        (self.home / 'app/notes').write_bytes(b'keep')
         manifest = reg.manifest_path(self.home, self.user, 'chrome', sys.platform)
-        remove = reg.shutil.rmtree
-        def closed_terminal(path, *args, **kwargs):
-            if Path(path).name == 'models': raise KeyboardInterrupt
-            return remove(path, *args, **kwargs)
-        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.shutil, 'rmtree', side_effect=closed_terminal):
+        original = reg.same_file
+        def closed_terminal(path, signature):
+            if path == command: raise KeyboardInterrupt
+            return original(path, signature)
+        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg, 'same_file', side_effect=closed_terminal):
             with self.assertRaises(KeyboardInterrupt): reg.uninstall(self.home)
         self.assertFalse(manifest.exists())
         self.assertFalse((self.home / reg.OWNER).exists())
         with self.assertRaises(self.ComponentError): self.HomeLock(self.home)
-        for name in ('.anagram-home', reg.UNINSTALLING, 'bin/anagram', 'models/editlens/weights'):
-            self.assertTrue((self.home / name).exists(), name)
         env = {k: v for k, v in os.environ.items() if k != 'ANAGRAM_HOME'}
         run = subprocess.run([str(command), 'uninstall', '-y'], env={**env, 'HOME': str(self.user)},
                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
         self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertFalse(self.home.exists())
+        self.assertEqual((self.home/'app/notes').read_bytes(), b'keep')
+        self.assertFalse((self.home/reg.OWNER).exists())
 
     def test_shell_retains_child_acquired_flock_after_python_exits(self):
         # The direct installer can use the existing private Python to flock an FD

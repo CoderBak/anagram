@@ -32,7 +32,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from safe_files import atomic_json, read_json
+from safe_files import atomic_state_json, read_json, retire_state_json
 
 CONTRACT = json.loads((Path(__file__).resolve().parent / "contract.json").read_text(encoding="utf-8"))
 # How long an engine left idle keeps its model, in seconds: 0 for always, or within this range.
@@ -145,7 +145,7 @@ def fallback_candidate(candidates, passed_over) -> Candidate | None:
 
 def forget_crashes(config_path: Path) -> None:
     """An explicit retry: every runtime passed over for crashing is tried again."""
-    Path(config_path).with_name("runtime-crashes.json").unlink(missing_ok=True)
+    retire_state_json(Path(config_path).with_name("runtime-crashes.json"))
 
 
 # Fixed English samples for warmup and measurements; they do not measure accuracy.
@@ -433,7 +433,7 @@ class RuntimeController:
 
     def _write_crashes(self, candidate_id, open_, crashes):
         try:
-            atomic_json(self.crash_path, {"schema_version": 1, "candidate_id": candidate_id, "open": open_,
+            atomic_state_json(self.crash_path, {"schema_version": 1, "candidate_id": candidate_id, "open": open_,
                                           "crashes": crashes, "passed_over": sorted(self.passed_over)})
         except (OSError, ValueError):
             pass  # an unwritable record costs the fallback, never the engine
@@ -694,7 +694,7 @@ class RuntimeController:
                      "selected_id": self.selected_id,
                      "selected_version": selected_version if selected_version is not None else self.selected_version,
                      "benchmark": copy.deepcopy(self.benchmark)}
-        atomic_json(self.config_path, saved)
+        atomic_state_json(self.config_path, saved)
 
     @staticmethod
     def _close_engine(engine):

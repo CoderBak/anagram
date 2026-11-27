@@ -20,6 +20,15 @@ try {
   $model = Join-Path $component 'models\fp32\model.onnx'
   [IO.File]::WriteAllText($model,'weights')
   $worker = Join-Path $component 'app\maintenance.ps1'
+  $personal = Join-Path $component 'models\fp32\notes.txt'
+  [IO.File]::WriteAllText($personal,'personal')
+  $files = @{}
+  foreach ($name in @('app','bin','venv','venv/Scripts','models','models/fp32')) { $files[$name] = 'dir' }
+  foreach ($name in @('app/maintenance.ps1','app/native_host.py','models/fp32/model.onnx')) {
+    $files[$name] = (Get-FileHash -LiteralPath (Join-Path $component $name)).Hash.ToLowerInvariant()
+  }
+  $plan = @{schema_version=1;home=$component;files=$files} | ConvertTo-Json
+  [IO.File]::WriteAllText((Join-Path $component '.anagram-removal.json'),$plan,[Text.UTF8Encoding]::new($false))
   $run = { & $powershell -NoProfile -ExecutionPolicy Bypass -File $worker -Operation uninstall -ComponentHome $component 2>&1 | Out-String }
 
   # A file in use, as a model held open by a scanner: the removal stops, and says how to finish.
@@ -35,7 +44,8 @@ try {
   # Run again, from a terminal: the rest goes, the folder with it.
   $output = & $run
   Check ($LASTEXITCODE -eq 0) "Finishing the removal failed: $output"
-  Check (-not (Test-Path -LiteralPath $component)) "The finished removal left the folder behind: $output"
+  Check (-not (Test-Path -LiteralPath $model)) "Verified weights were left behind: $output"
+  Check ([IO.File]::ReadAllText($personal) -eq 'personal') 'Unverified notes were changed'
 
   # A folder that only looks like one is not removed: the marker must name this folder.
   $null = New-Item -ItemType Directory -Path (Join-Path $component 'app') -Force

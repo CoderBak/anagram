@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 #: Operations whose request carries a page's text: their failures are logged without it.
@@ -306,9 +307,6 @@ def configure_environment(home):
     token = home / "hf/token"
     if is_link(token) or (token.exists() and regular_stat(token).st_nlink != 1):
         raise ValueError("Dependency token path must not be linked")
-    # The user's own temporary folder, before it is pointed into the home: the Windows
-    # maintenance worker is copied out of the tree it may remove (native_registration.py).
-    os.environ.setdefault("ANAGRAM_OUTER_TEMP", os.environ.get("TEMP") or os.environ.get("TMP") or tempfile.gettempdir())
     for name, relative in directories.items():
         os.environ[name] = str(home / relative)
     os.environ["HF_TOKEN_PATH"] = str(token)

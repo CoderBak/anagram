@@ -8,15 +8,16 @@ from pathlib import Path
 import sys
 import time
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
-def prepare(home, *, installer=False, language="en", profile=None):
+def prepare(home, *, installer=False, language="en", profile=None, detector_manifest=None):
     from native_component import HomeLock, STATE_DEFAULT, validate_home
     from native_host import configure_environment
     from download_modelkit import (LID_ENTRY, LID_URL, LID_HUB_URL, mirror_of, installed_profile,
                                    install_streaming, download_asset, invalid_files, matches)
-    from safe_files import atomic_json, read_json, is_link
+    from safe_files import atomic_state_json, read_json, is_link
     from hub_transfer import safe_error
 
     home = validate_home(home)
@@ -31,6 +32,16 @@ def prepare(home, *, installer=False, language="en", profile=None):
         configure_environment(home)
         os.chdir(home)
         from detector import selected, model_dir as release_dir, plan as detector_plan
+        if detector_manifest:
+            import base64
+            import json
+            from detector import validate_release
+            if len(detector_manifest) > 16384:
+                raise ValueError("Detector manifest is too large")
+            requested = validate_release(json.loads(base64.b64decode(detector_manifest, validate=True)))
+            # Repairs and upgrades resume the installed or pending release.
+            if not any((home / name).exists() for name in ("active-detector.json", "pending-detector.json")):
+                atomic_state_json(home / "pending-detector.json", requested)
         pin = selected(home)
         source = f"https://huggingface.co/{pin['repository']}/tree/{pin['revision']}"
         print(("模型文件与条款：" if language == "zh_CN" else "Model files and terms: ") + source, flush=True)
@@ -55,7 +66,7 @@ def prepare(home, *, installer=False, language="en", profile=None):
             print("  " + name, flush=True)
         state.update(initialized=True, download_pending=True, download_failed=False,
                      download_paused=False, models_deleted=False, model_profile=profile)
-        atomic_json(state_path, state)
+        atomic_state_json(state_path, state)
         started = time.monotonic()
         last_time, last_name = 0.0, None
 
@@ -85,8 +96,8 @@ def prepare(home, *, installer=False, language="en", profile=None):
                 raise ValueError("Downloaded files failed SHA-256 verification")
         except (Exception, KeyboardInterrupt) as exc:
             state.update(download_pending=False, download_failed=True)
-            atomic_json(home / "download-error.json", {"message": safe_error(exc) or "Download interrupted"})
-            atomic_json(state_path, state)
+            atomic_state_json(home / "download-error.json", {"message": safe_error(exc) or "Download interrupted"})
+            atomic_state_json(state_path, state)
             say("Download incomplete. Verified files and partial bytes are retained.",
                 "下载未完成。已校验文件与未完成的下载均已保留。")
             print(safe_error(exc) or "Interrupted", file=sys.stderr)
@@ -102,9 +113,9 @@ def prepare(home, *, installer=False, language="en", profile=None):
             say("Close the browser's Anagram connection, then resume only the download (no reinstall):\n" + command,
                 "关闭浏览器中的 Anagram 连接后，只恢复下载，无需重新安装：\n" + command)
             raise SystemExit(130 if isinstance(exc, KeyboardInterrupt) else 1)
-        atomic_json(home / "pending-detector.json", pin)
+        atomic_state_json(home / "pending-detector.json", pin)
         state.update(download_pending=False, download_failed=False, download_paused=False)
-        atomic_json(state_path, state)
+        atomic_state_json(state_path, state)
         say("Models verified. Return to the browser; Anagram finishes setup automatically.",
             "模型校验完成。请返回浏览器，Anagram 会自动完成设置。")
 
@@ -116,9 +127,10 @@ def main():
     parser.add_argument("--profile", choices=("recommended", "expanded"),
                         help="Model set to prepare (default: the installed profile, initially recommended)")
     parser.add_argument("--installer", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--detector-manifest", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
-        prepare(args.home, installer=args.installer, language=args.language, profile=args.profile)
+        prepare(args.home, installer=args.installer, language=args.language, profile=args.profile, detector_manifest=args.detector_manifest)
     except Exception as exc:
         from hub_transfer import safe_error
         print(safe_error(exc), file=sys.stderr)

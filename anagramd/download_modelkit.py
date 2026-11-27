@@ -6,6 +6,8 @@ no account, saved Hugging Face token, or upstream access approval is required.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -13,9 +15,10 @@ import re
 import shutil
 import sys
 import subprocess
+import tempfile
 import threading
 import queue
-from safe_files import is_link, regular_stat, sha256_file
+from safe_files import atomic_json, checkpoint_partial, is_link, matches_checkpoint, read_json, regular_stat, sha256_file
 from runtime_controller import CONTRACT, valid_idle
 
 PIN = Path(__file__).with_name("modelkit.json")
@@ -51,9 +54,9 @@ def _check_pause(cancel):
         raise DownloadPaused("Download paused")
 
 
-def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _text: None):
+def transfer_asset(url, part, size, offset, *, cancel, progress, expected, identity, notice=lambda _text: None):
     """Run the official transport outside the offline inference interpreter."""
-    process = subprocess.Popen([sys.executable, "-I", str(Path(__file__).with_name("hub_transfer.py"))],
+    process = subprocess.Popen([sys.executable, "-I", "-B", str(Path(__file__).with_name("hub_transfer.py"))],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     events = queue.Queue()
     def read():
@@ -66,7 +69,8 @@ def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _
             events.put(None)
     reader = threading.Thread(target=read, daemon=True)
     try:
-        process.stdin.write(json.dumps({"url": url, "part": str(part), "size": size, "offset": offset}) + "\n")
+        process.stdin.write(json.dumps({"url": url, "part": str(part), "size": size, "offset": offset,
+                                        "expected": expected, "identity": identity}) + "\n")
         process.stdin.flush()  # pipe stays open as the worker's parent-lifetime signal
         reader.start()
         error = None
@@ -104,6 +108,59 @@ def transfer_asset(url, part, size, offset, *, cancel, progress, notice=lambda _
         process.stdout.close()
 
 
+def partial_stamp(part, entry):
+    info = regular_stat(part)
+    if info.st_nlink != 1:
+        raise ValueError("Refusing a hardlinked partial download")
+    return f"{entry['sha256']} {info.st_dev} {info.st_ino} {info.st_size} {info.st_mtime_ns} {info.st_ctime_ns}\n".encode("ascii")
+
+
+def recorded_partial(part, receipt, entry, *, current=None, legacy=True):
+    current = current or part
+    if not current.exists() or not receipt.exists():
+        return False
+    info = regular_stat(current)
+    if info.st_nlink != 1:
+        raise ValueError("Refusing a hardlinked partial download")
+    if matches_checkpoint(part, entry["sha256"], current=current):
+        return True
+    if not legacy or current != part:
+        return False
+    # Timestamp-only receipts allow old downloads to resume; deletion needs
+    # a digest of the partial bytes or the pinned digest of the complete file.
+    stamp = partial_stamp(part, entry)
+    return regular_stat(receipt).st_size == len(stamp) and receipt.read_bytes() == stamp
+
+
+@contextmanager
+def remember_partial(part, receipt, entry, worker_checkpoints, resumable):
+    if not resumable:
+        with os.fdopen(os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "wb") as stream:
+            initial = os.fstat(stream.fileno())
+            checkpoint_partial(part, entry["sha256"], [[0, hashlib.sha256(b"").hexdigest()]],
+                               previous=False, identity=(initial.st_dev, initial.st_ino))
+    else:
+        initial = regular_stat(part)
+    if resumable and not matches_checkpoint(part, entry["sha256"]):
+        # Migrate a legacy timestamp receipt without adopting different bytes
+        # if the file was edited during the hash or its receipt changed.
+        proof = regular_stat(receipt)
+        previous = (proof.st_dev, proof.st_ino, sha256_file(receipt))
+        digest = sha256_file(part)
+        if not recorded_partial(part, receipt, entry):
+            raise ValueError("Partial bytes changed before resuming")
+        checkpoint_partial(part, entry["sha256"], [[initial.st_size, digest]], previous=previous,
+                           identity=(initial.st_dev, initial.st_ino))
+    original_receipt = sha256_file(receipt)
+    try:
+        yield (initial.st_dev, initial.st_ino), original_receipt
+    except BaseException:
+        if (not worker_checkpoints and part.exists() and os.path.samestat(regular_stat(part), initial)
+                and receipt.is_file() and not is_link(receipt) and sha256_file(receipt) == original_receipt):
+            checkpoint_partial(part, entry["sha256"], [[part.stat().st_size, sha256_file(part, reuse=False)]])
+        raise
+
+
 def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
                    progress=lambda _bytes: None, transfer=None, notice=lambda _text: None,
                    fallbacks=(), route=None, on_fallback=lambda _host: None) -> None:
@@ -125,52 +182,131 @@ def download_asset(url: str, target: Path, entry: dict, *, cancel=None,
         raise ValueError("Refusing a symbolic link in the download destination")
     target.parent.mkdir(parents=True, exist_ok=True)
     part = target.with_name(target.name + ".part")
-    if is_link(part):
+    receipt = part.with_name(part.name + ".resume")
+    if is_link(part) or is_link(receipt):
         raise ValueError("Refusing a symbolic link at the partial download")
     if part.exists() and regular_stat(part).st_nlink != 1:
         raise ValueError("Refusing a hardlinked partial download")
     _check_pause(cancel)
     if matches(target, entry):
+        if not part.exists() and recorded_partial(part, receipt, entry, current=target, legacy=False):
+            receipt.unlink()
         progress(entry["size_bytes"])
         return
-    if part.exists() and (not part.is_file() or part.stat().st_size > entry["size_bytes"]):
-        if not part.is_file():
-            raise ValueError("Partial download is not a regular file")
-        part.unlink()
-    offset = part.stat().st_size if part.exists() else 0
-    if offset == entry["size_bytes"]:
+    resumable = recorded_partial(part, receipt, entry)
+    if not resumable and receipt.exists():
+        preserve(receipt, target.parent)
+    if part.exists():
         if matches(part, entry):
+            if target.exists():
+                preserve(target, target.parent)
             part.replace(target)
-            progress(offset)
+            if resumable:
+                receipt.unlink()
+            progress(entry["size_bytes"])
             return
-        part.unlink()
-        offset = 0
-    progress(offset)
-    transfer = transfer or (lambda *args, **kwargs: transfer_asset(*args, notice=notice, **kwargs))
-    route = route if route is not None else {}
-    sources = [url, *fallbacks]
-    if route.get("mirror"):  # the mirror already worked in this session
-        sources.sort(key=lambda source: urlsplit(source).hostname != MIRROR_HOST)
-    for index, source in enumerate(sources):
-        try:
-            transfer(source, part, entry["size_bytes"], offset, cancel=cancel, progress=progress)
-            break
-        except HostUnreachable:
-            if index == len(sources) - 1:
-                raise
-            offset = part.stat().st_size if part.is_file() else 0
-            following = sources[index + 1]
-            if urlsplit(following).hostname == MIRROR_HOST:
-                route["mirror"] = True
-                on_fallback(MIRROR_HOST)
-            progress(offset)
-    _check_pause(cancel)
-    if regular_stat(part).st_size < entry["size_bytes"]:
-        raise RuntimeError(f"Incomplete download of {entry['path']}; partial bytes retained for retry")
-    if not matches(part, entry):
-        part.unlink(missing_ok=True)
-        raise ValueError("Checksum or size mismatch for " + entry["path"])
-    part.replace(target)
+        if not resumable or part.stat().st_size >= entry["size_bytes"]:
+            preserve(part, target.parent)
+            if resumable:
+                preserve(receipt, target.parent)
+                resumable = False
+    offset = part.stat().st_size if part.exists() else 0
+    with remember_partial(part, receipt, entry, worker_checkpoints=transfer is None, resumable=resumable) as (identity, initial_receipt):
+        progress(offset)
+        transfer = transfer or (lambda *args, **kwargs: transfer_asset(*args, notice=notice, expected=entry["sha256"], identity=identity, **kwargs))
+        route = route if route is not None else {}
+        sources = [url, *fallbacks]
+        if route.get("mirror"):  # the mirror already worked in this session
+            sources.sort(key=lambda source: urlsplit(source).hostname != MIRROR_HOST)
+        for index, source in enumerate(sources):
+            try:
+                transfer(source, part, entry["size_bytes"], offset, cancel=cancel, progress=progress)
+                break
+            except HostUnreachable:
+                if index == len(sources) - 1:
+                    raise
+                offset = part.stat().st_size if part.is_file() else 0
+                following = sources[index + 1]
+                if urlsplit(following).hostname == MIRROR_HOST:
+                    route["mirror"] = True
+                    on_fallback(MIRROR_HOST)
+                progress(offset)
+        _check_pause(cancel)
+        if regular_stat(part).st_size < entry["size_bytes"]:
+            raise RuntimeError(f"Incomplete download of {entry['path']}; partial bytes retained for retry")
+        if not matches(part, entry):
+            if recorded_partial(part, receipt, entry, legacy=False):
+                part.unlink()
+                receipt.unlink()
+            else:
+                preserve(part, target.parent)
+            raise ValueError("Checksum or size mismatch for " + entry["path"])
+        owned_receipt = recorded_partial(part, receipt, entry, legacy=False)
+        if not owned_receipt and receipt.is_file() and not is_link(receipt):
+            owned_receipt = sha256_file(receipt) == initial_receipt
+        if target.exists():
+            preserve(target, target.parent)
+        part.replace(target)
+        if owned_receipt:
+            receipt.unlink(missing_ok=True)
+
+
+def remove_verified(root, entries):
+    """Remove only exact pinned files, then their empty parent directories."""
+    plain_tree(root)
+    if not root.exists():
+        return
+    parents = {root}
+    for entry in entries:
+        path = root / entry["path"]
+        remove_partial(path, entry)
+        if matches(path, entry):
+            path.unlink()
+        parents.update(parent for parent in path.parents if parent.is_relative_to(root))
+    for folder in sorted(parents, key=lambda p: -len(p.parts)):
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+
+
+def remove_partial(target, entry):
+    part = target.with_name(target.name + ".part")
+    receipt = part.with_name(part.name + ".resume")
+    if part.exists():
+        if matches_checkpoint(part, entry["sha256"]):
+            part.unlink()
+            receipt.unlink()
+        elif matches(part, entry):
+            part.unlink()
+    elif target.exists() and matches_checkpoint(part, entry["sha256"], current=target):
+        receipt.unlink()
+
+
+def remove_model_trees(model_dir, entries):
+    for name in (model_dir.name, ".incoming-" + model_dir.name, model_dir.name + ".old"):
+        remove_verified(model_dir.with_name(name), entries)
+    lock = model_dir.with_name("." + model_dir.name + ".download.lock")
+    receipt = lock.with_name(lock.name + ".receipt.json")
+    try:
+        info = regular_stat(lock)
+        expected = {"path": str(lock.absolute()), "device": info.st_dev, "inode": info.st_ino}
+        if (info.st_nlink == 1 and info.st_size == 0 and read_json(receipt, max_bytes=4096) == expected
+                and receipt.read_bytes() == json.dumps(expected, indent=2).encode("utf-8")):
+            lock.unlink()
+            receipt.unlink()
+    except (FileNotFoundError, UnicodeError, ValueError):
+        pass
+
+
+def preserve(path, directory):
+    kept = Path(tempfile.mkdtemp(prefix=".preserved-", dir=directory))
+    path.rename(kept / path.name)
+    print(f"Kept unverified files in {kept}", file=sys.stderr)
+
+
+def retire_download_tree(folder, entries):
+    remove_verified(folder, entries)
+    if folder.exists():
+        preserve(folder, folder.parent)
 
 
 def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel=None,
@@ -197,12 +333,22 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
     lock_path = model_dir.with_name("." + model_dir.name + ".download.lock")
     if is_link(lock_path):
         raise ValueError("Refusing a symbolic link at the download lock")
-    if lock_path.exists() and regular_stat(lock_path).st_nlink != 1:
-        raise ValueError("Refusing a hardlinked download lock")
+    if lock_path.exists() and (regular_stat(lock_path).st_nlink != 1 or lock_path.stat().st_size != 0):
+        raise ValueError("Refusing a hardlinked or nonempty download lock")
+    # Existing locks may belong to another process or predate ownership receipts.
+    # Only a lock this invocation created exclusively gets a removal receipt.
+    try:
+        with os.fdopen(os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "wb") as stream:
+            info = os.fstat(stream.fileno())
+        receipt = lock_path.with_name(lock_path.name + ".receipt.json")
+        if not receipt.exists() and not is_link(receipt):
+            atomic_json(receipt, {"path": str(lock_path), "device": info.st_dev, "inode": info.st_ino}, previous=False)
+    except FileExistsError:
+        pass
     total = sum(entry["size_bytes"] for entry in entries)
     received = 0
     route = route if route is not None else {}
-    with FileLock(str(lock_path), timeout=0):
+    with FileLock(str(lock_path), timeout=0, preserve_lock_file=True):
         for folder in (model_dir, incoming, backup):
             plain_tree(folder)
         if backup.exists() and not model_dir.exists():
@@ -210,18 +356,24 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
         if not invalid_files(model_dir, pin, selected):
             for folder in (incoming, backup):
                 if folder.exists():
-                    shutil.rmtree(folder)
+                    retire_download_tree(folder, pin["files"])
             progress(total, total, None)
             return
+        known = {e["path"] for e in pin["files"]}
+        if model_dir.is_dir():
+            for path in model_dir.rglob("*"):
+                if path.is_file() and path.relative_to(model_dir).as_posix() not in known:
+                    raise ValueError(f"Model update stopped to preserve an unrelated file: {path}")
         incoming.mkdir(exist_ok=True)
         # A previously expanded download may have paused before the user chose a
         # smaller pack. Only the new selection's files/partials may be resumed.
-        prune_staging(incoming, selected | {name + ".part" for name in selected})
+        prune_staging(incoming, {name + suffix for name in selected for suffix in ("", ".part", ".part.resume")}, pin)
         retained = []
         for entry in pin["files"]:
             _check_pause(cancel)
             if entry["path"] not in selected and matches(model_dir / entry["path"], entry):
-                reuse(model_dir / entry["path"], incoming / entry["path"])
+                if not matches(incoming / entry["path"], entry):
+                    reuse(model_dir / entry["path"], incoming / entry["path"])
                 retained.append(entry["path"])
         for entry in entries:
             _check_pause(cancel)
@@ -233,7 +385,7 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
             if not matches(target, entry):
                 part = target.with_name(target.name + ".part")
                 staged_bytes = part.stat().st_size if part.is_file() and not part.is_symlink() else 0
-                if staged_bytes > entry["size_bytes"] or (staged_bytes == entry["size_bytes"] and not matches(part, entry)):
+                if staged_bytes and not matches(part, entry) and (staged_bytes >= entry["size_bytes"] or not recorded_partial(part, part.with_name(part.name + ".resume"), entry)):
                     staged_bytes = 0
                 needed = max(0, entry["size_bytes"] - staged_bytes) + 64 * 1024 * 1024
                 if shutil.disk_usage(model_dir.parent).free < needed:
@@ -249,11 +401,11 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
         committed = selected | set(retained)
         # No partial, unpinned file or merely staged unselected variant becomes an
         # installed model. Verify the retained files again before atomic promotion.
-        prune_staging(incoming, committed)
+        prune_staging(incoming, committed, pin)
         if invalid_files(incoming, pin, committed):
             raise ValueError("Modelkit verification failed; nothing was replaced")
         if backup.exists():
-            shutil.rmtree(backup)
+            retire_download_tree(backup, pin["files"])
         if model_dir.exists():
             model_dir.rename(backup)
         try:
@@ -263,7 +415,7 @@ def install_streaming(model_dir: Path, pin: dict, *, selected_paths=None, cancel
                 backup.rename(model_dir)
             raise
         if backup.exists():
-            shutil.rmtree(backup)
+            retire_download_tree(backup, pin["files"])
         progress(total, total, None)
 
 
@@ -315,13 +467,21 @@ def selected_entries(pin: dict, selected_paths=None) -> list[dict]:
     return [entry for entry in pin["files"] if entry["path"] in selected]
 
 
-def prune_staging(root: Path, allowed: set[str]) -> None:
-    """Discard staging artifacts outside the current transaction's exact scope."""
+def prune_staging(root: Path, allowed: set[str], pin) -> None:
+    """Only verified surplus artifacts may be discarded from an earlier staging area."""
+    entries = {e["path"]: e for e in pin["files"]}
+    for name, entry in entries.items():
+        if name + ".part" not in allowed:
+            remove_partial(root / name, entry)
     for folder, dirs, files in os.walk(root, topdown=False):
         for name in files:
             path = Path(folder) / name
-            if path.relative_to(root).as_posix() not in allowed:
-                path.unlink()
+            relative = path.relative_to(root).as_posix()
+            if relative not in allowed:
+                if relative in entries and matches(path, entries[relative]):
+                    path.unlink()
+                else:
+                    preserve(path, root.parent)
         for name in dirs:
             path = Path(folder) / name
             if not any(path.iterdir()):
@@ -330,7 +490,7 @@ def prune_staging(root: Path, allowed: set[str]) -> None:
 
 def plain_tree(root: Path) -> None:
     """Reject links before reading, writing or removing a model/staging tree."""
-    if is_link(root):
+    if is_link(root) or root.is_mount():
         raise ValueError(f"{root} is a symbolic link — refusing to use it")
     if root.exists():
         if not root.is_dir():
@@ -338,7 +498,7 @@ def plain_tree(root: Path) -> None:
         for folder, dirs, files in os.walk(root):
             for name in dirs + files:
                 path = Path(folder) / name
-                if is_link(path):
+                if is_link(path) or (path.is_dir() and path.is_mount()):
                     raise ValueError(f"{path} is a symbolic link — refusing to use it")
                 if not path.is_dir() and not path.is_file():
                     raise ValueError(f"{path} is not a regular model file")
@@ -363,7 +523,8 @@ def invalid_files(root: Path, pin: dict, selected_paths=None) -> list[str]:
 def reuse(source: Path, target: Path) -> None:
     """Reuse verified bytes without duplicating gigabytes on the same filesystem."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.unlink(missing_ok=True)
+    if target.exists():
+        preserve(target, target.parent)
     try:
         os.link(source, target)
     except OSError:

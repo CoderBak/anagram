@@ -14,6 +14,9 @@ _DIGESTS = {}
 #: for that read instead of reading the same bytes again beside it.
 _READING = {}
 _GUARD = threading.Lock()
+_STATE_GUARD = threading.Lock()
+_STATE_NAMES = {"component-state.json", "pending-detector.json", "active-detector.json",
+                "download-error.json", "runtime.json", "runtime-crashes.json"}
 
 
 def sha256_file(path: Path, *, reuse: bool = True) -> str:
@@ -99,7 +102,7 @@ def read_json(path: Path, *, max_bytes: int = 1024 * 1024):
         os.close(fd)
 
 
-def atomic_json(path: Path, value) -> None:
+def atomic_json(path: Path, value, *, sync=True, previous=None) -> None:
     """Replace an entry with a newly created file, without truncating aliases."""
     path = Path(path)
     if is_link(path.parent):
@@ -112,43 +115,190 @@ def atomic_json(path: Path, value) -> None:
     fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temp = Path(name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(value, stream, allow_nan=False, indent=2)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(json.dumps(value, allow_nan=False, indent=2).encode("utf-8"))
             stream.flush()
-            os.fsync(stream.fileno())
+            if sync:
+                os.fsync(stream.fileno())
         # Replacement itself never follows the destination, even if its entry
         # changes after this check. A pre-existing hardlink is detached safely.
         try:
-            regular_stat(path)
+            info = regular_stat(path)
+            if previous is False or (previous is not None and
+                    (info.st_dev, info.st_ino, sha256_file(path)) != previous):
+                raise ValueError(f"File changed before replacing its receipt: {path}")
         except FileNotFoundError:
-            pass
+            if previous:
+                raise ValueError(f"Receipt disappeared before replacement: {path}") from None
         os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
 
 
-def open_partial(path: Path, offset: int):
+def _keep_state(path, home):
+    import sys
+    folder = Path(tempfile.mkdtemp(prefix=".preserved-", dir=home))
+    path.rename(folder / path.name)
+    print(f"Kept an unverified file in {folder}", file=sys.stderr)
+
+
+def _state_receipt(path):
+    if path.name not in _STATE_NAMES or not (path.parent / ".anagram-home").is_file():
+        return None
+    folder = path.parent / "run"
+    if is_link(folder):
+        raise ValueError(f"Refusing a linked state receipt directory: {folder}")
+    folder.mkdir(exist_ok=True)
+    return folder / (".anagram-" + path.name + ".receipt.json")
+
+
+def _versions(path, receipt):
+    try:
+        value = read_json(receipt, max_bytes=4096)
+        if isinstance(value, dict) and set(value) == {"path", "versions"} and value["path"] == str(path.absolute()):
+            versions = value["versions"]
+            if (isinstance(versions, list) and 1 <= len(versions) <= 2 and
+                    all(isinstance(row, list) and len(row) == 4 and
+                        all(type(n) is int and n >= 0 for n in row[:3]) and
+                        isinstance(row[3], str) and len(row[3]) == 64 and all(c in "0123456789abcdef" for c in row[3])
+                        for row in versions) and receipt.read_bytes() == json.dumps(
+                            {"path": str(path.absolute()), "versions": versions}, indent=2).encode("utf-8")):
+                return versions
+    except FileNotFoundError:
+        return []
+    except (ValueError, UnicodeError):
+        pass
+    _keep_state(receipt, path.parent)
+    return []
+
+
+def _state_version(path, versions):
+    info = regular_stat(path)
+    for row in versions:
+        if row[:3] == [info.st_dev, info.st_ino, info.st_size] and sha256_file(path) == row[3]:
+            return row
+    return None
+
+
+def atomic_state_json(path: Path, value) -> None:
+    """Write a known runtime state and a receipt for its exact bytes and file identity."""
+    path = Path(path)
+    receipt = _state_receipt(path)
+    if receipt is None:
+        return atomic_json(path, value)
+    data = json.dumps(value, allow_nan=False, indent=2).encode("utf-8")
+    with _STATE_GUARD:
+        versions = _versions(path, receipt)
+        fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        temp = Path(name)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+                info = os.fstat(stream.fileno())
+            current = [info.st_dev, info.st_ino, info.st_size, hashlib.sha256(data).hexdigest()]
+            if path.name in ("active-detector.json", "pending-detector.json"):
+                # A failed detector switch can retire its pending state while its
+                # downloaded bytes still exist. Keep the original pin for removal.
+                release = {"home": str(path.parent.absolute()), "pin": value}
+                record = json.dumps(release, allow_nan=False, indent=2).encode("utf-8")
+                archive = receipt.parent / (".anagram-detector-" + hashlib.sha256(record).hexdigest() + ".json")
+                if archive.exists() or is_link(archive):
+                    if regular_stat(archive).st_size != len(record) or archive.read_bytes() != record:
+                        _keep_state(archive, path.parent)
+                if not archive.exists():
+                    atomic_json(archive, release)
+            try:
+                previous = _state_version(path, versions)
+                if previous is None:
+                    _keep_state(path, path.parent)
+            except FileNotFoundError:
+                previous = None
+            # Either the old or the new file can be present after a power loss.
+            atomic_json(receipt, {"path": str(path.absolute()), "versions": [current] + ([previous] if previous else [])})
+            os.replace(temp, path)
+        finally:
+            temp.unlink(missing_ok=True)
+
+
+def retire_state_json(path: Path) -> None:
+    path = Path(path)
+    receipt = _state_receipt(path)
+    if receipt is None:
+        path.unlink(missing_ok=True)
+        return
+    with _STATE_GUARD:
+        versions = _versions(path, receipt)
+        try:
+            if _state_version(path, versions):
+                path.unlink()
+            else:
+                _keep_state(path, path.parent)
+        except FileNotFoundError:
+            pass
+        if versions:
+            receipt.unlink(missing_ok=True)
+
+
+def open_partial(path: Path, offset: int, *, identity=None):
     """Open a private resumable file; check before truncating or appending."""
     path = Path(path)
     if is_link(path) or is_link(path.parent):
         raise ValueError(f"Refusing a symbolic link or junction: {path}")
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, os.O_RDWR | (os.O_CREAT if identity is None else 0) | getattr(os, "O_NOFOLLOW", 0)
                  | getattr(os, "O_NONBLOCK", 0), 0o600)
     try:
         actual, current = os.fstat(fd), regular_stat(path)
         if (not stat.S_ISREG(actual.st_mode) or actual.st_nlink != 1
                 or (actual.st_dev, actual.st_ino) != (current.st_dev, current.st_ino)):
             raise ValueError(f"Partial file is linked or changed while opening: {path}")
+        if identity is not None and ((actual.st_dev, actual.st_ino) != tuple(identity) or actual.st_size != offset):
+            raise ValueError("Authorized partial file changed before opening")
         if offset:
             if actual.st_size != offset:
                 raise ValueError("Partial download changed before resuming")
             os.lseek(fd, offset, os.SEEK_SET)
-        else:
+        elif identity is None:
             os.ftruncate(fd, 0)
         return os.fdopen(fd, "r+b")
     except BaseException:
         os.close(fd)
         raise
+
+
+def checkpoint_partial(part, expected, versions, *, previous=None, identity=None):
+    info = regular_stat(part)
+    if info.st_nlink != 1:
+        raise ValueError("Refusing a hardlinked partial download")
+    if identity is not None and (info.st_dev, info.st_ino) != identity:
+        raise ValueError("Partial file changed before its checkpoint")
+    receipt = part.with_name(part.name + ".resume")
+    value = {"path": str(part.absolute()), "expected": expected,
+             "device": info.st_dev, "inode": info.st_ino, "versions": versions}
+    atomic_json(receipt, value, sync=False, previous=previous)
+    artifact = regular_stat(receipt)
+    signature = hashlib.sha256(json.dumps(value, indent=2).encode("utf-8")).hexdigest()
+    return artifact.st_dev, artifact.st_ino, signature
+
+
+def matches_checkpoint(part, expected, *, current=None):
+    current = current or part
+    try:
+        info = regular_stat(current)
+        receipt = part.with_name(part.name + ".resume")
+        value = read_json(receipt, max_bytes=8192)
+    except (FileNotFoundError, UnicodeError, ValueError):
+        return False
+    versions = value.get("versions") if isinstance(value, dict) else None
+    if info.st_nlink != 1 or not isinstance(versions, list) or not 1 <= len(versions) <= 2:
+        return False
+    proof = {"path": str(part.absolute()), "expected": expected,
+             "device": info.st_dev, "inode": info.st_ino, "versions": versions}
+    signature = hashlib.sha256(json.dumps(proof, indent=2).encode("utf-8")).hexdigest()
+    return (value == proof and sha256_file(receipt) == signature
+            and any(isinstance(row, list) and len(row) == 2 and row[0] == info.st_size
+                    and row[1] == sha256_file(current) for row in versions))
 
 
 def private_tree(home: Path, parts=("app", "venv", "python")) -> None:

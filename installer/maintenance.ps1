@@ -5,9 +5,8 @@
 param(
   [Parameter(Mandatory=$true)][ValidateSet('update','uninstall')][string]$Operation,
   [Parameter(Mandatory=$true)][string]$ComponentHome,
-  # The browser's component to wait for, and where to say how it went; a terminal has neither.
+  # A browser-initiated operation waits for the requesting component to release its lock.
   [int]$HostPid = 0,
-  [string]$Receipt,
   [ValidateSet('en','zh_CN')][string]$Language = 'en',
   # An update requested by the extension installs the extension's own release.
   [ValidatePattern('^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$')][string]$Release
@@ -77,20 +76,84 @@ public static class AnagramMaintenanceJob {
   [AnagramMaintenanceJob]::Start()
 }
 function Say([string]$En,[string]$Zh) { if ($Language -eq 'zh_CN') { Write-Host $Zh } else { Write-Host $En } }
-function Save-Receipt([string]$Path,$Value) { if ($Path) { [IO.File]::WriteAllText($Path,($Value | ConvertTo-Json),[Text.UTF8Encoding]::new($false)) } }
+# Never traverse a junction or symlink while resolving a receipt entry.
+function Test-PlainPath([string]$Path) {
+  for ($p = [IO.Path]::GetFullPath($Path); $p; $p = [IO.Path]::GetDirectoryName($p)) {
+    $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+    if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $false }
+  }
+  return $true
+}
+function Remove-EmptyDirectory([string]$Path) {
+  if ((Test-PlainPath $Path) -and [IO.Directory]::Exists($Path) -and
+      -not @(Get-ChildItem -LiteralPath $Path -Force).Count) {
+    [IO.Directory]::Delete($Path, $false)
+  }
+}
+function Remove-RecordedFiles {
+  $plan = Join-Path $ComponentHome '.anagram-removal.json'
+  if (-not (Test-PlainPath $plan)) { throw 'Unsafe file receipt' }
+  if (-not [IO.File]::Exists($plan)) {
+    Say "Unverified files were kept in $ComponentHome" "未能验证归属的文件已保留在 $ComponentHome"
+    return
+  }
+  $receiptData = Get-Content -LiteralPath $plan -Encoding UTF8 -Raw | ConvertFrom-Json
+  if ($receiptData.schema_version -ne 1 -or $receiptData.home -ne $ComponentHome) { throw 'Invalid file receipt' }
+  $items = @($receiptData.files.PSObject.Properties)
+  foreach ($item in $items) {
+    $name = $item.Name
+    if ($name -match '[. ](/|$)|(^|/)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])([./]|$)' -or $name -match '(^|/)(|\.|\.\.)(/|$)|[\\:\x00]' -or
+        $name -notmatch '^(?:(app|bin|venv|extension|python|models|cache|hf|native|run)(/|$)|(?:VERSION|component-state\.json|active-detector\.json|pending-detector\.json|download-error\.json|runtime\.json|runtime-crashes\.json)$)' -or
+        ($item.Value -cne 'dir' -and $item.Value -cnotmatch '^(?:[0-9a-f]{64}|link:.*)$')) { throw 'Invalid file entry in the uninstall receipt' }
+  }
+  # Leave the worker until every ordinary file has been processed so a locked
+  # file can be retried from the same terminal command.
+  $ordered = @($items | Sort-Object @{Expression={ $_.Name -eq 'app/maintenance.ps1' }},@{Expression={ $_.Name.Length };Descending=$true})
+  foreach ($item in $ordered) {
+    $path = Join-Path $ComponentHome $item.Name
+    if (-not (Test-PlainPath $path)) { continue }
+    if ($item.Value -eq 'dir') { Remove-EmptyDirectory $path }
+    elseif ([IO.File]::Exists($path) -and (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $item.Value) {
+      [IO.File]::Delete($path)
+    }
+  }
+  if ($homeLock -and $homeLock.Length -le 1) {
+    $homeLock.Position = 0
+    if ($homeLock.ReadByte() -le 0) { [IO.File]::Delete((Join-Path $ComponentHome '.native-host.lock')) }
+  }
+  foreach ($name in @('app/.anagram-installed-files.json','native-registration.json','.anagram-removal.json','.native-uninstall.json')) {
+    $path = Join-Path $ComponentHome $name
+    if ((Test-PlainPath $path) -and [IO.File]::Exists($path)) { [IO.File]::Delete($path) }
+  }
+  $marker = Join-Path $ComponentHome '.anagram-home'
+  if ((Test-PlainPath $marker) -and [IO.File]::Exists($marker) -and ([IO.FileInfo]::new($marker)).Length -le ([Text.Encoding]::UTF8.GetByteCount($ComponentHome) + 128)) {
+    $expected = @("Anagram installation: $ComponentHome",'Anagram installation folder.')
+    if ($expected -ccontains [IO.File]::ReadAllText($marker).TrimEnd([char[]]"`r`n")) { [IO.File]::Delete($marker) }
+  }
+  foreach ($name in @('app','bin','native','models','hf','cache','run')) { Remove-EmptyDirectory (Join-Path $ComponentHome $name) }
+  Remove-EmptyDirectory $ComponentHome
+  if ([IO.Directory]::Exists($ComponentHome)) { Say "Unverified files were kept in $ComponentHome" "未能验证归属的文件已保留在 $ComponentHome" }
+}
 function Check-Home {
   $canonical = [IO.Path]::GetFullPath($ComponentHome).TrimEnd('\')
   if ($canonical -eq [IO.Path]::GetPathRoot($canonical).TrimEnd('\') -or $canonical -eq $env:USERPROFILE) { throw 'Unsafe component home' }
+  if (-not (Test-PlainPath $canonical)) { throw 'Component home has a linked ancestor' }
   $item = Get-Item -LiteralPath $canonical -Force
   if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Component home is a reparse point' }
+  $journal = Join-Path $canonical '.anagram-install.json'
+  if (-not (Test-PlainPath $journal) -or [IO.File]::Exists($journal)) {
+    throw "Windows setup is unfinished. Run the verified install.ps1 with -CleanupOnly -ComponentHome `"$canonical`" before using the uninstaller."
+  }
   $markerPath = Join-Path $canonical '.native-component.json'
   $retiredPath = Join-Path $canonical '.native-uninstall.json'
+  if ((Test-Path -LiteralPath $markerPath) -and (Test-Path -LiteralPath $retiredPath)) { throw 'Existing uninstall record conflicts with the active component' }
   if ($Operation -eq 'uninstall' -and -not (Test-Path -LiteralPath $markerPath) -and (Test-Path -LiteralPath $retiredPath -PathType Leaf)) {
     # Only files remain of an uninstall that stopped partway, and the marker it renamed
     # says whose they are, as `anagram uninstall` finishes one on macOS and Linux.
     $markerPath = $retiredPath
     $script:resuming = $true
   }
+  if (-not (Test-PlainPath $markerPath) -or -not (Test-PlainPath (Join-Path $canonical '.anagram-home'))) { throw 'Unsafe component marker' }
   $marker = Get-Content -LiteralPath $markerPath -Encoding UTF8 -Raw | ConvertFrom-Json
   if ($marker.schema_version -ne 1 -or $marker.host -ne 'dev.coderbak.anagram' -or $marker.home -ne $canonical) { throw 'Component ownership marker mismatch' }
   if (-not (Test-Path -LiteralPath (Join-Path $canonical '.anagram-home') -PathType Leaf)) { throw 'Component ownership marker missing' }
@@ -136,34 +199,26 @@ try {
       Say 'Finishing an interrupted removal: only component files remain…' '正在完成上次中断的卸载：只剩组件文件…'
     } else {
       Say 'Removing owned browser registrations and component files…' '正在移除属于 Anagram 的浏览器注册和组件文件…'
+      & $python -I $helper prepare-removal --home $ComponentHome
+      if ($LASTEXITCODE -ne 0) { throw 'Could not verify the installed file receipt' }
       & $python -I $helper unregister --home $ComponentHome
       if ($LASTEXITCODE -ne 0) { throw 'Native registration cleanup failed; component files were kept' }
       $null = Check-Home
-    }
-    foreach ($item in Get-ChildItem -LiteralPath $ComponentHome -Force -Recurse) {
-      if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $($item.FullName)" }
     }
     # Revoke startup authority before the lock pathname can disappear. Both markers and
     # this worker go last, so an interrupted removal is still an Anagram folder a reinstall
     # accepts, and running this worker again from it finishes the job.
     if (-not $resuming) {
-      Move-Item -LiteralPath (Join-Path $ComponentHome '.native-component.json') -Destination (Join-Path $ComponentHome '.native-uninstall.json') -Force
+      Move-Item -LiteralPath (Join-Path $ComponentHome '.native-component.json') -Destination (Join-Path $ComponentHome '.native-uninstall.json')
     }
     $retired = $true
-    Get-ChildItem -LiteralPath $ComponentHome -Force | Where-Object { $_.Name -notin @('.anagram-home','.native-uninstall.json','app') } | Remove-Item -Recurse -Force
-    $appDir = Join-Path $ComponentHome 'app'
-    if (Test-Path -LiteralPath $appDir) {
-      Get-ChildItem -LiteralPath $appDir -Force | Where-Object { $_.Name -ne 'maintenance.ps1' } | Remove-Item -Recurse -Force
-    }
-    Remove-Item -LiteralPath $ComponentHome -Recurse -Force
+    Remove-RecordedFiles
   }
   $deadline = [DateTime]::UtcNow.AddSeconds(5)
   while (-not [AnagramMaintenanceJob]::ChildrenExited()) {
     if ([DateTime]::UtcNow -ge $deadline) { throw 'A maintenance child process has not stopped; close this window before retrying.' }
     Start-Sleep -Milliseconds 50
   }
-  $result = @{schema_version=1;operation=$Operation;status='completed';time=[DateTime]::UtcNow.ToString('o')}
-  Save-Receipt $Receipt $result
   if ($Operation -eq 'update') {
     Say 'Update complete. Return to Anagram and reconnect.' '更新完成。请返回 Anagram 并重新连接。'
   } else {
@@ -171,7 +226,6 @@ try {
   }
   $exitCode = 0
 } catch {
-  Save-Receipt $Receipt @{schema_version=1;operation=$Operation;status='failed';error=$_.Exception.Message}
   Write-Host $_.Exception.Message -ForegroundColor Red
   $worker = Join-Path $ComponentHome 'app\maintenance.ps1'
   if ($retired -and (Test-Path -LiteralPath $worker)) {

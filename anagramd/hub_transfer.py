@@ -7,6 +7,7 @@ file instead. No Hub login, global cache, Xet staging copy or raw-text input.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -16,8 +17,9 @@ import time
 import threading
 from urllib.parse import urlsplit
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from safe_files import open_partial
+from safe_files import checkpoint_partial, matches_checkpoint, open_partial, regular_stat, sha256_file
 
 
 def safe_error(exc):
@@ -29,7 +31,79 @@ class Unreachable(Exception):
     """The host could not be reached: no byte arrived, over a network error, timeout or 5xx."""
 
 
-def transfer(url, part, size, offset, progress, *, client_factory=None, sleep=time.sleep):
+class CheckpointWriter:
+    """Record both sides of each chunk write, so a stopped process leaves verifiable bytes."""
+
+    def __init__(self, stream, part, expected, enforce_checkpoint=False):
+        self.stream, self.part, self.expected = stream, part, expected
+        self.count = -1
+        self.enforce_checkpoint = enforce_checkpoint
+        self.last_write = regular_stat(part)
+        info = os.fstat(stream.fileno())
+        self.identity = (info.st_dev, info.st_ino)
+        receipt = part.with_name(part.name + ".resume")
+        if receipt.exists():
+            if not matches_checkpoint(part, expected):
+                raise ValueError("Partial checkpoint changed before transfer")
+            info = regular_stat(receipt)
+            self.receipt = (info.st_dev, info.st_ino, sha256_file(receipt))
+        else:
+            self.receipt = False
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+    def check_destination(self):
+        current = regular_stat(self.part)
+        if (not os.path.samestat(current, os.fstat(self.stream.fileno())) or not os.path.samestat(current, self.last_write)
+                or current.st_nlink != 1
+                or (current.st_size, current.st_mtime_ns, current.st_ctime_ns) !=
+                   (self.last_write.st_size, self.last_write.st_mtime_ns, self.last_write.st_ctime_ns)):
+            raise ValueError("Partial file changed during transfer")
+
+    def truncate(self, size=None):
+        size = self.stream.tell() if size is None else size
+        self.check_destination()
+        if size != 0:
+            raise ValueError("Refusing an unexpected truncation of partial bytes")
+        if self.enforce_checkpoint and not matches_checkpoint(self.part, self.expected):
+            raise ValueError("Partial bytes changed before the HTTP range restart")
+        previous = [os.fstat(self.stream.fileno()).st_size, sha256_file(self.part)]
+        self.digest, self.count = hashlib.sha256(), 0
+        self.receipt = checkpoint_partial(self.part, self.expected, [[0, self.digest.hexdigest()], previous],
+                                          previous=self.receipt, identity=self.identity)
+        truncated = self.stream.truncate(0)
+        self.last_write = regular_stat(self.part)
+        return truncated
+
+    def write(self, data):
+        stream = self.stream
+        position = stream.tell()
+        if position != self.count:  # first write, or HTTP restarted an ignored Range
+            if self.enforce_checkpoint and not matches_checkpoint(self.part, self.expected):
+                raise ValueError("Partial bytes changed before resuming the download")
+            self.digest = hashlib.sha256()
+            if position:
+                stream.seek(0)
+                while stream.tell() < position:
+                    block = stream.read(min(1024 * 1024, position - stream.tell()))
+                    if not block:
+                        raise ValueError("Partial file changed before a resumed write")
+                    self.digest.update(block)
+            self.count = position
+        previous = [self.count, self.digest.hexdigest()]
+        self.count += len(data)
+        self.digest.update(data)
+        self.check_destination()
+        self.receipt = checkpoint_partial(self.part, self.expected, [[self.count, self.digest.hexdigest()], previous],
+                                          previous=self.receipt, identity=self.identity)
+        written = stream.write(data)
+        stream.flush()
+        self.last_write = regular_stat(self.part)
+        return written
+
+
+def transfer(url, part, size, offset, progress, *, client_factory=None, sleep=time.sleep, expected=None, identity=None):
     import httpx
     from huggingface_hub import set_client_factory
     from huggingface_hub.errors import HfHubHTTPError
@@ -67,8 +141,9 @@ def transfer(url, part, size, offset, progress, *, client_factory=None, sleep=ti
     start = offset
     for attempt in range(3):
         try:
-            with open_partial(part, offset) as stream:
-                http_get(url, stream, resume_size=offset, expected_size=size,
+            with open_partial(part, offset, identity=identity) as stream:
+                destination = CheckpointWriter(stream, part, expected, enforce_checkpoint=identity is not None) if expected else stream
+                http_get(url, destination, resume_size=offset, expected_size=size,
                          displayed_filename=part.name.removesuffix(".part"),
                          headers={"User-Agent": "Anagram-modelkit/1", "Accept-Encoding": "identity"},
                          tqdm_class=Progress)
@@ -123,7 +198,8 @@ def main():
             last = now
 
     try:
-        transfer(request["url"], Path(request["part"]), request["size"], request["offset"], progress)
+        transfer(request["url"], Path(request["part"]), request["size"], request["offset"], progress,
+                 expected=request["expected"], identity=request["identity"])
     except Exception as exc:
         print(json.dumps({"error": safe_error(exc), "unreachable": isinstance(exc, Unreachable)}), flush=True)
         return 1

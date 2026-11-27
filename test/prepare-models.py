@@ -1,4 +1,5 @@
 """Terminal preparation: owned files, recovery state and no inference startup."""
+import base64
 import contextlib
 import hashlib
 import io
@@ -49,6 +50,19 @@ class PrepareTests(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stdout(stdout or io.StringIO()))
             stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
             prepare(self.home, installer=installer)
+
+    def test_installer_records_the_selected_release_before_downloading_and_resumes_it(self):
+        from detector import DEFAULT, selected
+        release = dict(json.loads(DEFAULT.read_text()), release="2026-12-01-200m", revision="a" * 40)
+        encoded = base64.b64encode(json.dumps(release).encode()).decode()
+        (self.home / ".installer-lock").mkdir()
+        with patch("native_host.configure_environment"), patch("detector.plan", side_effect=RuntimeError("stop before transfer")):
+            with self.assertRaisesRegex(RuntimeError, "stop before transfer"):
+                prepare(self.home, installer=True, detector_manifest=encoded)
+            self.assertEqual(selected(self.home), release)
+            with self.assertRaisesRegex(RuntimeError, "stop before transfer"):
+                prepare(self.home, installer=True)
+            self.assertEqual(selected(self.home), release)
 
     def test_success_commits_state_and_rerun_does_not_download(self):
         out = io.StringIO()
