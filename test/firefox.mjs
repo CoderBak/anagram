@@ -1000,8 +1000,15 @@ if (QUICK) {
   /** How many paragraphs the toolbar menu says were left without a verdict. */
   const counter = async () => (await tabState(downUrl))?.unavailable ?? null;
 
-  await fixture.close(); // connection refused from here on
+  const rules = fixture.state().rules;
+  const mark = fixture.textMark();
+  fixture.setState({ rules: [...rules, { contains: "DOWN1 paragraph", delayMs: 15000 }] });
   await addPara("down1");
+  const deadline = Date.now() + 15000;
+  while (!sentSince(mark, "DOWN1 paragraph") && Date.now() < deadline) await sleep(50);
+  const inFlight = sentSince(mark, "DOWN1 paragraph") > 0;
+  await fixture.close();
+  fixture.setState({ rules });
   const gotDown1 = await settledIn("down1", 12000);
   const band1 = await bandOf("down1");
   await addPara("down2");
@@ -1010,8 +1017,8 @@ if (QUICK) {
   const counterDown = await counter();
   check(
     "fixture down: in-flight batch renders 'Unavailable', later paragraphs get no chip, the toolbar menu counts it",
-    gotDown1 && band1 === "band-unknown" && down2Chips === 0 && counterDown >= 1,
-    JSON.stringify({ band1, down2Chips, counterDown }),
+    inFlight && gotDown1 && band1 === "band-unknown" && down2Chips === 0 && counterDown >= 1,
+    JSON.stringify({ inFlight, band1, down2Chips, counterDown }),
   );
 
   await fixture.resume();
