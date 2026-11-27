@@ -32,6 +32,13 @@ export const {
 } = CONTRACT_LIMITS;
 const IDENTIFIER = /^[A-Za-z0-9_.:-]{1,96}$/;
 
+/** A private worker message. Only the original score receives a reply. */
+export interface ScoreCancellation { type: "cancelScore"; id: string }
+export function isScoreCancellation(value: unknown): value is ScoreCancellation {
+  return isRecord(value) && value.type === "cancelScore" && typeof value.id === "string" && IDENTIFIER.test(value.id) &&
+    Object.keys(value).length === 2;
+}
+
 export interface EngineRequest { v: 1; id: string; op: EngineOperation; payload: Record<string, unknown> }
 export type EngineReply = NativeReply;
 export { parseNativeReply };

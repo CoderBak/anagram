@@ -7,7 +7,7 @@
 // loaded across the background's own sleeps; the engine lets it go itself when idle.
 import { browser } from "#imports";
 import { EngineHost } from "../../lib/webengine/host";
-import { ENGINE_PORT, ENGINE_READY, ENGINE_FAILED } from "../../lib/webengine/protocol";
+import { ENGINE_PORT, ENGINE_READY, ENGINE_FAILED, fail, isScoreCancellation } from "../../lib/webengine/protocol";
 import { WORKER_URL, workerInit } from "../../lib/webengine/assets";
 import { tierFromQuery } from "../../lib/webengine/tier";
 import { IS_SAFARI } from "../../lib/surface";
@@ -16,8 +16,9 @@ import { mountSafariEnginePage } from "../../lib/ui/safariEnginePage";
 
 // The tier the background chose is in the address it created this document at.
 const host = new EngineHost({ workerUrl: WORKER_URL(), init: workerInit(tierFromQuery(location.search)) });
-const owners = new Map<string, { postMessage(message: unknown): void; disconnect(): void }>();
-const connections = new Set<{ postMessage(message: unknown): void; disconnect(): void }>();
+type EnginePort = { postMessage(message: unknown): void; disconnect(): void };
+const owners = new Map<string, { port: EnginePort; score: boolean }>();
+const connections = new Set<EnginePort>();
 const channel = new URLSearchParams(location.search).get("channel");
 // A duplicated/restored tab can have the same channel URL. Its tab ID prevents two
 // documents from accepting the same request stream and writing the model concurrently.
@@ -29,7 +30,7 @@ if (IS_SAFARI) mountSafariEnginePage();
 host.onMessage.addListener((reply) => {
   const id = (reply as { id?: unknown })?.id;
   if (typeof id !== "string") return;
-  const port = owners.get(id);
+  const port = owners.get(id)?.port;
   owners.delete(id);
   try { port?.postMessage(reply); } catch { /* the port closed */ }
 });
@@ -59,14 +60,27 @@ browser.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => {
     disconnected = true;
     connections.delete(port);
-    for (const [id, owner] of owners) if (owner === port) owners.delete(id);
+    for (const [id, owner] of owners) {
+      if (owner.port !== port) continue;
+      owners.delete(id);
+      if (owner.score) host.postMessage({ type: "cancelScore", id });
+    }
   });
   const accept = (name: string | null): void => {
     if (disconnected || !name || port.name !== name) return;
     connections.add(port);
     port.onMessage.addListener((message: unknown) => {
       const id = (message as { id?: unknown })?.id;
-      if (typeof id === "string") owners.set(id, port);
+      if (isScoreCancellation(message)) {
+        const owner = owners.get(message.id);
+        if (owner?.port !== port || !owner.score) return;
+      } else if (typeof id === "string") {
+        if (owners.has(id)) {
+          port.postMessage(fail(id, "busy", "A request with this identifier is already pending", 409));
+          return;
+        }
+        owners.set(id, { port, score: (message as { op?: unknown }).op === "score" });
+      }
       try { host.postMessage(message); }
       catch (error: unknown) {
         const detail = error instanceof Error ? error.message : String(error);

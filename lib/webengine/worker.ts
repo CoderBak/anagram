@@ -11,7 +11,7 @@
 // ends an idle worker once nothing waits on it, and starts the next one with `idle`
 // set, which loads the model again only when a score asks.
 import { Engine, type EngineInit } from "./engine";
-import { EngineError, fail, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, ok, parseEngineRequest, type EngineReply } from "./protocol";
+import { EngineError, fail, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, ok, parseEngineRequest, type EngineReply, type ScoreCancellation } from "./protocol";
 import { probeRuntimes } from "./session";
 import { OpfsStore } from "./storage";
 
@@ -22,11 +22,11 @@ export interface WorkerInit {
   /** Safari supports WebGPU inference only, including after a failed GPU session. */
   gpuOnly?: boolean;
 }
-export type WorkerMessage = WorkerInit | { type: "request"; request: unknown };
+export type WorkerMessage = WorkerInit | ScoreCancellation | { type: "request"; request: unknown };
 export type WorkerReply = { type: "ready" } | { type: "reply"; reply: EngineReply; idle: boolean } | { type: "idle" } | { type: "failed"; message: string };
 
 let engine: Engine | null = null;
-const pending = new Set<string>();
+const pending = new Map<string, AbortController | null>();
 
 async function answer(request: unknown): Promise<EngineReply> {
   if (JSON.stringify(request).length > MAX_REQUEST_BYTES) return fail("protocol-error", "invalid_request", "Native request exceeds the allowed size", 400);
@@ -36,13 +36,15 @@ async function answer(request: unknown): Promise<EngineReply> {
     return fail(typeof id === "string" && /^[A-Za-z0-9_.:-]{1,96}$/.test(id) ? id : "protocol-error", "invalid_request", "Invalid native request envelope or operation", 422);
   }
   if (pending.has(parsed.id)) return fail(parsed.id, "busy", "A request with this identifier is already pending", 409);
-  pending.add(parsed.id);
+  const controller = parsed.op === "score" ? new AbortController() : null;
+  pending.set(parsed.id, controller);
   try {
-    const { status, data } = await engine!.handle(parsed.op, parsed.payload);
+    const { status, data } = await engine!.handle(parsed.op, parsed.payload, controller?.signal);
     const reply = ok(parsed.id, data, status);
     if (JSON.stringify(reply).length > MAX_RESPONSE_BYTES) return fail(parsed.id, "response_too_large", "The native response exceeds the allowed size", 413);
     return reply;
   } catch (error) {
+    if (controller?.signal.aborted) return fail(parsed.id, "cancelled", "Score cancelled", 409);
     if (error instanceof EngineError) return fail(parsed.id, error.code, error.message, error.status);
     return fail(parsed.id, "internal_error", "The local component operation failed", 500);
   } finally {
@@ -68,6 +70,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     })().catch((error: unknown) => post({ type: "failed", message: `The engine could not start: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2000) }));
     return;
   }
+  if (message.type === "cancelScore") pending.get(message.id)?.abort();
   if (message.type === "request") {
     if (!engine) { post({ type: "reply", reply: fail("protocol-error", "not_ready", "The engine is starting", 503), idle: false }); return; }
     void answer(message.request).then((reply) => post({ type: "reply", reply, idle: engine!.idle }));

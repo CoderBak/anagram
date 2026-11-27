@@ -56,6 +56,26 @@ describe("a request's timeout starts at its turn", () => {
     transport.close();
   });
 
+  it("cancels only a posted score on the supporting port, including a timed-out score", async () => {
+    const port = serialEngine(50_000);
+    const posts = vi.spyOn(port, "postMessage");
+    const cancelScore = vi.fn();
+    const transport = new PortTransport(() => port, { cannotStart: "x", cancelScore });
+    const first = new AbortController();
+    const outcome = score(transport, first.signal);
+    first.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome()).toBe("cancelled");
+    expect(cancelScore).toHaveBeenCalledExactlyOnceWith(port, (posts.mock.calls[0]![0] as { id: string }).id);
+    await expect(transport.request("score", {}, first.signal)).rejects.toMatchObject({ code: "cancelled" });
+    const next = score(transport);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(next()).toBe("native_timeout");
+    expect(cancelScore).toHaveBeenCalledTimes(2);
+    expect(cancelScore).toHaveBeenLastCalledWith(port, (posts.mock.calls[1]![0] as { id: string }).id);
+    transport.close();
+  });
+
   it("still times out a request the engine works on for longer than its timeout", async () => {
     const transport = new PortTransport(() => serialEngine(40_000), { cannotStart: "x" });
     const first = score(transport), second = score(transport);

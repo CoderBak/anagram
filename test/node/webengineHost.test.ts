@@ -49,6 +49,23 @@ describe("EngineHost", () => {
     expect(replies).toEqual([{ id: "a", ok: true }]);
   });
 
+  it("forwards cancellation in order without starting a worker or waiting for a second reply", () => {
+    const { h, replies } = host();
+    const cancel = { type: "cancelScore", id: "a" };
+    h.postMessage(cancel);
+    expect(h.running).toBe(false);
+    const request = { id: "a", op: "score" };
+    h.postMessage(request);
+    h.postMessage(cancel);
+    const worker = FakeWorker.all[0]!;
+    worker.emit({ type: "ready" });
+    expect(worker.posted.slice(1)).toEqual([{ type: "request", request }, cancel]);
+    worker.emit({ type: "idle" });
+    worker.emit({ type: "reply", reply: { id: "a", ok: false }, idle: true });
+    expect(worker.terminated).toBe(true);
+    expect(replies).toHaveLength(1);
+  });
+
   it("ends an idle worker once nothing waits on it, and starts the next one idle", () => {
     const { h, replies, disconnects } = host();
     h.postMessage({ id: "a" });

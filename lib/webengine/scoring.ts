@@ -7,6 +7,7 @@
 // four probabilities rounded to four places. The forward pass itself is behind
 // the `Backend` interface (lib/webengine/session.ts); everything else is here so that the
 // unit tests can drive it with a fake.
+import { yieldToMessages } from "./scheduling";
 import { BUCKET_COUNT } from "../contract";
 import { cleanText } from "./clean";
 import type { Tokenizer } from "./tokenizer";
@@ -98,7 +99,10 @@ export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: 
   const out: Scored[] = new Array(texts.length);
   const widths = order.map((i) => Math.min(lengths[i]!, MAX_LENGTH));
   for (const [start, end] of passes(widths, backend.batchSize ?? BATCH_SIZE, backend.passTokens ?? PASS_TOKENS)) {
-    if (signal?.aborted) throw new Error("cancelled");
+    if (signal) {
+      await yieldToMessages();
+      signal.throwIfAborted();
+    }
     const chunk = order.slice(start, end);
     // `order`, and so every `i` below, holds the indices of `allIds` and `lengths`.
     const rows = chunk.map((i) => {

@@ -14,6 +14,7 @@
 // tried next (hf-mirror.com, for where Hugging Face is blocked), as download_modelkit.py does:
 // the part carries across the switch, the hash decides what is kept, and a mirror that worked
 // is tried first for the rest of the session's files.
+import { yieldToMessages } from "./scheduling";
 import { Sha256 } from "./sha256";
 import type { FileStore, FileWriter } from "./storage";
 import { MIRROR_HOST, type PinnedFile } from "./pin";
@@ -107,17 +108,12 @@ export function secure(url: string): boolean {
 /** OPFS reads on the worker are synchronous. Let pause and status messages run between slices. */
 async function hashStoredFile(store: FileStore, name: string, signal?: AbortSignal): Promise<Sha256> {
   const hasher = new Sha256();
-  const scheduler = (globalThis as { scheduler?: {
-    postTask?(callback: () => void, options: { priority: "background" }): Promise<void>;
-  } }).scheduler;
   let deadline = performance.now() + 50;
   for await (const chunk of store.stream(name, 2 * 1024 * 1024)) {
     if (signal?.aborted) throw new DownloadPaused();
     hasher.update(chunk);
     if (performance.now() >= deadline) {
-      // A boosted scheduler.yield() continuation can run ahead of every posted Pause message.
-      if (scheduler?.postTask) await scheduler.postTask(() => {}, { priority: "background" });
-      else await new Promise<void>(resolve => setTimeout(resolve, 0));
+      await yieldToMessages();
       if (signal?.aborted) throw new DownloadPaused();
       deadline = performance.now() + 50;
     }

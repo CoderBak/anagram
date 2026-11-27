@@ -10,7 +10,8 @@
 // give its WebAssembly memory back. The next request starts a fresh one that knows it is
 // idle. It imports no extension API either; the caller hands it the URLs.
 import type { NativePort } from "../backend/portTransport";
-import type { WorkerInit, WorkerReply } from "./worker";
+import { isScoreCancellation } from "./protocol";
+import type { WorkerInit, WorkerMessage, WorkerReply } from "./worker";
 
 type Init = Omit<WorkerInit, "type">;
 export interface HostOptions {
@@ -23,7 +24,7 @@ export interface HostOptions {
 export class EngineHost implements NativePort {
   private worker: Worker | null = null;
   private ready = false;
-  private queue: unknown[] = [];
+  private queue: Exclude<WorkerMessage, WorkerInit>[] = [];
   /** Requests the current worker has not answered yet: every request gets one reply. */
   private unanswered = 0;
   /** The worker said it let the model go while idle: end it when nothing waits on it. */
@@ -57,7 +58,7 @@ export class EngineHost implements NativePort {
         this.ready = true;
         const queued = this.queue;
         this.queue = [];
-        for (const request of queued) worker.postMessage({ type: "request", request });
+        for (const message of queued) worker.postMessage(message);
       } else if (message.type === "reply") {
         this.unanswered--;
         if (!message.idle) this.ending = false;
@@ -92,10 +93,13 @@ export class EngineHost implements NativePort {
   }
 
   postMessage(message: unknown): void {
-    const worker = this.start();
-    this.unanswered++;
-    if (this.ready) worker.postMessage({ type: "request", request: message });
-    else this.queue.push(message);
+    const cancel = isScoreCancellation(message);
+    const worker = cancel ? this.worker : this.start();
+    if (!worker) return;
+    if (!cancel) this.unanswered++;
+    const envelope = cancel ? message : { type: "request" as const, request: message };
+    if (this.ready) worker.postMessage(envelope);
+    else this.queue.push(envelope);
   }
 
   /** Stop the worker; pending requests are the transport's to reject. */

@@ -574,6 +574,25 @@ describe("the engine's lifecycle", () => {
     expect((await ready(m.engine)).state).toBe("ready");
   });
 
+  it("drops a cancelled score waiting its turn and scores again on the loaded session", async () => {
+    let finish!: () => void;
+    const m = track(make({ holdScore: new Promise<void>(resolve => { finish = resolve; }) }));
+    await m.engine.handle("models.download", {});
+    await ready(m.engine);
+    const payload = { v: "3.0", blocks: [{ id: "a", text: "hello world" }] };
+    const first = m.engine.handle("score", payload);
+    const controller = new AbortController();
+    const abandoned = m.engine.handle("score", payload, controller.signal);
+    controller.abort();
+    const next = m.engine.handle("score", payload);
+    const cancelled = expect(abandoned).rejects.toMatchObject({ name: "AbortError" });
+    finish();
+    const result = await first;
+    await cancelled;
+    expect(await next).toEqual(result);
+    expect(m.log).toEqual(["create webgpu:fp32"]);
+  });
+
   it("bounds the score queue", async () => {
     const m = track(make());
     await m.engine.handle("models.download", {});

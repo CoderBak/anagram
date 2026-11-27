@@ -100,7 +100,10 @@ class WebEngineTransport extends PortTransport {
     // A score waits for a loading model, which takes minutes on the processor, for at most as long as
     // the engine itself does (its WAKE_TIMEOUT_MS, 285 s) and a little more, so its answer is the one heard.
     super(() => (IS_SAFARI ? safariEnginePort() : offscreenApi() ? offscreenPort() : new EngineHost({ workerUrl: WORKER_URL(), init: async () => workerInit(await engineTierChoice.getValue().catch(() => null)) })),
-      { cannotStart: "The in-browser engine could not be started", loadWaitMs: LOAD_WAIT_MS });
+      {
+        cannotStart: "The in-browser engine could not be started", loadWaitMs: LOAD_WAIT_MS,
+        cancelScore: (port, id) => port.postMessage({ type: "cancelScore", id }),
+      });
   }
   protected override lastError(): string | undefined { return browser.runtime.lastError?.message; }
 }

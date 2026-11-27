@@ -82,6 +82,8 @@ export interface PortMessages {
    * reaches its timeout fails, as ever.
    */
   loadWaitMs?: number;
+  /** Ask a supporting engine to stop an already posted score between model passes. */
+  cancelScore?(port: NativePort, id: string): void;
 }
 
 export class PortTransport implements EngineTransport {
@@ -276,6 +278,9 @@ export class PortTransport implements EngineTransport {
         const settle = (error: Error) => {
           if (!this.pending.delete(id)) return;
           cleanup(); reject(error);
+          if (op === "score" && request.port) {
+            try { this.messages.cancelScore?.(request.port, id); } catch { /* the port already closed */ }
+          }
         };
         const began = Date.now();
         /** Out of time: the engine may still be at it, but the next in its lane starts its own. */

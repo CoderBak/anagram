@@ -5,6 +5,7 @@
 // model on the runtime lib/webengine/session.ts picks, answers the contract's operations
 // with the native host's shapes, errors and status numbers, and lets the model go after
 // the same idle time. One engine per worker; lib/webengine/worker.ts feeds it requests.
+import { yieldToMessages } from "./scheduling";
 import { IDLE_UNLOAD_RULE, validIdleUnload, type ScoreResult } from "../contract";
 import { downloadFile, DownloadFailed, DownloadPaused, mirrorOf, noRoomFor, outOfSpace, readPackaged } from "./download";
 import { FastText } from "./fasttext";
@@ -669,7 +670,7 @@ export class Engine {
 
   // ---- operations -----------------------------------------------------------------------------
 
-  async handle(op: EngineOperation, payload: Record<string, unknown>): Promise<{ status: number; data: unknown }> {
+  async handle(op: EngineOperation, payload: Record<string, unknown>, signal?: AbortSignal): Promise<{ status: number; data: unknown }> {
     await this.start();
     switch (op) {
       case "status":
@@ -718,7 +719,7 @@ export class Engine {
         } };
       }
       case "score":
-        return { status: 200, data: await this.score(parseScorePayload(payload).blocks) };
+        return { status: 200, data: await this.score(parseScorePayload(payload).blocks, signal) };
       case "warm":
         // A page the engine will read is opening (lib/backend/warmup.ts): a model let go while
         // idle starts loading now, beside the page, as the page's first score would start it.
@@ -868,11 +869,13 @@ export class Engine {
     return { tokenizer: this.loaded!.tokenizer, meta: this.loaded!.detector?.meta };
   }
 
-  private async score(blocks: Array<{ id: string; text: string }>) {
+  private async score(blocks: Array<{ id: string; text: string }>, signal?: AbortSignal) {
     if (this.pendingScores >= MAX_PENDING_SCORES) throw new EngineError("busy", "Too many pending score requests", 409);
     this.pendingScores++;
     const turn = this.scoreChain.then(async () => {
+      signal?.throwIfAborted();
       await this.wakeAndWait();
+      signal?.throwIfAborted();
       const loaded = this.loaded!;
       this.lastActivity = this.now();
       // engine.score_with_engine: the language gate first, then one scoring pass over what passed it.
@@ -895,9 +898,19 @@ export class Engine {
       const detector = loaded.detector;
       const scored = detector ? await (async () => {
         const out = [];
-        for(const b of todo) out.push(await detectorScore(b.text,loaded.tokenizer,detector.meta,detector.crf,ids=>detector.session.heads(ids)));
+        const run = async (ids: number[]) => {
+          if (signal) {
+            await yieldToMessages();
+            signal.throwIfAborted();
+          }
+          return detector.session.heads(ids);
+        };
+        for (const block of todo) {
+          out.push(await detectorScore(block.text, loaded.tokenizer, detector.meta, detector.crf, run));
+        }
         return out;
-      })() : todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text)) : [];
+      })() : todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text), signal) : [];
+      signal?.throwIfAborted();
       todo.forEach((block, i) => {
         const r = scored[i]!; // one result per text, in order (scoreTexts)
         results.set(block.id, { id: block.id, ...r, lang: block.lang, lang_prob: pyRound(block.prob, 3) });
