@@ -5,10 +5,17 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { defaultRelease } from "../../lib/detectorReleases";
 import { installationCommand } from "../../lib/ui/installationCommand";
 
 const chromeId = "a".repeat(32);
 const installers = { sh: "1".repeat(64), ps1: "2".repeat(64) };
+it.each(["linux", "mac", "win"])("passes the chosen immutable detector to the %s installer", os => {
+  const detector = {...defaultRelease, revision: "a".repeat(40), release: "2026-12-01-200m"};
+  const command = installationCommand(os, "chrome", chromeId, "0.10.0", "en", installers, null, detector)!.command;
+  const encoded = command.match(/(?:ANAGRAM_DETECTOR_MANIFEST=|-DetectorManifest )'([^']+)'/)?.[1];
+  expect(JSON.parse(atob(encoded!))).toEqual(detector);
+});
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 /** Run a command without blocking this process: the stand-in release is served from it. */
 const run = (file: string, args: string[]): Promise<{ output: string; code: number | string }> =>
@@ -109,10 +116,10 @@ describe("the installation command, run", () => {
 
   const pwsh = (() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], { stdio: "pipe" }); return true; } catch { return false; } })();
   it.skipIf(!pwsh)("in PowerShell, runs the installer with its digest, and refuses one that differs", async () => {
-    const script = `param($ExtensionId, $Browser, $Language, $ReleaseUrl)\nSet-Content -NoNewline -Path '${marker}' -Value "$ExtensionId $Browser $Language"\n`;
+    const script = `param($ExtensionId, $Browser, $Language, $ReleaseUrl, $ComponentHome)\nif ([IO.Path]::GetExtension($PSCommandPath) -ne '.ps1' -or -not [IO.File]::Exists($PSCommandPath)) { exit 17 }\nSet-Content -NoNewline -Path '${marker}' -Value "$ExtensionId $Browser $Language"\n`;
     served = { "/installer": script };
     const result = installationCommand("win", "chrome", chromeId, "0.9.0", "en", { sh: "0".repeat(64), ps1: sha256(script) })!;
-    await run("pwsh", ["-NoProfile", "-Command", local(result.command, result.scriptUrl)]);
+    expect((await run("pwsh", ["-NoProfile", "-Command", local(result.command, result.scriptUrl)])).code).toBe(0);
     expect(readFileSync(marker, "utf8")).toBe(`${chromeId} chrome en`);
     rmSync(marker);
     served = { "/installer": script.replace("param", "Write-Host tampered\nparam") };

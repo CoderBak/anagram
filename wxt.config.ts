@@ -207,6 +207,7 @@ export default defineConfig({
     // third-party work it contains.
     "build:publicAssets": (_wxt, files) => {
       for (const { name, contents } of installerSources) {
+        files.push({ relativeDest: `installer-source/${name}`, contents });
         const source = contents.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
         files.push({ relativeDest: `installer-source/${name}.html`, contents:
           `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${name}</title><pre>${source}</pre></html>` });
