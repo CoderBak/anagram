@@ -22,7 +22,7 @@ import {normalizeDetector} from "../webengine/detectorScore";
 // This file is pure text and arithmetic — no DOM — so the vitest suite can drive it. The
 // mapping of a stretch back to text nodes lives in lib/dom/locate.ts.
 import type { ScoreBlock, ScoreResult, TokenCounts } from "../contract";
-import { BUCKET_COUNT, DOCUMENT_SHARE, PAGE_IN_FLIGHT } from "../contract";
+import { BUCKET_COUNT, CONTRACT_LIMITS, DOCUMENT_SHARE, PAGE_IN_FLIGHT } from "../contract";
 import { foldLookalikes } from "../dom/lookalikes";
 import { modelForm, modelText, sentenceStarts } from "../dom/text";
 
@@ -423,7 +423,7 @@ function sentenceStretches(source:string,pass:WindowVerdict):WindowVerdict[] {
   const labels=pass.result.sentenceLabels;
   if(!labels || labels.length<2 || labels.every(l=>l===labels[0])) return [pass];
   const raw=source.slice(pass.start,pass.end);
-  const analyzed=normalizeDetector(blockText(source,pass));
+  const analyzed=normalizeDetector(modelText(raw));
   const spans=sentenceSpans(raw), decoded=sentenceSpans(analyzed);
   if(spans.length!==labels.length || decoded.length!==labels.length) return [pass];
   for(let i=0;i<spans.length;i++) {
@@ -682,4 +682,42 @@ export async function readInWindows(
   for (const id of incomplete) out.delete(id);
   for (const item of uncounted) out.set(item.id, [{ start: 0, end: item.text.length, result: unavailableResult(item.id) }]);
   return out;
+}
+
+/** The current detector owns token overlap and decodes sentences across the whole passage.
+ * Only the wire limit can force a new passage. Keep offsets in the original string. */
+export async function readDetectorPassages(items: Readable[], scoreBlocks: ScoreBlocks): Promise<Map<string, WindowVerdict[]>> {
+  const limit = CONTRACT_LIMITS.text_chars;
+  const slots: Slot[] = [];
+  for (const owner of items) {
+    const source = foldLookalikes(owner.text);
+    const stop = readEnd(source);
+    const whole = modelText(source.slice(0, stop));
+    if (whole.length <= limit) {
+      slots.push({ owner, span: { start: 0, end: stop }, block: { id: owner.id, text: whole } });
+      continue;
+    }
+    const starts = sentenceStarts(source.slice(0, stop));
+    for (let start = 0; start < stop;) {
+      let end = Math.min(stop, start + limit);
+      // Normalizing a ligature can expand it. Shrink before choosing a sentence or word edge.
+      while (modelText(source.slice(start, end)).length > limit) end = start + Math.floor((end - start) * 0.9);
+      if (end < stop) end = pickCut(source, starts, end, Math.max(start + 1, end - JOINT_REACH_CHARS), end);
+      if (end < stop && /[\uDC00-\uDFFF]/.test(source[end]!)) end--;
+      slots.push({ owner, span: { start, end }, block: { id: `${owner.id}:${start}-${end}`, text: modelText(source.slice(start, end)) } });
+      start = end;
+    }
+  }
+  const answers = await ask(slots, scoreBlocks);
+  const result = new Map<string, WindowVerdict[]>();
+  const missing = new Set<string>();
+  for (const { owner, span, block } of slots) {
+    const answer = answers.get(block.id);
+    if (!answer) { missing.add(owner.id); continue; }
+    const parts = result.get(owner.id) ?? [];
+    parts.push({ ...span, result: answer });
+    result.set(owner.id, parts);
+  }
+  for (const id of missing) result.delete(id);
+  return result;
 }

@@ -11,7 +11,8 @@ import { MARK_ATTR } from "../types";
 import { chipShadowMode } from "./shadowMode";
 import type { ModelInfo, ScoreBatchRequest, ScoreResult } from "../contract";
 import { CONTRACT_VERSION, modelDim } from "../contract";
-import { isScoredWindow, readInWindows, requestSlices, unitVerdict } from "../capture/windows";
+import { readParagraphs } from "../capture/readParagraphs";
+import { isScoredWindow, requestSlices, unitVerdict } from "../capture/windows";
 import { requestScores, requestTokenCounts, type ScoreReply } from "../messaging/client";
 import { messageLocale, t } from "../i18n";
 import { band, bandLabel, isNoVerdict, languageName, type Band } from "./band";
@@ -213,7 +214,7 @@ export async function analyzeSelection(): Promise<void> {
     let producing: ModelInfo | null = null;
     let incompatible = false;
     const session = "sel_" + Math.random().toString(36).slice(2, 10);
-    const read = await readInWindows([{ id: "sel", text, order: 0 }], async (blocks) => {
+    const read = await readParagraphs([{ id: "sel", text, order: 0 }], async (blocks) => {
       const answers = new Map<string, ScoreResult>();
       for (const slice of requestSlices(blocks, (b) => b.text.length)) {
         const req: ScoreBatchRequest = {

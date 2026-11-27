@@ -10,7 +10,8 @@ import { countWords, MAX_UNIT_TEXT_CHARS, MIN_WORDS } from "../../lib/dom/text";
 import { settings } from "../../lib/settings/settings";
 import { shortTextNote } from "../../lib/render/coverage";
 import { hasLookalikes } from "../../lib/dom/lookalikes";
-import { meanVerdict, readInWindows, unitVerdict, type UnitVerdict } from "../../lib/capture/windows";
+import { readParagraphs } from "../../lib/capture/readParagraphs";
+import { meanVerdict, unitVerdict, type UnitVerdict } from "../../lib/capture/windows";
 import { groupBlocks } from "../../lib/plan/group";
 import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
 import { cancelDocumentSession } from "../../lib/access/session";
@@ -130,7 +131,7 @@ analyze.addEventListener("click", async () => {
   let producing: ModelInfo | null = null;
   let uncounted = false;
   try {
-    const windows = await readInWindows(units, async (blocks) => {
+    const windows = await readParagraphs(units, async (blocks) => {
       const out = new Map<string, ScoreResult>();
       for (let offset = 0; offset < blocks.length; offset += 4) {
         if (seq !== generation) throw new Error("cancelled");

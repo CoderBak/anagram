@@ -27,7 +27,8 @@ import { partTextOf, isShortText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, PLACE_WAIT_MS, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
-import { readInWindows, requestSlices, unavailableResult, unitVerdict, type UnitVerdict, type WindowVerdict } from "./windows";
+import { readParagraphs } from "./readParagraphs";
+import { requestSlices, unavailableResult, unitVerdict, type UnitVerdict, type WindowVerdict } from "./windows";
 import { detectUnsupported, unsupportedResult } from "./langGate";
 import { requestScores, requestTokenCounts, contextAlive } from "../messaging/client";
 import { deviceKind } from "../backend/deviceKind";
@@ -856,7 +857,7 @@ export function createOrchestrator(
     const timed = pace !== null && lane === "background";
     const began = performance.now();
     let chars = 0;
-    const read = await readInWindows(units, async (blocks, owners) => {
+    const read = await readParagraphs(units, async (blocks, owners) => {
       if (!timed) return scoreBlocks(blocks, owners, lane, generation);
       const cached = new Set(blocks.filter((b) => cache.get(b.text)).map((b) => b.id));
       const out = await scoreBlocks(blocks, owners, lane, generation);
@@ -903,7 +904,7 @@ export function createOrchestrator(
 
   /**
    * Paragraphs with no DOM, read exactly as a unit is (send): windows planned by
-   * readInWindows, blocks through scoreBlocks in the background lane — the cache first, the
+   * readParagraphs, blocks through scoreBlocks in the background lane — the cache first, the
    * same requests, the same cache entries after — so the unit the paragraph becomes when its
    * page is drawn finds every window cached. A degraded verdict is not kept: the page asks
    * again when it is drawn.
@@ -914,7 +915,7 @@ export function createOrchestrator(
     if (busy() || items.length === 0) return { ms: 0, sent: 0, chars: 0, scored: 0, retired: false, down: backend.down };
     const given = items.map((p) => ({ id: `d${(detachedSeq++).toString(36)}`, text: p.text, order: p.order, p }));
     let sent = 0, chars = 0;
-    const read = await readInWindows(given, async (blocks, owners) => {
+    const read = await readParagraphs(given, async (blocks, owners) => {
       const cached = new Set(blocks.filter((b) => cache.get(b.text)).map((b) => b.id));
       const out = await scoreBlocks(blocks, owners, "background", generation);
       const engine = engineRead(blocks, cached, out);

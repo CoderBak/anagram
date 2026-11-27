@@ -2,6 +2,7 @@
 // calls, and what comes back when the engine cuts a pass, fails one, or answers nothing.
 import { describe, expect, it } from "vitest";
 import { readInWindows, unitVerdict, blockText, fitsWithoutCounting, wordsOf, requestSlices, MAX_BLOCK_CHARS, MAX_WINDOWS, PASS_TOKENS, REQUEST_BLOCKS, REQUEST_CHARS, type CountTokens, type ScoreBlocks, type WindowVerdict } from "../../lib/capture/windows";
+import { readParagraphs } from "../../lib/capture/readParagraphs";
 import { ROUTER_LIMITS } from "../../lib/backend/router";
 import { PAGE_IN_FLIGHT, type ScoreBlock, type ScoreResult } from "../../lib/contract";
 import { modelText } from "../../lib/dom/text";
@@ -46,6 +47,38 @@ const covered = (passes: readonly { start: number; end: number }[], end: number)
 const byHalves = (passes: readonly { start: number; end: number }[]): boolean =>
   passes.every((p, i) => i + 2 >= passes.length || p.end === passes[i + 2]!.start) &&
   passes.every((p, i) => i === 0 || (p.start > passes[i - 1]!.start && p.start < passes[i - 1]!.end && p.end > passes[i - 1]!.end));
+
+describe("current detector passage boundaries", () => {
+  const detector = async () => "anagram-detector/1";
+  const result = (block: ScoreBlock) => real(block, { probs: [0, 0, 1], bucket: 2, score: 1 });
+
+  it("sends the full normalized passage and preserves its score and sentence labels", async () => {
+    const text = prose(80);
+    const labels = Array.from({ length: 80 }, (_, i) => i % 3);
+    const { calls, scoreBlocks } = recorder(b => ({ ...result(b), sentenceLabels: labels }));
+    const { asked, countTokens } = counter();
+    const read = await readParagraphs([{ id: "a", text, order: 0 }], scoreBlocks, countTokens, detector);
+    expect(calls.flat()).toEqual([{ id: "a", text: modelText(text) }]);
+    expect(asked).toEqual([]);
+    const verdict = unitVerdict("a", text.length, read.get("a")!, text);
+    expect(verdict.result.sentenceLabels).toEqual(labels);
+    expect(verdict.stretches).toHaveLength(80);
+  });
+
+  it("covers an oversized passage without overlapping sections or truncating normalized ligatures", async () => {
+    const text = "office ﬃsh 🐟. ".repeat(4200);
+    const { calls, scoreBlocks } = recorder(result);
+    const read = await readParagraphs([{ id: "a", text, order: 0 }], scoreBlocks, counter().countTokens, detector);
+    const parts = read.get("a")!;
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.at(-1)!.end).toBe(text.length);
+    parts.forEach(({ start, end }, i) => {
+      expect(start).toBe(parts[i - 1]?.end ?? 0);
+      expect(calls.flat()[i]!.text).toBe(modelText(text.slice(start, end)));
+      expect(calls.flat()[i]!.text.length).toBeLessThanOrEqual(16000);
+    });
+  });
+});
 
 describe("readInWindows", () => {
   it("sends a text that certainly fits exactly as before: one block, the unit's own id, its model form, no count", async () => {
