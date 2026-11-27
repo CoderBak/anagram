@@ -1261,7 +1261,7 @@ class LifecycleTests(unittest.TestCase):
             component.close()
             return state
         with patch("native_component.LID_ENTRY", lid), patch("safe_files.hashlib.file_digest", counted), \
-                patch("download_modelkit.transfer_asset", lambda *a, **kw: transfer_with(open_fixture)(*a, **{k: v for k, v in kw.items() if k != "notice"})):
+                patch("download_modelkit.transfer_asset", transfer_with(open_fixture)):
             # The download checks every file against the pin as it comes.
             self.assertEqual(start(), "ready")
             self.assertTrue({"model.safetensors", "config.json", "lid.176.ftz"} <= set(hashed))
@@ -1301,7 +1301,7 @@ class LifecycleTests(unittest.TestCase):
             result = io.BytesIO(data)
             result.status, result.headers = 200, {}
             return result
-        with patch("native_component.LID_ENTRY", lid), patch("download_modelkit.transfer_asset", lambda *a, **kw: transfer_with(open_fixture)(*a, **{k:v for k,v in kw.items() if k != "notice"})):
+        with patch("native_component.LID_ENTRY", lid), patch("download_modelkit.transfer_asset", transfer_with(open_fixture)):
             component = self.make(downloader=None, verifier=None, planner=planner)
             self.first_run(component)
             self.assertEqual(set(requests), {"model.safetensors", "config.json", "LICENSE", "lid.176.ftz"})
