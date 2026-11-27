@@ -8,6 +8,8 @@ param(
   [ValidateSet('en','zh_CN')][string]$Language = $(if ($env:ANAGRAM_LANG) {$env:ANAGRAM_LANG} else {'en'}),
   [string]$ComponentHome = $(if ($env:ANAGRAM_HOME) {$env:ANAGRAM_HOME} else {Join-Path $env:LOCALAPPDATA 'Anagram'}),
   [string]$ReleaseUrl = $(if ($env:ANAGRAM_RELEASE_URL) {$env:ANAGRAM_RELEASE_URL} else {'https://github.com/CoderBak/anagram/releases/latest/download'}),
+  [string]$DetectorManifest = $env:ANAGRAM_DETECTOR_MANIFEST,
+  [switch]$CleanupOnly,
   # Only the fixed maintenance worker passes a live, already locked stream.
   [Parameter(DontShow=$true)][IO.FileStream]$MaintenanceLock
 )
@@ -30,39 +32,6 @@ function Assert-Plain([string]$Path,[string]$Boundary) {
     $current = Split-Path -Parent $current
   }
 }
-function Assert-OwnedTree([string]$Path) {
-  Assert-Plain $Path $ComponentHome
-  if (-not (Test-Path -LiteralPath $Path)) { return }
-  $pending = [Collections.Generic.Stack[string]]::new()
-  $pending.Push($Path)
-  while ($pending.Count -gt 0) {
-    $item = Get-Item -LiteralPath ($pending.Pop()) -Force
-    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $($item.FullName)" }
-    if ($item.PSIsContainer) {
-      foreach ($child in Get-ChildItem -LiteralPath $item.FullName -Force) { $pending.Push($child.FullName) }
-    }
-  }
-}
-function Remove-OwnedTree([string]$Path) {
-  Assert-OwnedTree $Path
-  if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force }
-}
-function Install-OwnedFile([string]$Source,[string]$Destination) {
-  Assert-Plain $Destination $ComponentHome
-  if (Test-Path -LiteralPath $Destination -PathType Container) { throw "Expected an owned file: $Destination" }
-  # Replace the directory entry instead of writing through an existing hardlink.
-  $next = $Destination + '.new-' + [Guid]::NewGuid().ToString('N')
-  Assert-Plain $next $ComponentHome
-  try {
-    [IO.File]::Copy($Source,$next,$false)
-    Assert-Plain $Destination $ComponentHome
-    if (Test-Path -LiteralPath $Destination) { [IO.File]::Replace($next,$Destination,$null) }
-    else { [IO.File]::Move($next,$Destination) }
-  } finally {
-    Assert-Plain $next $ComponentHome
-    if (Test-Path -LiteralPath $next) { Remove-Item -LiteralPath $next -Force }
-  }
-}
 function Enter-InstallLock {
   $path = Join-Path $ComponentHome '.native-host.lock'
   Assert-Plain $path $ComponentHome
@@ -76,6 +45,13 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 public static class AnagramInstallerHandle {
+  [StructLayout(LayoutKind.Sequential)] struct FileInfo {
+    public uint Attributes;
+    public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+    public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+  }
+  [DllImport("kernel32.dll", SetLastError=true)]
+  static extern bool GetFileInformationByHandle(SafeFileHandle handle, out FileInfo info);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
   static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint size, uint flags);
   [DllImport("kernel32.dll", SetLastError=true)]
@@ -89,6 +65,10 @@ public static class AnagramInstallerHandle {
     return result.StartsWith(@"\\?\") ? result.Substring(4) : result;
   }
   public static void VerifyWrite(SafeFileHandle handle) {
+    FileInfo info;
+    if (!GetFileInformationByHandle(handle, out info)) throw new Win32Exception();
+    if (info.Links != 1 || info.SizeHigh != 0 || info.SizeLow > 1)
+      throw new InvalidOperationException("Unexpected native lock file");
     uint written;
     if (!WriteFile(handle, new byte[] { 0 }, 1, out written, IntPtr.Zero) || written != 1)
       throw new Win32Exception();
@@ -121,31 +101,258 @@ public static class AnagramInstallerHandle {
   catch { $stream.Dispose(); throw 'Another browser or installer is using Anagram. Close its connection and retry.' }
 }
 function Assert-InstallTargets {
-  foreach ($name in @('app','extension','bin','models','venv','python','cache','hf','logs','run','native','tools','.anagram-home','.native-component.json','native-registration.json','.native-host.lock','VERSION','bin\uv.exe','bin\uv.exe.new','bin\anagram-native.exe','bin\anagram-native.exe.new')) { Assert-Plain (Join-Path $ComponentHome $name) $ComponentHome }
-  foreach ($name in @('app.old','extension.old','venv.old','venv.next')) {
+  foreach ($name in @('app','extension','bin','models','venv','python','cache','hf','logs','run','native','tools','.anagram-home','.native-component.json','native-registration.json','.native-host.lock','.anagram-install.json','VERSION','bin\uv.exe','bin\uv.exe.new','bin\anagram-native.exe','bin\anagram-native.exe.new')) { Assert-Plain (Join-Path $ComponentHome $name) $ComponentHome }
+  foreach ($name in @('app.old','extension.old','venv.old','python.old','venv.next')) {
     $path = Join-Path $ComponentHome $name
     Assert-Plain $path $ComponentHome
-    if (Test-Path -LiteralPath $path) { throw "Unfinished previous installation at $path; restore it before retrying." }
+    if ((Test-Path -LiteralPath $path) -and -not (Test-Path -LiteralPath (Join-Path $ComponentHome '.anagram-install.json'))) { throw "Previous installation files at $path have no transaction record; keep them before retrying." }
   }
 }
-function Undo-Install([string[]]$Swapped,[bool]$CreatedVenv,[bool]$LauncherWritten,[bool]$VersionWritten,[string]$LauncherBackup,[string]$VersionBackup) {
-  if ($CreatedVenv) { Remove-OwnedTree (Join-Path $ComponentHome 'venv.next') }
-  if ($LauncherWritten) {
-    if ($LauncherBackup -and (Test-Path -LiteralPath $LauncherBackup)) { Install-OwnedFile $LauncherBackup (Join-Path $ComponentHome 'bin\anagram-native.exe') }
-    else { Remove-OwnedTree (Join-Path $ComponentHome 'bin\anagram-native.exe') }
+function Save-InstallState($State) {
+  $path = Join-Path $ComponentHome '.anagram-install.json'
+  Assert-Plain $path $ComponentHome
+  $next = Join-Path $ComponentHome ('.anagram-journal-' + [Guid]::NewGuid().ToString('N'))
+  $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($State | ConvertTo-Json -Depth 4 -Compress))
+  $stream = [IO.File]::Open($next,[IO.FileMode]::CreateNew)
+  try {
+    try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+    if ([IO.File]::Exists($path)) {
+      if ((Read-InstallState).id -cne $State.id) { throw "An unrelated file occupies the install journal path." }
+      [IO.File]::Replace($next,$path,[System.Management.Automation.Language.NullString]::Value)
+    } else { [IO.File]::Move($next,$path) }
+  } finally { if ([IO.File]::Exists($next)) { [IO.File]::Delete($next) } }
+}
+function Read-InstallState {
+  $path = Join-Path $ComponentHome '.anagram-install.json'
+  Assert-Plain $path $ComponentHome
+  $state = [IO.File]::ReadAllText($path) | ConvertFrom-Json
+  if ($state.schema -ne 1 -or $state.home -cne $ComponentHome -or $state.id -cnotmatch '^[0-9a-f]{32}$' -or
+      $state.phase -notin @('building','registering','committed','cleaning-installed','cleaning-rollback') -or $state.language -notin @('en','zh_CN') -or
+      ($state.browser -eq 'chrome' -and $state.extensionId -cnotmatch '^[a-p]{32}$') -or
+      ($state.browser -eq 'firefox' -and $state.extensionId -cne 'anagram@coderbak.dev') -or $state.browser -notin @('chrome','firefox')) { throw 'Invalid Anagram install journal' }
+  $seen = @{}
+  foreach ($item in $state.operations) {
+    if ($item.name -notin @('python','app','venv','extension','VERSION','bin/uv.exe','bin/anagram-native.exe') -or $seen.ContainsKey($item.name) -or $item.had -isnot [bool]) { throw 'Invalid Anagram deployment operation' }
+    $from = $item.source
+    if (-not $from -or [IO.Path]::IsPathRooted($from) -or $from -match '(^|[\\/])\.\.?([\\/]|$)|[:\x00]') { throw 'Invalid Anagram staging source' }
+    $seen[$item.name] = $true
   }
-  if ($VersionWritten) {
-    if ($VersionBackup -and (Test-Path -LiteralPath $VersionBackup)) { Install-OwnedFile $VersionBackup (Join-Path $ComponentHome 'VERSION') }
-    else { Remove-OwnedTree (Join-Path $ComponentHome 'VERSION') }
+  foreach ($work in $state.work) {
+    if ($work.role -notin @('uv','python','archive','checksum','verify','release','packages','compiler') -or $work.hash -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid build receipt in installation journal' }
   }
-  if (-not $Swapped) { return }
-  $reverse = @($Swapped)
-  [Array]::Reverse($reverse)
-  foreach ($path in $reverse) {
-    Remove-OwnedTree $path
-    Assert-Plain ($path + '.old') $ComponentHome
-    if (Test-Path -LiteralPath ($path + '.old')) { Move-Item -LiteralPath ($path + '.old') -Destination $path }
+  foreach ($digest in @($state.bootstrapHash,$state.filesHash,$state.recoveryHash)) { if ($digest -and $digest -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid digest in installation journal' } }
+  foreach ($name in $state.newDirs) { if ($name -notin @('bin','models','cache','hf','run')) { throw 'Invalid Anagram installation directory' } }
+  if ($state.freshMarker -isnot [bool] -or $state.freshHome -isnot [bool] -or $state.freshLock -isnot [bool]) { throw 'Invalid installation ownership record' }
+  return $state
+}
+function Backup-Path([string]$Name) {
+  switch ($Name) {
+    'bin/anagram-native.exe' { return (Join-Path $workspace 'command.backup') }
+    'bin/uv.exe' { return (Join-Path $workspace 'uv.backup') }
+    'VERSION' { return (Join-Path $workspace 'version.backup') }
+    default { return (Join-Path $ComponentHome ($Name + '.old')) }
   }
+}
+function Move-Entry([string]$Source,[string]$Destination) {
+  Assert-Plain $Source $ComponentHome; Assert-Plain $Destination $ComponentHome
+  if ([IO.Directory]::Exists($Source)) { [IO.Directory]::Move($Source,$Destination) } else { [IO.File]::Move($Source,$Destination) }
+}
+function Publish-Item([string]$Name,[string]$Source) {
+  $destination = Join-Path $ComponentHome $Name
+  $backup = Backup-Path $Name
+  Assert-Plain $destination $ComponentHome; Assert-Plain $backup $ComponentHome
+  if (Test-Path -LiteralPath $backup) { throw "Installation backup already exists: $backup" }
+  $had = Test-Path -LiteralPath $destination
+  Assert-Plain $Source $workspace
+  $relativeSource = [IO.Path]::GetFullPath($Source).Substring($workspace.Length + 1)
+  $digest = if ($had -and [IO.File]::Exists($destination)) { Hash $destination } else { '' }
+  $state.operations += @{name=$Name; had=[bool]$had; source=$relativeSource; digest=$digest}
+  Save-InstallState $state
+  if ($had) { Move-Entry $destination $backup }
+  Move-Entry $Source $destination
+}
+function Keep-Entry([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $kept = Join-Path $ComponentHome ('.preserved-' + [Guid]::NewGuid().ToString('N'))
+  $null = New-Item -ItemType Directory -Path $kept
+  Move-Entry $Path (Join-Path $kept ([IO.Path]::GetFileName($Path)))
+  Say "Files were kept in $kept" "文件已保存在 $kept"
+}
+function Remove-Empty([string]$Path) {
+  Assert-Plain $Path $ComponentHome
+  if ([IO.Directory]::Exists($Path) -and -not @(Get-ChildItem -LiteralPath $Path -Force).Count) { [IO.Directory]::Delete($Path) }
+}
+function Test-ReceiptName([string]$Name) {
+  return ($Name -notmatch '(^|/)(|\.|\.\.)(/|$)|[\\:\x00]|[. ](/|$)|(^|/)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])([./]|$)')
+}
+function Read-SealedFiles([string]$Path,[string]$Digest) {
+  Assert-Plain $Path $ComponentHome
+  if ($Digest -cnotmatch '^[0-9a-f]{64}$' -or (Hash $Path) -cne $Digest) { throw "The installation receipt changed. Files were kept: $Path" }
+  $data = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+  if ($data.schema_version -ne 1 -or $data.home -cne $ComponentHome) { throw 'Unexpected installation receipt owner' }
+  foreach ($entry in $data.files.PSObject.Properties) {
+    if (-not (Test-ReceiptName $entry.Name) -or ($entry.Value -cne 'dir' -and $entry.Value -cnotmatch '^(?:[0-9a-f]{64}|link:.*)$')) { throw 'Invalid content in installation receipt' }
+  }
+  return $data.files
+}
+function Write-WorkReceipt([string]$Role,[string[]]$Names) {
+  # Each role is recorded once in the random, private build directory immediately
+  # after the corresponding tool returns. No user-facing installation tree is scanned.
+  $files = @{}
+  $pending = [Collections.Generic.Stack[string]]::new()
+  foreach ($name in $Names) { $pending.Push($name) }
+  while ($pending.Count) {
+    $name = $pending.Pop()
+    $path = Join-Path $temporary $name
+    try { Assert-Plain $path $workspace } catch { continue }
+    if ([IO.Directory]::Exists($path)) {
+      $files[$name] = 'dir'
+      foreach ($child in Get-ChildItem -LiteralPath $path -Force) { $pending.Push($name + '/' + $child.Name) }
+    } elseif ([IO.File]::Exists($path)) { $files[$name] = Hash $path }
+  }
+  $record = Join-Path $workspace ('work-' + $Role + '.json')
+  $out = [IO.File]::Open($record,[IO.FileMode]::CreateNew)
+  try {
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes((@{schema_version=1;home=$ComponentHome;files=$files} | ConvertTo-Json -Depth 3 -Compress))
+    $out.Write($bytes,0,$bytes.Length); $out.Flush($true)
+  } finally { $out.Dispose() }
+  $state.work += @{role=$Role; hash=(Hash $record)}
+  Save-InstallState $state
+}
+function Prune-MatchingFiles($Files,[string]$Root,[string]$Prefix='') {
+  $missingRoots = @{}
+  $ordered = $Files.PSObject.Properties | Sort-Object @{Expression={$_.Name.Length};Descending=$true}
+  foreach ($file in $ordered) {
+    if ($Prefix -and $file.Name -cne $Prefix -and -not $file.Name.StartsWith($Prefix + '/', [StringComparison]::Ordinal)) { continue }
+    $rootName = ($file.Name -split '/',2)[0]
+    if ($missingRoots.ContainsKey($rootName)) { continue }
+    if (-not (Test-Path -LiteralPath (Join-Path $Root $rootName))) { $missingRoots[$rootName] = $true; continue }
+    $path = Join-Path $Root $file.Name
+    try { Assert-Plain $path $ComponentHome } catch { continue }
+    if ($file.Value -ceq 'dir') { Remove-Empty $path }
+    elseif ($file.Value -cmatch '^[0-9a-f]{64}$' -and [IO.File]::Exists($path) -and (Hash $path) -ceq $file.Value) { [IO.File]::Delete($path) }
+  }
+}
+function Check-RecoveryCode($State,$Files) {
+  $relative = $State.basePython
+  if (-not (Test-ReceiptName $relative) -or $relative -cnotmatch '^python/.+/[pP]ython\.exe$') { throw 'Invalid private Python in recovery journal' }
+  $helper = 'app/native_registration.py'
+  foreach ($name in @($relative,$helper)) {
+    $entry = $Files.PSObject.Properties[$name]
+    $path = Join-Path $ComponentHome $name
+    Assert-Plain $path $ComponentHome
+    if (-not $entry -or $entry.Value -cnotmatch '^[0-9a-f]{64}$' -or (Hash $path) -cne $entry.Value) { throw "Recovery stopped because an installed program changed: $path" }
+  }
+  # Recovery uses only the base interpreter and its standard library, with site
+  # disabled. Refuse new executable modules in that interpreter's search tree.
+  $pending = [Collections.Generic.Stack[string]]::new()
+  $pending.Push('python')
+  while ($pending.Count) {
+    $name = $pending.Pop()
+    $path = Join-Path $ComponentHome $name
+    Assert-Plain $path $ComponentHome
+    $entry = $Files.PSObject.Properties[$name]
+    if (-not $entry) { throw "An unknown file was kept in the private Python: $path" }
+    if ($entry.Value -ceq 'dir' -and [IO.Directory]::Exists($path)) {
+      foreach ($child in Get-ChildItem -LiteralPath $path -Force) { $pending.Push($name + '/' + $child.Name) }
+    } elseif ($entry.Value -cnotmatch '^[0-9a-f]{64}$' -or -not [IO.File]::Exists($path) -or (Hash $path) -cne $entry.Value) { throw "Private Python changed during recovery: $path" }
+  }
+}
+function Undo-Install($State) {
+  $files = $null
+  if ($State.filesHash) { $files = Read-SealedFiles (Join-Path $workspace 'files.json') $State.filesHash }
+  elseif ($State.bootstrapHash) { $files = Read-SealedFiles (Join-Path $workspace 'bootstrap.json') $State.bootstrapHash }
+  $operations = @($State.operations)
+  [Array]::Reverse($operations)
+  foreach ($item in $operations) {
+    $name = $item.name; $destination = Join-Path $ComponentHome $name; $backup = Backup-Path $name
+    Assert-Plain $destination $ComponentHome; Assert-Plain $backup $ComponentHome
+    if ($item.had -and -not (Test-Path -LiteralPath $backup)) { continue } # Previous entry is still in place, or was already restored.
+    if (-not $item.had -and (Test-Path -LiteralPath (Join-Path $workspace $item.source))) { continue } # Publication had not occurred.
+    if ($files) { Prune-MatchingFiles $files $ComponentHome $name }
+    if (Test-Path -LiteralPath $destination) { Keep-Entry $destination }
+    if ($item.had) { Move-Entry $backup $destination }
+  }
+  foreach ($name in $State.newDirs) { Remove-Empty (Join-Path $ComponentHome $name) }
+}
+function Finish-InstalledRelease($State,[switch]$Recovering) {
+  if ($Recovering) {
+    $files = Read-SealedFiles (Join-Path $workspace 'files.json') $State.filesHash
+    Check-RecoveryCode $State $files
+  }
+  $python = Join-Path $ComponentHome $State.basePython
+  $helper = Join-Path $ComponentHome 'app\native_registration.py'
+  if ($State.phase -eq 'registering') {
+    $committed = $false
+    if ($Recovering) {
+      & $python -I -S -B $helper registration-committed --home $ComponentHome --transaction $State.id
+      if ($LASTEXITCODE -notin @(0,1)) { throw 'Could not verify the registration state. Files were kept.' }
+      $committed = $LASTEXITCODE -eq 0
+    }
+    if (-not $committed) {
+      try {
+        Invoke-Private $python @('-I','-S','-B',$helper,'register','--installed-files','--home',$ComponentHome,'--browser',$State.browser,'--extension-id',$State.extensionId,'--language',$State.language,'--staged-files',(Join-Path $workspace 'files.json'),'--transaction',$State.id)
+      } catch {
+        # Foreign browser registrations fail preflight. When registration has
+        # undone its own writes, the file deployment can roll back immediately.
+        $inventoryPath = Join-Path $ComponentHome 'native-registration.json'
+        Assert-Plain $inventoryPath $ComponentHome
+        $durable = $false
+        if ([IO.File]::Exists($inventoryPath)) {
+          $inventory = [IO.File]::ReadAllText($inventoryPath) | ConvertFrom-Json
+          foreach ($field in @('install_transaction','pending_transaction')) {
+            $value = $inventory.PSObject.Properties[$field]
+            if ($value -and $value.Value -ceq $State.id) { $durable = $true }
+          }
+        }
+        if (-not $durable) { $State.phase = 'building'; Save-InstallState $State }
+        throw
+      }
+    }
+    $State.phase = 'committed'
+    Save-InstallState $State
+  }
+  Invoke-Private $python @('-I','-S','-B',$helper,'finish-update','--home',$ComponentHome,'--backups',$workspace,'--python-backup')
+}
+function Close-InstallJournal($State) {
+  if ($State.phase -notlike 'cleaning-*') {
+    $State.phase = if ($State.phase -eq 'committed') { 'cleaning-installed' } else { 'cleaning-rollback' }
+    Save-InstallState $State
+  }
+  foreach ($work in $State.work) {
+    $receipt = Join-Path $workspace ('work-' + $work.role + '.json')
+    if ([IO.File]::Exists($receipt)) {
+      $files = Read-SealedFiles $receipt $work.hash
+      Prune-MatchingFiles $files $temporary
+      [IO.File]::Delete($receipt)
+    }
+  }
+  foreach ($pair in @(@('bootstrap.json',$State.bootstrapHash),@('files.json',$State.filesHash))) {
+    $path = Join-Path $workspace $pair[0]
+    Assert-Plain $path $ComponentHome
+    if ($pair[1] -and [IO.File]::Exists($path) -and (Hash $path) -ceq $pair[1]) { [IO.File]::Delete($path) }
+  }
+  foreach ($item in $State.operations) {
+    $backup = Backup-Path $item.name
+    if ($item.digest -and [IO.File]::Exists($backup) -and (Hash $backup) -ceq $item.digest) { [IO.File]::Delete($backup) }
+  }
+  foreach ($empty in @('tools\bin','tools','python-bin','uv-cache')) { Remove-Empty (Join-Path $temporary $empty) }
+  Remove-Empty $temporary
+  Remove-Empty $workspace
+  if ([IO.Directory]::Exists($workspace)) { Keep-Entry $workspace }
+  $worker = Join-Path $ComponentHome '.anagram-recover.ps1'
+  Assert-Plain $worker $ComponentHome
+  if ($State.recoveryHash -and [IO.File]::Exists($worker) -and (Hash $worker) -ceq $State.recoveryHash) { [IO.File]::Delete($worker) }
+  $journal = Join-Path $ComponentHome '.anagram-install.json'
+  if ((Read-InstallState).id -cne $State.id) { throw 'Install journal changed' }
+  [IO.File]::Delete($journal)
+}
+function Clear-FreshMarker($State) {
+  if (-not $State.freshMarker -or -not [IO.File]::Exists($marker) -or [IO.File]::ReadAllText($marker) -cne "Anagram installation: $ComponentHome") { return $false }
+  $remaining = @(Get-ChildItem -LiteralPath $ComponentHome -Force | Where-Object { $_.Name -notin @('.anagram-home','.native-host.lock') })
+  if ($remaining.Count) { return $false }
+  [IO.File]::Delete($marker)
+  return $true
 }
 function Fetch([string]$Url,[string]$Out) {
   $uri = [Uri]$Url
@@ -163,18 +370,20 @@ function Invoke-Private([string]$Program,[string[]]$Arguments) {
       if ($saved.ContainsKey($key)) { [Environment]::SetEnvironmentVariable($key,$saved[$key],'Process') }
     }
     $env:PATH = Join-Path $env:SystemRoot 'System32'
-    $env:UV_CACHE_DIR = Join-Path $ComponentHome 'cache'
-    $env:UV_PYTHON_INSTALL_DIR = Join-Path $ComponentHome 'python'
-    $env:UV_PYTHON_BIN_DIR = Join-Path $ComponentHome 'python\bin'
-    $env:UV_TOOL_DIR = Join-Path $ComponentHome 'tools'
-    $env:UV_TOOL_BIN_DIR = Join-Path $ComponentHome 'tools\bin'
-    $env:UV_PROJECT_ENVIRONMENT = Join-Path $ComponentHome 'venv.next'
+    $env:UV_CACHE_DIR = Join-Path $temporary 'uv-cache'
+    $env:TEMP = $temporary; $env:TMP = $temporary
+    $env:UV_PYTHON_INSTALL_DIR = $pythonRoot
+    $env:UV_PYTHON_BIN_DIR = Join-Path $temporary 'python-bin'
+    $env:UV_TOOL_DIR = Join-Path $temporary 'tools'
+    $env:UV_TOOL_BIN_DIR = Join-Path $temporary 'tools\bin'
+    $env:UV_PROJECT_ENVIRONMENT = Join-Path $temporary 'venv.next'
     $env:UV_PYTHON_PREFERENCE = 'only-managed'
+    $env:UV_PYTHON_INSTALL_REGISTRY = '0'; $env:UV_PYTHON_INSTALL_BIN = '0'; $env:UV_NO_CACHE = '1'
     $env:UV_NO_CONFIG = '1'; $env:UV_NO_MODIFY_PATH = '1'; $env:UV_NO_PROGRESS = '1'
     if ($script:PythonFrom) { $env:UV_PYTHON_INSTALL_MIRROR = $script:PythonFrom }
     $env:HF_HOME = Join-Path $ComponentHome 'hf'; $env:XDG_CACHE_HOME = Join-Path $ComponentHome 'cache'
     $env:HF_HUB_DISABLE_IMPLICIT_TOKEN = '1'; $env:HF_HUB_DISABLE_TELEMETRY = '1'
-    $env:PYTHONNOUSERSITE = '1'; $env:PYTHONSAFEPATH = '1'
+    $env:PYTHONNOUSERSITE = '1'; $env:PYTHONSAFEPATH = '1'; $env:PYTHONDONTWRITEBYTECODE = '1'
     & $Program @Arguments
     if ($LASTEXITCODE -ne 0) { throw "Private command failed with exit $LASTEXITCODE" }
   } finally {
@@ -239,9 +448,11 @@ $UvGithub = First-Mirror @($env:UV_INSTALLER_GITHUB_BASE_URL)
 $script:PythonFrom = $null
 
 if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') { throw 'The locked Windows runtime currently supports x64 Windows only.' }
-if ($Browser -eq 'chrome') { if ($ExtensionId -cnotmatch '^[a-p]{32}$') { throw 'Chrome extension ID must be exactly 32 a-p characters.' } }
-elseif ($Browser -eq 'firefox') { if ($ExtensionId -ne 'anagram@coderbak.dev') { throw 'Firefox extension ID must be anagram@coderbak.dev.' } }
-else { throw 'Use the browser-specific command from Anagram setup.' }
+if (-not $CleanupOnly) {
+  if ($Browser -eq 'chrome') { if ($ExtensionId -cnotmatch '^[a-p]{32}$') { throw 'Chrome extension ID must be exactly 32 a-p characters.' } }
+  elseif ($Browser -eq 'firefox') { if ($ExtensionId -ne 'anagram@coderbak.dev') { throw 'Firefox extension ID must be anagram@coderbak.dev.' } }
+  else { throw 'Use the browser-specific command from Anagram setup.' }
+}
 if (-not [IO.Path]::IsPathRooted($ComponentHome) -or $ComponentHome -match '(^|[\\/])\.\.?([\\/]|$)') { throw 'ComponentHome must be an absolute dedicated directory without . or .. segments.' }
 $ComponentHome = [IO.Path]::GetFullPath($ComponentHome).TrimEnd('\')
 $protected = @([IO.Path]::GetPathRoot($ComponentHome).TrimEnd('\'),$env:USERPROFILE,$env:LOCALAPPDATA,$env:APPDATA,$env:SystemRoot,$env:ProgramFiles,${env:ProgramFiles(x86)})
@@ -250,7 +461,30 @@ Assert-Plain $ComponentHome ([IO.Path]::GetPathRoot($ComponentHome))
 $marker = Join-Path $ComponentHome '.anagram-home'
 if (Test-Path -LiteralPath $ComponentHome) {
   if (-not (Test-Path -LiteralPath $ComponentHome -PathType Container)) { throw 'ComponentHome is not a directory.' }
-  if (-not (Test-Path -LiteralPath $marker -PathType Leaf) -and @(Get-ChildItem -LiteralPath $ComponentHome -Force).Count -gt 0) { throw 'Existing nonempty directory is not an Anagram installation.' }
+  if (-not [IO.File]::Exists($marker)) {
+    $unmarked = @(Get-ChildItem -LiteralPath $ComponentHome -Force)
+    $lockOnly = -not @($unmarked | Where-Object { $_.Name -notin @('.native-host.lock','.anagram-install.json') }).Count
+    if (-not $lockOnly) { throw 'Existing nonempty directory is not an Anagram installation.' }
+    $lockPath = Join-Path $ComponentHome '.native-host.lock'
+    Assert-Plain $lockPath $ComponentHome
+    if ([IO.File]::Exists($lockPath) -and ([IO.FileInfo]::new($lockPath)).Length) { throw 'Unexpected unowned lock file' }
+    if ([IO.File]::Exists((Join-Path $ComponentHome '.anagram-install.json'))) {
+      $pending = Read-InstallState
+      if (-not $pending.freshMarker -or $pending.phase -ne 'building' -or @($pending.operations).Count) { throw 'Unmarked installation has an invalid recovery journal' }
+    }
+  }
+}
+function Assert-InstallMarker {
+  if (Test-Path -LiteralPath (Join-Path $ComponentHome '.native-uninstall.json')) { throw 'This folder contains an interrupted uninstall' }
+  if (Test-Path -LiteralPath $marker -PathType Leaf) {
+    if ([IO.File]::ReadAllText($marker).TrimEnd() -cne "Anagram installation: $ComponentHome") {
+      $ownerPath = Join-Path $ComponentHome '.native-component.json'
+      Assert-Plain $ownerPath $ComponentHome
+      if (-not [IO.File]::Exists($ownerPath)) { throw 'Installation marker does not identify this folder' }
+      $owner = [IO.File]::ReadAllText($ownerPath) | ConvertFrom-Json
+      if ($owner.home -ne $ComponentHome -or $owner.schema_version -ne 1 -or $owner.host -ne 'dev.coderbak.anagram') { throw 'Component ownership marker mismatch' }
+    }
+  }
 }
 # A release fetched over HTTPS is used only if its Sigstore bundle verifies: signed by
 # .github/workflows/release.yml in GitHub Actions at the release's tag, and by nothing else
@@ -407,71 +641,127 @@ function Release-Signature([string]$Archive,[string]$Bundle,[string]$Asked) {
   $verifier = Join-Path $temporary 'verifier'
   $requirements = Join-Path $temporary 'sigstore.txt'; $verify = Join-Path $temporary 'verify_release.py'
   [IO.File]::WriteAllText($requirements, $SigstoreRequirements); [IO.File]::WriteAllText($verify, $VerifyReleaseScript)
-  Invoke-Private $uv @('venv','--quiet','--python',$PythonVersion,$verifier)
+  Invoke-Private $uv @('venv','--quiet','--no-python-downloads','--python',$bootstrapPython,$verifier)
   $python = Join-Path $verifier 'Scripts\python.exe'
   $installed = $false
   if ($PypiIndex) {
     try { Invoke-Private $uv @('pip','install','--quiet','--python',$python,'--require-hashes','--no-deps','--no-build','--default-index',$PypiIndex,'-r',$requirements); $installed = $true } catch { Mirror-Failed $PypiIndex }
   }
   if (-not $installed) { Invoke-Private $uv @('pip','install','--quiet','--python',$python,'--require-hashes','--no-deps','--no-build','-r',$requirements) }
-  $arguments = @('-I',$verify,$Archive,$Bundle)
+  $arguments = @('-I','-B',$verify,$Archive,$Bundle)
   if ($Asked) { $arguments += $Asked }
   return @(Invoke-Private $python $arguments)[-1]
 }
+if ($CleanupOnly -and -not [IO.File]::Exists((Join-Path $ComponentHome '.anagram-install.json'))) {
+  Say "No interrupted installation was found at $ComponentHome. To remove a completed install, use its app\maintenance.ps1 uninstaller." "在 $ComponentHome 未发现中断的安装。如需删除已安装的引擎，请使用其 app\maintenance.ps1 卸载程序。"
+  return
+}
 Assert-InstallTargets
+Assert-InstallMarker
+$homeWasMissing = -not [IO.Directory]::Exists($ComponentHome)
+$lockWasMissing = -not [IO.File]::Exists((Join-Path $ComponentHome '.native-host.lock'))
 $null = New-Item -ItemType Directory -Path $ComponentHome -Force
-$installLock = $null; $temporary = $null
-$swapped = @(); $completed = $false; $createdVenv = $false
-$launcherWritten = $false; $versionWritten = $false
-$launcherBackup = $null; $versionBackup = $null
+$installLock = $null; $state = $null; $workspace = $null; $temporary = $null
+$pythonRoot = Join-Path $ComponentHome 'python'
+$rollback = $false; $releaseFreshLock = $false
+$journal = Join-Path $ComponentHome '.anagram-install.json'
 try {
   $installLock = Enter-InstallLock
-  # Validate again under the lock, before creating or replacing installation data.
   Assert-Plain $ComponentHome ([IO.Path]::GetPathRoot($ComponentHome))
   Assert-InstallTargets
-  foreach ($name in @('bin','models','cache','hf','run')) { $null = New-Item -ItemType Directory -Path (Join-Path $ComponentHome $name) -Force }
-  if (-not (Test-Path -LiteralPath $marker)) { Set-Content -LiteralPath $marker -Value 'Anagram installation folder.' -Encoding ASCII }
-  $temporary = Join-Path ([IO.Path]::GetTempPath()) ('anagram-install-' + [Guid]::NewGuid().ToString('N'))
-  $null = New-Item -ItemType Directory -Path $temporary
-  $launcherBackup = Join-Path $temporary 'launcher.backup'
-  $versionBackup = Join-Path $temporary 'version.backup'
-  if (Test-Path -LiteralPath (Join-Path $ComponentHome 'bin\anagram-native.exe')) { Copy-Item -LiteralPath (Join-Path $ComponentHome 'bin\anagram-native.exe') -Destination $launcherBackup }
-  if (Test-Path -LiteralPath (Join-Path $ComponentHome 'VERSION')) { Copy-Item -LiteralPath (Join-Path $ComponentHome 'VERSION') -Destination $versionBackup }
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  # uv and the private Python come first: the release's signature is checked with them,
-  # before anything of the release is opened. The previous app stays until registration succeeds.
-  $uv = Join-Path $ComponentHome 'bin\uv.exe'
-  # `uv --version` appends build details ("uv 0.11.18 (abc123 date)"); compare the version field.
-  if (-not (Test-Path -LiteralPath $uv) -or ("$(& $uv --version)" -split ' ')[1] -ne $UvVersion) {
-    $uvZip = Join-Path $temporary 'uv.zip'
-    $uvRelease = "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-x86_64-pc-windows-msvc.zip"
-    $fetched = $false
-    if ($UvGithub) {
-      Say "uv from your mirror, $(Url-Host $UvGithub)" "从你配置的镜像 $(Url-Host $UvGithub) 下载 uv"
-      try { Fetch ($UvGithub + $uvRelease.Substring('https://github.com'.Length)) $uvZip; $fetched = (Hash $uvZip) -eq $UvHash } catch { $fetched = $false }
-      if (-not $fetched) { Mirror-Failed $UvGithub }
+  Assert-InstallMarker
+  if ([IO.File]::Exists($journal)) {
+    $previous = Read-InstallState
+    $workspace = Join-Path $ComponentHome ('.install-' + $previous.id)
+    Assert-Plain $workspace $ComponentHome
+    $temporary = Join-Path $workspace 'scratch'
+    if ($previous.phase -eq 'building') { Undo-Install $previous }
+    elseif ($previous.phase -in @('registering','committed')) { Finish-InstalledRelease $previous -Recovering }
+    Close-InstallJournal $previous
+    if ($CleanupOnly) {
+      $state = $previous
+      if ($previous.phase -eq 'cleaning-rollback') {
+        $releaseFreshLock = Clear-FreshMarker $previous
+        Say 'Cleanup of the interrupted installation finished.' '已完成中断安装的清理。'
+      } else {
+        Say "The installed engine is registered. To remove it, use $ComponentHome\app\maintenance.ps1." "本地引擎已注册。如需删除，请使用 $ComponentHome\app\maintenance.ps1。"
+      }
+      return
     }
-    if (-not $fetched) { Fetch $uvRelease $uvZip }
-    if ((Hash $uvZip) -ne $UvHash) { throw 'uv checksum mismatch.' }
-    [IO.Compression.ZipFile]::ExtractToDirectory($uvZip,(Join-Path $temporary 'uv'))
-    $uvSource = @(Get-ChildItem -LiteralPath (Join-Path $temporary 'uv') -Recurse -Filter uv.exe)[0].FullName
-    Install-OwnedFile $uvSource $uv
+    Assert-InstallTargets
   }
+  $freshMarker = -not [IO.File]::Exists($marker)
+  if ($freshMarker -and @(Get-ChildItem -LiteralPath $ComponentHome -Force | Where-Object { $_.Name -ne '.native-host.lock' }).Count) { throw 'Files appeared in the new installation directory' }
+  $newDirs = @('bin','models','cache','hf','run' | Where-Object { -not (Test-Path -LiteralPath (Join-Path $ComponentHome $_)) })
+  $state = @{schema=1; home=$ComponentHome; id=[Guid]::NewGuid().ToString('N'); phase='building'; operations=@(); work=@(); bootstrapHash=''; filesHash=''; basePython=''; recoveryHash=''; newDirs=$newDirs; freshMarker=$freshMarker; freshHome=$homeWasMissing; freshLock=$lockWasMissing; browser=$Browser; extensionId=$ExtensionId; language=$Language}
+  $workspace = Join-Path $ComponentHome ('.install-' + $state.id)
+  Save-InstallState $state
+  $rollback = $true
+  if ($freshMarker) {
+    $stream = [IO.File]::Open($marker,[IO.FileMode]::CreateNew)
+    try { $bytes = [Text.Encoding]::UTF8.GetBytes("Anagram installation: $ComponentHome"); $stream.Write($bytes,0,$bytes.Length) } finally { $stream.Dispose() }
+  }
+  $null = New-Item -ItemType Directory -Path $workspace -ErrorAction Stop
+  $recoveryScript = Join-Path $ComponentHome '.anagram-recover.ps1'
+  Assert-Plain $recoveryScript $ComponentHome
+  if (Test-Path -LiteralPath $recoveryScript) { throw "An existing recovery script was kept at $recoveryScript" }
+  $scriptCopy = Join-Path $workspace 'recover.ps1'
+  [IO.File]::Copy($PSCommandPath,$scriptCopy,$false)
+  $state.recoveryHash = Hash $scriptCopy
+  Save-InstallState $state
+  Move-Entry $scriptCopy $recoveryScript
+  $temporary = (New-Item -ItemType Directory -Path (Join-Path $workspace 'scratch') -ErrorAction Stop).FullName
+  foreach ($name in $newDirs) { $null = New-Item -ItemType Directory -Path (Join-Path $ComponentHome $name) -ErrorAction Stop }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  # Verify the bootstrap in the private build area before replacing an installed runtime.
+  $uvZip = Join-Path $temporary 'uv.zip'
+  $uvRelease = "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-x86_64-pc-windows-msvc.zip"
+  $fetched = $false
+  if ($UvGithub) {
+    Say "uv from your mirror, $(Url-Host $UvGithub)" "从你配置的镜像 $(Url-Host $UvGithub) 下载 uv"
+    try { Fetch ($UvGithub + $uvRelease.Substring('https://github.com'.Length)) $uvZip; $fetched = (Hash $uvZip) -eq $UvHash } catch { $fetched = $false }
+    if (-not $fetched) { Mirror-Failed $UvGithub }
+  }
+  if (-not $fetched) { Fetch $uvRelease $uvZip }
+  if ((Hash $uvZip) -ne $UvHash) { throw 'uv checksum mismatch.' }
+  [IO.Compression.ZipFile]::ExtractToDirectory($uvZip,(Join-Path $temporary 'uv'))
+  $uvSource = @(Get-ChildItem -LiteralPath (Join-Path $temporary 'uv') -Recurse -Filter uv.exe)[0].FullName
+  $uv = $uvSource
+  Write-WorkReceipt 'uv' @('uv.zip','uv')
+  $pythonRoot = Join-Path $temporary 'python'
   Say 'Installing private Python…' '正在安装独立 Python…'
   $installed = $false
   if ($PythonMirror) {
     Say "Python from your mirror, $(Url-Host $PythonMirror)" "从你配置的镜像 $(Url-Host $PythonMirror) 下载 Python"
     $script:PythonFrom = $PythonMirror
-    try { Invoke-Private $uv @('python','install',$PythonVersion,'--quiet'); $installed = $true } catch { Mirror-Failed $PythonMirror }
+    try { Invoke-Private $uv @('python','install',$PythonVersion,'--quiet','--no-bin','--no-registry'); $installed = $true } catch { Mirror-Failed $PythonMirror }
     $script:PythonFrom = $null
   }
-  if (-not $installed) { Invoke-Private $uv @('python','install',$PythonVersion,'--quiet') }
+  if (-not $installed) { Invoke-Private $uv @('python','install',$PythonVersion,'--quiet','--no-bin','--no-registry') }
+  # uv also creates a minor-version junction. This pinned engine uses the
+  # concrete patch directory, so the junction must not move with the runtime.
+  $patchDirectory = Join-Path $pythonRoot ("cpython-" + $PythonVersion + "-windows-x86_64-none")
+  $bootstrapPython = Join-Path $patchDirectory 'python.exe'
+  Assert-Plain $bootstrapPython $pythonRoot
+  if (-not [IO.File]::Exists($bootstrapPython)) { throw 'Verified private Python was not found at its versioned path.' }
+  $minorDirectory = Join-Path $pythonRoot ("cpython-" + ([Version]$PythonVersion).ToString(2) + "-windows-x86_64-none")
+  $alias = Get-Item -LiteralPath $minorDirectory -Force -ErrorAction SilentlyContinue
+  if ($alias) {
+    $target = [string]@($alias.Target)[0]
+    foreach ($prefix in @('\??\','\\?\')) { if ($target.StartsWith($prefix)) { $target = $target.Substring(4) } }
+    if (-not [IO.Path]::IsPathRooted($target)) { $target = Join-Path $pythonRoot $target }
+    if (-not ($alias.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $alias.LinkType -notin @('Junction','SymbolicLink') -or [IO.Path]::GetFullPath($target) -ne $patchDirectory) { throw 'Unrecognized private Python version link was kept.' }
+    [IO.Directory]::Delete($minorDirectory,$false)
+  }
+  Write-WorkReceipt 'python' @('python','python-bin')
   Say 'Downloading and verifying the Anagram release…' '正在下载并校验 Anagram 安装包…'
   $archive = Join-Path $temporary 'anagram.zip'; $checksum = $archive + '.sha256'
   Fetch ($ReleaseUrl.TrimEnd('/') + '/anagram.zip') $archive
+  Write-WorkReceipt 'archive' @('anagram.zip')
   Fetch ($ReleaseUrl.TrimEnd('/') + '/anagram.zip.sha256') $checksum
   $expected = ((Get-Content -LiteralPath $checksum -Raw).Trim() -split '\s+')[0]
   if ($expected -cnotmatch '^[0-9a-f]{64}$' -or (Hash $archive) -ne $expected) { throw 'Release checksum mismatch.' }
+  Write-WorkReceipt 'checksum' @('anagram.zip.sha256')
   $signed = $null
   if (([Uri]$ReleaseUrl).Scheme -eq 'file') {
     Say 'A local release: checked by its checksum, not by a signature.' '本地安装包：只校验校验和，不校验签名。'
@@ -480,6 +770,7 @@ try {
     try { Fetch ($ReleaseUrl.TrimEnd('/') + '/anagram.zip.sigstore.json') $bundle } catch { throw 'The release carries no signature (anagram.zip.sigstore.json).' }
     $asked = if ($ReleaseUrl -match '/download/v([0-9]+\.[0-9]+\.[0-9]+)/?$') { $Matches[1] } else { '' }
     try { $signed = Release-Signature $archive $bundle $asked } catch { throw "The release is not signed by Anagram's release workflow; it was not installed." }
+    Write-WorkReceipt 'verify' @('verifier','sigstore.txt','verify_release.py','anagram.zip.sigstore.json')
     Say "Signed by Anagram's release workflow for version $signed." "已由 Anagram 发布流程签名，版本 $signed。"
   }
   # Reject paths that escape extraction, duplicate entries, and Unix symlink entries.
@@ -504,24 +795,28 @@ try {
     $released = (Get-Content -LiteralPath (Join-Path $release 'VERSION') -Raw).Trim()
     if ($released -ne $Matches[1]) { throw "The release says it is $released, not $($Matches[1]) as asked." }
   }
-  foreach ($name in @('app','extension')) {
-    $source = Join-Path $release $name
-    if ($name -eq 'extension' -and $Browser -eq 'firefox') { $source = Join-Path $release 'extension-firefox' }
-    if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Release directory missing: $name" }
-    $destination = Join-Path $ComponentHome $name
-    Assert-Plain ($destination + '.old') $ComponentHome
-    if (Test-Path -LiteralPath ($destination + '.old')) { throw "Unfinished previous update at $destination.old; restore it before retrying." }
-    if (Test-Path -LiteralPath $destination) { Move-Item -LiteralPath $destination -Destination ($destination + '.old') }
-    $swapped += $destination
-    Copy-Item -LiteralPath $source -Destination $destination -Recurse
+  $stagedApp = Join-Path $release 'app'
+  $stagedExtension = Join-Path $release $(if ($Browser -eq 'firefox') { 'extension-firefox' } else { 'extension' })
+  if (-not [IO.Directory]::Exists($stagedExtension)) { throw 'Release extension files are missing.' }
+  [IO.File]::Copy((Join-Path $release 'install.ps1'),(Join-Path $stagedApp 'install.ps1'),$false)
+  Write-WorkReceipt 'release' @('release')
+  $helper = Join-Path $stagedApp 'native_registration.py'
+  if ([IO.File]::Exists((Join-Path $ComponentHome 'app\.anagram-installed-files.json'))) {
+    Invoke-Private $bootstrapPython @('-I','-S','-B',$helper,'check-update','--home',$ComponentHome)
   }
-  Install-OwnedFile (Join-Path $release 'install.ps1') (Join-Path $ComponentHome 'app\install.ps1')
+  $state.basePython = 'python/' + $bootstrapPython.Substring($pythonRoot.Length + 1).Replace('\','/')
+  $bootstrapReceipt = Join-Path $workspace 'bootstrap.json'
+  Invoke-Private $bootstrapPython @('-I','-S','-B',$helper,'stage-files','--home',$ComponentHome,'--tree','python',$pythonRoot,'--file','bin/uv.exe',$uv,'--output',$bootstrapReceipt)
+  $state.bootstrapHash = Hash $bootstrapReceipt
+  Save-InstallState $state
+  Publish-Item 'python' $pythonRoot
+  $pythonRoot = Join-Path $ComponentHome 'python'
+  $bootstrapPython = Join-Path $ComponentHome $state.basePython
+  Publish-Item 'bin/uv.exe' $uv
+  $uv = Join-Path $ComponentHome 'bin\uv.exe'
   Say 'Installing locked runtime packages…' '正在安装版本锁定的运行依赖…'
-  Push-Location (Join-Path $ComponentHome 'app')
-  # Pre-existing staging was refused before any writes. Only this transaction's
-  # venv.next may be removed by failure cleanup.
-  $createdVenv = $true
-  $stagedVenv = Join-Path $ComponentHome 'venv.next'
+  Push-Location $stagedApp
+  $stagedVenv = Join-Path $temporary 'venv.next'
   try {
     # uv sync --frozen fetches the lock's own files.pythonhosted.org addresses whatever index
     # is set, so from a mirror the lock is exported with its hashes and every one is required.
@@ -531,45 +826,50 @@ try {
       $requirements = Join-Path $temporary 'requirements.txt'
       try {
         Invoke-Private $uv @('export','--frozen','--no-dev','--no-emit-project','--no-header','--format','requirements-txt','--quiet','--output-file',$requirements)
-        Invoke-Private $uv @('venv','--quiet','--python',$PythonVersion,$stagedVenv)
+        Invoke-Private $uv @('venv','--quiet','--no-python-downloads','--python',$bootstrapPython,$stagedVenv)
         Invoke-Private $uv @('pip','sync','--python',(Join-Path $stagedVenv 'Scripts\python.exe'),'--require-hashes','--no-build','--default-index',$PypiIndex,$requirements)
         $synced = $true
       } catch {
         Mirror-Failed $PypiIndex
-        if (Test-Path -LiteralPath $stagedVenv) { Assert-Plain $stagedVenv $ComponentHome; Remove-Item -LiteralPath $stagedVenv -Recurse -Force }
+        if (Test-Path -LiteralPath $stagedVenv) { Move-Entry $stagedVenv (Join-Path $temporary 'incomplete-mirror-venv') }
       }
     }
-    if (-not $synced) { Invoke-Private $uv @('sync','--frozen','--no-dev','--no-build','--python',$PythonVersion,'--quiet') }
+    if (-not $synced) { Invoke-Private $uv @('sync','--frozen','--no-dev','--no-build','--no-python-downloads','--python',$bootstrapPython,'--quiet') }
   } finally { Pop-Location }
   if (-not (Test-Path -LiteralPath (Join-Path $stagedVenv 'Scripts\python.exe') -PathType Leaf)) { throw 'Staged private Python was not created.' }
-  $venv = Join-Path $ComponentHome 'venv'
-  Assert-Plain $stagedVenv $ComponentHome; Assert-Plain ($venv + '.old') $ComponentHome
-  if (Test-Path -LiteralPath ($venv + '.old')) { throw 'An unfinished previous venv update exists.' }
-  if (Test-Path -LiteralPath $venv) { Move-Item -LiteralPath $venv -Destination ($venv + '.old') }
-  $swapped += $venv
-  Move-Item -LiteralPath $stagedVenv -Destination $venv
-  $createdVenv = $false
-  $python = Join-Path $ComponentHome 'venv\Scripts\python.exe'
-  if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw 'Private Python was not installed.' }
+  Write-WorkReceipt 'packages' @('venv.next','requirements.txt','incomplete-mirror-venv')
   Say 'Building the local native launcher…' '正在构建本地通信启动程序…'
-  $launcher = Join-Path $ComponentHome 'bin\anagram-native.exe'
-  Assert-Plain $launcher $ComponentHome; Assert-Plain ($launcher + '.new') $ComponentHome
   $compiler = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-  if (-not (Test-Path -LiteralPath $compiler)) { throw 'Windows .NET Framework C# compiler is unavailable.' }
+  if (-not [IO.File]::Exists($compiler)) { throw 'Windows .NET Framework C# compiler is unavailable.' }
   $compiledLauncher = Join-Path $temporary 'anagram-native.exe'
-  & $compiler /nologo /target:exe /optimize+ ("/out:" + $compiledLauncher) (Join-Path $ComponentHome 'app\NativeLauncher.cs')
-  if ($LASTEXITCODE -ne 0) { throw 'Native launcher compilation failed.' }
-  $launcherWritten = $true
-  Install-OwnedFile $compiledLauncher $launcher
-  $versionWritten = $true
-  Install-OwnedFile (Join-Path $release 'VERSION') (Join-Path $ComponentHome 'VERSION')
+  Invoke-Private $compiler @('/nologo','/target:exe','/optimize+',("/out:" + $compiledLauncher),(Join-Path $stagedApp 'NativeLauncher.cs'))
+  Write-WorkReceipt 'compiler' @('anagram-native.exe')
+  $versionFile = Join-Path $release 'VERSION'
+  $stagedPython = Join-Path $stagedVenv 'Scripts\python.exe'
+  Invoke-Private $stagedPython @('-I','-S','-B',$helper,'stage-files','--home',$ComponentHome,'--include-files',$bootstrapReceipt,'--tree','app',$stagedApp,'--tree','extension',$stagedExtension,'--tree','venv',$stagedVenv,'--file','bin/anagram-native.exe',$compiledLauncher,'--file','VERSION',$versionFile,'--output',(Join-Path $workspace 'files.json'))
+  $state.filesHash = Hash (Join-Path $workspace 'files.json')
+  Save-InstallState $state
+  Publish-Item 'app' $stagedApp
+  Publish-Item 'extension' $stagedExtension
+  Publish-Item 'venv' $stagedVenv
+  Publish-Item 'bin/anagram-native.exe' $compiledLauncher
+  Publish-Item 'VERSION' $versionFile
   Say 'Registering this extension only…' '正在为当前扩展注册本地组件…'
-  Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\native_registration.py'),'register','--home',$ComponentHome,'--browser',$Browser,'--extension-id',$ExtensionId,'--language',$Language)
-  $completed = $true
-  foreach ($path in $swapped) { Remove-OwnedTree ($path + '.old') }
+  $state.phase = 'registering'
+  Save-InstallState $state
+  Finish-InstalledRelease $state
+  Close-InstallJournal $state
+  $rollback = $false
+  # Model preparation has its own checkpoint and can be retried from the browser.
+  $temporary = Join-Path $ComponentHome 'cache\tmp'
+  Assert-Plain $temporary $ComponentHome
+  $null = New-Item -ItemType Directory -Path $temporary -Force
+  $python = Join-Path $ComponentHome 'venv\Scripts\python.exe'
   Say 'Preparing device-selected model files with Hugging Face…' '正在使用 Hugging Face 下载适合本机设备的模型文件…'
   try {
-    Invoke-Private $python @('-I',(Join-Path $ComponentHome 'app\prepare_models.py'),'--home',$ComponentHome,'--installer','--language',$Language)
+    $prepareArgs = @('-I','-B',(Join-Path $ComponentHome 'app\prepare_models.py'),'--home',$ComponentHome,'--installer','--language',$Language)
+    if ($DetectorManifest) { $prepareArgs += @('--detector-manifest',$DetectorManifest) }
+    Invoke-Private $python $prepareArgs
   } catch {
     Say 'The local engine is installed. Return to Anagram setup to retry the model download.' '本地引擎已安装。请返回 Anagram 设置页面重试模型下载。'
     throw
@@ -577,11 +877,23 @@ try {
   Say 'Installed. Return to Anagram setup in your browser to see the engine status.' '安装完成。请返回浏览器中的 Anagram 设置页面查看引擎状态。'
 } finally {
   try {
-    if ($installLock -and -not $completed) {
-      Undo-Install $swapped $createdVenv $launcherWritten $versionWritten $launcherBackup $versionBackup
+    if ($installLock -and $state -and $rollback -and $state.phase -eq 'building') {
+      Undo-Install $state
+      Close-InstallJournal $state
+      $releaseFreshLock = Clear-FreshMarker $state
+    } elseif ($installLock -and $state -and -not $rollback -and $state.phase -eq 'committed') {
+      Close-InstallJournal $state
+    } elseif ($installLock -and $state -and $state.phase -in @('registering','committed')) {
+      Say "Setup stopped during registration or cleanup. Run the same install command to finish. Recovery files are in $workspace." "注册或清理时安装中断。再次运行相同的安装命令即可继续。恢复文件保存在 $workspace。"
     }
-    if ($temporary -and (Test-Path -LiteralPath $temporary)) { Remove-Item -LiteralPath $temporary -Recurse -Force }
+  } catch {
+    Say "Recovery stopped. Run the verified install.ps1 with -CleanupOnly to retry without downloading anything. Your installation folder is $ComponentHome." "恢复操作已停止。请使用已验证的 install.ps1 加上 -CleanupOnly 参数离线重试。安装目录为 $ComponentHome。"
+    throw
   } finally {
-    if ($installLock -and -not $MaintenanceLock) { $installLock.Dispose() }
+    if ($installLock -and -not $MaintenanceLock) {
+      if ($releaseFreshLock -and $state.freshLock -and $installLock.Length -eq 0) { [IO.File]::Delete((Join-Path $ComponentHome '.native-host.lock')) }
+      $installLock.Dispose()
+      if ($releaseFreshLock -and $state.freshHome) { Remove-Empty $ComponentHome }
+    }
   }
 }

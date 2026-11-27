@@ -152,16 +152,18 @@ zip 的 CSV 表格，保存前会先展示文件内容。文件中的编号和�
 浏览器准备好扩展更新后，在安装引导页或设置页顶部点击**应用扩展更新**。如果使用解压安装的 Chrome 扩展，把新文件覆盖到同一文件夹，然后在 `chrome://extensions` 点击“重新加载”。
 本地引擎版本较旧时，设置页会显示已安装的版本和目标版本。点击**更新引擎**，重新连接后即可看到更新后的版本。移除插件会一并删除浏览器内引擎的模型文件。
 
-设置中的**卸载**会删除引擎、模型文件、浏览器注册，然后移除插件。只在 Chrome 中移除插件
-会把引擎留在磁盘上；重新安装插件即可回到卸载入口，或运行
+在设置中选择**引擎与模型 → 卸载 Anagram**，可移除本地引擎和已验证的模型文件，并取消所有共用该引擎的浏览器注册。Windows 用户请等维护窗口结束，再从浏览器中移除插件。
+
+先移除插件会把本地引擎留在磁盘上。关闭使用该引擎的浏览器，然后运行
 `~/.anagram/bin/anagram uninstall`。Windows 上，在命令提示符（cmd）中运行：
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Anagram\app\maintenance.ps1" -Operation uninstall -ComponentHome "%LOCALAPPDATA%\Anagram"
 ```
 
-卸载中途停下（例如某个文件正被占用）时，同一条命令可以把它做完。`~/.anagram`（Windows 上是
-`%LOCALAPPDATA%\Anagram`）只用于 Anagram：卸载会删除其中的所有内容。
+如果文件被占用，关闭正在使用它的程序，再运行卸载命令。如果安装在卸载工具就绪前中断，请打开解压后的插件中的 `installer-source` 文件夹。在 macOS 或 Linux 的终端中运行 `sh ./install.sh --cleanup-only`，在 Windows 命令提示符中运行 `powershell -NoProfile -ExecutionPolicy Bypass -File ".\install.ps1" -CleanupOnly`。这些脚本可离线恢复中断的安装。如果恢复后提示引擎已注册，请运行上面的卸载命令。如安装在自定义位置，请使用原来的 `ANAGRAM_HOME` 或 Windows 的 `-ComponentHome`。
+
+清理工具会先验证文件的归属，并显示保留文件的位置。你修改过的文件、没有安装记录的旧文件以及内容无法验证的未完成下载都会保留。
 
 ## 隐私
 

@@ -8,7 +8,7 @@ $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($installer,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
 # Load the actual production helpers without running its installer entrypoint.
-$names = @('Assert-Plain','Assert-OwnedTree','Remove-OwnedTree','Install-OwnedFile','Enter-InstallLock','Assert-InstallTargets','Undo-Install')
+$names = @('Assert-Plain','Enter-InstallLock','Assert-InstallTargets','Undo-Install','Read-InstallState','Save-InstallState','Backup-Path','Move-Entry','Publish-Item','Keep-Entry','Remove-Empty','Hash','Say','Test-ReceiptName','Read-SealedFiles','Prune-MatchingFiles')
 foreach ($definition in $ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst]},$true)) {
   if ($names -contains $definition.Name) { . ([scriptblock]::Create($definition.Extent.Text)) }
 }
@@ -20,20 +20,23 @@ function Rejected([scriptblock]$Action) {
 }
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('anagram-installer-safety-' + [Guid]::NewGuid().ToString('N'))
 $ComponentHome = Join-Path $temporary 'component'
-$MaintenanceLock = $null; $held = $null; $other = $null
+$MaintenanceLock = $null; $held = $null; $other = $null; $Language = 'en'
 try {
   $null = New-Item -ItemType Directory -Path (Join-Path $ComponentHome 'bin') -Force
-  Set-Content -LiteralPath (Join-Path $ComponentHome '.anagram-home') -Value 'owned fixture'
+  Set-Content -LiteralPath (Join-Path $ComponentHome '.anagram-home') -Value "Anagram installation: $ComponentHome"
   $outside = Join-Path $temporary 'outside.txt'
   $source = Join-Path $temporary 'new-version.txt'
   [IO.File]::WriteAllText($outside,'untouched')
   [IO.File]::WriteAllText($source,'new-version')
   $version = Join-Path $ComponentHome 'VERSION'
   $null = New-Item -ItemType HardLink -Path $version -Value $outside
-  Install-OwnedFile $source $version
+  $stagedVersion = Join-Path $ComponentHome 'staged-version'
+  [IO.File]::Copy($source,$stagedVersion)
+  Move-Entry $version (Join-Path $ComponentHome 'prior-version')
+  Move-Entry $stagedVersion $version
   Check ([IO.File]::ReadAllText($outside) -eq 'untouched') 'Replacement overwrote an outside hardlink target'
   Check ([IO.File]::ReadAllText($version) -eq 'new-version') 'Replacement did not install the new file'
-  Rejected { Install-OwnedFile $source $outside }
+  Rejected { Move-Entry $version $outside }
   Write-Host 'PASS owned atomic replacement preserves outside hardlink target and refuses outside paths'
 
   $outsideDirectory = Join-Path $temporary 'outside-directory'
@@ -42,20 +45,19 @@ try {
   $junction = Join-Path $ComponentHome 'bin\uv.exe.new'
   $null = New-Item -ItemType Junction -Path $junction -Value $outsideDirectory
   Rejected { Assert-InstallTargets }
-  Rejected { Install-OwnedFile $source $junction }
-  Rejected { Remove-OwnedTree (Join-Path $ComponentHome 'bin') }
+  Rejected { Move-Entry $junction (Join-Path $ComponentHome 'moved-junction') }
   Check ([IO.File]::ReadAllText((Join-Path $outsideDirectory 'keep.txt')) -eq 'keep') 'Reparse target was changed'
   [IO.Directory]::Delete($junction)
-  Write-Host 'PASS reparse leaf and nested recursive deletion are refused without touching their target'
+  Write-Host 'PASS a reparse-point destination is refused without changing its target'
 
   $staging = Join-Path $ComponentHome 'venv.next'
   $null = New-Item -ItemType Directory -Path $staging
   [IO.File]::WriteAllText((Join-Path $staging 'recover.txt'),'previous transaction')
-  Rejected { & $installer -ComponentHome $ComponentHome -Browser chrome -ExtensionId ('a' * 32) -ReleaseUrl 'file:///nonexistent-anagram-fixture' }
+  Rejected { Assert-InstallTargets }
   Check ([IO.File]::ReadAllText((Join-Path $staging 'recover.txt')) -eq 'previous transaction') 'Pre-existing staging was removed'
   Check (-not (Test-Path -LiteralPath (Join-Path $ComponentHome '.native-host.lock'))) 'Staging rejection happened after installation began'
   Remove-Item -LiteralPath $staging -Recurse -Force
-  Write-Host 'PASS full installer rejects pre-existing staging before fetching or deleting anything'
+  Write-Host 'PASS installer preflight rejects pre-existing staging before fetching or deleting anything'
 
   $held = Enter-InstallLock
   Rejected { Enter-InstallLock }
@@ -74,29 +76,34 @@ try {
   $held.Dispose(); $held = $null
   Write-Host 'PASS concurrent lock exclusion, same-handle handoff, wrong/unlocked stream rejection and release'
 
-  $app = Join-Path $ComponentHome 'app'
-  $launcher = Join-Path $ComponentHome 'bin\anagram-native.exe'
-  $null = New-Item -ItemType Directory -Path $app
-  $null = New-Item -ItemType Directory -Path $staging
-  [IO.File]::WriteAllText($launcher,'new launcher')
-  Undo-Install @($app) $true $true $true '' ''
-  foreach ($path in @($app,$staging,$launcher,$version)) { Check (-not (Test-Path -LiteralPath $path)) "Fresh failure left $path" }
-
-  $null = New-Item -ItemType Directory -Path ($app + '.old')
-  [IO.File]::WriteAllText((Join-Path ($app + '.old') 'old.txt'),'old app')
-  $null = New-Item -ItemType Directory -Path $app
-  [IO.File]::WriteAllText($launcher,'new launcher')
-  [IO.File]::WriteAllText($version,'new version')
-  $backupLauncher = Join-Path $temporary 'launcher.backup'
-  $backupVersion = Join-Path $temporary 'version.backup'
-  [IO.File]::WriteAllText($backupLauncher,'old launcher')
-  [IO.File]::WriteAllText($backupVersion,'old version')
-  Undo-Install @($app) $false $true $true $backupLauncher $backupVersion
-  Check ([IO.File]::ReadAllText($launcher) -eq 'old launcher') 'Launcher was not restored'
-  Check ([IO.File]::ReadAllText($version) -eq 'old version') 'Version was not restored'
-  Check ([IO.File]::ReadAllText((Join-Path $app 'old.txt')) -eq 'old app') 'Application was not restored'
+  $id = [Guid]::NewGuid().ToString('N')
+  $state = @{schema=1; home=$ComponentHome; id=$id; phase='building'; operations=@(); work=@(); recoveryHash=''; filesHash=''; bootstrapHash=''; basePython=''; newDirs=@(); freshMarker=$false; freshHome=$false; freshLock=$false; browser='chrome'; extensionId=('a'*32); language='en'}
+  $workspace = (New-Item -ItemType Directory -Path (Join-Path $ComponentHome ('.install-' + $id))).FullName
+  $staged = (New-Item -ItemType Directory -Path (Join-Path $workspace 'next-app')).FullName
+  [IO.File]::WriteAllText((Join-Path $staged 'program.py'),'new program')
+  $app = (New-Item -ItemType Directory -Path (Join-Path $ComponentHome 'app')).FullName
+  [IO.File]::WriteAllText((Join-Path $app 'prior.txt'),'old app')
+  $newVersion = Join-Path $workspace 'next-version'
+  [IO.File]::WriteAllText($newVersion,'upgraded version')
+  $receipt = @{schema_version=1;home=$ComponentHome;files=@{app='dir';'app/program.py'=(Hash (Join-Path $staged 'program.py'));VERSION=(Hash $newVersion)}}
+  [IO.File]::WriteAllText((Join-Path $workspace 'files.json'),($receipt | ConvertTo-Json))
+  $state.filesHash = Hash (Join-Path $workspace 'files.json')
+  Save-InstallState $state
+  Publish-Item 'app' $staged
+  Publish-Item 'VERSION' $newVersion
+  [IO.File]::WriteAllText((Join-Path $app 'notes.txt'),'user notes')
+  # Read the journal afresh, as a new installer would after loss of power.
+  Undo-Install (Read-InstallState)
+  Check ([IO.File]::ReadAllText($version) -eq 'new-version') 'Previous version was not restored'
+  Check ([IO.File]::ReadAllText((Join-Path $app 'prior.txt')) -eq 'old app') 'Previous application was not restored'
+  $preserved = @(Get-ChildItem -LiteralPath $ComponentHome -Directory -Force | Where-Object { $_.Name.StartsWith('.preserved-') })
+  Check ($preserved.Count -eq 1) 'Expected preserved edits'
+  Check ([IO.File]::ReadAllText((Join-Path $preserved[0].FullName 'app\notes.txt')) -eq 'user notes') 'Recovery lost user additions'
+  Check (-not (Test-Path -LiteralPath (Join-Path $preserved[0].FullName 'app\program.py'))) 'Recovery retained unchanged new program'
+  Undo-Install (Read-InstallState)
+  Check ([IO.File]::ReadAllText((Join-Path $app 'prior.txt')) -eq 'old app') 'Repeated recovery modified the restored application'
   Check ([IO.File]::ReadAllText($outside) -eq 'untouched') 'Rollback touched the unrelated file'
-  Write-Host 'PASS fresh failure removes created files and upgrade failure restores previous files'
+  Write-Host 'PASS crash recovery restores previous files, keeps user additions and tolerates a repeat'
 } finally {
   if ($held) { $held.Dispose() }
   if ($other) { $other.Dispose() }

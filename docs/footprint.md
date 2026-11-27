@@ -216,5 +216,6 @@ Windows: a private Python runtime, the application, verified model files and par
 downloads, the saved runtime choice, and registration records. Browser registration adds
 one manifest named `dev.coderbak.anagram.json` in the browser's user-level
 `NativeMessagingHosts` directory (or an `HKCU` registry pointer on Windows), allowing
-only the exact extension ID. **Complete uninstall removes the entire component directory,
-including anything a user later put inside it.**
+only the exact extension ID. Full Safari app builds keep the registration receipt inside the component folder.
+
+The native installer stages the runtime and records its files before publishing them. Normal cleanup and interrupted-install recovery verify those records before removing files. The downloader also records model revisions, partially downloaded bytes and runtime state so they can be removed after an interrupted download. Recovery reports files whose ownership it cannot establish. Older Windows installations can retain shared Sigstore metadata and Python registry entries that predate these receipts.

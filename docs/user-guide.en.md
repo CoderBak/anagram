@@ -204,18 +204,18 @@ For an unpacked Chrome extension, replace the files in the same folder and press
 Select **Update engine** there. Settings confirms the new version after the engine reconnects. Removing the
 extension removes the in-browser engine's model files with it.
 
-**Uninstall** in Settings removes the engine, the model files, the browser registration
-and then the extension. Removing the extension from Chrome alone leaves the engine on
-disk; reinstall the extension to reach Uninstall, or run
+Choose **Engine and models → Uninstall Anagram** in Settings to remove the local engine and its verified model files. This unregisters every browser sharing that engine. On Windows, wait for the maintenance window to finish, then remove the extension from the browser.
+
+Removing the extension first leaves the local engine on disk. Close browsers using the engine and run
 `~/.anagram/bin/anagram uninstall`. On Windows, run this in Command Prompt:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Anagram\app\maintenance.ps1" -Operation uninstall -ComponentHome "%LOCALAPPDATA%\Anagram"
 ```
 
-The same command finishes an uninstall that stopped partway, for example because a file was
-in use. Keep `~/.anagram` (`%LOCALAPPDATA%\Anagram` on Windows) for Anagram only: uninstall
-removes everything inside it.
+If a file was in use, close the program using it and run the uninstall command again. If installation stopped before the uninstaller was available, open the extracted extension’s `installer-source` folder. Run `sh ./install.sh --cleanup-only` in Terminal on macOS or Linux, or `powershell -NoProfile -ExecutionPolicy Bypass -File ".\install.ps1" -CleanupOnly` in Command Prompt on Windows. These scripts recover an unfinished installation offline. If recovery reports that the engine is registered, run its uninstall command above. For a custom installation location, supply the original `ANAGRAM_HOME` or Windows `-ComponentHome`.
+
+Cleanup checks ownership records before removing files. It reports the location of any files it preserves, including edits, legacy files without a receipt and incomplete downloads whose bytes could not be verified.
 
 ## Privacy
 
