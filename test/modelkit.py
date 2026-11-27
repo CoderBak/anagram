@@ -324,17 +324,19 @@ class ModelkitTests(unittest.TestCase):
             self.install()
         self.assertEqual(outside.read_bytes(), b"keep")
 
-    def test_partial_swapped_to_hardlink_during_request_is_rejected_before_write(self):
-        outside = self.root / "outside"
-        outside.write_bytes(b"keep")
-        incoming = self.root / ".incoming-model"
-        def swap(request, timeout):
+    def test_partial_linked_during_request_is_rejected_before_write(self):
+        part = self.root / ".incoming-model" / "model.safetensors.part"
+        second_name = self.root / "second-name"
+
+        def link_reserved_file(request, timeout):
             response = self.opener(request, timeout)
-            os.link(outside, incoming / "model.safetensors.part")
+            self.assertEqual(part.read_bytes(), b"")
+            os.link(part, second_name)
             return response
+
         with self.assertRaisesRegex(ValueError, "linked"):
-            self.install(opener=swap)
-        self.assertEqual(outside.read_bytes(), b"keep")
+            self.install(opener=link_reserved_file, selected_paths=["model.safetensors"])
+        self.assertEqual(second_name.read_bytes(), b"")
 
     def test_symlink_and_path_traversal_refused(self):
         outside = self.root / "outside"

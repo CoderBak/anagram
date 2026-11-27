@@ -326,6 +326,17 @@ HOME="$FAKE_HOME" "$PY3" "$ROOT/installer/native_registration.py" unregister --h
 # Linux gets PyTorch (the cuda extra) only beside an NVIDIA GPU: a driver in /proc, or a GPU
 # nvidia-smi lists. Fake commands stand in for the machine and a temporary root for /.
 FAKE_OS="$T/fake-os"; mkdir -p "$FAKE_OS/bin"
+# uname below selects the target OS. Read real device and inode numbers with
+# the stat syntax of the machine hosting the fixture.
+host_stat="$(command -v stat)"
+if stat -c '%d:%i' "$T" >/dev/null 2>&1; then host_format=-c; else host_format=-f; fi
+cat > "$FAKE_OS/bin/stat" <<STAT
+#!/bin/sh
+case "\$1:\$2" in
+  -c:%d:%i|-f:%d:%i) shift; exec "$host_stat" "$host_format" "\$@" ;;
+esac
+exec "$host_stat" "\$@"
+STAT
 printf '#!/bin/sh\necho "ldd (GNU libc) 2.39"\n' > "$FAKE_OS/bin/ldd"
 printf '#!/bin/sh\necho "glibc 2.39"\n' > "$FAKE_OS/bin/getconf"
 printf '#!/bin/sh\necho 15.0\n' > "$FAKE_OS/bin/sw_vers"
