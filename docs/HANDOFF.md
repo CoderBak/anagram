@@ -2,10 +2,22 @@
 
 This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-27.
 
-The 0.10.1 candidate distinguishes current AI-assisted text from historical editing bands throughout
-Statistics and links model terms to the selected revision. The packaged installer lifecycle check lives in
-`test/packaged-install.py`. Public model access, a signed 0.10.1 publication and hardware-specific runtime
-checks remain separate from local candidate validation.
+Anagram 0.10.2 is the latest signed GitHub release. It includes Chrome and Firefox extension ZIPs,
+both native archives, and the shell and PowerShell installers. All six published files were downloaded
+anonymously and verified against their SHA-256 checksums and Sigstore signatures for the tag.
+Both extension packages passed the permissions and executable-assets checks.
+[Release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.10.2) · [Signing run](https://github.com/CoderBak/anagram/actions/runs/46007499322)
+
+The tagged source passed the full Chromium job on macOS, Linux and Windows. Each runner passed
+320 browser tests and 119 checks across 17 device profiles. Windows passed on its second attempt
+after one browser startup timed out. The published Firefox ZIP opened a two-page PDF offline on
+Firefox 160.0.1. Firefox test automation now supports the current browser's launch setting and
+waits for the scoring requests it needs before checking the results or disconnecting the test engine.
+The Firefox 160 job passed all 49 self-tests, six diagnostics checks and 12 content security policy checks.
+[Desktop CI](https://github.com/CoderBak/anagram/actions/runs/46006892345) · [Firefox CI](https://github.com/CoderBak/anagram/actions/runs/46019392405)
+
+Statistics distinguishes current AI-assisted text from historical editing bands and links model terms to
+the selected revision. The packaged installer lifecycle check lives in `test/packaged-install.py`.
 
 It is not a design document. Background lives in:
 
@@ -44,7 +56,7 @@ Update this file, or delete an item, when it is done.
   - Real pinned FP32 weights through both native ONNX CPU and in-browser WASM: setup,
     Analyze text, webpage annotations, PDF paragraphs and uncached offline scoring.
     English/Chinese, light/dark, desktop/narrow UI screenshots were also inspected.
-- **Release:** 0.9.2 (2026-10-12), for Chrome on macOS only, like 0.9.1 the same day: `release.yml` run with `assets: chrome-macos` lists the Chrome extension, `install.sh` and `anagram.tar.gz`, leaving out Windows' engine and the Firefox build. 0.9.0 (2026-10-11) was the first signed release and lists everything. Since the handoff of 2026-10-05, every item it listed has been done or decided:
+- **Earlier release:** 0.9.2 (2026-10-12), for Chrome on macOS only, like 0.9.1 the same day: `release.yml` run with `assets: chrome-macos` lists the Chrome extension, `install.sh` and `anagram.tar.gz`, leaving out Windows' engine and the Firefox build. 0.9.0 (2026-10-11) was the first signed release and lists everything. Since the handoff of 2026-10-05, every item it listed has been done or decided:
   - the reading log, kept field by field at layers the reader chooses and worked out again under any rule (`lib/stats/`);
   - the minimum length fixed at 50 words, short paragraphs always grouped;
   - Windows with an NVIDIA GPU set up with the in-browser engine;
@@ -60,15 +72,15 @@ Update this file, or delete an item, when it is done.
   - Firefox: the viewer, as shipped 5, `firefox.mjs` 49, diagnostics 6;
   - performance budgets A–J, with the reading log off and on (hyperparameters.md, Performance budgets).
 - **Not verified:**
-  - Windows installation, physical browser WebGPU inference, and the Safari app build (no Xcode here).
-  - The latest UI changes on an Apple Silicon Mac; Linux screenshots and tests are not a Mac runtime check.
+  - Installation on end-user machines, physical browser WebGPU inference, and the Safari app build. The Windows native launcher, installation and removal passed on a disposable GitHub Windows runner. The macOS release workflow tested the UI on Apple Silicon.
   - The official 200-text Firefox parity check, which also requires the gated reference sample. The local browser did not expose a hardware WebGPU adapter.
   - Installing 0.9.0 from the release on a clean machine. Its assets were checked after publishing: each `.sigstore.json` verifies with `installer/verify_release.py` on the installer's Python 3.12.13 (a changed `install.sh` does not), and both extension ZIPs carry the published installers' SHA-256.
 
 ## Waiting on the maintainer
 
-1. **CI on Linux and Windows, and the next release.** Since 2026-10-11 a release is gated on CI's macOS job alone (the maintainer's decision; `release.yml` passes `systems: '["macos-latest"]'`). Linux and macOS pass the whole of `ci.yml`. Windows passes up to `test/native_registration.py`, whose fix (`434d671`) is pushed; its later steps (the launcher, the fastText wheel, the browser suites, the matrix, the decoders) have never run on it. `ci.yml` is enabled in the repository's Actions settings for this work. Agents push, tag and run workflows only when the maintainer says so for a release, as for 0.9.0.
-   The installers refuse an HTTPS release without a signature, so every release comes from the workflow: `npm run bump`, a release commit, the tag, then `gh workflow run release.yml --ref v<version>`.
+Anonymous downloads from the detector repository still require the maintainer to change access.
+The recommended weights returned HTTP 401 for an anonymous request on 2026-11-27.
+Fresh setups in both engines need those files. [Detector repository](https://huggingface.co/CoderBak/anagram-detectors)
 
 ## Open, in order
 
