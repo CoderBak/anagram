@@ -205,8 +205,7 @@ async function readAll(docs) {
 
 // ---- the engine ------------------------------------------------------------------------------
 
-const APP_FILES = ["native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
-  "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py", "safe_files.py", "pyproject.toml", "contract.json"];
+const APP_FILES = JSON.parse(readFileSync(join(ROOT, "scripts/native-files.json"), "utf8"));
 
 /** A throwaway component home holding links to the files the host's own plan selects. */
 function prepareHome(python, kit, lid) {
@@ -226,10 +225,7 @@ function prepareHome(python, kit, lid) {
   };
   for (const entry of pin.files) if (plan.selected_paths.includes(entry.path)) link(join(kit, entry.path), join(home, "models", "editlens_roberta-large", entry.path));
   link(lid, join(home, "models", "lid.176.ftz"));
-  writeFileSync(join(home, "app", "consistency-fixture.py"),
-    "import sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path(__file__).parent))\n" +
-    "import download_modelkit\ndef no_network(*a,**k): raise AssertionError('attempted a download')\n" +
-    "download_modelkit.transfer_asset=no_network\nimport native_host\nnative_host.main()\n");
+  copyFileSync(join(ROOT, "test/legacy-native-fixture.py"), join(home, "app/consistency-fixture.py"));
   return { base, home };
 }
 

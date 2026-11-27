@@ -51,7 +51,7 @@ export async function measureScanLatency(context, extensionId, runtime, model) {
   const url = `chrome-extension://${extensionId}/paste.html`;
   const current = await documentSession(context, url);
   try {
-    await score(current, passage.repeat(2));
+    const short = await score(current, passage.repeat(2));
     const long = passage.repeat(37);
     const control = await score(current, long + " The observer recorded measurement 1. Another note.");
     const delayMs = Math.min(450, Math.max(10, Math.floor(control.ms / 12)));
@@ -116,10 +116,10 @@ export async function measureScanLatency(context, extensionId, runtime, model) {
         await number.waitFor({ timeout: 60000 });
         const badge = Number(await number.innerText());
         assert.equal(badge, shown, "The webpage badge and Paste scores differ");
-        boundary.push({ tokens: reference.tokens, score: reference.score, shown, badge });
+        boundary.push({ tokens: reference.tokens, score: reference.score, ms: reference.ms, shown, badge });
       } finally { await webpage.close(); await paste.close(); await server.close(); }
     }
     assert.deepEqual(boundary.map(p => p.tokens), [512, 513]);
-    return { simultaneous, boundary, browser: context.browser()?.version(), platform: process.platform, runtime, model, delayMs, control, replacements };
+    return { simultaneous, boundary, browser: context.browser()?.version(), platform: process.platform, runtime, model, delayMs, short, control, replacements };
   } finally { await current.page.close(); }
 }

@@ -8,6 +8,7 @@ No downloads, browser registration, or real installed-home changes are required.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
@@ -106,9 +107,16 @@ def main():
         (home / "models/editlens_roberta-large").mkdir(parents=True)
         (home / ".native-component.json").write_text(json.dumps(
             {"schema_version": 1, "host": "dev.coderbak.anagram", "home": str(home)}))
-        for name in ("native_host.py", "native_component.py", "download_modelkit.py", "model_plan.py", "modelkit.json",
-                     "runtime_controller.py", "runtime_adapters.py", "benchmark_worker.py", "scoring.py", "mlx_roberta.py", "engine.py", "safe_files.py", "pyproject.toml", "contract.json"):
+        for name in json.loads((DAEMON.parent / "scripts/native-files.json").read_text()):
             shutil.copyfile(DAEMON / name, home / "app" / name)
+        def stage_file(source, target):
+            try:
+                os.link(source, target)
+            except OSError as exc:
+                if exc.errno != errno.EXDEV:
+                    raise
+                shutil.copyfile(source, target)
+
         for entry in pin["files"]:
             if entry["path"] not in expected_plan["selected_paths"]:
                 continue
@@ -116,14 +124,12 @@ def main():
             assert source.is_file() and source.stat().st_size == entry["size_bytes"], str(source)
             target = home / "models/editlens_roberta-large" / entry["path"]
             target.parent.mkdir(parents=True, exist_ok=True)
-            os.link(source, target)
-        os.link(args.lid_model, home / "models/lid.176.ftz")
+            stage_file(source, target)
+        stage_file(args.lid_model, home / "models/lid.176.ftz")
         # Explicit test fixture blocks network downloads. Production host code has
         # no environment switch or test mode that can bypass its pinned checks.
         fixture = home / "app/native-smoke-fixture.py"
-        fixture.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path(__file__).parent))\n"
-                           "import download_modelkit\ndef no_network(*a,**k): raise AssertionError('smoke attempted a download')\n"
-                           "download_modelkit.transfer_asset=no_network\nimport native_host\nnative_host.main()\n")
+        shutil.copyfile(Path(__file__).with_name("legacy-native-fixture.py"), fixture)
         # A separate fixture launcher changes only the test subprocess; the
         # production host has no download-verification bypass.
         class FixtureClient(Client):
