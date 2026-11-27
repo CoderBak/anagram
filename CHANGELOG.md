@@ -5,12 +5,13 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
-## Unreleased · 0.10.0
+## [0.10.0] — 2026-11-27
 
-- Both local engines use the dated detector releases from CoderBak/anagram-detectors.
-- Engine settings list available models and download the selected commit. Reading history retains its original model identity.
-- Statistics shows AI-assisted and historical editing labels separately, with counting rules and exports for each.
-- Copy feedback stays visible on the toolbar while scanning continues.
+- The new detector labels individual sentences as human, AI-assisted or AI-generated. Hover or focus a paragraph chip to see those sentences and the share in each class. Earlier reading history keeps its original labels and model revision.
+- Setup preselects the recommended detector from Hugging Face’s `default` branch and shows its download size. You can choose another dated release in setup or Settings. Both engines verify the files for the selected revision and score text on your computer.
+- The browser engine reuses an installed model, resumes interrupted downloads and prioritizes the page you’re reading. Both engines can stop work for a scan you’ve already left.
+- You can inspect the optional native installer from the extension before granting access. The installer supports recovery after an interrupted update. Removal checks file ownership and reports the paths of any files it preserves.
+- The toolbar shows scan progress and copy feedback together. Statistics and exports distinguish the new sentence labels from historical editing labels.
 
 ## [0.9.2] — 2026-10-12
 

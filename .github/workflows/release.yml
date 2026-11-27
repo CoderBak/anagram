@@ -71,9 +71,17 @@ jobs:
       - name: Leave out what a Chrome and macOS release does not list
         if: inputs.assets == 'chrome-macos'
         run: rm -f dist/anagram.zip dist/anagram.zip.* dist/install.ps1 dist/install.ps1.* dist/anagram-firefox-*
+      - name: Read the release notes for this tag
+        run: |
+          awk -v heading="## [${GITHUB_REF_NAME#v}] " '
+            /^## / { if (found) exit; found = index($0, heading) == 1; next }
+            found { print; if (NF) content = 1 }
+            END { if (!content) exit 1 }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/release-notes.md
           files: |
             dist/*.sigstore.json
             dist/anagram.tar.gz
