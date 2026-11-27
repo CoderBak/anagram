@@ -9,10 +9,8 @@
 //   * `extensions.webextensions.uuids` is seeded in the profile, so the extension's
 //     internal origin is a CONSTANT (EXT_UUID) and the suite can address
 //     moz-extension://<uuid>/options.html directly instead of scraping it.
-//   * Firefox refuses BiDi script evaluation in privileged (moz-extension:) documents
-//     unless the browser was started with `-remote-allow-system-access`, so that flag is
-//     passed — without it every `page.evaluate` on an extension page fails with
-//     "System access is required".
+//   * BiDi needs Firefox's system-access opt-in to drive the extension's own pages.
+//     Set it on the isolated browser process and keep the launch flag for older ESR builds.
 //
 // ISOLATION. Firefox is ALWAYS headless here, and puppeteer's macOS default argument
 // `--foreground` is removed: with it the browser registers as a foreground application.
@@ -197,7 +195,7 @@ export async function launchFirefox({ nativeFixture, extraPrefs = {}, args = [],
     userDataDir: join(home, "profile"),
     // No crash reporter: on macOS it keeps its files in the real ~/Library/Application
     // Support/Firefox whatever HOME says.
-    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), MOZ_CRASHREPORTER_DISABLE: "1" },
+    env: { ...process.env, HOME: home, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1", XDG_CONFIG_HOME: join(home, ".config"), MOZ_CRASHREPORTER_DISABLE: "1" },
     headless: true, // never negotiable — see the note at the top
     // puppeteer adds --foreground on macOS; it makes Firefox a foreground application.
     ignoreDefaultArgs: ["--foreground"],

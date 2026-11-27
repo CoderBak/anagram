@@ -52,7 +52,7 @@ async function withFirefox(extension, run, { hf = false } = {}) {
   const browser = await launch({
     browser: "firefox", protocol: "webDriverBiDi", executablePath: firefox, userDataDir: join(home, "profile"), headless: true,
     ignoreDefaultArgs: ["--foreground"], defaultViewport: null, protocolTimeout: 0,
-    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config"), MOZ_CRASHREPORTER_DISABLE: "1" },
+    env: { ...process.env, HOME: home, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1", XDG_CONFIG_HOME: join(home, ".config"), MOZ_CRASHREPORTER_DISABLE: "1" },
     args: ["-remote-allow-system-access"],
     extraPrefsFirefox: {
       "extensions.webextensions.uuids": JSON.stringify({ [GECKO_ID]: UUID }),
