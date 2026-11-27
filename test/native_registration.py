@@ -414,7 +414,22 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual((kept / 'VERSION').read_text(), 'previous contents')
         self.assertEqual((self.home / 'VERSION').read_text(), 'new version')
 
-    def test_uninstall_removes_only_owned_home_and_manifest(self):
+    def test_windows_uninstall_schedules_the_installed_worker(self):
+        worker = self.home / 'app/maintenance.ps1'
+        worker.write_text('# inert maintenance fixture')
+        self.register(platform='win32', record=True)
+        with patch.object(reg.Path, 'home', return_value=self.user), patch.object(reg.sys, 'platform', 'win32'), \
+                patch.dict(os.environ, {'SystemRoot': str(self.user)}), patch.object(reg, 'subprocess') as process:
+            self.assertEqual(reg.uninstall(self.home)['status'], 'scheduled')
+        process.Popen.assert_called_once()
+        args = process.Popen.call_args.args[0]
+        self.assertEqual(args[args.index('-Operation') + 1], 'uninstall')
+        self.assertEqual(args[args.index('-File') + 1], str(worker))
+        self.assertEqual(args[args.index('-ComponentHome') + 1], str(self.home))
+        self.assertTrue((self.home / reg.OWNER).is_file())
+
+    @unittest.skipIf(os.name == 'nt', 'Windows removal runs in the worker exercised by windows-uninstall.ps1')
+    def test_posix_uninstall_removes_only_owned_home_and_manifest(self):
         self.register(platform=sys.platform, record=True)
         victim = self.user / 'keep'
         victim.write_text('keep')
