@@ -335,7 +335,7 @@ const NO_SPACE_COUNT = 2 ** 32 - 8;
  * much (`partial`), or takes nothing and answers Chrome's NO_SPACE_COUNT (`code`); a file with
  * an open handle cannot be opened again.
  */
-function fakeOpfs(room: number, full: "partial" | "code" = "partial") {
+function fakeOpfs(room: number, full: "partial" | "code" | "throw" = "partial") {
   const files = new Map<string, Uint8Array>();
   const open = new Set<string>();
   const disk = { files, open, room, flushFails: false, canMove: true, refuseOpen: "" };
@@ -344,6 +344,21 @@ function fakeOpfs(room: number, full: "partial" | "code" = "partial") {
     kind: "file",
     getFile: async () => new Blob([files.get(name)! as Uint8Array<ArrayBuffer>]),
     move: disk.canMove ? async (to: string) => { files.set(to, files.get(name)!); files.delete(name); } : undefined,
+    createWritable: async () => {
+      let staged: Uint8Array | undefined;
+      return {
+        write: async (bytes: Uint8Array) => {
+          const available = Math.max(0, disk.room - used());
+          staged = bytes.slice(0, available);
+          if (staged.length !== bytes.length) throw new DOMException("Disk full", "QuotaExceededError");
+        },
+        close: async () => {
+          if (disk.flushFails) throw new DOMException("Disk full", "QuotaExceededError");
+          if (staged) files.set(name, staged);
+        },
+        abort: async () => { staged = undefined; },
+      };
+    },
     createSyncAccessHandle: async () => {
       if (open.has(name) || disk.refuseOpen === name) throw new DOMException("Access Handles cannot be created if there is another open Access Handle", "NoModificationAllowedError");
       open.add(name);
@@ -358,6 +373,7 @@ function fakeOpfs(room: number, full: "partial" | "code" = "partial") {
         write: (buffer: Uint8Array, { at }: { at: number }) => {
           const file = files.get(name)!;
           const fits = Math.max(0, Math.min(buffer.length, disk.room - used() + Math.max(0, file.length - at)));
+          if (fits < buffer.length && full === "throw") throw new DOMException("Disk full", "QuotaExceededError");
           if (fits < buffer.length && full === "code") return NO_SPACE_COUNT;
           const next = new Uint8Array(Math.max(file.length, at + fits));
           next.set(file);
@@ -447,8 +463,24 @@ describe("the origin-private file system, full", () => {
     await (await store.writer("state.json", true)).close();
   });
 
-  it("writes a file over its old bytes and cuts it to the new ones; a disk that refuses them leaves the old", async () => {
-    const disk = fakeOpfs(1000, "code");
+  it.each(["write", "close"])("preserves saved preferences if the replacement %s fails", async failure => {
+    const disk = fakeOpfs(1000);
+    const store = await OpfsStore.open();
+    const old = new TextEncoder().encode('{"download_paused":true}');
+    const next = new TextEncoder().encode('{"download_paused":false,"verified":{}}');
+    await store.replace("state.json", old);
+    if (failure === "write") disk.room = old.length + 5;
+    else disk.flushFails = true;
+    await expect(store.replace("state.json", next)).rejects.toMatchObject({ name: "QuotaExceededError" });
+    expect(await store.read("state.json")).toEqual(old);
+    disk.room = 1000;
+    disk.flushFails = false;
+    await store.replace("state.json", next);
+    expect(await store.read("state.json")).toEqual(next);
+  });
+
+  it.each(["code", "throw"] as const)("keeps prior bytes when a streaming write is refused (%s)", async full => {
+    const disk = fakeOpfs(1000, full);
     const store = await OpfsStore.open();
     const save = async (text: string) => {
       const writer = await store.writer("state.json", false);

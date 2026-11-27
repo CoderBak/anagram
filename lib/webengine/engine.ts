@@ -139,6 +139,7 @@ export class Engine {
   private storageBytes = 0;
   private lastActivity = 0;
   private pendingScores = 0;
+  private settingsSaved: Promise<void> = Promise.resolve();
   private scoreChain: Promise<unknown> = Promise.resolve();
   private idleTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
@@ -217,6 +218,7 @@ export class Engine {
     this.downloadAbort?.abort();
     this.loadAbort?.abort();
     await this.releaseModel();
+    await this.settingsSaved;
   }
 
   private async readSettings(): Promise<void> {
@@ -242,11 +244,12 @@ export class Engine {
   /** Save the settings. A disk too full to take them leaves them as they are in memory, and
    *  the next save tries again: the model's own bytes then meet the full disk and say so. */
   private async writeSettings(required = false): Promise<void> {
+    const bytes = new TextEncoder().encode(JSON.stringify(this.settings));
+    // A settings change and a download can both save. Commit snapshots in the order taken.
+    const write = this.settingsSaved.then(() => this.store.replace(STATE_FILE, bytes));
+    this.settingsSaved = write.catch(() => {});
     try {
-      const writer = await this.store.writer(STATE_FILE, false);
-      try { await writer.write(new TextEncoder().encode(JSON.stringify(this.settings))); }
-      catch (error) { await writer.close().catch(() => {}); throw error; }
-      await writer.close();
+      await write;
     } catch (error) {
       if (required || !outOfSpace(error)) throw error;
     }

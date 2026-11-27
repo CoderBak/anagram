@@ -26,9 +26,10 @@ export interface FileStore {
   /** The file's bytes from the start, in chunks. */
   stream(name: string, chunkBytes?: number): AsyncIterable<Uint8Array>;
   /** A writer at the end of the file (`append`), or over it from its start: cut to what was
-   *  written when it is closed, unless a write failed, which leaves the file as the disk left it
-   *  (a state file too full a disk refused keeps its old bytes). */
+   *  written when it is closed. After a failed write, keep the bytes the disk accepted. */
   writer(name: string, append: boolean): Promise<FileWriter>;
+  /** Replace a small file in one commit. A failed save preserves its previous contents. */
+  replace(name: string, bytes: Uint8Array<ArrayBuffer>): Promise<void>;
   /** Cut the file to `length` bytes. */
   truncate(name: string, length: number): Promise<void>;
   rename(from: string, to: string): Promise<void>;
@@ -127,7 +128,9 @@ export class OpfsStore implements FileStore {
         // itself running out (the extension holds unlimitedStorage) comes back as a count,
         // base::File's FILE_ERROR_NO_SPACE (-8) read as unsigned, 2^32 - 8 (Chrome 149 on
         // macOS). A write the disk took part of is the same. The file keeps what it took.
-        const wrote = access.write(chunk, { at });
+        let wrote: number;
+        try { wrote = access.write(chunk, { at }); }
+        catch (error) { whole = false; throw error; }
         const took = wrote >= 0 && wrote <= chunk.length ? wrote : 0;
         at += took;
         if (took !== chunk.length) {
@@ -143,6 +146,18 @@ export class OpfsStore implements FileStore {
         } finally { access.close(); }
       },
     };
+  }
+
+  async replace(name: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+    const file = (await this.handle(name, true))!;
+    const stream = await file.createWritable();
+    try {
+      await stream.write(bytes);
+      await stream.close();
+    } catch (error) {
+      await stream.abort().catch(() => {});
+      throw error;
+    }
   }
 
   async truncate(name: string, length: number): Promise<void> {
@@ -233,6 +248,9 @@ export class MemoryStore implements FileStore {
       },
       close: async () => { if (!append) this.files.set(name, this.files.get(name)!.slice(0, at)); },
     };
+  }
+  async replace(name: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+    this.files.set(name, bytes.slice());
   }
   async truncate(name: string, length: number): Promise<void> {
     const file = this.files.get(name);

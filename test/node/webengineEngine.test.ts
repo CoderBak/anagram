@@ -593,6 +593,30 @@ describe("the engine's lifecycle", () => {
     expect(m.log).toEqual(["create webgpu:fp32"]);
   });
 
+  it("persists overlapping settings updates in order and retries after a full disk", async () => {
+    const m = track(make());
+    await m.engine.start();
+    let allow!: () => void;
+    const blocked = new Promise<void>(resolve => { allow = resolve; });
+    const save = m.store.replace.bind(m.store);
+    const writes = vi.spyOn(m.store, "replace").mockImplementationOnce(async (name, bytes) => {
+      await blocked;
+      await save(name, bytes);
+    });
+    const set = (seconds: number) => m.engine.handle("engine.settings", { idle_unload_s: seconds });
+    const first = set(120), second = set(240);
+    await vi.waitFor(() => expect(writes).toHaveBeenCalledTimes(1));
+    allow();
+    await Promise.all([first, second]);
+    const saved = async () => JSON.parse(new TextDecoder().decode(await m.store.read("state.json")));
+    expect((await saved()).idle_unload_s).toBe(240);
+    writes.mockRejectedValueOnce(new DOMException("Disk full", "QuotaExceededError"));
+    await set(360);
+    expect((await saved()).idle_unload_s).toBe(240);
+    await set(480);
+    expect((await saved()).idle_unload_s).toBe(480);
+  });
+
   it("bounds the score queue", async () => {
     const m = track(make());
     await m.engine.handle("models.download", {});
@@ -683,7 +707,7 @@ it("switches dated releases, reuses unchanged weights and restores the last work
     await vi.waitFor(async()=>expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}}));
     const requests=server.requests.length;
     await engine.close();
-    const writes = vi.spyOn(store, "writer").mockRejectedValue(new DOMException("Disk full", "QuotaExceededError"));
+    const writes = vi.spyOn(store, "replace").mockRejectedValue(new DOMException("Disk full", "QuotaExceededError"));
     engine=makeEngine();
     expect((await ready(engine)).state).toBe("ready");
     expect((await engine.handle("health",{})).data).toMatchObject({model:{id:next.release}});

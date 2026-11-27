@@ -83,6 +83,10 @@ export class FullDisk extends MemoryStore {
     for (const file of this.files.values()) used += file.length;
     return used;
   }
+  override async replace(name: string, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+    if (this.used() + bytes.length > this.room) throw this.refuse();
+    await super.replace(name, bytes);
+  }
   override async writer(name: string, append: boolean) {
     const inner = await super.writer(name, append);
     let failed = false;
