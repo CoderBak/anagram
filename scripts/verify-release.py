@@ -9,12 +9,12 @@ BASE = {"storage", "activeTab", "contextMenus", "scripting", "unlimitedStorage",
 OPTIONAL = {"https://*/*", "http://*/*", "file:///*"}
 # The in-browser engine (scripts/webengine.mjs), all of vendor/engine/: ONNX Runtime
 # Web's JSPI build, which runs both the GPU and the CPU path, with its licence and notices,
-# the engine's worker and the language identifier it reads from the package. Its model
+# the engine worker, its streaming SHA-256 module and its language identifier. Its model
 # download needs no host permission.
 ENGINE_FILES = {"vendor/engine/ort.jspi.min.mjs", "vendor/engine/ort-wasm-simd-threaded.jspi.mjs",
                 "vendor/engine/ort-wasm-simd-threaded.jspi.wasm", "vendor/engine/LICENSE.onnxruntime-web",
                 "vendor/engine/ThirdPartyNotices.onnxruntime-web.txt", "vendor/engine/worker.min.mjs",
-                "vendor/engine/lid.176.ftz"}
+                "vendor/engine/lid.176.ftz", "vendor/engine/sha256.min.mjs"}
 
 
 def required(manifest_version):

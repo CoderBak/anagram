@@ -201,7 +201,7 @@ describe("what the one build carries", () => {
   it.skipIf(!chrome || !firefox)("ships the in-browser engine's runtime, and Chrome its offscreen document", () => {
     for (const out of [chrome!, firefox!]) {
       expect(readdirSync(join(out, "vendor", "engine")).sort()).toEqual(
-        [...ORT_FILES, "LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt", "worker.min.mjs", LID.name].sort());
+        [...ORT_FILES, "LICENSE.onnxruntime-web", "ThirdPartyNotices.onnxruntime-web.txt", "worker.min.mjs", "sha256.min.mjs", LID.name].sort());
       const lid = readFileSync(join(out, LID_PATH));
       expect([lid.length, createHash("sha256").update(lid).digest("hex")]).toEqual([LID.size_bytes, LID.sha256]);
     }
