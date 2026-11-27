@@ -9,7 +9,9 @@ export ANAGRAM_BROWSER=firefox ANAGRAM_EXTENSION_ID=anagram@coderbak.dev ANAGRAM
 # This suite uses local archives. Any unexpected outbound download must fail locally.
 export https_proxy=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 no_proxy= NO_PROXY=
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-T="$(mktemp -d "${TMPDIR:-/tmp}/anagram-installer-test.XXXXXX")"
+# Receipts bind to physical paths. macOS commonly exposes its temp directory through /var.
+test_parent="$(cd "${TMPDIR:-/tmp}" && pwd -P)" || exit 1
+T="$(mktemp -d "$test_parent/anagram-installer-test.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT INT TERM
 FAKE_HOME="$T/fakehome"; mkdir -p "$FAKE_HOME"
 UNREACHABLE="file:///nonexistent/anagram-release"   # every refusal must come BEFORE any download
