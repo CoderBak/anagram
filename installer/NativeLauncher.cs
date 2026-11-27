@@ -4,7 +4,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Threading;
 
 public static class AnagramNativeLauncher {
     static string Quote(string value) {
@@ -22,7 +21,9 @@ public static class AnagramNativeLauncher {
         info.Arguments = "-I -u " + Quote(Path.Combine(home, "app", script)) + " " + tail;
         info.UseShellExecute = false; info.CreateNoWindow = true;
         info.WorkingDirectory = home;
-        info.RedirectStandardInput = true; info.RedirectStandardOutput = true; info.RedirectStandardError = true;
+        // With stderr redirected, .NET Framework passes the existing stdin and stdout
+        // handles to Python. Browser messages then travel as raw bytes in both directions.
+        info.RedirectStandardError = true;
         info.EnvironmentVariables.Clear();
         foreach (string key in new string[] {"USERPROFILE", "LOCALAPPDATA", "APPDATA", "SystemRoot", "WINDIR", "TEMP", "TMP", "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "no_proxy", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"}) {
             string value = Environment.GetEnvironmentVariable(key);
@@ -35,33 +36,15 @@ public static class AnagramNativeLauncher {
         info.EnvironmentVariables["HF_HUB_DISABLE_TELEMETRY"] = "1";
         return info;
     }
-    static Thread Pump(Stream source, Stream target, bool closeTarget) {
-        var thread = new Thread(delegate() {
-            try {
-                // The browser keeps stdin open while it waits for each reply.
-                byte[] buffer = new byte[8192];
-                int count;
-                while ((count = source.Read(buffer, 0, buffer.Length)) > 0) {
-                    target.Write(buffer, 0, count);
-                    target.Flush();
-                }
-            }
-            catch (IOException) {} catch (ObjectDisposedException) {}
-            finally { if (closeTarget) try { target.Close(); } catch {} }
-        });
-        thread.IsBackground = true; thread.Start(); return thread;
-    }
     public static int Main(string[] args) {
         try {
             string home = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).FullName;
             string homeArgs = "--home " + Quote(home);
             foreach (string arg in args) homeArgs += " " + Quote(arg);
             using (Process child = Process.Start(StartInfo(home, "native_host.py", homeArgs))) {
-                // Raw byte streams preserve native messaging length prefixes and UTF-8.
-                Pump(Console.OpenStandardInput(), child.StandardInput.BaseStream, true);
-                Thread output = Pump(child.StandardOutput.BaseStream, Console.OpenStandardOutput(), false);
-                Thread errors = Pump(child.StandardError.BaseStream, Console.OpenStandardError(), false);
-                child.WaitForExit(); output.Join(); errors.Join(); return child.ExitCode;
+                child.StandardError.BaseStream.CopyTo(Console.OpenStandardError());
+                child.WaitForExit();
+                return child.ExitCode;
             }
         } catch (Exception error) { Console.Error.WriteLine("Anagram native host: " + error.Message); return 1; }
     }

@@ -10,7 +10,6 @@ foreach ($file in @('install.ps1','installer\maintenance.ps1')) {
 & (Join-Path $PSScriptRoot 'windows-uninstall.ps1')
 $temporary=Join-Path ([IO.Path]::GetTempPath()) ('anagram-native-test-' + [Guid]::NewGuid().ToString('N'))
 $component=Join-Path $temporary 'component with spaces'
-$process=$null
 try {
   $null=New-Item -ItemType Directory -Path (Join-Path $component 'app') -Force
   $null=New-Item -ItemType Directory -Path (Join-Path $component 'bin') -Force
@@ -20,6 +19,7 @@ try {
 import json, struct, sys
 assert sys.argv[1]=='--home' and sys.argv[3]=='chrome-extension://abcdefghijklmnopabcdefghijklmnop/'
 n=struct.unpack('<I',sys.stdin.buffer.read(4))[0]
+assert 0 < n < 1024, f'Invalid raw frame length: {n}'
 request=json.loads(sys.stdin.buffer.read(n))
 reply=json.dumps({'echo':request,'home':sys.argv[2]},ensure_ascii=False).encode()
 sys.stdout.buffer.write(struct.pack('<I',len(reply))+reply);sys.stdout.buffer.flush()
@@ -28,24 +28,33 @@ sys.stdout.buffer.write(struct.pack('<I',len(reply))+reply);sys.stdout.buffer.fl
   $launcher=Join-Path $component 'bin\anagram-native.exe'
   & $compiler /nologo /target:exe /optimize+ ("/out:"+$launcher) (Join-Path $root 'installer\NativeLauncher.cs')
   if ($LASTEXITCODE -ne 0) { throw 'C# launcher compile failed' }
-  $start=New-Object Diagnostics.ProcessStartInfo
-  $start.FileName=$launcher; $start.Arguments='chrome-extension://abcdefghijklmnopabcdefghijklmnop/'
-  $start.UseShellExecute=$false; $start.RedirectStandardInput=$true; $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
-  $process=[Diagnostics.Process]::Start($start)
-  $bytes=[Text.Encoding]::UTF8.GetBytes('{"id":"binary-frame","text":"hello\nworld"}')
-  $writer=New-Object IO.BinaryWriter($process.StandardInput.BaseStream)
-  $writer.Write([uint32]$bytes.Length);$writer.Write($bytes);$writer.Flush()
-  # This one-request fixture exits after writing its small reply. Keep the input pipe
-  # open as the browser does, and bound the wait before reading from the output pipe.
-  if (-not $process.WaitForExit(10000)) { throw 'Native launcher did not forward the frame while browser stdin was open' }
-  if ($process.ExitCode -ne 0) { throw ('Native launcher failed: ' + $process.StandardError.ReadToEnd()) }
-  $reader=New-Object IO.BinaryReader($process.StandardOutput.BaseStream)
-  $length=$reader.ReadUInt32()
-  if ($length -gt 1048576) { throw 'Invalid native frame length' }
-  $reply=[Text.Encoding]::UTF8.GetString($reader.ReadBytes($length)) | ConvertFrom-Json
-  if ($reply.echo.id -ne 'binary-frame' -or $reply.echo.text -ne "hello`nworld" -or $reply.home -ne $component) { throw 'Native launcher corrupted a frame or argument' }
+  # Chromium sends binary frames with no text preamble and keeps its input pipe open.
+  @'
+import json, struct, subprocess, sys
+
+launcher, home = sys.argv[1:]
+request = {"id": "binary-frame", "text": "hello\n\u4e16\u754c"}
+payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
+with subprocess.Popen([launcher, "chrome-extension://abcdefghijklmnopabcdefghijklmnop/"],
+                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child:
+    try:
+        child.stdin.write(struct.pack("<I", len(payload)) + payload)
+        child.stdin.flush()
+        # The one-request host exits after its small reply, with stdin still open.
+        assert child.wait(timeout=10) == 0, child.stderr.read()
+        raw = child.stdout.read()
+        assert len(raw) >= 4 and struct.unpack("<I", raw[:4])[0] == len(raw) - 4, "Invalid reply frame"
+        assert json.loads(raw[4:]) == {"echo": request, "home": home}
+    finally:
+        child.stdin.close()
+        try:
+            child.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+'@ | & python - $launcher $component
+  if ($LASTEXITCODE -ne 0) { throw 'Native launcher frame check failed' }
   Write-Host 'PASS Windows PowerShell parsing, C# compilation, private-Python launcher, exact home argument, raw native framing'
 } finally {
-  if ($process -and -not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
   if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force -Recurse }
 }
