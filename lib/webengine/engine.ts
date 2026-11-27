@@ -243,10 +243,14 @@ export class Engine {
 
   /** Save the settings. A disk too full to take them leaves them as they are in memory, and
    *  the next save tries again: the model's own bytes then meet the full disk and say so. */
-  private async writeSettings(required = false): Promise<void> {
-    const bytes = new TextEncoder().encode(JSON.stringify(this.settings));
-    // A settings change and a download can both save. Commit snapshots in the order taken.
-    const write = this.settingsSaved.then(() => this.store.replace(STATE_FILE, bytes));
+  private async writeSettings(required = false, idleSeconds?: number): Promise<void> {
+    // A download and the settings page can both save. Read the current preferences when this
+    // writer gets its turn so a later save includes all earlier successful changes.
+    const write = this.settingsSaved.then(async () => {
+      const next = idleSeconds === undefined ? this.settings : { ...this.settings, idle_unload_s: idleSeconds };
+      await this.store.replace(STATE_FILE, new TextEncoder().encode(JSON.stringify(next)));
+      if (idleSeconds !== undefined) this.settings.idle_unload_s = idleSeconds;
+    });
     this.settingsSaved = write.catch(() => {});
     try {
       await write;
@@ -804,10 +808,13 @@ export class Engine {
         checkPayloadKeys(payload, ["idle_unload_s"], ["idle_unload_s"]);
         const seconds = payload.idle_unload_s;
         if (!validIdleUnload(seconds)) throw new EngineError("invalid_request", IDLE_UNLOAD_RULE, 422);
-        this.settings.idle_unload_s = seconds;
+        try { await this.writeSettings(true, seconds); }
+        catch (error) {
+          if (outOfSpace(error)) throw new EngineError("settings_storage_full", "Free up disk space to save the idle setting", 507);
+          throw error;
+        }
         this.clearIdleTimer();
         this.scheduleIdleUnload();
-        await this.writeSettings();
         return { status: 200, data: this.status() };
       }
     }

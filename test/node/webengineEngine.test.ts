@@ -611,7 +611,8 @@ describe("the engine's lifecycle", () => {
     const saved = async () => JSON.parse(new TextDecoder().decode(await m.store.read("state.json")));
     expect((await saved()).idle_unload_s).toBe(240);
     writes.mockRejectedValueOnce(new DOMException("Disk full", "QuotaExceededError"));
-    await set(360);
+    await fails(set(360), "settings_storage_full", 507);
+    expect((await m.engine.handle("status", {})).data).toMatchObject({ settings: { idle_unload_s: 240 } });
     expect((await saved()).idle_unload_s).toBe(240);
     await set(480);
     expect((await saved()).idle_unload_s).toBe(480);

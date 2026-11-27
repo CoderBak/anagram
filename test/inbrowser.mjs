@@ -897,7 +897,10 @@ async function checkFailedPreferenceSave(run, setup) {
     return (await (await dir.getFileHandle("state.json")).getFile()).text();
   });
   const previous = await read();
-  const seconds = JSON.parse(previous).idle_unload_s === 900 ? 1200 : 900;
+  const oldValue = JSON.parse(previous).idle_unload_s;
+  const seconds = oldValue === 900 ? 300 : 900;
+  const idle = setup.locator("#idleUnload");
+  const error = setup.locator("#componentSettings .component-error");
   const worker = await engineWorker(run.profile);
   try {
     const armed = await worker.evaluate(`(() => {
@@ -910,10 +913,14 @@ async function checkFailedPreferenceSave(run, setup) {
       return true;
     })()`);
     if (!armed) throw new Error("Could not simulate a failed preference save");
-    await engine(setup, "engine.settings", { idle_unload_s: seconds });
+    await idle.selectOption(String(seconds));
+    await error.waitFor({ state: "visible", timeout: 10000 });
+    check("real: Settings explains a full disk and restores the saved idle setting",
+      (await error.textContent()) === words("en")("engineSettingDiskFull") && await idle.inputValue() === String(oldValue));
     check("real: a partially written settings update preserves the entire previous file", await read() === previous);
-    await engine(setup, "engine.settings", { idle_unload_s: seconds });
-    check("real: the next settings update reaches disk", JSON.parse(await read()).idle_unload_s === seconds);
+    await idle.selectOption(String(seconds));
+    const saved = await until(async () => JSON.parse(await read()).idle_unload_s === seconds, 10000);
+    check("real: the next settings update reaches disk", saved && await error.isHidden());
   } finally { await worker.close(); }
 }
 
@@ -951,7 +958,6 @@ async function realRun(files) {
     const verdict = await until(() => paste.evaluate(() => !document.getElementById("results").hidden && document.getElementById("summary").textContent), 120_000, 500);
     check("real: the paste page scores with the downloaded model", !!verdict, verdict);
     await paste.close();
-    await checkFailedPreferenceSave(run, setup);
     // A different feature's file shares the extension origin, outside the model directory.
     const sibling = await setup.evaluate(async () => {
       const root = await navigator.storage.getDirectory();
@@ -964,6 +970,7 @@ async function realRun(files) {
     // Delete, from Manage.
     const managing = await extPage(run.context, extId, "options.html", problems);
     await managing.click("#engine-manage");
+    await checkFailedPreferenceSave(run, managing);
     await managing.click("#engine-delete");
     await managing.click("#engine-confirm");
     await managing.waitForFunction(() => document.querySelector("#engine-delete").hidden);

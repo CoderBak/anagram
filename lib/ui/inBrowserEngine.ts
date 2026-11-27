@@ -353,7 +353,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       if (destroyed || ac.signal.aborted) return;
       if (op && reply.kind === "rejected") {
         // Refused, and the engine said why: its status is what it was, so read it again.
-        actionError = t("componentFailed"); actionDetail = reply.message ?? "";
+        actionError = t(reply.code === "settings_storage_full" ? "engineSettingDiskFull" : "componentFailed");
+        actionDetail = reply.code === "settings_storage_full" ? "" : reply.message ?? "";
         const current = await requestComponent("status", {}, ac.signal);
         if (!destroyed && !ac.signal.aborted) paint(current);
       } else paint(reply);

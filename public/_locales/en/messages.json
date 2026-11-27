@@ -707,6 +707,10 @@
     "message": "The download could not reach Hugging Face or its mirror hf-mirror.com. Check your connection or proxy, then click Retry: the download continues where it stopped.",
     "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
   },
+  "engineSettingDiskFull": {
+    "message": "Free up disk space and choose the idle setting again.",
+    "description": "Settings could not save the selected idle timeout because browser storage is full."
+  },
   "engineDiskFull": {
     "message": "There isn't enough free disk space. Free up at least $1, then click Retry.",
     "description": "In-browser edition: the download stopped on a full disk; $1 is how much it still needs, e.g. 800 MB."

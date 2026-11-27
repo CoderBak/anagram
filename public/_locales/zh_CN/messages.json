@@ -555,6 +555,10 @@
   "engineNetworkLost": {
     "message": "下载无法连接 Hugging Face 及其镜像 hf-mirror.com。请检查网络或代理设置，然后点击“重试”，下载会从中断处继续。"
   },
+  "engineSettingDiskFull": {
+    "message": "请先释放磁盘空间，再重新选择闲置时长。",
+    "description": "Settings could not save the selected idle timeout because browser storage is full."
+  },
   "engineDiskFull": {
     "message": "磁盘可用空间不足。请至少腾出 $1，然后点击“重试”。"
   },

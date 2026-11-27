@@ -58,7 +58,7 @@ export async function nativePageRequest(op: ComponentOperation, payload: NativeP
 export async function requestComponent(op: ComponentOperation = "status", payload: NativePayload = {}, signal?: AbortSignal): Promise<ComponentReply> {
   try {
     const reply = await nativePageRequest(op, payload, signal);
-    if (!reply.ok) return {kind: reply.status >= 500 ? "unavailable" : "rejected", code: reply.error?.code, message: reply.error?.message};
+    if (!reply.ok) return {kind: reply.status >= 500 && reply.error?.code !== "settings_storage_full" ? "unavailable" : "rejected", code: reply.error?.code, message: reply.error?.message};
     const snapshot = parseComponent(reply.data);
     return snapshot ? {kind:"ok", snapshot} : {kind:"invalid"};
   } catch { return {kind:"unavailable", code:"native_unavailable"}; }
