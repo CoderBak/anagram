@@ -357,7 +357,7 @@ const NO_SPACE_COUNT = 2 ** 32 - 8;
 function fakeOpfs(room: number, full: "partial" | "code" | "throw" = "partial") {
   const files = new Map<string, Uint8Array>();
   const open = new Set<string>();
-  const disk = { files, open, room, flushFails: false, canMove: true, refuseOpen: "" };
+  const disk = { files, open, room, flushedBytes: 0, flushFails: false, canMove: true, refuseOpen: "" };
   const used = () => [...files.values()].reduce((n, f) => n + f.length, 0);
   const handle = (name: string) => ({
     kind: "file",
@@ -400,7 +400,10 @@ function fakeOpfs(room: number, full: "partial" | "code" | "throw" = "partial") 
           files.set(name, next);
           return fits;
         },
-        flush: () => { if (disk.flushFails) throw new DOMException("No space available for this operation", "QuotaExceededError"); },
+        flush: () => {
+          if (disk.flushFails) throw new DOMException("No space available for this operation", "QuotaExceededError");
+          disk.flushedBytes = files.get(name)!.length;
+        },
         close: () => { open.delete(name); },
       };
     },
@@ -455,6 +458,17 @@ describe("the origin-private file system, full", () => {
     await downloadFile(store, entry(), { transport });
     expect(await store.list()).toEqual(["model.bin"]);
     expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("saves a resumable prefix even if the worker never reaches close", async () => {
+    const disk = fakeOpfs(3 << 20), store = await OpfsStore.open();
+    const writer = await store.writer("model.bin.part", false);
+    await writer.write(new Uint8Array(1 << 20));
+    expect(disk.flushedBytes).toBe(1 << 20);
+    await writer.write(new Uint8Array(1 << 20));
+    expect(disk.flushedBytes).toBe(1 << 20);
+    await writer.close();
+    expect(disk.flushedBytes).toBe(2 << 20);
   });
 
   it("a write the disk takes only part of is a full disk, and the part keeps what it took", async () => {

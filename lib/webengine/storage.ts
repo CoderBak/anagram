@@ -122,6 +122,8 @@ export class OpfsStore implements FileStore {
     const access = await file.createSyncAccessHandle();
     let at = append ? access.getSize() : 0;
     let whole = true;
+    let flushed = at;
+    let nextFlush = 0;
     return {
       write: async (chunk) => {
         // A full disk. Chrome throws QuotaExceededError only where a quota runs out: the disk
@@ -136,6 +138,13 @@ export class OpfsStore implements FileStore {
         if (took !== chunk.length) {
           whole = false;
           throw new DOMException(`The disk took ${took} of ${chunk.length} bytes (${wrote})`, "QuotaExceededError");
+        }
+        // A terminated worker never closes this handle. Save the first MiB, then
+        // checkpoint large downloads at most once a second while they continue.
+        if (at - flushed >= (flushed ? 16 : 1) * 1024 * 1024 && performance.now() >= nextFlush) {
+          access.flush();
+          flushed = at;
+          nextFlush = performance.now() + 1000;
         }
       },
       // Closed whatever the flush says: an open handle would lock the file until the worker ends.
