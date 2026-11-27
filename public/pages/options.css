@@ -169,7 +169,7 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   }
 }
 @container (max-width: 660px) {
-  .panel { --value-width: clamp(192px, 49%, 220px); --field-gap: 10px; }
+  .panel { --value-width: clamp(168px, 49%, 220px); --field-gap: 10px; }
   .panel-title { gap: 6px; }
   .settings :is(.preference-row, .field) > .select { padding-inline: 8px 23px; }
   .fields { grid-template-columns: minmax(0, 1fr); }
@@ -177,10 +177,10 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   .field > .select { margin: 0; }
 }
 @container (max-width: 360px) {
-  .panel { --value-width: min(61%, 200px); --field-gap: 8px; }
+  .panel { --value-width: min(52%, 172px); --field-gap: 8px; }
 }
 @container (max-width: 319px) {
-  .panel { --value-width: min(56%, 160px); }
+  .panel { --value-width: min(50%, 150px); }
   .field { grid-template-columns: minmax(0, 1fr); gap: 7px; }
 }
 @media (max-width: 480px) {
@@ -199,7 +199,7 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   .panel { padding: 12px 10px; }
   .panel-title .section-icon { display: none; }
   #engineGroup h2 { font-size: 13.5px; }
-  #engineGroup .setting-identity { flex: 1 1 auto; column-gap: 5px; }
+  #engineGroup .setting-identity { flex: 1 1 0; flex-wrap: nowrap; column-gap: 5px; }
   #engineGroup .setting-identity .component-status { font-size: 12px; }
   #engineGroup .component-status-row { column-gap: 10px; }
 }

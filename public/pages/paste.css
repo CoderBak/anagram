@@ -15,6 +15,7 @@ header.hdr #settings { align-self: center; }
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: none;
 }
+.editor { container-type: inline-size; }
 #results { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 .reading-title { font-size: 13px; font-weight: 600; color: var(--muted-foreground); margin: 4px 0 0; }
 .count { font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
@@ -33,7 +34,7 @@ textarea.textarea {
   line-height: 1.6;
 }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.actions .btn { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .8125rem; }
+.actions .btn { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .8125rem; transition-property: color, background-color, border-color, box-shadow; }
 .actions .btn[data-variant="ghost"] .action-icon { color: var(--muted-foreground); }
 .actions .btn[data-variant="ghost"]:hover .action-icon { color: var(--foreground); }
 .editor-meta { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
@@ -42,9 +43,13 @@ textarea.textarea {
   .actions { gap: 6px 8px; }
   .editor .btn[data-variant="ghost"] { padding-inline: 6px; }
 }
-@media (max-width: 384px) {
-  .editor:has(#clear:not([hidden])) #pick { width: 32px; padding: 0; }
-  .editor:has(#clear:not([hidden])) #pick span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@container (max-width: 360px) {
+  .actions:has(#clear:not([hidden])) #pick { width: 32px; padding: 0; }
+  .actions:has(#clear:not([hidden])) #pick span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@container (max-width: 285px) {
+  .actions, .editor-meta { column-gap: 4px; }
+  .actions #edit { padding-inline: 4px; }
 }
 #status { margin: 0; font-size: 13px; color: var(--muted-foreground); }
 /* Keep the live regions available for their first message without adding a flex gap. */

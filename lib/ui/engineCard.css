@@ -15,7 +15,7 @@
 .engine-choice-card:last-child { padding-bottom: 2px; }
 .engine-choice-card + .engine-choice-card { border-top: 1px solid var(--border); }
 .engine-choice-card[hidden] { display: none; }
-.engine-choice-card .installer-source { color: var(--foreground); text-decoration: underline; text-underline-offset: 0.15em; }
+.engine-choice-card .installer-source { display: inline-flex; align-items: center; min-block-size: 24px; color: var(--foreground); text-decoration: underline; text-underline-offset: 0.15em; }
 .engine-choice-card h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--foreground); letter-spacing: -0.01em; }
 .engine-choice-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .engine-recommendation {

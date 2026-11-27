@@ -9,7 +9,7 @@ import { fakeTokens } from "./fakeTokens.mjs";
 export { fakeTokens };
 
 export const CONTRACT = "3.0";
-export const FAKE_MODEL = { id: "fake-editlens", ver: "test", calibration: "none" };
+export const FAKE_MODEL = { id: "fake-editlens", ver: "test", calibration: "editlens-4bucket-cosine(0.03,0.15)" };
 const BUCKETS = ["human", "lightly-edited", "heavily-edited", "ai-generated"];
 const FLAT = [0.25, 0.25, 0.25, 0.25];
 
