@@ -163,23 +163,11 @@ export async function launchExtension({
     // Install after Playwright has attached to the fresh browser. Chromium returns the
     // extension ID or its installation error, even when Windows startup is slow.
     const session = await context.browser().newBrowserCDPSession();
-    const { id: extId } = await session.send("Extensions.loadUnpacked", { path: extension });
+    const { id: extId } = await session.send("Extensions.loadUnpacked", { path: extension, enableInIncognito: incognitoAccess });
     await session.detach();
     const isExtensionWorker = (worker) => new URL(worker.url()).host === extId;
-    let sw = context.serviceWorkers().find(isExtensionWorker)
+    const sw = context.serviceWorkers().find(isExtensionWorker)
       ?? await context.waitForEvent("serviceworker", { predicate: isExtensionWorker, timeout: 30_000 });
-    if (incognitoAccess) {
-      // Chromium reloads the unpacked extension when its private-window switch changes.
-      // Set it before connecting the fixture host to the worker that will score the page.
-      const manager = await context.newPage();
-      await manager.goto(`chrome://extensions/?id=${extId}`);
-      await manager.evaluate(() => chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true }));
-      [sw] = await Promise.all([
-        context.waitForEvent("serviceworker", { predicate: (w) => new URL(w.url()).host === extId, timeout: 15_000 }),
-        manager.evaluate((id) => chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, incognitoAccess: true }), extId),
-      ]);
-      await manager.close();
-    }
     if (testPort) detach = await attachTestPort(sw, fixture, nativeGranted);
     else registerTestHost(join(profile, "NativeMessagingHosts", HOST_NAME + ".json"), fixture, "chrome", extId);
     if (!extDir) await waitForRegistration(sw);

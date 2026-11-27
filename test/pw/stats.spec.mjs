@@ -251,6 +251,7 @@ test("full trace with text: every step on screen, the scroll, input and the text
 test("the PDF reader's paragraphs count as a document, and a file from this computer as no site", async ({ page, extension, storage }) => {
   await storage.set({ statsConfig: await presetConfig("sites", { layers: { place: "host" } }) });
   await page.goto(extension.url("reader.html"), { waitUntil: "load" });
+  await page.locator("#choose").waitFor({ state: "visible" });
   await page.setInputFiles("#file", { name: "dropped.pdf", mimeType: "application/pdf", buffer: TEST_PDF });
   await readerRead(page);
   expect(await pdfChips(page)).toBeGreaterThan(0);
