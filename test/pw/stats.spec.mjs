@@ -711,7 +711,11 @@ test("Settings: the preset menu explains what it keeps, preserves custom choices
   await expect(page.locator("#statsKeep")).toBeHidden();
   await expect(page.locator("#statsActions")).toBeHidden();
   await expect(page.locator("#statsWarnings p")).toHaveCount(0);
-  await preset.selectOption("daily");
+  // Use the native select's type-ahead. ArrowDown on a closed select opens the menu on macOS.
+  await preset.press("d");
+  await expect(preset).toHaveValue("daily");
+  await expect(preset).toBeFocused();
+  await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("day");
   await expect(page.locator("#statsPresetHint")).toHaveText("Word counts and verdicts by day.");
   await preset.selectOption("pages");
   await expect(page.locator("#statsTotals")).toBeHidden();
@@ -723,11 +727,8 @@ test("Settings: the preset menu explains what it keeps, preserves custom choices
   await expect(page.locator("#statsFine")).toBeHidden();
   await expect(page.locator("#statsWarnings p")).toHaveText(["Saves page addresses and titles in this browser profile."]);
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("page");
-  await preset.focus();
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("Enter");
+  await preset.selectOption("paragraphs");
   await expect(preset).toHaveValue("paragraphs");
-  await expect(preset).toBeFocused();
   await expect.poll(async () => (await storage.get("statsConfig")).statsConfig?.layers?.rows).toBe("paragraph");
   await expect(page.locator("#statsFine")).toBeHidden();
   await page.selectOption("#statsDetailDays", "30");
