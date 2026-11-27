@@ -173,9 +173,9 @@ signature. Those requests carry normal download metadata and never page text.
 ## Removal
 
 Removing the extension removes the in-browser engine's model files with it. For the local
-engine, **Uninstall** in Settings removes the engine, models and registration, then the
-extension; removing the extension from the browser alone leaves the engine on disk.
-Uninstall removes the whole `~/.anagram` directory, including anything you put inside it.
+engine, **Uninstall Anagram** in Settings removes its recorded browser registrations and verified files. On Windows, remove the extension after the maintenance window finishes. Removing the extension first leaves the local engine on disk.
+
+The local uninstaller checks its file records and model hashes, including checkpoints for interrupted downloads. It reports where it preserved files you added or edited and older files whose ownership it cannot establish. The user guide includes offline cleanup instructions for an interrupted installation. [Removal instructions](docs/user-guide.en.md#update-and-remove)
 
 ## Contact
 

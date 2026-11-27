@@ -22,7 +22,7 @@ def version(release):
 
 def provision(home, release):
     (home / "bin").mkdir(parents=True)
-    (home / ".anagram-home").touch()
+    (home / ".anagram-home").write_text(f"Anagram installation: {home.resolve()}\n")
     pin = re.search(r'^UV_VERSION="([\d.]+)"', (release / "install.sh").read_text(), re.M)[1]
     uv = home / "bin/uv"
     uv.write_text(f"""#!/bin/sh
@@ -93,7 +93,13 @@ registration.update(home, release=sys.argv[3])
         if release:
             install(release)
         subprocess.run([home / "bin/anagram", "uninstall", "-y"], env=env, check=True)
-        assert not home.exists() and not manifest.exists()
+        assert not manifest.exists()
+        assert not (home / "app/native_host.py").exists()
+        assert not (home / "bin/anagram").exists()
+        if not release:
+            assert retained.read_bytes() == b"preserve on update"
+            # This is a test-owned fixture. Keep the residual tree, then install in a fresh location.
+            home.rename(root / "preserved-first-install")
     print(f"PASS packaged install {version(previous)} → update {version(candidate)} → uninstall → reinstall → uninstall")
 
 
