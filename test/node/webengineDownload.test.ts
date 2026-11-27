@@ -1,4 +1,5 @@
 // test/node/webengineDownload.test.ts — resumable, verified downloads into the engine's store.
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadFile, DownloadFailed, DownloadPaused, failureKind, mirrorOf, outOfSpace, secure, verifyFile } from "../../lib/webengine/download";
 import { sha256Hex } from "../../lib/webengine/sha256";
@@ -33,6 +34,24 @@ describe("model download", () => {
     expect(progress[0]).toBe(0);
     expect(progress[progress.length - 1]).toBe(FILE.length);
     expect(server.requests).toEqual([{ url: "https://example.test/model.bin", range: null }]);
+  });
+
+  it.each([false, true])("verifies the complete large file after resuming, corrupt prefix=%s", async corrupt => {
+    const data = bytes(1_200_000);
+    const pin = { ...entry(), size_bytes: data.length, sha256: createHash("sha256").update(data).digest("hex") };
+    const store = new MemoryStore(), server = fakeServer({ "/model.bin": data }, { chunk: 65536 });
+    const prefix = data.slice(0, 197321);
+    if (corrupt) prefix[10] = prefix[10]! ^ 1;
+    store.files.set("model.bin.part", prefix);
+    const download = downloadFile(store, pin, { transport: server.fetch, retryWaits: [] });
+    if (corrupt) {
+      await expect(download).rejects.toThrow(/mismatch/i);
+      expect(await store.list()).toEqual([]);
+    } else {
+      await download;
+      expect(await verifyFile(store, pin)).toBe(true);
+    }
+    expect(server.requests[0]?.range).toBe("bytes=197321-");
   });
 
   it.each(["model.bin", "model.bin.part"])("can pause while verifying %s without touching the saved bytes", async name => {

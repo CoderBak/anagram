@@ -16,6 +16,7 @@
 // is tried first for the rest of the session's files.
 import { yieldToMessages } from "./scheduling";
 import { Sha256 } from "./sha256";
+import { createSHA256 } from "hash-wasm";
 import type { FileStore, FileWriter } from "./storage";
 import { MIRROR_HOST, type PinnedFile } from "./pin";
 
@@ -105,9 +106,26 @@ export function secure(url: string): boolean {
   return parsed.protocol === "https:" || (parsed.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname));
 }
 
+interface FileHash {
+  update(chunk: Uint8Array): unknown;
+  digest(): string;
+  reset(): unknown;
+}
+
+/** Large downloads are hashed incrementally in the worker, including their saved prefix on resume. */
+async function fileHash(bytes: number): Promise<FileHash> {
+  if (bytes >= 1024 * 1024) {
+    try {
+      const hash = await createSHA256();
+      return { update: chunk => hash.update(chunk), digest: () => hash.digest("hex"), reset: () => hash.init() };
+    } catch { /* WebAssembly unavailable: use the same digest with the JS implementation. */ }
+  }
+  return new Sha256();
+}
+
 /** OPFS reads on the worker are synchronous. Let pause and status messages run between slices. */
-async function hashStoredFile(store: FileStore, name: string, signal?: AbortSignal): Promise<Sha256> {
-  const hasher = new Sha256();
+async function hashStoredFile(store: FileStore, name: string, bytes: number, signal?: AbortSignal): Promise<FileHash> {
+  const hasher = await fileHash(bytes);
   let deadline = performance.now() + 50;
   for await (const chunk of store.stream(name, 2 * 1024 * 1024)) {
     if (signal?.aborted) throw new DownloadPaused();
@@ -124,7 +142,7 @@ async function hashStoredFile(store: FileStore, name: string, signal?: AbortSign
 /** Whether a file of the pinned size and hash is already at `name`. */
 export async function verifyFile(store: FileStore, entry: PinnedFile, name = entry.name, signal?: AbortSignal): Promise<boolean> {
   if ((await store.size(name)) !== entry.size_bytes) return false;
-  return (await hashStoredFile(store, name, signal)).digest() === entry.sha256;
+  return (await hashStoredFile(store, name, entry.size_bytes, signal)).digest() === entry.sha256;
 }
 
 /** A file the extension ships (lid.176.ftz), read from the package and checked against its pin. */
@@ -204,7 +222,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   if (offset > entry.size_bytes) { await store.delete(part); offset = 0; }
   onProgress(offset);
   if (offset > 0) onPhase?.("verifying");
-  const hasher = offset > 0 ? await hashStoredFile(store, part, signal) : new Sha256();
+  const hasher = offset > 0 ? await hashStoredFile(store, part, entry.size_bytes, signal) : await fileHash(entry.size_bytes);
   paused();
   if (offset === entry.size_bytes) return finish(store, entry, part, hasher);
   onPhase?.("downloading");
@@ -299,7 +317,7 @@ async function attemptDownload(store: FileStore, entry: PinnedFile, part: string
   await finish(store, entry, part, hasher);
 }
 
-async function finish(store: FileStore, entry: PinnedFile, part: string, hasher: Sha256): Promise<void> {
+async function finish(store: FileStore, entry: PinnedFile, part: string, hasher: FileHash): Promise<void> {
   if (hasher.digest() !== entry.sha256) {
     await store.delete(part);
     throw new DownloadFailed(`Checksum or size mismatch for ${entry.path ?? entry.name}`);

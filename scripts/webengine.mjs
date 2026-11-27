@@ -1,6 +1,6 @@
 // scripts/webengine.mjs — the in-browser engine's files under public/vendor/engine/.
 //
-// Three things, on every build (scripts/vendor.mjs calls vendorWebEngine; the engine's own
+// On every build (scripts/vendor.mjs calls vendorWebEngine; the engine's own
 // suites call it too):
 //   · ONNX Runtime Web, copied verbatim from the npm package (package.json): the one pin,
 //     which Zotero's document-worker is built with and verified against too
@@ -22,6 +22,7 @@
 //     MIT licence is the document-worker pin's copy (the same text at
 //     every tag) and the notices of the libraries its WebAssembly links are ONNX Runtime's
 //     ThirdPartyNotices.txt at the installed version's tag, kept in scripts/licences/.
+//   · the SHA-256 module used for streaming verification, built from hash-wasm.
 //   · the engine's worker (worker.min.mjs), bundled by esbuild from lib/webengine/worker.ts
 //     the way the diagnostics chunk is. It is our own code with our own JSON data and must
 //     take nothing from node_modules: the runtime is imported at run time by URL, and a
@@ -88,7 +89,14 @@ export async function vendorWebEngine(root) {
   copyFileSync(join(root, "vendor", "document-worker", "LICENSE.onnxruntime-web"), join(out, "LICENSE.onnxruntime-web"));
   copyFileSync(notices, join(out, "ThirdPartyNotices.onnxruntime-web.txt"));
   copyFileSync(await packagedLid(root), join(out, LID.name));
+  await build({
+    stdin: { contents: 'export { createSHA256 } from "hash-wasm"', resolveDir: root },
+    bundle: true, minify: true, format: "esm", outfile: join(out, "sha256.min.mjs"),
+  });
   const { metafile } = await build({
+    plugins: [{ name: "packaged-hash", setup(builder) {
+      builder.onResolve({ filter: /^hash-wasm$/ }, () => ({ path: "./sha256.min.mjs", external: true }));
+    } }],
     entryPoints: [join(root, "lib", "webengine", "worker.ts")],
     bundle: true,
     format: "esm",
@@ -100,7 +108,7 @@ export async function vendorWebEngine(root) {
   });
   const foreign = Object.values(metafile.outputs).flatMap((o) => Object.keys(o.inputs)).filter((id) => id.includes("node_modules/"));
   if (foreign.length > 0) throw new Error(`${ENGINE_DIR}/worker.min.mjs bundles code from node_modules, which needs a notice and its own chunk:\n  ${foreign.join("\n  ")}`);
-  const sizes = [...ORT_FILES, "worker.min.mjs", LID.name].map((name) => `${name} ${(statSync(join(out, name)).size / 1024).toFixed(0)} kB`);
+  const sizes = [...ORT_FILES, "worker.min.mjs", "sha256.min.mjs", LID.name].map((name) => `${name} ${(statSync(join(out, name)).size / 1024).toFixed(0)} kB`);
   console.log(`${ENGINE_DIR}/  ${sizes.join(", ")} (onnxruntime-web ${version})`);
 }
 

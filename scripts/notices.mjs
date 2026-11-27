@@ -203,6 +203,10 @@ const GROUPS = [
     title: "The in-browser engine",
     intro: "The in-browser engine, which scores inside the browser when it is the engine chosen (lib/webengine/, entrypoints/engine/), ships ONNX Runtime Web under vendor/engine/, the emoji names used by the legacy EditLens pipeline, and fastText's language identifier. Its model files are downloaded once, verified, and kept in the browser's own storage; the detector releases are listed under the component package below.",
     components: () => [
+      { name: "hash-wasm", version: npm("hash-wasm"), url: "https://github.com/Daninet/hash-wasm",
+        licence: "MIT", copyright: "Copyright (c) 2020 Dani Biró",
+        where: "The browser engine worker uses its packaged SHA-256 implementation to verify streamed model files.",
+        notice: ["node_modules/hash-wasm/LICENSE"] },
       { name: "ONNX Runtime Web", version: npm("onnxruntime-web"), url: "https://github.com/microsoft/onnxruntime",
         licence: "MIT", copyright: "Copyright (c) Microsoft Corporation",
         where: "The one pin of the npm package (scripts/webengine.mjs), unmodified: its JSPI build, which carries the native WebGPU execution provider and the CPU one (vendor/engine/ort.jspi.min.mjs, ort-wasm-simd-threaded.jspi.mjs and ort-wasm-simd-threaded.jspi.wasm), with this licence beside them as vendor/engine/LICENSE.onnxruntime-web. The WebAssembly build links third-party libraries whose notices Microsoft publishes with ONNX Runtime; those of this version's tag ship verbatim as vendor/engine/ThirdPartyNotices.onnxruntime-web.txt. The PDF reader's document-worker runs the same build: its JavaScript is bundled into vendor/document-worker/worker.js, and it reads the one WebAssembly binary above.",
