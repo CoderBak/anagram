@@ -395,6 +395,19 @@ describe("privileged native operation boundary", () => {
     expect(reply).toMatchObject({ok:false,status:403,error:{code:"forbidden"}});
     expect(controls.invalidate).not.toHaveBeenCalled();
   });
+  it("keeps active scores when setup reused the model, and still invalidates a replacement", async () => {
+    const controls = { invalidate: vi.fn(), clear: vi.fn() };
+    const sender = { id: fakeBrowser.runtime.id, url: fakeBrowser.runtime.getURL("/options.html") };
+    const reply = { v: 1 as const, id: "bridge", ok: true as const, status: 200, data: { model_reused: true } };
+    const request = vi.spyOn(nativeTransport(), "request").mockResolvedValue(reply);
+    await handleNativePageMessage({ action: NATIVE_MESSAGE, op: "models.select", payload: { release: defaultRelease } }, sender, controls);
+    await handleNativePageMessage({ action: NATIVE_MESSAGE, op: "models.download", payload: {} }, sender, controls);
+    expect(controls.invalidate).not.toHaveBeenCalled();
+    request.mockResolvedValue({ ...reply, data: { state: "loading" } });
+    await handleNativePageMessage({ action: NATIVE_MESSAGE, op: "models.select", payload: { release: defaultRelease } }, sender, controls);
+    expect(controls.invalidate).toHaveBeenCalledTimes(1);
+  });
+
   it("drops scoring work only after operations that stop, reload or replace the engine", async () => {
     const sender = {id:fakeBrowser.runtime.id,url:fakeBrowser.runtime.getURL("/options.html")};
     const request = vi.spyOn(nativeTransport(),"request").mockResolvedValue({v:1,id:"bridge",ok:true,status:200,data:{}});

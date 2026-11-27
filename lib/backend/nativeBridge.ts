@@ -44,7 +44,10 @@ export async function handleNativePageMessage(
     if (reply.ok && REPLACES_ENGINE[message.op]) {
       // Somebody acted on the engine: one given up on after it kept dying may start again.
       engineTransport().retry?.();
-      controls.invalidate();
+      // A repeated setup can return the very same browser model while a page is scoring.
+      const reused = (message.op === "models.download" || message.op === "models.select") &&
+        isRecord(reply.data) && reply.data.model_reused === true;
+      if (!reused) controls.invalidate();
     }
     if (reply.ok) {
       const snapshot = parseComponent(reply.data);

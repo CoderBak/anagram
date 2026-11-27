@@ -753,7 +753,7 @@ export class Engine {
         checkPayloadKeys(payload,["release"]);
         if (!validRelease(payload.release)) throw new EngineError("invalid_request","Invalid detector release",422);
         if (await this.canReuseSetup(payload.release)) {
-          return { status: 200, data: this.status() };
+          return { status: 200, data: { ...this.status(), model_reused: true } };
         }
         if (this.selecting || this.downloading || this.loading || this.pendingScores) throw new EngineError("busy","The engine is busy",409);
         this.selecting=true;
@@ -766,7 +766,7 @@ export class Engine {
       case "models.download":
         if (this.selecting) throw new EngineError("busy","Model selection in progress",409);
         checkPayloadKeys(payload);
-        return { status: 200, data: await this.canReuseSetup() ? this.status() : await this.startDownload() };
+        return { status: 200, data: await this.canReuseSetup() ? { ...this.status(), model_reused: true } : await this.startDownload() };
       case "models.pause": {
         checkPayloadKeys(payload);
         if (this.download.status !== "running") throw new EngineError("busy", "There is no active download to pause", 409);
