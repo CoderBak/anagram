@@ -38,13 +38,14 @@ const candidates = (): Candidate[] => [
   { id: "wasm:fp32", label: "CPU", device: "cpu", runtime: "onnxruntime-web/wasm", precision: "fp32", experimental: false, available: true, reason: null },
 ];
 
-async function fakeSession(candidate: Candidate, model: Blob, log: string[], holdScore?: Promise<void>): Promise<LoadedSession> {
+async function fakeSession(candidate: Candidate, model: Blob, log: string[], holdScore?: Promise<void>, onScore?: () => void): Promise<LoadedSession> {
   expect(new Uint8Array(await model.arrayBuffer())).toEqual(MODEL);
   log.push(`create ${candidate.id}`);
   return {
     info: { candidate, createMs: 5, firstRunMs: 1 },
     device: candidate.id === "webgpu:fp32" ? "webgpu" : "wasm",
     async logits(ids, mask) {
+      onScore?.();
       await holdScore;
       const out = new Float32Array(ids.length * 4);
       ids.forEach((r, i) => r.forEach((id, j) => { if (mask[i]![j]) row(id).forEach((v, k) => { out[i * 4 + k]! += v; }); }));
@@ -57,7 +58,7 @@ async function fakeSession(candidate: Candidate, model: Blob, log: string[], hol
 interface Made { engine: Engine; store: MemoryStore; log: string[]; server: ReturnType<typeof fakeServer> }
 function make(options: { store?: MemoryStore; server?: FakeServerOptions; failing?: string[]; probe?: Candidate[]; idle?: boolean; lid?: Uint8Array; hold?: Promise<void>; wakeTimeoutMs?: number;
   /** Blocks a session's creation (which may honour the load's abort signal, as the real one does). */
-  gate?: (candidate: Candidate, signal: AbortSignal) => Promise<void>; holdScore?: Promise<void> } = {}): Made {
+  gate?: (candidate: Candidate, signal: AbortSignal) => Promise<void>; holdScore?: Promise<void>; onScore?: () => void } = {}): Made {
   const store = options.store ?? new MemoryStore();
   const log: string[] = [];
   const server = fakeServer(FILES, options.server);
@@ -67,7 +68,7 @@ function make(options: { store?: MemoryStore; server?: FakeServerOptions; failin
       if (options.failing?.includes(candidate.id)) { log.push(`fail ${candidate.id}`); throw new Error("no such device"); }
       await options.gate?.(candidate, signal);
       await options.hold; // a model that takes its time to load
-      return fakeSession(candidate, model, log, options.holdScore);
+      return fakeSession(candidate, model, log, options.holdScore, options.onScore);
     },
     probe: async () => options.probe ?? candidates(),
     ...(options.wakeTimeoutMs ? { wakeTimeoutMs: options.wakeTimeoutMs } : {}),
@@ -638,6 +639,32 @@ describe("the engine's lifecycle", () => {
     await m.engine.handle("models.download", {});
     expect((await ready(m.engine)).state).toBe("ready");
     expect(await m.store.read("model.onnx")).toEqual(MODEL);
+  });
+
+  it("finishes the active pass before releasing its session and withdraws outstanding scores on Stop", async () => {
+    let finish!: () => void, entered!: () => void;
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    const onScore = vi.fn(() => entered());
+    const m = track(make({ onScore, holdScore: new Promise<void>(resolve => { finish = resolve; }) }));
+    await m.engine.handle("models.download", {});
+    await ready(m.engine);
+    const payload = { v: "3.0", blocks: [{ id: "a", text: "hello world" }] };
+    const active = m.engine.handle("score", payload);
+    await began;
+    const waiting = m.engine.handle("score", payload);
+    const outcomes = Promise.allSettled([active, waiting]);
+    const stopped = m.engine.handle("engine.stop", {});
+    try {
+      await vi.waitFor(async () => expect(JSON.parse(new TextDecoder().decode(await m.store.read("state.json"))).engine_stopped).toBe(true));
+      expect(m.log).not.toContain("release webgpu:fp32");
+    } finally { finish(); }
+    expect((await stopped).data).toMatchObject({ state: "stopped" });
+    for (const outcome of await outcomes) expect(outcome).toMatchObject({ status: "rejected", reason: { code: "cancelled" } });
+    expect(onScore).toHaveBeenCalledTimes(1);
+    expect(m.log).toEqual(["create webgpu:fp32", "release webgpu:fp32"]);
+    await m.engine.handle("engine.resume", {});
+    await ready(m.engine);
+    expect((await m.engine.handle("score", payload)).data).toMatchObject({ results: [{ id: "a" }] });
   });
 
   it("bounds the score queue", async () => {

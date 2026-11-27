@@ -141,6 +141,8 @@ export class Engine {
   private pendingScores = 0;
   private settingsSaved: Promise<void> = Promise.resolve();
   private scoreChain: Promise<unknown> = Promise.resolve();
+  private scoreGeneration = 0;
+  private releasing: Promise<void> | null = null;
   private idleTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
   private started: Promise<void> | null = null;
@@ -435,7 +437,8 @@ export class Engine {
   }
 
   private startRuntime(): void {
-    if (this.closed) return;
+    if (this.closed || this.operation?.status === "running") return;
+    if (this.releasing) { void this.releasing.then(() => this.startRuntime()); return; }
     if (this.settings.engine_stopped) { this.state = "stopped"; return; }
     this.state = "loading";
     void this.load();
@@ -573,14 +576,22 @@ export class Engine {
     return `sha256:${weights.slice(0, 12)}-p${tail.slice(0, 8)}-web1`;
   }
 
-  private async releaseModel(): Promise<void> {
-    this.loadAbort?.abort();
-    if (this.loading) await this.loading.catch(() => {});
+  private releaseModel(): Promise<void> {
+    if (this.releasing) return this.releasing;
+    this.scoreGeneration++;
     this.clearIdleTimer();
-    const loaded = this.loaded;
-    this.loaded = null;
-    this.activeId = null;
-    if (loaded) await loaded.session.release().catch(() => {});
+    this.loadAbort?.abort();
+    const scores = this.scoreChain;
+    this.releasing = (async () => {
+      if (this.loading) await this.loading.catch(() => {});
+      const loaded = this.loaded;
+      this.loaded = null;
+      this.activeId = null;
+      // A running ONNX pass owns its session until its outputs have been read and disposed.
+      await scores;
+      if (loaded) await loaded.session.release().catch(() => {});
+    })().finally(() => { this.releasing = null; });
+    return this.releasing;
   }
 
   private clearIdleTimer(): void {
@@ -733,7 +744,7 @@ export class Engine {
         // Anything else is left as it is, and the idle clock is not touched: a model loaded so
         // and never asked for is let go after the idle time like any other.
         checkPayloadKeys(payload);
-        if (this.state === "idle" && !this.loaded && !this.loading) {
+        if (this.state === "idle" && !this.loaded && !this.loading && !this.releasing) {
           this.state = "loading";
           void this.load();
         }
@@ -771,6 +782,8 @@ export class Engine {
       }
       case "engine.stop": {
         checkPayloadKeys(payload);
+        // Stop scheduling windows immediately, even while the preference write awaits disk.
+        this.scoreGeneration++;
         this.settings.engine_stopped = true;
         if (this.download.status === "running") this.settings.download_paused = true;
         await this.writeSettings();
@@ -824,7 +837,7 @@ export class Engine {
   private async canReuseSetup(release?: DetectorRelease): Promise<boolean> {
     const pin = this.pin;
     if (release && (release.revision !== pin.release?.revision || release.release !== pin.release.release)) return false;
-    const active = () => !this.selecting && !this.settings.engine_stopped && this.operation?.status !== "running" &&
+    const active = () => !this.selecting && !this.releasing && !this.settings.engine_stopped && this.operation?.status !== "running" &&
       (this.state === "ready" || this.state === "loading" || this.state === "idle");
     if (!active()) return false;
     const present = await this.modelsPresent();
@@ -858,6 +871,7 @@ export class Engine {
 
   private async deleteModels() {
     if (this.operation?.status === "running") throw new EngineError("not_ready", "Reconnect the native component after this operation", 503);
+    this.scoreGeneration++;
     this.operation = { name: "delete_models", status: "running", receipt: null };
     try {
       await this.pauseDownload();
@@ -895,12 +909,23 @@ export class Engine {
   }
 
   private async score(blocks: Array<{ id: string; text: string }>, signal?: AbortSignal) {
+    if (this.releasing || this.closed || this.settings.engine_stopped || this.operation?.status === "running")
+      throw new EngineError("not_ready", "The engine is stopped or stopping", 503);
     if (this.pendingScores >= MAX_PENDING_SCORES) throw new EngineError("busy", "Too many pending score requests", 409);
+    const generation = this.scoreGeneration;
+    const check = () => {
+      if (generation !== this.scoreGeneration) throw new EngineError("cancelled", "The model was stopped or changed", 409);
+      signal?.throwIfAborted();
+    };
+    const beforePass = async () => {
+      if (signal) await yieldToMessages();
+      check();
+    };
     this.pendingScores++;
     const turn = this.scoreChain.then(async () => {
-      signal?.throwIfAborted();
+      check();
       await this.wakeAndWait();
-      signal?.throwIfAborted();
+      check();
       const loaded = this.loaded!;
       this.lastActivity = this.now();
       // engine.score_with_engine: the language gate first, then one scoring pass over what passed it.
@@ -924,18 +949,15 @@ export class Engine {
       const scored = detector ? await (async () => {
         const out = [];
         const run = async (ids: number[]) => {
-          if (signal) {
-            await yieldToMessages();
-            signal.throwIfAborted();
-          }
+          await beforePass();
           return detector.session.heads(ids);
         };
         for (const block of todo) {
           out.push(await detectorScore(block.text, loaded.tokenizer, detector.meta, detector.crf, run));
         }
         return out;
-      })() : todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text), signal) : [];
-      signal?.throwIfAborted();
+      })() : todo.length ? await scoreTexts(loaded.session, loaded.tokenizer, todo.map((b) => b.text), signal, beforePass) : [];
+      check();
       todo.forEach((block, i) => {
         const r = scored[i]!; // one result per text, in order (scoreTexts)
         results.set(block.id, { id: block.id, ...r, lang: block.lang, lang_prob: pyRound(block.prob, 3) });

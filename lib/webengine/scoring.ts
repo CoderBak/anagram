@@ -89,7 +89,8 @@ export function pad(rows: number[][], padId: number): { inputIds: number[][]; at
 }
 
 /** scoring.score_texts: one result per text, in the order given. */
-export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: string[], signal?: AbortSignal): Promise<Scored[]> {
+export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: string[], signal?: AbortSignal,
+  beforePass = signal ? yieldToMessages : undefined): Promise<Scored[]> {
   const cleaned = texts.map(cleanText);
   if (cleaned.length === 0) return [];
   const allIds = cleaned.map((text) => tokenizer.encode(text, true));
@@ -99,10 +100,8 @@ export async function scoreTexts(backend: Backend, tokenizer: Tokenizer, texts: 
   const out: Scored[] = new Array(texts.length);
   const widths = order.map((i) => Math.min(lengths[i]!, MAX_LENGTH));
   for (const [start, end] of passes(widths, backend.batchSize ?? BATCH_SIZE, backend.passTokens ?? PASS_TOKENS)) {
-    if (signal) {
-      await yieldToMessages();
-      signal.throwIfAborted();
-    }
+    if (beforePass) await beforePass();
+    signal?.throwIfAborted();
     const chunk = order.slice(start, end);
     // `order`, and so every `i` below, holds the indices of `allIds` and `lengths`.
     const rows = chunk.map((i) => {
