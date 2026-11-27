@@ -9,6 +9,7 @@ local component and the installer all carry the same version.
 
 - Upgrading from v0.9.2 adds sentence-level labels for human, AI-assisted and AI-generated text. Setup preselects the recommended detector and shows its download size. The browser engine resumes interrupted downloads, and you can inspect the optional native installer before running it.
 - Paragraph chips follow vertical text. The Analyze text toolbar and Settings controls fit narrow windows, and the installer source link has a larger click target.
+- Button text stays readable while switching between light and dark mode.
 - Release tests now check the reserved model download file and use the host’s filesystem tools when simulating another operating system. [Full changes since v0.9.2](https://github.com/CoderBak/anagram/compare/v0.9.2...v0.10.2)
 
 ## [0.10.1] — 2026-11-27

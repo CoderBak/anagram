@@ -34,7 +34,7 @@ textarea.textarea {
   line-height: 1.6;
 }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.actions .btn { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .8125rem; transition-property: color, background-color, border-color, box-shadow; }
+.actions .btn { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .8125rem; }
 .actions .btn[data-variant="ghost"] .action-icon { color: var(--muted-foreground); }
 .actions .btn[data-variant="ghost"]:hover .action-icon { color: var(--foreground); }
 .editor-meta { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }

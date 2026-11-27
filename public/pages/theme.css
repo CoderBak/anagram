@@ -112,6 +112,8 @@ html.native-switch input[type="checkbox"][switch]:focus-visible {
   font-weight: 500;
   line-height: 1.25;
   letter-spacing: -0.005em;
+  /* Switch the text and its background together when the system theme changes. */
+  transition-property: border-color, box-shadow;
 }
 .btn[data-size="sm"] { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .78125rem; }
 .btn:has(> .action-icon) { align-items: center; column-gap: 6px; }
