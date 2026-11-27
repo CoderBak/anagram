@@ -16,7 +16,9 @@
 // in-browser engine beside Retry.
 import { browser } from "#imports";
 import { t, type MessageKey } from "../i18n";
-import { TIERS, decide, type Decision } from "../device";
+import { defaultRelease, detectorBytes, type DetectorRelease } from "../detectorReleases";
+import { mountSetupDetector } from "./detectorPicker";
+import { decide, type Decision } from "../device";
 import { chooseEngine, readEngine, requestNative, type Engine } from "../backend/engineChoice";
 import { ACTIONS } from "../messaging/protocol";
 import { storedModelBytes } from "../webengine/autoSetup";
@@ -74,18 +76,18 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   const choice = element("div", undefined, "engine-choice"); choice.hidden = true;
   const cards = element("div", undefined, "engine-choice-cards");
   const oneClick = element("section", undefined, "engine-choice-card"); oneClick.dataset.engine = "inbrowser"; oneClick.dataset.recommended = "";
-  const oneClickTitle = element("h3", t("engineOneClick"));
+  const oneClickTitle = element("h3", t("engineTitle"));
   oneClickTitle.id = "engine-choice-inbrowser";
   const recommendation = element("span", t("engineRecommended"), "engine-recommendation");
   const oneClickHead = element("div", undefined, "engine-choice-head"); oneClickHead.append(oneClickTitle, recommendation);
   const oneClickTight = element("p", t("engineTight"), "engine-note"); oneClickTight.hidden = true;
-  const oneClickButton = button("engineOneClickButton", undefined, formatSize(TIERS[0].bytes));
+  const oneClickButton = button("engineOneClickButton", undefined, formatSize(detectorBytes(defaultRelease)));
   oneClickButton.id = "engine-pick-inbrowser";
   oneClickButton.setAttribute("aria-describedby", "engine-choice-inbrowser");
   oneClick.setAttribute("aria-labelledby", oneClickTitle.id);
   oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")), oneClickTight, oneClickButton);
   const terminal = element("section", undefined, "engine-choice-card"); terminal.dataset.engine = "native";
-  const terminalTitle = element("h3", t("engineTerminal")); terminalTitle.id = "engine-choice-native";
+  const terminalTitle = element("h3", t("componentTitle")); terminalTitle.id = "engine-choice-native";
   const terminalWhat = element("p");
   const terminalInstructions = element("span");
   const source = element("a", t("componentViewScript"), "installer-source");
@@ -112,7 +114,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   // The setup page's crash fallback, handed to the local engine's panel to show beside Retry.
   const fallback = button("engineSwitchToInBrowser", "outline"); fallback.id = "engine-crash-switch"; fallback.dataset.size = "sm";
 
-  panelHost.before(choice, cannot);
+  const modelRow = element("div", undefined, "setup-model");
+  modelRow.hidden = true;
+  panelHost.before(modelRow, choice, cannot);
   panelHost.after(tight, switchError);
   const safariNote = element("p", t("safariEngineTabNote"), "engine-note");
   safariNote.hidden = true;
@@ -128,11 +132,21 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   const setTitle = (key: MessageKey): void => { if (title) { title.textContent = t(key); title.dataset.i18n = key; } };
 
   /** What this device can run, read once. */
-  let deciding: Promise<Decision> | null = null;
-  const device = (): Promise<Decision> => deciding ??= readDeviceInputs().then(decide).then((d) => (decision = d));
+  let selected: DetectorRelease | null = defaultRelease;
+  let inputs: ReturnType<typeof readDeviceInputs> | undefined;
+  const device = async (): Promise<Decision> => {
+    inputs ??= readDeviceInputs();
+    return decision = decide(await inputs, detectorBytes(selected ?? defaultRelease));
+  };
+  const loadModels = mountSetupDetector(modelRow, pin => {
+    selected = pin;
+    paintBusy();
+    if (pin) void device().then(d => { if (!engine && selected === pin) showChoice(d); });
+  });
 
   function show(next: Engine): void {
     engine = next;
+    modelRow.hidden = true;
     safariNote.hidden = !IS_SAFARI || next !== "inbrowser";
     choice.hidden = cannot.hidden = true;
     setTitle(next === "native" ? "componentTitle" : "engineTitle");
@@ -165,6 +179,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
 
   function showChoice(d: Decision): void {
     engine = null;
+    modelRow.hidden = false;
     safariNote.hidden = true;
     if (settings && title) choice.before(title.closest<HTMLElement>(".panel-title") ?? title);
     panel?.destroy(); panel = undefined;
@@ -176,12 +191,12 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       cannot.hidden = false; choice.hidden = true;
     } else {
       // Where the model does not fit but the local engine installs: one way to run it.
-      setTitle(d.offer === "terminal-only" ? "componentTitle" : "engineChooseTitle");
+      setTitle(d.offer === "terminal-only" ? "componentTitle" : d.offer === "auto-inbrowser" ? "engineTitle" : "engineChooseTitle");
       cannot.hidden = true; choice.hidden = false;
       oneClick.hidden = d.offer === "terminal-only";
       terminal.hidden = d.offer === "auto-inbrowser";
       // The lighter model says so where it is offered; FP32 on 4 GB says the computer may slow down.
-      const bytes = TIERS.find((tier) => tier.id === d.tier)?.bytes ?? TIERS[0].bytes;
+      const bytes = detectorBytes(selected ?? defaultRelease);
       oneClickButton.textContent = t("engineOneClickButton", formatSize(bytes));
       oneClickTight.textContent = t("engineTight");
       oneClickTight.hidden = !d.tight;
@@ -203,7 +218,7 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     try {
       // The model tier this device gets goes with the pick: the engine starts on it.
       const d = decision ?? await device().catch(() => null);
-      const reply = await chooseEngine("inbrowser", setup, d?.tier ? { tier: d.tier, fallback: d.fallback !== null } : undefined);
+      const reply = await chooseEngine("inbrowser", setup, d?.tier ? { tier: d.tier, fallback: d.fallback !== null } : undefined, engine ? undefined : selected ?? undefined);
       if (!reply.ok) { issue.textContent = t("engineSwitchFailed"); issue.hidden = false; return; }
       show("inbrowser");
     } finally { source.textContent = label; busy = false; paintBusy(); }
@@ -215,14 +230,16 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
     busy = true; paintBusy();
     void requestNative().then(async (granted) => {
       if (!granted) { onRefused(t("engineNativeRefused")); return; }
-      const reply = await chooseEngine("native");
+      const reply = await chooseEngine("native", undefined, undefined, engine ? undefined : selected ?? undefined);
       if (!reply.ok) { onRefused(t(reply.error === "permission" ? "engineNativeRefused" : "engineSwitchFailed")); return; }
       show("native");
     }).finally(() => { busy = false; paintBusy(); });
   }
 
   function paintBusy(): void {
-    oneClickButton.disabled = terminalButton.disabled = switchButton.disabled = fallback.disabled = deleteLeftover.disabled = busy;
+    modelRow.querySelector("select")!.disabled = busy;
+    oneClickButton.disabled = terminalButton.disabled = busy || !selected;
+    switchButton.disabled = fallback.disabled = deleteLeftover.disabled = busy;
   }
 
   async function paintSwitch(): Promise<void> {
@@ -266,8 +283,10 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
       void device().then(paintTight, () => undefined);
       return;
     }
+    const catalog = await loadModels();
+    selected = catalog.pin;
     const d = await device();
-    if (d.offer === "auto-inbrowser") { await pickInBrowser("auto"); if (engine) return; }
+    if (d.offer === "auto-inbrowser" && !catalog.multiple) { await pickInBrowser("auto"); if (engine) return; }
     showChoice(d);
   }
   void start();

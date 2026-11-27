@@ -462,8 +462,9 @@ export function assemble(pieces: Piece[], located: Located, vocab: Vocabulary | 
 
   // ---- formulas: the math tokens and the letterless tokens beside them ----
   const glyphAt = (t: Token, last: boolean): Glyph | null => {
-    for (const i of last ? [...t.at].reverse() : t.at) if (pieces[i]!.glyph) return pieces[i]!.glyph;
-    return null;
+    const hasGlyph = (i: number) => !!pieces[i]!.glyph;
+    const index = last ? t.at.findLast(hasGlyph) : t.at.find(hasGlyph);
+    return index === undefined ? null : pieces[index]!.glyph;
   };
   const beside = (a: Token, b: Token): boolean => {
     const x = glyphAt(a, true), y = glyphAt(b, false);

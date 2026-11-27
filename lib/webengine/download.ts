@@ -177,7 +177,7 @@ export async function downloadFile(store: FileStore, entry: PinnedFile, options:
     } catch (error) {
       if (error instanceof DownloadPaused) throw error;
       // A full disk stays full however often it is asked, whichever write found it so.
-      if (outOfSpace(error)) throw noRoomFor(entry.name);
+      if (outOfSpace(error)) throw noRoomFor(entry.path ?? entry.name);
       // A host that answers nothing: the next address, at once, without spending a retry.
       if (error instanceof DownloadFailed && error.unreachable && source < sources.length - 1) {
         source++;

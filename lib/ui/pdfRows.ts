@@ -22,7 +22,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 
 function switchInput(id: string): HTMLInputElement {
   const input = el("input");
-  input.id = id; input.className = "input"; input.type = "checkbox"; input.setAttribute("role", "switch");
+  input.id = id; input.className = "input"; input.type = "checkbox";
+  input.setAttribute("switch", "");
+  input.setAttribute("role", "switch");
   return input;
 }
 

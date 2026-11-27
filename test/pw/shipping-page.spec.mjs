@@ -59,12 +59,15 @@ test.describe("Sentence-level detector", () => {
           if (!details) return null;
           // The card repositions when it expands. Activate the summary at its current element.
           if (toggle) details.querySelector("summary").click();
-          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open };
+          const classes = [...root.querySelectorAll(".drow .dk")].map(label => label.textContent);
+          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open, classes };
         },
       });
       return frame.result;
     }, {url: page.url(), toggle});
-    await expect.poll(() => readCard(), {timeout: 20_000}).toMatchObject({ mode: "closed", open: false });
+    await expect.poll(() => readCard(), {timeout: 20_000}).toMatchObject({
+      mode: "closed", open: false, classes: ["Human", "AI-assisted", "AI-generated"],
+    });
     await page.locator('[data-anagram="host"]').click();
     await expect.poll(() => readCard()).toMatchObject({ pinned: true });
     for (const open of [true, false]) {

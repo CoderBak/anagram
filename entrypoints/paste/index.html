@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title data-i18n="pasteTitle">Analyze text</title>
@@ -41,7 +42,7 @@
         <section id="results" aria-labelledby="summary" hidden>
           <header class="result-heading">
             <div class="verdict"><h2 id="summary" tabindex="-1"></h2><span class="chip" id="score" aria-describedby="estimate"></span></div>
-            <button id="scoreToggle" class="disclosure-action" type="button" aria-controls="scoreDetails" aria-expanded="false" data-i18n="scoreBreakdown">Score breakdown</button>
+            <button id="scoreToggle" class="disclosure-action" type="button" aria-controls="scoreDetails" aria-expanded="false"><span data-i18n="scoreBreakdown">Score breakdown</span></button>
           </header>
           <p class="muted" id="coverage"></p>
           <div id="scoreDetails" hidden>

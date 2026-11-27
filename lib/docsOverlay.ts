@@ -70,6 +70,14 @@ const OVERLAY_CSS = `
 .ovl {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: rgba(241, 243, 244, 0.99);
@@ -89,7 +97,8 @@ const OVERLAY_CSS = `
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   padding: 10px 18px;
   background: #ffffff;
   border-bottom: 1px solid #e5e5e5;
@@ -101,14 +110,14 @@ const OVERLAY_CSS = `
   flex: 0 0 auto;
   display: block;
 }
-.bar .titles { flex: 1 1 auto; min-width: 0; }
 .bar .t {
+  flex: 1 1 auto;
+  min-width: 0;
   font: 600 14px/1.3 Arial, "Liberation Sans", Helvetica, sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bar .s { font: 400 11px/1.3 Arial, "Liberation Sans", Helvetica, sans-serif; color: #656d76; }
 .bar button {
   flex: 0 0 auto;
   font: 600 12px/1 Arial, "Liberation Sans", Helvetica, sans-serif;
@@ -147,13 +156,6 @@ const OVERLAY_CSS = `
 .paper img { max-width: 100%; height: auto; }
 .paper table { max-width: 100%; }
 
-.notice {
-  max-width: 760px;
-  margin: 0 auto 14px;
-  font: 400 12px/1.5 Arial, "Liberation Sans", Helvetica, sans-serif;
-  color: #656d76;
-  text-align: center;
-}
 `;
 
 let _sheet: CSSStyleSheet | null = null;
@@ -233,7 +235,8 @@ export async function loadDocsContent(
 export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
   let host: HTMLElement | null = null;
   // The parts a refresh writes into; all of them live inside `host`.
-  let scroller: HTMLElement | null = null;
+  let scroller: HTMLDialogElement | null = null;
+  let opening: Promise<boolean> | null = null;
   let paper: HTMLElement | null = null;
   let docStyle: HTMLStyleElement | null = null;
   let titleEl: HTMLElement | null = null;
@@ -245,7 +248,7 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
 
   function close(): void {
     if (!host) return;
-    document.removeEventListener("keydown", onKey, true);
+    if (scroller?.open) scroller.close();
     host.remove(); // MutationObserver sees the removal → units purge themselves
     host = null;
     scroller = null;
@@ -254,13 +257,6 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     titleEl = null;
     refreshBtn = null;
     opts.onClose?.();
-  }
-
-  function onKey(e: KeyboardEvent): void {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      close();
-    }
   }
 
   /**
@@ -272,11 +268,13 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
    */
   async function refresh(): Promise<boolean> {
     if (!isOpen() || !paper || refreshBtn?.disabled) return false;
-    if (refreshBtn) refreshBtn.disabled = true;
+    const snapshot = paper;
+    const button = refreshBtn;
+    if (button) button.disabled = true;
     try {
       const fresh = await loadDocsContent(opts.id, opts.tab, opts.fetch);
       // Closed (or reopened) while the fetch was in flight — that document is not ours.
-      if (!fresh || !paper?.isConnected) return false;
+      if (!fresh || snapshot !== paper || !paper.isConnected) return false;
       const top = scroller?.scrollTop ?? 0;
       const heightBefore = scroller?.scrollHeight ?? 0;
       paper.replaceChildren(...fresh.content.childNodes);
@@ -287,13 +285,17 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
       if (scroller && scroller.scrollHeight >= heightBefore) scroller.scrollTop = top;
       return true;
     } finally {
-      if (refreshBtn) refreshBtn.disabled = false;
+      if (button) button.disabled = false;
     }
   }
 
-  async function open(): Promise<boolean> {
-    if (isOpen()) return true;
+  function open(): Promise<boolean> {
+    if (isOpen()) return Promise.resolve(true);
+    opening ??= mount().finally(() => { opening = null; });
+    return opening;
+  }
 
+  async function mount(): Promise<boolean> {
     const doc = await loadDocsContent(opts.id, opts.tab, opts.fetch);
     if (!doc) return false;
 
@@ -307,7 +309,9 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     // The underline rules must exist in this tree scope too.
     shadow.adoptedStyleSheets = [overlaySheet(), ...highlightSheets()];
 
-    const ovl = document.createElement("div");
+    const ovl = document.createElement("dialog");
+    ovl.setAttribute("aria-labelledby", "anagram-ovl-title");
+    ovl.addEventListener("close", () => { if (scroller === ovl) close(); });
     ovl.className = "ovl";
     // The BAR is ours and speaks the UI's language; the paper below it is the user's
     // document, which keeps whatever language its own markup declares.
@@ -321,15 +325,10 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     // The bar is always white: the light tile.
     const mark = logoImage("light", "mark");
 
-    const titles = document.createElement("div");
-    titles.className = "titles";
     titleEl = document.createElement("div");
     titleEl.className = "t";
+    titleEl.id = "anagram-ovl-title";
     titleEl.textContent = doc.title || t("docsUntitled");
-    const s = document.createElement("div");
-    s.className = "s";
-    s.textContent = t("docsSubtitle");
-    titles.append(titleEl, s);
 
     refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
@@ -349,39 +348,27 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
+    closeBtn.autofocus = true;
     closeBtn.className = "primary";
     closeBtn.id = "anagram-ovl-close";
     closeBtn.textContent = t("docsBack");
     closeBtn.addEventListener("click", close);
 
-    bar.append(mark, titles, refreshBtn, openPage, closeBtn);
+    bar.append(mark, titleEl, refreshBtn, openPage, closeBtn);
 
     const paperwrap = document.createElement("div");
     paperwrap.className = "paperwrap";
-    const notice = document.createElement("div");
-    notice.className = "notice";
-    notice.setAttribute(MARK_ATTR, "host");
-    notice.textContent = t("docsSnapshotNotice");
     paper = document.createElement("main");
     paper.className = "paper";
     paper.append(...doc.content.childNodes);
-    paperwrap.append(notice, paper);
+    paperwrap.append(paper);
 
     ovl.append(bar, paperwrap);
     shadow.append(docStyle, ovl);
 
-    // Below the FAB (2147483647) so the ball + panel stay usable above it. The HOST
-    // itself stays IN FLOW (it has no size — .ovl inside is the fixed full-screen
-    // layer): the walker drops a small out-of-flow box as a decoration, and a shadow
-    // host's own textContent is empty however much its shadow tree holds, so a fixed
-    // host made the whole document invisible to the scan.
-    host.style.cssText = "position:relative;z-index:2147483645;";
+    // Leave the shadow host in flow so the document walker can reach the paper.
     (document.body ?? document.documentElement).appendChild(host);
-    document.addEventListener("keydown", onKey, true);
-    // Pull keyboard focus OUT of the editor: Docs focuses a cross-origin iframe
-    // whose key events can never reach this document — without this, Esc would
-    // silently go to the canvas instead of closing the overlay.
-    closeBtn.focus({ preventScroll: true });
+    ovl.showModal();
     return true;
   }
 

@@ -214,7 +214,7 @@ async function syncNow(): Promise<void> {
 }
 
 function sameMatches(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && [...a].sort().join(" ") === [...b].sort().join(" ");
+  return a.length === b.length && a.toSorted().join(" ") === b.toSorted().join(" ");
 }
 
 /**

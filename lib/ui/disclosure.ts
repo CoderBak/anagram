@@ -15,7 +15,9 @@ export function engineManagement(row: HTMLElement, controls: HTMLElement, inSett
   const button = document.createElement("button");
   button.type = "button";
   button.className = "disclosure-action engine-manage";
-  button.textContent = t("engineManage");
+  const label = document.createElement("span");
+  label.textContent = t("engineManage");
+  button.append(label);
   button.id = "engine-manage";
   row.append(button);
   const panel = document.createElement("div");

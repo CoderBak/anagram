@@ -93,7 +93,8 @@ npm run test:inbrowser             # the engine choice per device and the in-bro
 ANAGRAM_MODELKIT=/path/to/snapshot node test/inbrowser.mjs --measure-scans  # warm and replacement scans, with the runtime and detector revision
 npm run test:paste                 # the paste page, pass readout and report
 npm run test:pseudo-locale         # every page in a stretched pseudo-locale, Chinese and English: nothing cut off, off-page or overlapping
-node test/ui-screens.mjs <dir>       # screenshots of the setup page, Settings, popup and a page with chips, EN and ZH, light and dark, on stand-in devices with scripted engine states (test/pw/devices.mjs, test/webengine/scripted-engine.mjs)
+ANAGRAM_MODELKIT=<pinned detector snapshot> node test/ui-screens.mjs <dir>  # EN and ZH, light and dark. Articles and PDFs use real scores. Setup and Settings use scripted device states.
+node test/ui-screens.mjs <dir> apple,linux  # setup screenshots without model files
 npm run test:pdf-viewer            # upstream reader: find, zoom, recycling, file limits
 npx playwright test                # the suites in test/pw/ (Playwright Test), no network; ANAGRAM_LIVE=1 adds the real sites; --repeat-each 10 hunts a flake, a failure keeps its trace
 npm run test:pdf-install           # PDF setup and local-file access flow, EN and ZH
@@ -133,8 +134,8 @@ real-model checks; they need existing verified weights and `(cd anagramd && uv s
 ## Safari
 
 The Safari target is macOS only, Safari 27+ (WebAssembly JSPI). It uses the same setup
-cards and Settings switch as Chrome and Firefox: recommended **One click** in the browser,
-and optional **Terminal** for the separate engine on Apple Silicon Macs. Setup probes the
+cards and Settings switch as Chrome and Firefox: the recommended **In-browser engine**,
+and optional **Local engine** on Apple Silicon Macs. Setup probes the
 containing app without starting Python; temporary extensions and browser-only wrappers
 have no XPC service, so they offer only the browser engine. Declaring `nativeMessaging`
 does not select an engine. It is required in Safari, optional in Chrome/Firefox.
@@ -187,8 +188,8 @@ open the app at the printed path, and enable Anagram in Safari's Extensions sett
 For ad-hoc development builds, enable Safari's developer option to allow unsigned
 extensions. Then verify:
 
-1. A fresh full-app install offers the shared One click / Terminal cards on Apple Silicon.
-   One click downloads the pinned model and reaches Ready on WebGPU. A temporary extension
+1. A fresh full-app install offers the In-browser engine and Local engine options on Apple Silicon.
+   The in-browser engine downloads the pinned model and reaches Ready on WebGPU. A temporary extension
    offers only the browser engine. Unsupported adapters do not start a browser download.
 2. Analyze an English article once, grant/revoke a site, and inspect paragraph chips,
    the toolbar result list, shortcuts, and settings in English and Chinese. Pin Anagram

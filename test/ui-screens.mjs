@@ -5,15 +5,16 @@
 //   node test/ui-screens.mjs <output dir> [apple,linux,chips]   (LANGS=en SCHEMES=light narrow it)
 //
 // The setup page and Settings are shown on stand-in devices (test/pw/devices.mjs) with the
-// in-browser engine's states scripted into them (test/webengine/scripted-engine.mjs); the chips
-// come from the test build's fake host, so the four scores are the ones asked for.
+// in-browser engine's states scripted into them (test/webengine/scripted-engine.mjs).
+// For the chips, point ANAGRAM_MODELKIT at the pinned detector snapshot.
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { launchExtension, uiLanguage, uiLanguageOf, waitForRegistration, BADGE_SEL, serveHtml } from "./harness.mjs";
+import { launchExtension, uiLanguage, uiLanguageOf, BADGE_SEL, serveHtml } from "./harness.mjs";
 import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
-import { scriptEngine, scriptDevice } from "./webengine/scripted-engine.mjs";
+import { scriptEngine } from "./webengine/scripted-engine.mjs";
 import { NO_MODEL_HOSTS } from "./webengine/model-server.mjs";
+import { withScreenshotDetector } from "./webengine/screenshot-detector.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
 
 const out = resolve(process.argv[2] ?? "ui-screens");
@@ -63,22 +64,28 @@ async function run(build, lang, body) {
   } finally { await launched.context.close(); }
 }
 
-async function shot(ctx, { file, url, scheme, width, script, ready, tall }) {
+async function shot(ctx, { file, url, scheme, width, script, ready = painted, popup = false }) {
   const page = await ctx.context.newPage();
-  await page.setViewportSize({ width, height: tall ?? 900 });
+  await page.setViewportSize({ width, height: popup ? 600 : 900 });
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: "no-preference" });
   if (script) await script(page);
   await page.goto(url);
-  await (ready ?? painted)(page);
-  await page.screenshot({ path: file, fullPage: true });
+  await ready(page);
+  if (popup) await capturePopup(page, file);
+  else await page.screenshot({ path: file, fullPage: true });
   await page.close();
+}
+
+// Chromium sizes the toolbar window to the popup document, up to its 600px height limit.
+async function capturePopup(page, path) {
+  await page.locator("html").screenshot({ path, animations: "disabled" });
 }
 
 /**
  * The toolbar menu as it opens over `target`: its page at native width, believing `target` is the
  * active tab — everything else (the page's answers, the worker's) is the real thing.
  */
-async function popupOver(ctx, target, { file, scheme, breakdownFile }) {
+async function popupOver(ctx, target, { file, scheme, breakdownFile, actionBesideTitle = false }) {
   // An extension page's address is one the menu is not told (the reader's): it gets the id alone.
   const own = target.url().startsWith("chrome-extension://");
   const url = own ? undefined : target.url();
@@ -93,19 +100,19 @@ async function popupOver(ctx, target, { file, scheme, breakdownFile }) {
     chrome.tabs.query = (info, ...rest) => (info?.active ? Promise.resolve([{ id: tabId, url, active: true, windowId: -1, index: 0 }]) : query(info, ...rest));
   }, { tabId, url });
   await popup.goto(`chrome-extension://${ctx.extId}/popup.html`);
-  await popup.waitForFunction(() => !document.getElementById("action")?.disabled, null, { timeout: 10000 }).catch(() => {});
+  await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
   await popup.waitForTimeout(1500);
-  const capture = async (path) => {
-    const clip = await popup.evaluate(() => {
-      const { width, height } = document.body.getBoundingClientRect();
-      return { x: 0, y: 0, width: Math.ceil(width), height: Math.min(innerHeight, Math.ceil(height)) };
-    });
-    await popup.screenshot({ path, clip });
-  };
-  await capture(file);
+  if (actionBesideTitle) {
+    const title = await popup.locator("h1").boundingBox();
+    const action = await popup.locator(".page-actions > button:visible").boundingBox();
+    if (!action || action.y >= title.y + title.height || action.y + action.height <= title.y) {
+      throw new Error(`The page action is on a row by itself in ${file}`);
+    }
+  }
+  await capturePopup(popup, file);
   if (breakdownFile) {
     await popup.locator("#pageReport summary").click();
-    await capture(breakdownFile);
+    await capturePopup(popup, breakdownFile);
   }
   await popup.close();
 }
@@ -114,8 +121,9 @@ const apple = deviceBuild("apple-silicon", DEVICES["apple-silicon"]);
 const linux = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
 
 for (const [lang, tag] of LANGS) {
+  const filename = (what, scheme) => join(out, `${what}-${tag}-${scheme}.png`);
   for (const scheme of SCHEMES) {
-    const name = (what) => join(out, `${what}-${tag}-${scheme}.png`);
+    const name = (what) => filename(what, scheme);
     if (wanted("apple")) await run(apple, lang, async (ctx) => {
       const u = (p) => `chrome-extension://${ctx.extId}/${p}`;
       await shot(ctx, { file: name("landing-choice"), url: u("onboarding.html"), scheme, width: 900, script: (p) => scriptEngine(p, "needed", { engine: null }) });
@@ -127,24 +135,39 @@ for (const [lang, tag] of LANGS) {
       await shot(ctx, { file: name("landing-mirror"), url: u("onboarding.html"), scheme, width: 900, script: (p) => scriptEngine(p, "mirror") });
       await shot(ctx, { file: name("landing-ready"), url: u("onboarding.html"), scheme, width: 900, script: (p) => scriptEngine(p, "ready_gpu") });
       const popupReady = (page) => page.waitForFunction(() => !document.getElementById("action")?.disabled, null, { timeout: 10000 }).then(() => page.waitForTimeout(500));
-      await shot(ctx, { file: name("popup-downloading"), url: u("popup.html"), scheme, width: 300, tall: 400, script: (p) => scriptEngine(p, "downloading"), ready: popupReady });
-      await shot(ctx, { file: name("popup-ready"), url: u("popup.html"), scheme, width: 300, tall: 400, script: (p) => scriptEngine(p, "ready_gpu"), ready: popupReady });
+      await shot(ctx, { file: name("popup-downloading"), url: u("popup.html"), scheme, width: 300, popup: true, script: (p) => scriptEngine(p, "downloading"), ready: popupReady });
+      await shot(ctx, { file: name("popup-ready"), url: u("popup.html"), scheme, width: 300, popup: true, script: (p) => scriptEngine(p, "ready_gpu"), ready: popupReady });
     });
-    if (wanted("chips")) await run(undefined, lang, async (ctx) => {
+  }
+  if (wanted("chips")) await withScreenshotDetector(lang, async (ctx) => {
+    for (const scheme of SCHEMES) {
+      const name = (what) => filename(what, scheme);
       const site = await serveHtml({ "/chips.html": chipsHtml(scheme === "dark"), "/doc.pdf": TEST_PDF });
       try {
-        await waitForRegistration(ctx.sw);
+        await ctx.sw.evaluate(() => chrome.storage.local.set({ autoOpenPdfs: false }));
         const page = await ctx.context.newPage();
         await page.setViewportSize({ width: 900, height: 900 });
         await page.emulateMedia({ colorScheme: scheme });
         await page.goto(site.url("/chips.html"));
-        await page.waitForFunction((sel) => document.querySelectorAll(sel).length >= 4 && [...document.querySelectorAll(sel)].every((h) => h.shadowRoot?.querySelector(".pill.scored")), BADGE_SEL, { timeout: 20000 });
-        // Hover the third chip: its card opens beside the others.
-        const chip = page.locator(BADGE_SEL).nth(2);
+        await page.waitForFunction(({ selector, count }) => {
+          const hosts = [...document.querySelectorAll(selector)];
+          return hosts.filter(h => h.shadowRoot?.querySelector(".pill.scored")).length >= count &&
+            hosts.every(h => !h.shadowRoot?.querySelector(".pill.pending"));
+        }, { selector: BADGE_SEL, count: passages.length + 1 }, { timeout: 90_000 });
+        // Pin the third score and show the model's sentence labels.
+        const chip = page.locator(BADGE_SEL).filter({ has: page.locator(".pill.scored") }).nth(2);
         await chip.scrollIntoViewIfNeeded();
-        await chip.hover();
-        await page.waitForTimeout(900);
-        await page.screenshot({ path: name("chips"), fullPage: true });
+        await chip.locator(".pill").click();
+        const card = chip.locator(".card");
+        await card.waitFor({ state: "visible" });
+        const labels = await ctx.sw.evaluate(() => ["bandHuman", "bandAssisted", "bandAi"].map(key => chrome.i18n.getMessage(key)));
+        const rendered = await card.locator(".drow .dk").allTextContents();
+        if (JSON.stringify(rendered) !== JSON.stringify(labels) || !await card.locator(".sentence-labels").count()) {
+          throw new Error(`Unexpected paragraph breakdown: ${rendered.join(", ")}`);
+        }
+        await card.locator(".sentence-labels summary").click();
+        await page.screenshot({ path: name("chips"), fullPage: true, animations: "disabled" });
+        await chip.locator(".pill").click();
         await page.mouse.move(5, 5);
         // The toolbar menu over that page: everything Anagram offers on a page is in it.
         await popupOver(ctx, page, { file: name("popup-page"), breakdownFile: name("popup-breakdown"), scheme });
@@ -153,12 +176,14 @@ for (const [lang, tag] of LANGS) {
         const off = await ctx.context.newPage();
         await off.goto(site.url("/chips.html"));
         await off.waitForTimeout(800);
-        await popupOver(ctx, off, { file: name("popup-off"), scheme });
+        await popupOver(ctx, off, { file: name("popup-off"), scheme, actionBesideTitle: true });
+        await off.close();
         await ctx.sw.evaluate(() => chrome.storage.local.set({ siteOverrides: {} }));
         const pdf = await ctx.context.newPage();
         await pdf.goto(site.url("/doc.pdf")).catch(() => {});
         await pdf.waitForTimeout(1500);
-        await popupOver(ctx, pdf, { file: name("popup-pdf"), scheme });
+        await popupOver(ctx, pdf, { file: name("popup-pdf"), scheme, actionBesideTitle: true });
+        await pdf.close();
         // The reader, with its chips, and the menu over it.
         await ctx.sw.evaluate(() => chrome.storage.local.set({ autoOpenPdfs: true }));
         const reader = await ctx.context.newPage();
@@ -166,14 +191,15 @@ for (const [lang, tag] of LANGS) {
         await reader.emulateMedia({ colorScheme: scheme });
         await reader.goto(site.url("/doc.pdf")).catch(() => {});
         await reader.waitForURL(/reader\.html/, { timeout: 20000 });
-        await reader.waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill.scored")).length >= 2, BADGE_SEL, { timeout: 30000 });
+        await reader.waitForFunction((sel) => [...document.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill.scored")).length >= 2, BADGE_SEL, { timeout: 90_000 });
         await reader.waitForTimeout(800);
         await reader.screenshot({ path: name("reader") });
         await popupOver(ctx, reader, { file: name("popup-reader"), scheme });
+        await reader.close();
         await page.close();
       } finally { await site.close(); }
-    });
-  }
+    }
+  });
 }
 
 console.log("screenshots in", out);

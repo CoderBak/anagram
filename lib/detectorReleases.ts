@@ -41,6 +41,10 @@ export function validRelease(r: unknown): r is DetectorRelease {
     )
   );
 }
+export function detectorBytes(pin: DetectorRelease): number {
+  return pin.files.reduce((sum, file) => sum + file.size_bytes, 0);
+}
+
 export interface ReleaseRef {
   release: string;
   revision: string;
@@ -88,15 +92,66 @@ export async function listDetectorReleases(signal?: AbortSignal): Promise<Releas
       a.release.localeCompare(b.release, "en", { numeric: true }),
   );
 }
+interface HubRevision {
+  sha: string;
+  siblings: { rfilename: string; size: number; lfs?: { sha256: string } }[];
+}
+
+async function revisionInfo(revision: string, signal?: AbortSignal): Promise<HubRevision> {
+  return JSON.parse(new TextDecoder().decode(await read(api + "/revision/" + revision + "?blobs=true", 2 ** 20, signal)));
+}
+
+export interface SetupCatalog {
+  choices: ReleaseRef[];
+  recommended: DetectorRelease | null;
+  listed: boolean;
+}
+
+/** The Hub exposes revision metadata even when a gated repository restricts its refs. */
+export async function setupCatalog(signal?: AbortSignal): Promise<SetupCatalog> {
+  const [refs, info] = await Promise.all([
+    listDetectorReleases(signal).catch(() => null),
+    revisionInfo("default", signal).catch(() => null),
+  ]);
+  const choices = [...(refs ?? [])];
+  let recommended: DetectorRelease | null = null;
+  if (info && commit.test(info.sha)) {
+    let ref = choices.find(r => r.revision === info.sha) ?? (info.sha === initial.revision ? initial : null);
+    // A maintainer can move the default branch before creating its dated tag.
+    if (!ref) {
+      try {
+        const bytes = await read(`${root}/resolve/${info.sha}/model.json`, 65536, signal);
+        const meta = JSON.parse(new TextDecoder().decode(bytes));
+        const release = `${meta.release_date}-${meta.size}`;
+        if (releaseName(release)) ref = {release, revision:info.sha};
+      } catch { /* The Hub may restrict access to this revision's files. */ }
+    }
+    if (ref) {
+      if (info.sha === initial.revision) {
+        const files = initial.files.map(file => {
+          const live = info.siblings?.find(item => item.rfilename === file.path);
+          if (live?.size !== file.size_bytes || (live.lfs && live.lfs.sha256 !== file.sha256)) return null;
+          return { ...file, size_bytes: live.size };
+        });
+        if (files.every(file => file !== null)) recommended = { ...initial, files };
+      } else {
+        recommended = await resolveDetectorRelease(ref, signal, info).catch(() => null);
+      }
+    }
+  }
+  if (recommended && !choices.some(ref => ref.revision === recommended.revision)) choices.unshift({release: recommended.release, revision: recommended.revision});
+  if (!choices.some(ref => ref.revision === initial.revision)) choices.push({release: initial.release, revision: initial.revision});
+  return { choices, recommended, listed: refs !== null };
+}
+
 export async function resolveDetectorRelease(
   ref: ReleaseRef,
   signal?: AbortSignal,
+  info?: HubRevision,
 ): Promise<DetectorRelease> {
   if (!releaseName(ref.release) || !commit.test(ref.revision)) throw new Error("Invalid detector release");
   if (ref.release === initial.release && ref.revision === initial.revision) return initial;
-  const data = JSON.parse(
-    new TextDecoder().decode(await read(api + "/revision/" + ref.revision + "?blobs=true", 2 ** 20, signal)),
-  );
+  const data = info ?? await revisionInfo(ref.revision, signal);
   if (data.sha !== ref.revision) throw new Error("Release revision changed");
   const smallFiles = new Map<string, Uint8Array<ArrayBuffer>>();
   const metadata = async (path: string) => {
@@ -114,7 +169,7 @@ export async function resolveDetectorRelease(
       const item = data.siblings?.find((s: { rfilename: string }) => s.rfilename === path);
       if (!item || !Number.isSafeInteger(item.size) || item.size <= 0)
         throw new Error("Incomplete detector release");
-      let sha256: string = item.lfs?.sha256;
+      let sha256 = item.lfs?.sha256;
       if (!sha256) {
         if (item.size > 16 * 2 ** 20) throw new Error("Missing weight checksum");
         const bytes =

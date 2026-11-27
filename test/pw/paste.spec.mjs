@@ -120,7 +120,7 @@ test("the copied report carries the model and the caveat, and the text only when
   await expect(page.locator("#copyStatus")).toHaveText(/^Copied/);
   const sanitized = await copied();
   expect(sanitized).toContain("fake-editlens");
-  expect(sanitized, "The copied result carries its caveat").toContain("Exclude these scores from disciplinary and other high-stakes decisions.");
+  expect(sanitized, "The copied result carries its caveat").toContain("Do not use them to make disciplinary or other high-stakes decisions.");
   expect(sanitized).not.toContain(TEXT);
   await page.locator("#includeText").check();
   await page.locator("#copy").click();

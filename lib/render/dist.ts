@@ -43,7 +43,7 @@ export function sentenceDetailsHtml(verdict:UnitVerdict):string {
     const prefix=verdict.windows.length>1 ? `<strong>${t("detectorPass",i+1)}</strong> ` : "";
     return [`<p>${prefix}${sentenceReadout(labels)}</p>`];
   });
-  return lines.length ? `<details class="sentence-labels"><summary>${t("detectorSentences")}</summary><div>${lines.join("")}</div></details>` : "";
+  return lines.length ? `<details class="sentence-labels"><summary><span>${t("detectorSentences")}</span></summary><div>${lines.join("")}</div></details>` : "";
 }
 
 /** A dot in the word's colour. */
@@ -89,7 +89,7 @@ ${bandColorRules(".dist .ddot", ":host(.pg-dark)")}
   height: 0.62em;
   margin-inline-end: 0.42em;
   border-radius: 50%;
-  vertical-align: 0.02em;
+  vertical-align: middle;
   background: var(--c);
 }
 .dist { margin: 2px 0 7px; }
@@ -142,13 +142,12 @@ ${bandColorRules(".dist .ddot", ":host(.pg-dark)")}
 .sentence-labels summary::before {
   content: "";
   flex: none;
-  width: 4.5px;
-  height: 4.5px;
-  border: solid currentColor;
-  border-width: 1.3px 1.3px 0 0;
-  transform: rotate(45deg);
+  width: .65em;
+  border-block-start: .4em solid currentColor;
+  clip-path: polygon(0 20%, 12% 0, 50% 62%, 88% 0, 100% 20%, 50% 100%);
 }
-.sentence-labels[open] summary::before { transform: rotate(135deg); }
+.sentence-labels:not([open]) summary::before { rotate: -90deg; }
+.sentence-labels summary > span { text-box: trim-both cap alphabetic; }
 .sentence-labels summary:hover { color: #18181b; }
 .sentence-labels > div { max-height: 9em; overflow: auto; }
 .sentence-labels p { margin: 4px 0; color: #52525b; }

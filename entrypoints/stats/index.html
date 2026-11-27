@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <title data-i18n="statsTitle">Reading statistics</title>
@@ -86,7 +87,7 @@
                 <div id="trendChart"></div>
                 <p class="note" id="trendUnavailable" data-i18n="statsNoVerdicts" hidden>No verdicts available.</p>
                 <div class="tip" id="trendTip" hidden></div>
-                <details class="table-view"><summary data-i18n="statsShowTable">View table</summary><div class="table-container" id="trendTable" tabindex="0" role="group" aria-labelledby="trendTitle"></div></details>
+                <details class="table-view"><summary><span data-i18n="statsShowTable">View table</span></summary><div class="table-container" id="trendTable" tabindex="0" role="group" aria-labelledby="trendTitle"></div></details>
               </div>
             </section>
             <section class="distribution" aria-labelledby="mixTitle">
@@ -98,7 +99,7 @@
               <div class="verdict-details">
                 <ul class="legend" id="heroLegend"></ul>
                 <details class="breakdown" id="scoringDetails">
-                  <summary data-i18n="statsCoverageDetails">Scoring details</summary>
+                  <summary><span data-i18n="statsCoverageDetails">Scoring details</span></summary>
                   <p id="coverageLine"></p>
                   <ul class="coverage-list" id="coverageList"></ul>
                   <p id="topDetail" hidden><span id="topTitle"></span> <strong id="topFigure"></strong> <span id="topLine"></span></p>
@@ -136,7 +137,7 @@
                 <dl id="visitFacts"></dl>
                 <p class="note" id="visitStatus" role="status"></p>
                 <details id="visitTimeline" class="breakdown" hidden>
-                  <summary data-i18n="statsVisitTimeline">Reading timeline</summary>
+                  <summary><span data-i18n="statsVisitTimeline">Reading timeline</span></summary>
                   <div id="replayChart" role="status"></div>
                   <p class="note" id="timelineKey"></p>
                 </details>
@@ -146,20 +147,20 @@
         </div>
 
         <details class="lens" id="lens">
-          <summary data-i18n="statsLens">How it counts</summary>
+          <summary><span data-i18n="statsLens">Counting rules</span></summary>
           <p class="note" id="levelLine"></p>
           <p class="note" id="lensNote"></p>
           <p class="note" id="estimatorNote"></p>
           <div class="grid">
             <label><span data-i18n="statsLensRead">Read after</span><select class="select" id="lensRead"></select></label>
-            <label><span data-i18n="statsLensVisible">On screen means</span><select class="select" id="lensVisible"></select></label>
-            <label><span data-i18n="statsLensOnce">A paragraph read again counts</span><select class="select" id="lensOnce"></select></label>
-            <label><span data-i18n="statsLensEstimator">Shares from</span><select class="select" id="lensEstimator"></select></label>
-            <label><span data-i18n="statsLensWeight">Each paragraph weighs</span><select class="select" id="lensWeight"></select></label>
-            <label><span data-i18n="statsLensHeadline">The headline is</span><select class="select" id="lensHeadline"></select></label>
-            <label><span data-i18n="statsLensMinWords">Paragraphs of at least</span><select class="select" id="lensMinWords"></select></label>
-            <label class="check"><input type="checkbox" class="input" id="lensFocused" /><span data-i18n="statsLensFocused">Only a focused window</span></label>
-            <label class="check"><input type="checkbox" class="input" id="lensFling" /><span data-i18n="statsLensFling">Leave out what was flung past</span></label>
+            <label><span data-i18n="statsLensVisible">Visibility threshold</span><select class="select" id="lensVisible"></select></label>
+            <label><span data-i18n="statsLensOnce">Count repeat readings</span><select class="select" id="lensOnce"></select></label>
+            <label><span data-i18n="statsLensEstimator">Calculate shares by</span><select class="select" id="lensEstimator"></select></label>
+            <label><span data-i18n="statsLensWeight">Weight paragraphs by</span><select class="select" id="lensWeight"></select></label>
+            <label><span data-i18n="statsLensHeadline">Main statistic</span><select class="select" id="lensHeadline"></select></label>
+            <label><span data-i18n="statsLensMinWords">Minimum paragraph length</span><select class="select" id="lensMinWords"></select></label>
+            <label class="check"><input type="checkbox" class="input" id="lensFocused" /><span data-i18n="statsLensFocused">Count only when the window has focus</span></label>
+            <label class="check"><input type="checkbox" class="input" id="lensFling" /><span data-i18n="statsLensFling">Exclude fast scrolling</span></label>
             <button type="button" class="text-action" id="lensReset" data-i18n="statsLensReset">Restore defaults</button>
           </div>
         </details>
@@ -187,7 +188,7 @@
               </div>
             </div>
             <details class="table-view" id="exportDimsBox">
-              <summary data-i18n="statsExportFields">Recorded fields</summary>
+              <summary><span data-i18n="statsExportFields">Recorded fields</span></summary>
               <div class="table-container" id="exportDims"></div>
             </details>
             <div class="export-groups">

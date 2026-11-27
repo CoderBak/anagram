@@ -2046,7 +2046,7 @@ const results = await page.evaluate(() => {
 
     const dense = PW.unitVerdict("u7", 5000, [{ start: 0, end: 2000, result: human }, { start: 2000, end: 4000, result: { ...ai, truncated: true } }]);
     check("a pass still cut after the re-read and an unread tail are both carried by the verdict",
-      dense.result.truncated === true && dense.unreadChars === 1000 && PW.windowReadout(dense).cutShort === 1 && /Only the opening/.test(PW.coverageNote(dense, "paragraph")) && /too dense/.test(PW.coverageNote(dense, "paragraph")));
+      dense.result.truncated === true && dense.unreadChars === 1000 && PW.windowReadout(dense).cutShort === 1 && /Only the opening/.test(PW.coverageNote(dense, "paragraph")) && /skipped part of this passage/.test(PW.coverageNote(dense, "paragraph")));
     check("a unit read in one pass has no pass readout and no coverage note", PW.windowReadout(single) === null && PW.coverageNote(single, "paragraph") === "");
 
     // Two passes overlapping by a third: the shared stretch is read by both, each weighed
@@ -2097,7 +2097,7 @@ const results = await page.evaluate(() => {
     const chips = sandbox.querySelectorAll('[data-anagram="host"]').length;
     const passNumbers = verdict.windows.map((w) => PW.formatScore(w.result.score).replace(".", "\\.")).join(",\\s*");
     check(`the card says how it was read: 'Read in ${spans.length} passes' with each pass's number; ONE chip with the aggregate`,
-      chips === 1 && new RegExp(`Read in ${spans.length} passes\\s*${passNumbers}`).test(cardText()) && /judged by the passes that read it/.test(cardText()) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
+      chips === 1 && new RegExp(`Read in ${spans.length} passes\\s*${passNumbers}`).test(cardText()) && cardText().includes(`Anagram analyzed this text in ${spans.length} overlapping passes and combined their scores.`) && !/Only the opening/.test(cardText()) && !/first \d+/.test(cardText()) &&
       sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent === PW.formatScore(verdict.result.score) &&
       !/%/.test(sandbox.querySelector('[data-anagram="host"]').shadowRoot.querySelector(".num").textContent), cardText());
 

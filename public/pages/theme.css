@@ -17,49 +17,32 @@
 
 /* Extension-owned pages share these tokens with the Basecoat controls. */
 html:root {
-  color-scheme: light;
-  --background: #f6f6f7;
-  --foreground: #18181b;
-  --card: #ffffff;
+  color-scheme: light dark;
+  --background: light-dark(#f6f6f7, #111214);
+  --foreground: light-dark(#18181b, #f1f2f4);
+  --card: light-dark(#ffffff, #191a1d);
   --card-foreground: var(--foreground);
   --popover: var(--card);
   --popover-foreground: var(--foreground);
-  --primary: #18181b;
-  --primary-foreground: #ffffff;
-  --muted: #efeff1;
-  --muted-foreground: #52525b;
+  --primary: light-dark(#18181b, #f1f2f4);
+  --primary-foreground: light-dark(#ffffff, #111214);
+  --muted: light-dark(#efeff1, #24262a);
+  --muted-foreground: light-dark(#52525b, #a1a4ad);
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
-  --accent: #ececef;
-  --accent-foreground: #18181b;
-  --border: #e4e4e7;
-  --input: #d1d1d6;
-  --ring: #52525b;
+  --accent: light-dark(#ececef, #25272b);
+  --accent-foreground: light-dark(#18181b, #f1f2f4);
+  --border: light-dark(#e4e4e7, #2b2d32);
+  --input: light-dark(#d1d1d6, #42454d);
+  --ring: light-dark(#52525b, #a1a4ad);
   --radius: 5px;
   --radius-lg: 6px;
   --page-title-size: 1.1875rem;
   --section-title-size: .875rem;
   --control-height: 28px;
   --button-height: 26px;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
-  --shadow-popover: 0 6px 20px rgb(0 0 0 / 0.09), 0 1px 3px rgb(0 0 0 / 0.04);
-}
-html:root.dark {
-  color-scheme: dark;
-  --background: #111214;
-  --foreground: #f1f2f4;
-  --card: #191a1d;
-  --primary: #f1f2f4;
-  --primary-foreground: #111214;
-  --muted: #24262a;
-  --muted-foreground: #a1a4ad;
-  --accent: #25272b;
-  --accent-foreground: #f1f2f4;
-  --border: #2b2d32;
-  --input: #42454d;
-  --ring: #a1a4ad;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.28);
-  --shadow-popover: 0 10px 28px rgb(0 0 0 / 0.48), 0 1px 3px rgb(0 0 0 / 0.3);
+  --shadow-card: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.28));
+  --shadow-popover: 0 6px 20px light-dark(rgb(0 0 0 / 0.09), rgb(0 0 0 / 0.48)), 0 1px 3px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3));
 }
 body {
   margin: 0;
@@ -70,6 +53,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 body :is(button, input, select, textarea) { font-family: inherit; }
+/* Let native switches expose OS indicators such as macOS Differentiate Without Color. */
+html.native-switch input[type="checkbox"][switch] {
+  all: revert;
+  min-height: 24px;
+  cursor: pointer;
+}
+html.native-switch input[type="checkbox"][switch]::before,
+html.native-switch input[type="checkbox"][switch]::after { content: none; }
+html.native-switch input[type="checkbox"][switch]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 .page {
   margin-inline: auto;
   padding: clamp(16px, 2vw, 24px) clamp(14px, 3vw, 28px) 24px;
@@ -102,10 +97,16 @@ body :is(button, input, select, textarea) { font-family: inherit; }
   border-radius: var(--radius);
 }
 .page :is(select.select, input.input[type="text"], input.input[type="date"]) {
-  height: var(--control-height);
   padding-block: 2px;
   font-size: .78125rem;
 }
+.page :is(input.input[type="text"], input.input[type="date"]) { min-height: var(--control-height); height: auto; }
+.page select.select {
+  block-size: auto;
+  min-block-size: max(var(--control-height), 1lh);
+  line-height: normal;
+}
+
 .btn {
   border-radius: var(--radius);
   font-weight: 500;
@@ -114,8 +115,16 @@ body :is(button, input, select, textarea) { font-family: inherit; }
 }
 .btn[data-size="sm"] { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .78125rem; }
 .btn:has(> .action-icon) { align-items: center; column-gap: 6px; }
-/* Center the stroke against the printed label inside its line box. */
-.btn:not(.icon-action) > .action-icon { translate: 0 1px; }
+.btn > span, .disclosure-action > span, #install-preview > span, :is(details.breakdown, details.more, details.lens, details.table-view) > summary > span:not(.vh) {
+  text-box: trim-both cap alphabetic;
+}
+@supports (text-box: trim-both cap alphabetic) {
+  .btn:not(:has(> *)):not([aria-expanded]) {
+    display: inline-block;
+    align-content: center;
+    text-box: trim-both cap alphabetic;
+  }
+}
 .btn[data-variant="outline"] {
   background-color: var(--card);
   border-color: var(--input);
@@ -164,16 +173,6 @@ details.breakdown > summary {
   line-height: 1.5;
 }
 details.breakdown > summary::-webkit-details-marker { display: none; }
-details.breakdown > summary::before {
-  content: "";
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border: solid currentColor;
-  border-width: 1.4px 1.4px 0 0;
-  transform: rotate(45deg);
-}
-details.breakdown[open] > summary::before { transform: rotate(135deg); }
 details.breakdown > summary:hover { color: var(--foreground); }
 details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
 
@@ -245,15 +244,16 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
 }
 .text-action:hover, .disclosure-action:hover { color: var(--foreground); background: var(--accent); }
 .text-action:focus-visible, .disclosure-action:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.disclosure-action::after {
+/* The chevron's painted bounds fill its box in either direction. */
+:is(.disclosure-action, #install-preview, details.more > summary)::after,
+:is(details.breakdown, details.table-view, details.lens) > summary::before {
   content: "";
   flex: none;
-  margin-inline-end: 2px;
-  width: 5px;
-  height: 5px;
-  border: solid currentColor;
-  border-width: 0 1.4px 1.4px 0;
-  transform: translateY(-1px) rotate(45deg);
+  inline-size: .65em;
+  border-block-start: .4em solid currentColor;
+  clip-path: polygon(0 20%, 12% 0, 50% 62%, 88% 0, 100% 20%, 50% 100%);
 }
-.disclosure-action[aria-expanded="true"]::after { transform: translateY(2px) rotate(225deg); }
+:is(.disclosure-action, #install-preview)[aria-expanded="true"]::after,
+details.more[open] > summary::after { rotate: 180deg; }
+:is(details.breakdown, details.table-view, details.lens):not([open]) > summary::before { rotate: -90deg; }
 [hidden] { display: none !important; }

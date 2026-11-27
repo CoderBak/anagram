@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <!-- Engine controls are restricted to our top-level pages: keep Settings out of an
@@ -38,7 +39,7 @@
                 </div>
                 <div class="row">
                   <label for="enabled" data-i18n="optEnabled">Run on granted sites by default</label>
-                  <span class="row-body"><input id="enabled" class="input" type="checkbox" role="switch" /></span>
+                  <span class="row-body"><input id="enabled" class="input" type="checkbox" switch role="switch" /></span>
                 </div>
               </div>
               <div id="siteRules" hidden>
@@ -105,7 +106,7 @@
               </div>
               <div id="statsWarnings" class="stats-warn"></div>
               <details class="breakdown" id="statsKeep" hidden>
-                <summary data-i18n="optStatsRetention">Retention periods</summary>
+                <summary><span data-i18n="optStatsRetention">Retention periods</span></summary>
                 <div class="fields">
                   <div class="field">
                     <label for="statsFine" data-i18n="optStatsFine">Detailed events</label>
@@ -166,8 +167,8 @@
       </dialog>
 
       <dialog class="stats-dialog" id="dropStatsDialog" aria-labelledby="dropStatsTitle" aria-describedby="dropStatsText">
-        <p class="dialog-title" id="dropStatsTitle" data-i18n="statsStripTitle">Delete what the new setting doesn't keep?</p>
-        <p id="dropStatsText" data-i18n="statsStripText">Anagram keeps less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.</p>
+        <p class="dialog-title" id="dropStatsTitle" data-i18n="statsStripTitle">Delete previously saved details?</p>
+        <p id="dropStatsText" data-i18n="statsStripText">The new setting applies to future activity. You can delete previously saved details that it no longer records. Daily totals will be kept.</p>
         <div class="actions">
           <button type="button" class="btn" data-variant="outline" data-size="sm" id="dropStatsKeep" data-i18n="statsDropKeep">Keep them</button>
           <button type="button" class="btn" data-variant="destructive" data-size="sm" id="dropStatsConfirm" data-i18n="statsDropConfirm">Delete them</button>

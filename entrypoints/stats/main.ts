@@ -579,7 +579,8 @@ function visitsTable(visits: Row[]): void {
     appendHistoryMeasures(r, row.tally, Math.round(v.shown / 1000));
     const action = r.insertCell();
     action.className = "replay-action";
-    const button = el("button", "linkish disclosure-action", t("statsReplay"));
+    const button = el("button", "linkish disclosure-action");
+    button.append(el("span", "", t("statsReplay")));
     button.type = "button";
     button.setAttribute("aria-expanded", "false");
     button.setAttribute("aria-controls", visitPanel.id);

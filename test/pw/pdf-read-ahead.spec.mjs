@@ -24,11 +24,11 @@ const PAGES = 30;
 const PER_PAGE = 4;
 /** The read-ahead under way, and the share read where it reads only around the page (a slow
  *  engine, or the setting off): percentages of the document's paragraphs. */
-const READING = /^Reading the whole document: (\d+)% so far\.$/;
-const SHARE = /^(\d+)% of the document read; the rest is read as you scroll to it\.$/;
+const READING = /^Analyzing PDF \((\d+)% complete(?:, (?:about \d+ minutes|less than a minute) left)?\)$/;
+const SHARE = /^(\d+)% analyzed\. Scroll to analyze more\.$/;
 /** The reflow's, with no structure: pages. */
 const SCOPED = /^Covers (\d+) of 30 pages\. Scroll to read more\.$/;
-const NOTE = /so far|^Covers |read as you scroll|^Prepared |^Could not read /;
+const NOTE = /^Analyzing PDF |^Covers |% analyzed\.|^Prepared |^Could not read /;
 
 /** The menu's report, its note on how much of the document is read, and its page action. */
 async function menuState(menu) {
@@ -146,7 +146,7 @@ test("while it reads ahead, the menu counts the pages read so far, and the count
   const menu = await popupOver(page);
   /** Every count the menu showed, in the order it showed them. */
   const seen = [];
-  const climbs = "PDF read-ahead: the menu says 'Reading the whole document: N% so far.', N climbing";
+  const climbs = "PDF read-ahead: the percentage analyzed increases in the menu";
   await expect.poll(async () => {
     const state = await menuState(menu);
     const n = state.scope?.match(READING)?.[1];

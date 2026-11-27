@@ -30,8 +30,6 @@
 .component-status-row > .btn:is(:hover, :focus-visible), .component-install .btn:is(:hover, :focus-visible)[data-variant="ghost"] { color: var(--foreground); }
 .component-install .component-actions { gap: 6px 8px; }
 .component-install .btn[data-variant="ghost"] { padding-inline: 6px; }
-#install-preview::after { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.4px 1.4px 0; transform: translateY(-1px) rotate(45deg); }
-#install-preview[aria-expanded="true"]::after { transform: translateY(1px) rotate(225deg); }
 .component-install .component-command { max-height: 10rem; overflow: auto; }
 .component-settings .component-error { color: var(--destructive); }
 .component-settings .engine-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }

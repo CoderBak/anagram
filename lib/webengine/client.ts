@@ -25,30 +25,35 @@ export const LOAD_WAIT_MS = 300_000;
 
 interface OffscreenApi {
   createDocument(options: { url: string; reasons: string[]; justification: string }): Promise<void>;
-  hasDocument?(): Promise<boolean>;
+  closeDocument(): Promise<void>;
 }
 const offscreenApi = (): OffscreenApi | undefined => (globalThis as { chrome?: { offscreen?: OffscreenApi } }).chrome?.offscreen;
 
 let creating: Promise<void> | null = null;
 
-/** The offscreen document, created once; concurrent callers share the creation. */
-export async function ensureOffscreenDocument(): Promise<void> {
+// Chrome 137 can enumerate offscreen contexts. Only the engine uses one in this extension.
+async function offscreenExists(): Promise<boolean> {
+  const contexts = await browser.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+  return contexts.length > 0;
+}
+
+/** Concurrent requests and an engine switch share the entire lookup and creation. */
+export function ensureOffscreenDocument(): Promise<void> {
+  creating ??= createOffscreenDocument().finally(() => { creating = null; });
+  return creating;
+}
+
+async function createOffscreenDocument(): Promise<void> {
   const api = offscreenApi();
   if (!api) throw new Error("no offscreen API");
-  if (api.hasDocument && (await api.hasDocument())) return;
-  // The tier the setup page chose goes in the address: the document has no storage to read it from.
+  if (await offscreenExists()) return;
   const tier = tierQuery(await engineTierChoice.getValue().catch(() => null));
-  // So is the extension's version, which the engine reports as its own (assets.ts workerInit).
   const version = `${tier ? "&" : "?"}version=${encodeURIComponent(browser.runtime.getManifest().version)}`;
-  creating ??= api.createDocument({
+  await api.createDocument({
     url: OFFSCREEN_PATH + tier + version,
     reasons: ["WORKERS"],
-    justification: "Runs the EditLens scoring model in a Web Worker; a service worker cannot start workers and is unloaded when idle",
-  }).catch((error: unknown) => {
-    // Two callers raced past hasDocument: the document is there.
-    if (!/single offscreen|already exists|Only a single/i.test(String((error as Error)?.message ?? error))) throw error;
-  }).finally(() => { creating = null; });
-  await creating;
+    justification: "Runs the selected Anagram detector in a Web Worker while the extension's service worker is idle",
+  });
 }
 
 /**
@@ -69,29 +74,36 @@ export function offscreenPort(): NativePort {
     },
     disconnect() {
       failed = true;
+      queued.length = 0;
       try { port?.disconnect(); } catch { /* gone */ }
       port = null;
     },
     onMessage: { addListener: (fn) => { messageListeners.add(fn); } },
     onDisconnect: { addListener: (fn) => { disconnectListeners.add(fn); } },
   };
-  void ensureOffscreenDocument().then(() => {
-    if (failed) return;
-    const connected = browser.runtime.connect({ name: ENGINE_PORT });
-    connected.onMessage.addListener((value) => { for (const fn of messageListeners) fn(value); });
-    connected.onDisconnect.addListener(() => {
-      out.error = { message: browser.runtime.lastError?.message ?? "Engine document disconnected" };
-      failed = true;
-      port = null;
+  async function connect(): Promise<void> {
+    try {
+      await ensureOffscreenDocument();
+      if (failed) return;
+      port = browser.runtime.connect({ name: ENGINE_PORT });
+      port.onMessage.addListener((value) => { for (const fn of messageListeners) fn(value); });
+      port.onDisconnect.addListener(() => {
+        const message = browser.runtime.lastError?.message ?? "Engine document disconnected";
+        if (failed) return;
+        failed = true;
+        port = null;
+        out.error = { message };
+        for (const fn of disconnectListeners) fn();
+      });
+      for (const message of queued.splice(0)) port.postMessage(message);
+    } catch (error) {
+      if (failed) return;
+      out.error = { message: `Engine document unavailable: ${error instanceof Error ? error.message : String(error)}` };
+      out.disconnect();
       for (const fn of disconnectListeners) fn();
-    });
-    port = connected;
-    for (const message of queued.splice(0)) connected.postMessage(message);
-  }, (error: unknown) => {
-    out.error = { message: `Engine document unavailable: ${(error as Error)?.message ?? error}` };
-    failed = true;
-    for (const fn of disconnectListeners) fn();
-  });
+    }
+  }
+  void connect();
   return out;
 }
 
@@ -112,8 +124,7 @@ class WebEngineTransport extends PortTransport {
  *  a warm-up can reuse it; false where no separate document exists (Firefox). */
 export async function webEngineRunning(): Promise<boolean> {
   if (IS_SAFARI) return safariEngineRunning();
-  const api = offscreenApi();
-  try { return !!api?.hasDocument && (await api.hasDocument()); } catch { return false; }
+  try { return !!offscreenApi() && await offscreenExists(); } catch { return false; }
 }
 
 let instance: EngineTransport | undefined;
@@ -135,9 +146,9 @@ export function webEngineTransport(): EngineTransport {
 export async function closeWebEngine(): Promise<void> {
   instance?.close("native_unavailable", "The engine was switched");
   if (IS_SAFARI) { await closeSafariEngine(); return; }
-  const api = offscreenApi() as (OffscreenApi & { closeDocument?(): Promise<void> }) | undefined;
+  const api = offscreenApi();
   try {
     await creating?.catch(() => undefined);
-    if (api?.closeDocument && (!api.hasDocument || (await api.hasDocument()))) await api.closeDocument();
+    if (api && await offscreenExists()) await api.closeDocument();
   } catch { /* already closed */ }
 }

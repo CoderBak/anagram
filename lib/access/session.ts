@@ -31,9 +31,7 @@ function connection(): Connection {
   if (connected) return connected;
   const session = documentSessionId();
   const controller = new AbortController();
-  let resolve!: (session: string) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<string>((accept, fail) => { resolve = accept; reject = fail; });
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
   let port: ReturnType<typeof browser.runtime.connect> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let settled = false;

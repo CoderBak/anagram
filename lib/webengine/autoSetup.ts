@@ -105,14 +105,16 @@ export async function storedModelBytes(): Promise<number> {
  * the way. Resolves once the engine has taken the request, or after OPEN_AFTER_MS, with
  * "started" or why not; never rejects.
  */
-export async function startSetupByItself(request: (op: "models.download") => Promise<NativeReply>, { asked = false, tier = "fp32" }: { asked?: boolean; tier?: ModelTier } = {}):
+export async function startSetupByItself(request: (op: "models.download" | "models.select", payload?: {release: DetectorRelease}) => Promise<NativeReply>, { asked = false, tier = "fp32", release, explicitRelease = false }: { asked?: boolean; tier?: ModelTier; release?: DetectorRelease; explicitRelease?: boolean } = {}):
   Promise<"started" | "unavailable" | Skipped> {
   try {
     const read = await readSaved();
     if (read === "unreadable") return "unreadable";
     // Asked for (the person picked the engine): whatever they chose before, and whatever the
     // browser says about saving data. Room is still room.
-    const selection = read.saved?.pending_release ?? read.saved?.release;
+    const saved = read.saved?.pending_release ?? read.saved?.release;
+    const switchRelease = explicitRelease && release && validRelease(saved) && release.revision !== saved.revision;
+    const selection = switchRelease ? release : saved ?? release;
     const files = pinnedFiles(tier,validRelease(selection) ? selection : undefined);
     if (!asked && read.saved?.verified?.["model.onnx"] && !selection) return "not_wanted";
     if (!asked && !wantsDownload(read.saved, files)) return "not_wanted";
@@ -126,7 +128,8 @@ export async function startSetupByItself(request: (op: "models.download") => Pro
     const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
     const blocked = blockedBy({ saveData: !asked && connection?.saveData, ...estimate }, needed);
     if (blocked) return blocked;
-    const taken = request("models.download").then(() => "started" as const, () => "unavailable" as const);
+    const operation = switchRelease ? request("models.select", {release}) : request("models.download");
+    const taken = operation.then(reply => reply.ok ? "started" as const : "unavailable" as const, () => "unavailable" as const);
     return await Promise.race([taken, new Promise<"started">((resolve) => setTimeout(() => resolve("started"), OPEN_AFTER_MS))]);
   } catch {
     return "unreadable";

@@ -148,28 +148,28 @@ function nativeInstalls(os: Os, machine: Machine, i: DeviceInputs): boolean {
 }
 
 /** Check the detector's memory requirement and the remaining download against disk quota. */
-export function affordable(i: DeviceInputs): { tier: Tier | null; short: "memory" | "disk" | null; tight: boolean; fallback: { tight: boolean } | null } {
+export function affordable(i: DeviceInputs, modelBytes = TIERS[0].bytes): { tier: Tier | null; short: "memory" | "disk" | null; tight: boolean; fallback: { tight: boolean } | null } {
   const [fp32] = TIERS;
   const memoryFits = (tier: Tier): boolean => i.deviceMemory === undefined || i.deviceMemory >= tier.minMemoryGb;
-  const diskFits = (tier: Tier): boolean => {
+  const diskFits = (): boolean => {
     const { quota, usage } = i.storage ?? {};
-    const needed = Math.max(0, tier.bytes - (i.stored ?? 0)) + DISK_MARGIN;
+    const needed = Math.max(0, modelBytes - (i.stored ?? 0)) + DISK_MARGIN;
     return quota === undefined || usage === undefined || quota - usage >= needed;
   };
   if (!memoryFits(fp32)) return { tier: null, short: "memory", tight: false, fallback: null };
-  if (!diskFits(fp32)) return { tier: null, short: "disk", tight: false, fallback: null };
+  if (!diskFits()) return { tier: null, short: "disk", tight: false, fallback: null };
   return { tier: fp32, short: null, tight: i.deviceMemory === fp32.minMemoryGb, fallback: null };
 }
 
 /** Which engines this device is offered, and why. */
-export function decide(i: DeviceInputs): Decision {
+export function decide(i: DeviceInputs, modelBytes = TIERS[0].bytes): Decision {
   const os = osOf(i);
   const machine = machineOf(i, os);
   const native = nativeInstalls(os, machine, i);
   const base = { os, machine, native, tight: false, tier: null, path: null, fallback: null };
   if (i.webRuntime === false || (i.browser === "safari" && os !== "mac")) return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "browser" };
   if (i.browser === "safari" && !i.gpu) return { ...base, offer: native ? "terminal-only" : "cannot-run", reason: "webgpu" };
-  const fits = affordable(i);
+  const fits = affordable(i, modelBytes);
   if (!fits.tier) {
     // Nothing is downloaded where the model does not fit, and nothing is ever scored
     // anywhere else; where the local engine installs, it is what is left.

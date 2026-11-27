@@ -31,7 +31,7 @@ export function canApply(range: LogRange, lens: Lens): boolean {
 export function visitTallies(range: LogRange, lens: Lens): Map<string, Map<string, Tally>> {
   const visits = new Map(range.visits.map((v) => [v.id, v]));
   const readAt = (u: UnitRow) => (visits.get(u.visit)?.start ?? 0) + (u.expo?.readAt ?? u.found);
-  const units = lens.once === "visit" ? range.units : [...range.units].sort((a, b) => readAt(a) - readAt(b));
+  const units = lens.once === "visit" ? range.units : range.units.toSorted((a, b) => readAt(a) - readAt(b));
   const seen = new Set<string>();
   const out = new Map<string, Map<string, Tally>>();
   for (const u of units) {

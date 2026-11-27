@@ -4,6 +4,7 @@
 // we follow the OS setting live. Inline scripts are barred by the MV3 page CSP, so
 // this runs from each page's module script.
 export function followSystemTheme(): void {
+  document.documentElement.classList.toggle("native-switch", "switch" in HTMLInputElement.prototype);
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   const apply = (): void => {
     document.documentElement.classList.toggle("dark", mq.matches);

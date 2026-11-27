@@ -151,7 +151,8 @@ for the browser session (lib/stats/tabs.ts). It dies with the browser session.
 | --- | --- |
 | `extensionUpdatePending` | version of a browser extension update waiting for the user to reload |
 | `engine` | the engine the user chose, `native` or `inbrowser`; unset until the setup page or Settings has one |
-| `engineTier` | the in-browser engine's model tier the setup page decided (`fp16` where FP32 does not fit, and whether FP32 fits as a fallback); unset means FP32 |
+| `engineTier` | browser engine precision, fallback setting and the validated manifest when setup selects a different detector from the one shipped with the extension |
+| `nativeSetupRelease` | the selected detector commit and file checksums used to prepare the local engine installation command |
 | `enabled` | the master switch |
 | `siteOverrides` | per-site on/off rules, as hostnames the user chose |
 | `showHighlights` | whether analyzed text is underlined in place |

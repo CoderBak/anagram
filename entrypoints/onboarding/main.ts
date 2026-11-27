@@ -11,6 +11,7 @@ import { mountExtensionUpdate } from "../../lib/ui/extensionUpdate";
 import { linkSourceCode } from "../../lib/ui/sourceCode";
 import { messageLocale } from "../../lib/i18n";
 import { componentUpdateOffered } from "../../lib/ui/componentSettings";
+import { mountDetectorPicker } from "../../lib/ui/detectorPicker";
 import { engineReady, mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
@@ -70,12 +71,16 @@ const where = document.getElementById("where")!;
 mountSiteAccess(where, { hint: true });
 mountPdfRows(where);
 mountToolbarGuide(document.getElementById("toolbarGuide")!);
+const installedDetector = document.getElementById("installedDetector")!;
+const updateDetector = mountDetectorPicker(installedDetector);
 mountEngineCard({
   title: document.getElementById("engineTitle")!,
   panelHost: document.getElementById("componentSettings")!,
   settings: false,
   // An engine that keeps dying is not done, whatever its last snapshot says.
   onUpdate: (engine, reply, crashed) => {
+    installedDetector.hidden = reply?.kind !== "ok";
+    if (reply) updateDetector(reply);
     const ready = !crashed && engineReady(engine, reply);
     const native = engine === "native" && reply?.kind === "ok" ? reply.snapshot : null;
     const update = native && componentUpdateOffered(native, browser.runtime.getManifest().version);

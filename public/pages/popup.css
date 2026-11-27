@@ -3,18 +3,18 @@ html { width: 300px; max-height: 600px; overflow-y: auto; background: var(--card
 body { background: var(--card); }
 
 header.hdr {
+  flex-wrap: wrap;
   gap: 8px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 12px 4px;
 }
 header.hdr img { width: 20px; height: 20px; border-radius: 5px; }
 header.hdr h1 {
-  flex: 1;
-  min-width: 0;
+  flex: 1 0 auto;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
+header.hdr > .page-actions { flex: 0 1 auto; }
 header.hdr #gear {
   color: var(--muted-foreground);
 }
@@ -22,12 +22,11 @@ header.hdr #gear:hover { color: var(--foreground); }
 
 main { padding: 0 12px 8px; }
 .grp { padding: 8px 0; }
-.grp + .grp { border-top: 1px solid var(--border); }
 .grp .field { min-height: 28px; }
 .grp .field > label { font-size: 13px; font-weight: 450; color: var(--foreground); }
 #siteRuleNote { margin: 4px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 
-.act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
 .act > .status { flex: 1 1 128px; }
 .act > :is(.report, .keepopen) { flex: 0 0 100%; min-width: 0; }
 .act:has(> .status[hidden]):has(> .report[hidden]):has(> .keepopen[hidden]):not(:has(.page-actions > :not([hidden]))) { display: none; }
@@ -37,8 +36,7 @@ main { padding: 0 12px 8px; }
 
 .page-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 .page-actions:not(:has(> :not([hidden]))) { display: none; }
-/* Whole-pixel type metrics at the default zoom keep the label level with the status. */
-.page-actions > .btn { min-height: var(--button-height); font-size: .75rem; line-height: 1rem; }
+.page-actions > .btn { font-size: .75rem; }
 
 /* Page report: flagged list, then collapsible score breakdown. */
 .report { margin: 0; }
@@ -74,14 +72,14 @@ main { padding: 0 12px 8px; }
   list-style: none;
   padding: 2px 0;
   margin: 2px -8px 0;
-  max-height: 184px;
+  max-height: 14rem;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 .report-result {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: baseline;
   width: 100%;
   min-height: var(--control-height);
   padding: 4px 8px;
@@ -104,10 +102,12 @@ main { padding: 0 12px 8px; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.report-score { flex: 0 0 auto; align-self: flex-start; margin-top: 1px; }
+.report-score { flex: 0 0 auto; }
+.report-score.chip { align-items: baseline; }
+.report-score .dot { align-self: center; }
 
 /* Breakdown bar and clean single-column verdict counts. */
-.report .breakdown { margin-top: 6px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.report .breakdown { margin-top: 8px; }
 .report .breakdown[open] { padding-bottom: 2px; }
 .mix {
   display: flex;

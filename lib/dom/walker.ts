@@ -454,7 +454,7 @@ export function inPageOrder(units: readonly Unit[]): Unit[] {
     const first = u.parts[0]?.nodes[0];
     keys.set(u, first?.isConnected ? composedPath(first).map(at) : null);
   }
-  return [...units].sort((a, b) => {
+  return units.toSorted((a, b) => {
     const ka = keys.get(a), kb = keys.get(b);
     // Where two paths part, both nodes have one parent in the DOM as well: a host's shadow
     // root, the host whose children a slot shows, or an ordinary element.
@@ -1123,8 +1123,7 @@ export function* collectUnitsInSlices(
  * for ordinary markup, but a shadow host reports none of its shadow tree in it however
  * much that tree holds: Google Docs' reading overlay is one `position:fixed` host with a
  * whole document inside, and the small-out-of-flow rule read it as an empty decoration and
- * skipped it whole (lib/docsOverlay.ts gives its host `position:relative` to be seen at
- * all). Slots resolve to what is assigned to them, so light children are counted where
+ * skipped it whole (lib/docsOverlay.ts now keeps its shadow host in flow). Slots resolve to what is assigned to them, so light children are counted where
  * they render rather than twice or not at all.
  */
 function composedTextLength(root: Element, limit: number): number {

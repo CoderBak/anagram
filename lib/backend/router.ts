@@ -118,7 +118,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
    *  BATCH_TARGET_MS at its measured pace where that is less (one block at the least). */
   const batchChars = (): number => {
     if (paces.length < 3) return ENGINE_BATCH_CHARS;
-    const pace = [...paces].sort((a, b) => a - b)[paces.length >> 1]!;
+    const pace = paces.toSorted((a, b) => a - b)[paces.length >> 1]!;
     return pace > 0 ? Math.min(ENGINE_BATCH_CHARS, Math.floor((BATCH_TARGET_MS * 1000) / pace)) : ENGINE_BATCH_CHARS;
   };
   let cacheMode: ScoreCacheMode = "persistent";
@@ -250,10 +250,10 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
     held.requests++; held.blocks += blocks; held.chars += chars; tabUsage.set(tab, held);
     if (site) { shared.requests++; shared.blocks += blocks; shared.chars += chars; siteUsage.set(site, shared); }
     usage.requests++; usage.blocks += blocks; usage.chars += chars; documentUsage.set(document, usage);
-    let cancel!: () => void;
+    const cancellation = Promise.withResolvers<undefined>();
     const reader: Reader = { document, persist: origin.private !== true, active: true, entries: new Set(),
-      cancelled: new Promise<undefined>((resolve) => { cancel = () => resolve(undefined); }),
-      cancel() { if (!reader.active) return; reader.active = false; cancel(); detach(reader); } };
+      cancelled: cancellation.promise,
+      cancel() { if (!reader.active) return; reader.active = false; cancellation.resolve(undefined); detach(reader); } };
     readers.add(reader);
     origin.signal?.addEventListener("abort", reader.cancel, { once: true });
     const requestEpoch = epoch, cacheEpoch = cache.epoch();
@@ -296,8 +296,7 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
               entries: [], controller: new AbortController(), epoch: requestEpoch, cacheEpoch, revision };
             batches.push(batch); size = 0;
           }
-          let resolve!: (value: Produced) => void;
-          const promise = new Promise<Produced>((done) => { resolve = done; });
+          const { promise, resolve } = Promise.withResolvers<Produced>();
           entry = { key, block: first, partition, batch, readers: new Set(), promise, resolve };
           batch.entries.push(entry); size += first.text.length; inFlight.set(key, entry);
         }

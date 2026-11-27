@@ -10,10 +10,12 @@
 // page (test/webengine/scripted-engine.mjs) on the device builds (test/pw/devices.mjs).
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
+import release from "../../anagramd/detector-release.json" with {type: "json"};
 import { test, expect } from "./fixtures.mjs";
 import { scriptEngine } from "../webengine/scripted-engine.mjs";
-import { NO_MODEL_HOSTS } from "../webengine/model-server.mjs";
+import { DOWNLOAD_BYTES, NO_MODEL_HOSTS } from "../webengine/model-server.mjs";
 
+const progressAt45Percent = `${Math.round(DOWNLOAD_BYTES * 0.45 / 1e6)} MB of ${(DOWNLOAD_BYTES / 1e9).toFixed(1)} GB`;
 const device = (name) => join(import.meta.dirname, "..", "..", "output-test", "devices", `${name}-chrome`);
 const painted = (page) => page.waitForFunction(() => {
   const status = document.querySelector("#componentSettings .component-status")?.textContent;
@@ -156,7 +158,7 @@ test.describe("the setup page", () => {
     const page = await openScripted(extension, "onboarding.html", "verifying");
     await expect(page.getByRole("progressbar")).toHaveAccessibleName("Verifying model files…");
     await expect(page.locator(".component-status")).toHaveText("Verifying model files…");
-    await expect(page.locator("#engine-progress")).toHaveText("641 MB of 1.4 GB");
+    await expect(page.locator("#engine-progress")).toHaveText(progressAt45Percent);
   });
 
   test("Resume counts a partial file toward the model's space requirement", async ({ extension }) => {
@@ -193,7 +195,7 @@ test.describe("the setup page", () => {
     expect(seen.percent).toBe("45%");
     expect(seen.buttons).toEqual(["Pause download", "Cancel download"]);
     expect(seen.sameRow).toBe(true);
-    expect(seen.line, "bytes of total, and nothing else without a speed yet").toMatch(/^\d+ MB of 1\.4 GB/);
+    expect(seen.line, "bytes of total, and nothing else without a speed yet").toContain(progressAt45Percent);
     expect(seen.source, "a place after the line for the source of the files").toBe(true);
   });
 
@@ -343,6 +345,76 @@ test.describe("Settings", () => {
   });
 });
 
+test.describe("first download with several detector releases", () => {
+  test.use({ build: device("linux-cpu"), launch: { args: [NO_MODEL_HOSTS] } });
+
+  test("shows a pending catalog check and retries a failed model lookup without starting a download", async ({extension}) => {
+    const page = await extension.context.newPage();
+    const other = { ...release, release: "2026-12-03-200m", revision: "a".repeat(40) };
+    await page.addInitScript(({ recommended, other }) => {
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+      let reads = 0, catalogs = 0;
+      chrome.runtime.sendMessage = (message, ...args) => {
+        if (message.action === "getEngine") return Promise.resolve({ engine: null });
+        if (message.action === "detectorCatalog") {
+          if (message.setup) return new Promise(resolve => {
+            catalogs++;
+            window.finishCatalog = () => resolve({ ok: true, value: { choices: [recommended, other], recommended, listed: catalogs > 1 } });
+          });
+          return Promise.resolve(++reads === 1 ? { ok: false } : { ok: true, value: other });
+        }
+        if (message.action === "setEngine") throw Error("Unexpected automatic installation");
+        return send(message, ...args);
+      };
+    }, { recommended: release, other });
+    await page.goto(extension.url("onboarding.html"));
+    const row = page.locator(".setup-model");
+    await expect(row.getByRole("status")).toHaveText("Checking releases…");
+    await expect(row.getByRole("status")).toBeVisible();
+    await page.evaluate(() => window.finishCatalog());
+    await expect(row.getByRole("status")).toHaveText("Couldn’t check for other models.");
+    await row.getByRole("button", { name: "Retry" }).click();
+    await expect(row.getByRole("combobox")).toBeDisabled();
+    await page.evaluate(() => window.finishCatalog());
+    await expect(row.getByRole("combobox")).toBeFocused();
+    await row.getByRole("combobox").selectOption(other.revision);
+    await expect(row.getByRole("status")).toHaveText("This release could not be loaded.");
+    await expect(page.locator("#engine-pick-inbrowser")).toBeDisabled();
+    await row.getByRole("button", { name: "Retry" }).click();
+    await expect(row.getByRole("status")).toBeEmpty();
+    await expect(row.getByRole("button", { name: "Retry" })).toBeHidden();
+    await expect(row.getByRole("combobox")).toHaveValue(other.revision);
+    await expect(page.locator("#engine-pick-inbrowser")).toBeEnabled();
+  });
+
+  test("preselects the Hub default and downloads the version the reader chooses", async ({extension}) => {
+    const page = await extension.context.newPage();
+    const smaller = {...release, revision: "a".repeat(40), release: "2026-12-01-200m",
+      files: release.files.map(f => f.path === "backbone/model.safetensors" ? {...f, size_bytes: 700000000} : f)};
+    await page.addInitScript(({recommended, smaller}) => {
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+      chrome.runtime.sendMessage = (msg, ...rest) => {
+        if (msg.action === "getEngine") return Promise.resolve({engine:null});
+        if (msg.action === "detectorCatalog") return Promise.resolve({ok:true, value:msg.setup
+          ? {choices:[smaller,recommended], recommended, listed:true} : smaller});
+        if (msg.action === "setEngine") { window.chosenRelease = msg.release; return Promise.resolve({ok:true}); }
+        return send(msg, ...rest);
+      };
+    }, {recommended:release, smaller});
+    await page.goto(extension.url("onboarding.html"));
+    const select = page.getByLabel("Detector", {exact:true}).filter({visible:true});
+    await expect(select).toHaveValue(release.revision);
+    await expect(select.locator("selectedcontent")).toHaveText(`Recommended (${release.release})`);
+    await expect(page.locator("#engine-pick-inbrowser")).toContainText("1.6 GB");
+    await select.selectOption(smaller.revision);
+    await expect(select.locator("selectedcontent")).toHaveText(smaller.release);
+    await expect(page.locator("#engine-pick-inbrowser")).toContainText("704 MB");
+    expect(await page.evaluate(() => window.chosenRelease)).toBeUndefined();
+    await page.locator("#engine-pick-inbrowser").click();
+    expect(await page.evaluate(() => window.chosenRelease)).toEqual(smaller);
+  });
+});
+
 test.describe("the popup", () => {
   test.use({ build: device("linux-cpu"), launch: { args: [NO_MODEL_HOSTS] } });
 
@@ -351,6 +423,12 @@ test.describe("the popup", () => {
       const page = await openScripted(extension, "popup.html", state, {}, { width: 360, height: 600 });
       await page.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
       expect(await page.locator("#keepOpen").isVisible(), state).toBe(shown);
+      if (shown) {
+        const status = await page.locator("#status").boundingBox();
+        const progress = await page.locator("#action").boundingBox();
+        expect(progress.y).toBeLessThan(status.y + status.height);
+        expect(progress.x).toBeGreaterThanOrEqual(status.x + status.width);
+      }
       await page.close();
     }
   });
@@ -382,7 +460,7 @@ test.describe("the popup", () => {
     const textButton = await popup.locator("#analyzeText").boundingBox();
     expect(textButton.y).toBe(pdfButton.y);
     expect(textButton.x).toBeGreaterThanOrEqual(pdfButton.x + pdfButton.width);
-    expect(await popup.locator("main .btn:not([data-variant])").count(), "the new entries are secondary: at most one filled button").toBeLessThanOrEqual(1);
+    expect(await popup.locator(".btn:visible:not([data-variant])").count(), "the new entries are secondary: at most one filled button").toBeLessThanOrEqual(1);
 
     const paste = context.waitForEvent("page", { predicate: (p) => /paste\.html$/.test(p.url()) });
     await popup.locator("#analyzeText").click();
@@ -403,8 +481,8 @@ test.describe("the popup", () => {
   test("on a page nothing can run on, the one action is the reader and it is not offered twice", async ({ extension }) => {
     const popup = await openScripted(extension, "popup.html", "ready_gpu", {}, { width: 360, height: 600 });
     await popup.waitForFunction(() => !document.getElementById("action").disabled, null, { timeout: 10000 });
-    expect(await popup.locator("#action").textContent()).toBe("Open a PDF…");
-    expect(await popup.locator("#openReader").isHidden()).toBe(true);
-    await expect(popup.locator("#analyzeText")).toBeVisible();
+    const reader = popup.getByRole("button", { name: "Open a PDF…" });
+    await expect(reader).toHaveCount(1);
+    expect((await reader.boundingBox()).y).toBe((await popup.locator("#analyzeText").boundingBox()).y);
   });
 });

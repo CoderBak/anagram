@@ -391,7 +391,7 @@ export function createOrchestrator(
    * numbered in their document's own order, which only the reader knows.
    */
   const readingOrder = (units: readonly Unit[]): Unit[] =>
-    opts.collect ? [...units].sort((a, b) => a.order - b.order) : inPageOrder(units);
+    opts.collect ? units.toSorted((a, b) => a.order - b.order) : inPageOrder(units);
 
   /** The first units found: what the page kind is told from. */
   function firstUnits(n: number): Unit[] {
@@ -550,8 +550,10 @@ export function createOrchestrator(
     if (!unit || !unit.container.isConnected) return;
     flaggedCursor = id;
     reading.ui("jump", unit);
-    unit.container.scrollIntoView({ behavior: "smooth", block: "center" });
-    setTimeout(() => badges.flash(id), 350); // pulse once the scroll settles
+    const animate = matchMedia("(prefers-reduced-motion: no-preference)").matches;
+    unit.container.scrollIntoView({ behavior: animate ? "smooth" : "instant", block: "center" });
+    if (animate) setTimeout(() => badges.flash(id), 350);
+    else badges.flash(id);
   }
 
   /** Flagged units still in the DOM, in document order. */
@@ -581,7 +583,7 @@ export function createOrchestrator(
       target =
         dir === 1
           ? (list.find((u) => mid(u) > ref + 4) ?? list[0]!)
-          : ([...list].reverse().find((u) => mid(u) < ref - 4) ?? list[list.length - 1]!);
+          : (list.findLast((u) => mid(u) < ref - 4) ?? list[list.length - 1]!);
     }
     jumpTo(target.id);
   }

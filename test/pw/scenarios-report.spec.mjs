@@ -196,7 +196,7 @@ test("dense text: counted tokens plan a dense paragraph into passes; one the eng
   const note = `${dense}: ${JSON.stringify({ dense: cards.dense.rows, solid: cards.solid.rows, sent: sent.map((t) => t.length), halves: halves.map((t) => t.length) })}`;
   expect.soft(Object.keys(cards.dense.rows), note).toContain(`Read in ${sent.length} passes`);
   expect.soft(Object.keys(cards.dense.rows), note).not.toContain("Passes cut short");
-  expect.soft(cards.dense.foot, note).not.toMatch(/not read/);
+  expect.soft(cards.dense.foot, note).not.toMatch(/skipped part of this passage/);
   expect.soft(sent, note).not.toContain(DENSE);
   expect.soft(readWhole(sent, DENSE), note).toBe(true);
   expect.soft(sent.every((t) => fakeTokens(t) <= 510), note).toBe(true);
@@ -204,7 +204,7 @@ test("dense text: counted tokens plan a dense paragraph into passes; one the eng
   expect.soft(halves.join(" "), note).toBe(SOLID);
   expect.soft(halves, note).toHaveLength(2);
   expect.soft(cards.solid.rows["Passes cut short"], note).toBe("2 of 2");
-  expect.soft(cards.solid.foot, note).toMatch(/too dense for one pass of the model and was not read/);
+  expect.soft(cards.solid.foot, note).toContain("The model reached its text limit and skipped part of this passage.");
 });
 
 // ---- the toolbar menu's flagged list and the keyboard commands ---------------------------
@@ -309,8 +309,18 @@ keyboard("next/prev-flagged walk the flagged paragraphs in document order and wr
   const at = await flaggedAt(page);
   const walk = "next/prev-flagged walk the flagged paragraphs in document order and wrap around";
   expect(at, walk).toHaveLength(4);
-  await page.evaluate(() => scrollTo(0, 0));
-  expect(await jump(page, tell, "prevFlagged"), `${walk} (previous from the top wraps to the last)`).toBe(at[3]);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => {
+    scrollTo({ top: 0, behavior: "instant" });
+    document.documentElement.style.scrollBehavior = "smooth";
+  });
+  await tell(page, { action: "prevFlagged" });
+  expect(await flashedAt(page), `${walk} (reduced motion immediately marks the last paragraph)`).toBe(at[3]);
+  expect(await page.locator("#k4").evaluate((p) => {
+    const rect = p.getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= innerHeight;
+  }), "the whole jump is instant even on a page that requests smooth scrolling").toBe(true);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   expect(await jump(page, tell, "nextFlagged"), `${walk} (next wraps to the first)`).toBe(at[0]);
   expect(await jump(page, tell, "nextFlagged"), `${walk} (next)`).toBe(at[1]);
   expect(await jump(page, tell, "prevFlagged"), `${walk} (previous)`).toBe(at[0]);

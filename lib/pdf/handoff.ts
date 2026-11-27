@@ -174,7 +174,8 @@ export function serveTabPdfBytes(): void {
       if(!ask.success || ask.output.want !== location.href){post({failure:"read"});return;}
       started=true;
       void streamPdfBytes(location.href,async(chunk)=>{
-        const accepted=new Promise<boolean>((resolve)=>{ack=resolve;});
+        const { promise: accepted, resolve } = Promise.withResolvers<boolean>();
+        ack = resolve;
         if(!post({chunk,seq:seq++}) || !await accepted)throw new Error("PDF receiver closed");
       },{cap:ask.output.cap,signal:stopped.signal}).then((result)=>post(result.ok ? {done:true,bytes:result.bytes,...(result.name ? {name:result.name.slice(0,255)} : {})} : {failure:result.failure}),()=>post({failure:"read"}));
     });

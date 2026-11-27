@@ -1,5 +1,5 @@
 import { prependActionIcon } from "./actionIcon";
-import { defaultRelease, detectorRevisionUrl, type ReleaseRef, type DetectorRelease } from "../detectorReleases";
+import { defaultRelease, detectorRevisionUrl, type SetupCatalog, type ReleaseRef, type DetectorRelease } from "../detectorReleases";
 import { requestComponent, type ComponentReply } from "../backend/nativeClient";
 import { t } from "../i18n";
 import { browser } from "#imports";
@@ -150,4 +150,89 @@ export function mountDetectorPicker(host: HTMLElement) {
   options(key(active));
   paint();
   return update;
+}
+
+/** Pick the pin before choosing an engine or showing its installation command. */
+export function mountSetupDetector(host: HTMLElement, changed: (pin: DetectorRelease | null) => void) {
+  const label = document.createElement("label");
+  label.htmlFor = "setup-model";
+  label.textContent = t("detectorLabel");
+  const select = document.createElement("select");
+  select.id = label.htmlFor;
+  select.className = "select";
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.append(document.createElement("selectedcontent"));
+  const note = document.createElement("span");
+  note.setAttribute("role", "status");
+  note.id = "setup-model-status";
+  note.tabIndex = -1;
+  select.setAttribute("aria-describedby", note.id);
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "btn";
+  retry.dataset.variant = "outline";
+  retry.dataset.size = "sm";
+  retry.textContent = t("panelRetry");
+  retry.hidden = true;
+  host.append(label, select, note, retry);
+
+  let choices: ReleaseRef[] = [];
+  let recommended: DetectorRelease | null = null;
+  let generation = 0;
+  async function choose() {
+    const ref = choices.find(choice => choice.revision === select.value);
+    if (!ref) return;
+    const request = ++generation;
+    retry.hidden = true;
+    changed(null);
+    note.textContent = t("detectorChecking");
+    try {
+      const pin = ref.revision === recommended?.revision ? recommended : await catalog<DetectorRelease>(ref);
+      if (request !== generation) return;
+      note.textContent = "";
+      changed(pin);
+    } catch {
+      if (request !== generation) return;
+      note.textContent = t("detectorIncompatible");
+      retry.hidden = false;
+      retry.onclick = () => {
+        select.focus();
+        void choose();
+      };
+    }
+  }
+  select.addEventListener("change", () => void choose());
+
+  async function load() {
+    host.hidden = false;
+    label.hidden = select.hidden = choices.length === 0;
+    select.disabled = true;
+    retry.hidden = true;
+    note.textContent = t("detectorChecking");
+    const reply = await browser.runtime.sendMessage({action: "detectorCatalog", setup: true}).catch(() => null);
+    const result: SetupCatalog | undefined = reply?.ok ? reply.value : undefined;
+    recommended = result?.recommended ?? null;
+    const first = recommended ?? defaultRelease;
+    const unique = new Map([[first.revision, first as ReleaseRef]]);
+    for (const ref of result?.choices ?? []) if (!unique.has(ref.revision)) unique.set(ref.revision, ref);
+    choices = [...unique.values()];
+    select.replaceChildren(trigger, ...choices.map(ref => new Option(
+      ref.revision === recommended?.revision ? t("setupRecommendedModel", ref.release) : ref.release,
+      ref.revision,
+    )));
+    note.textContent = !recommended ? t("setupDefaultUnavailable")
+      : !result?.listed ? t("setupOtherModelsUnavailable") : "";
+    label.hidden = select.hidden = select.disabled = false;
+    retry.hidden = !!recommended && !!result?.listed;
+    retry.onclick = async () => {
+      note.focus();
+      changed(null);
+      const { pin } = await load();
+      changed(pin);
+      if (document.activeElement === note) (retry.hidden ? select : retry).focus();
+    };
+    return { pin: first, multiple: choices.length > 1 };
+  }
+  return load;
 }

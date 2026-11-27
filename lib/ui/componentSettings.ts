@@ -13,6 +13,7 @@ import { runtimeReady } from "../backend/runtimeClient";
 import { componentIsBehind } from "../backend/scoreProtocol";
 import { formatSize } from "./size";
 import { progressBar } from "./progressBar";
+import { nativeSetupRelease } from "../backend/engineChoice";
 import { installationCommand } from "./installationCommand";
 import { safariBridge } from "../backend/safariBridge";
 import { ACTIONS, type BackendStatus } from "../messaging/protocol";
@@ -102,6 +103,8 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const script = element("a", t("componentViewScript"), "btn"); script.dataset.variant = "ghost"; script.dataset.size = "sm";
   script.target = "_blank"; script.rel = "noopener noreferrer";
   const preview = makeButton("componentShowCommand", () => showCommand(commandBox.hidden), "ghost");
+  const previewLabel = element("span", t("componentShowCommand"));
+  preview.replaceChildren(previewLabel);
   preview.id = "install-preview";
   preview.setAttribute("aria-controls", commandBox.id);
   preview.setAttribute("aria-expanded", "false");
@@ -109,7 +112,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
     commandBox.hidden = copyActions.hidden = !open;
     if (!open) intro.textContent = installIntro;
     preview.setAttribute("aria-expanded", String(open));
-    preview.textContent = t(open ? "componentHideCommand" : "componentShowCommand");
+    previewLabel.textContent = t(open ? "componentHideCommand" : "componentShowCommand");
   }
   let installIntro = "";
   let shell: "posix" | "windows" = "posix";
@@ -132,6 +135,7 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
       }
     })();
   }, "primary"); copy.id = "install-copy"; copy.disabled = true; delete copy.dataset.variant;
+  copy.replaceChildren(element("span", t("componentCopyInstall")));
   prependActionIcon(copy, "copy");
   const commandActions = element("div", undefined, "component-actions");
   commandActions.hidden = true; commandActions.append(preview, script);
@@ -206,9 +210,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   let attemptedReceipt: string | null = null;
   let confirming: "models.delete" | "component.uninstall" | undefined;
 
-  void Promise.all([browser.runtime.getPlatformInfo(), safariBridge()]).then(([platform, bridge]) => {
+  void Promise.all([browser.runtime.getPlatformInfo(), safariBridge(), nativeSetupRelease.getValue()]).then(([platform, bridge, detector]) => {
     const instruction = installationCommand(platform.os, import.meta.env.BROWSER === "safari" ? "safari" : import.meta.env.BROWSER === "firefox" ? "firefox" : "chrome",
-      browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en", import.meta.env.ANAGRAM_INSTALLERS, bridge?.home);
+      browser.runtime.id, browser.runtime.getManifest().version, messageLocale() === "zh-CN" ? "zh_CN" : "en", import.meta.env.ANAGRAM_INSTALLERS, bridge?.home, detector);
     if (destroyed) return;
     if (!instruction) { intro.textContent = t("componentUnsupportedPlatform"); commandActions.hidden = releaseNotice.hidden = true; return; }
     shell = instruction.platform;

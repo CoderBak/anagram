@@ -28,6 +28,39 @@ describe("PDF navigation without content scripts", () => {
     e.commit(); await ticks(); expect(e.open).toHaveBeenCalledWith(7, "https://example.test/document", {auto: true});
     expect(await e.route.status(7)).toEqual({pdf: true, source: "https://example.test/document", local: false, authorized: true});
   });
+  it("recognizes the committed document after worker suspension, including when the URL has no extension", async () => {
+    const e = await setup();
+    e.setting.mockResolvedValue(false);
+    e.before(); e.headers(); e.commit({ documentId: "pdf-id" }); await ticks();
+    const restarted = createPdfNavigation({ open: e.open, access: e.access, setting: e.setting });
+    const frame = vi.spyOn(fakeBrowser.webNavigation, "getFrame");
+    frame.mockResolvedValue({ documentId: "pdf-id", url: "https://example.test/document" } as never);
+    expect((await restarted.status(7)).pdf).toBe(true);
+    frame.mockResolvedValue({ documentId: "new-id", url: "https://example.test/document" } as never);
+    expect((await restarted.status(7)).pdf).toBe(false);
+  });
+  it("honors a linked PDF request after worker suspension and consumes it once", async () => {
+    const first = await setup();
+    await first.route.want(7, "https://example.test/document");
+    const e = await setup();
+    e.setting.mockResolvedValue(false);
+    e.before(); e.headers(); e.commit(); await ticks();
+    expect(e.open).toHaveBeenCalledWith(7, "https://example.test/document", {auto: false});
+    e.before(); e.headers(); e.commit(); await ticks();
+    expect(e.open).toHaveBeenCalledTimes(1);
+  });
+  it("follows a linked PDF's server redirect, and discards a request whose tab instead opened HTML", async () => {
+    const e = await setup();
+    const link = "https://example.test/link.pdf";
+    e.setting.mockResolvedValue(false);
+    await e.route.want(7, link);
+    e.before(); e.headers(); e.commit({ transitionQualifiers: ["server_redirect"] }); await ticks();
+    expect(e.open).toHaveBeenCalledWith(7, "https://example.test/document", {auto: false});
+    await e.route.want(7, link);
+    e.before("https://example.test/other"); e.commit(); await ticks();
+    e.before(link); e.headers(); e.commit(); await ticks();
+    expect(e.open).toHaveBeenCalledTimes(1);
+  });
   it("keeps native PDF when disabled or not persistently authorized", async () => {
     for (const disabled of ["setting", "access"] as const) {
       const e = await setup(); e[disabled].mockResolvedValue(false); e.before(); e.headers(); e.commit(); await ticks(); expect(e.open).not.toHaveBeenCalled();
@@ -38,7 +71,7 @@ describe("PDF navigation without content scripts", () => {
     expect(e.open).toHaveBeenCalledWith(7, "file:///tmp/book.pdf", {auto: true});
   });
   it("suppresses every event for one Open original navigation, then allows reload", async () => {
-    const e = await setup(); e.route.pass(7, "https://example.test/document"); e.before(); e.headers(); e.commit(); e.complete();
+    const e = await setup(); await e.route.pass(7, "https://example.test/document"); e.before(); e.headers(); e.commit(); e.complete();
     await e.route.contentPdf(7, "https://example.test/document", "navigate"); await ticks(); expect(e.open).not.toHaveBeenCalled();
     e.before(); e.headers(); e.commit(); await ticks(); expect(e.open).toHaveBeenCalledTimes(1);
   });
@@ -46,7 +79,7 @@ describe("PDF navigation without content scripts", () => {
     // Firefox fires onBeforeNavigate again when it moves the load from the extension's
     // process to a web one; the pass is spent when the navigation commits, not before.
     for (const order of [["before", "before", "headers"], ["before", "headers", "before"]] as const) {
-      const e = await setup(); e.route.pass(7, "https://example.test/document");
+      const e = await setup(); await e.route.pass(7, "https://example.test/document");
       for (const step of order) e[step]();
       e.commit(); e.complete(); await ticks(); expect(e.open).not.toHaveBeenCalled();
       e.before(); e.headers(); e.commit(); await ticks(); expect(e.open).toHaveBeenCalledTimes(1);

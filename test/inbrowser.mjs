@@ -41,10 +41,9 @@
 //   - Settings switches to the local engine and back, and offers to delete what the
 //     in-browser engine left.
 //
-// The downloads are zeros from the local server: a paused, cancelled or failed download is
-// never verified. `--real` adds one run with the real files, the whole way to Ready and a
-// score without a click (ANAGRAM_MODELKIT, or ~/anagram-bench's copy): 1.4 GB into a
-// temporary profile that is deleted after; never in CI.
+// The local server sends zeros for tests that stop partway through a download. With
+// `--real`, it also serves the pinned detector snapshot from ANAGRAM_MODELKIT. That run
+// verifies the files, scores a paragraph and deletes the model in a temporary profile.
 //
 //   npm run test:inbrowser             # builds output-test/chrome-mv3 when stale
 //   node test/inbrowser.mjs --real     # and the real download, load and score
@@ -61,12 +60,26 @@ import { uiLanguage } from "./harness.mjs";
 import { deviceBuild } from "./test-build.mjs";
 import { DEVICES } from "./pw/devices.mjs";
 import { TEST_PDF } from "./pdf-fixture.mjs";
-import { DOWNLOAD_BYTES, DOWNLOAD_BYTES_FP16, modelServer, realFiles } from "./webengine/model-server.mjs";
+import { DOWNLOAD_BYTES, WEIGHTS, modelServer, realFiles } from "./webengine/model-server.mjs";
 import { STATES, scriptEngine } from "./webengine/scripted-engine.mjs";
 import { LID } from "../scripts/webengine.mjs";
 
-/** A device with no choice: the in-browser engine, set up from install. */
-const EXT = deviceBuild("linux-cpu", DEVICES["linux-cpu"]);
+// Partial-download tests stop inside the largest file. Put it first in a private copy
+// so the offline server needs no real tokenizer or other preceding, hash-verified files.
+// The full-model check below uses the ordinary build and the published file order.
+const partialBuilds = mkdtempSync(join(tmpdir(), "anagram-partial-download-"));
+process.on("exit", () => rmSync(partialBuilds, { recursive: true, force: true }));
+function partialBuild(name) {
+  const dir = join(partialBuilds, name);
+  cpSync(deviceBuild(name, DEVICES[name]), dir, { recursive: true });
+  const worker = join(dir, "vendor", "engine", "worker.min.mjs");
+  const order = `self.addEventListener("message", ({ data }) => {
+    if (data.type === "init") data.pin.files.sort((a, b) => b.size_bytes - a.size_bytes);
+  }, { once: true });`;
+  writeFileSync(worker, order + "\n" + readFileSync(worker, "utf8"));
+  return dir;
+}
+const EXT = partialBuild("linux-cpu");
 // --measure-webgpu uses the actual adapter, requires hardware WebGPU and records its identity.
 const MEASURE_GPU = process.argv.includes("--measure-webgpu");
 const MEASURE_SCANS = MEASURE_GPU || process.argv.includes("--measure-scans");
@@ -192,9 +205,9 @@ if (!REAL_ONLY) {
     const extId = new URL(run.sw.url()).host;
     const granted = await run.sw.evaluate(() => chrome.permissions.getAll());
     check("shipped: nothing is granted but the required permissions, no host at all", (granted.origins ?? []).length === 0, JSON.stringify(granted));
-    const first = await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000);
+    const first = await until(async () => server.requests.find((r) => !r.preflight && r.file === WEIGHTS), 20000);
     check("shipped: the download starts by itself, a CORS request from the extension's own origin", first?.host === "huggingface.co" && first.origin === `chrome-extension://${extId}`, JSON.stringify(first));
-    const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === "model.onnx"));
+    const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === WEIGHTS));
     check("shipped: the redirect to Hugging Face's CDN is followed with an opaque origin, which it answers with *", cdn?.origin === "null", JSON.stringify(cdn));
     const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
       await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
@@ -222,7 +235,7 @@ const grantInWorker = (sw) => sw.evaluate(() => { chrome.permissions.contains = 
 const engineOf = async (page) => (await page.evaluate(() => chrome.runtime.sendMessage({ action: "getEngine" })))?.engine ?? null;
 const shown = (page, selector) => page.evaluate((s) => { const el = document.querySelector(s); return !!el && !el.hidden && el.getClientRects().length > 0; }, selector);
 
-const CHOICE = deviceBuild("apple-silicon", DEVICES["apple-silicon"]);
+const CHOICE = partialBuild("apple-silicon");
 for (const lang of ["en", "zh-CN"]) {
   const w = words(lang);
   const server = await modelServer({ rate: 15e6 });
@@ -251,7 +264,7 @@ for (const lang of ["en", "zh-CN"]) {
     check(`${lang} choice: an Apple Silicon Mac is offered both engines, the in-browser one highlighted`, offered && seen.title === w("engineChooseTitle") &&
       seen.highlighted && seen.filled && seen.outline && !seen.panel, JSON.stringify(seen));
     check(`${lang} choice: each card says what it is, and quotes no speed or memory`,
-      seen.oneClick.includes(w("engineOneClickWhat")) &&
+      seen.oneClick.includes(w("engineTitle")) && seen.terminal.includes(w("componentTitle")) &&
       seen.oneClick.includes(w("engineOneClickButton", size(DOWNLOAD_BYTES))) && seen.oneClick.includes(w("engineRecommended")) &&
       seen.terminal.includes(w("engineTerminalWhat")) &&
       seen.terminal.includes(w("engineTerminalButton")) && !/\bms\b|memory|faster|毫秒|内存|更快/i.test(`${seen.oneClick} ${seen.terminal}`) &&
@@ -276,7 +289,7 @@ for (const lang of ["en", "zh-CN"]) {
     // The in-browser engine: its download starts, and its panel follows it.
     await setup.bringToFront();
     await setup.click("#engine-pick-inbrowser");
-    const started = await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000);
+    const started = await until(async () => server.requests.find((r) => !r.preflight && r.file === WEIGHTS), 20000);
     const running = await until(async () => (await statusOf(setup)) === w("engineDownloading"), 20000);
     check(`${lang} choice: picking the in-browser engine starts its download, with Pause and Cancel`, started && running &&
       (await textOf(setup, "#component-primary")) === w("componentPauseDownload") && (await engineOf(setup)) === "inbrowser" &&
@@ -315,10 +328,10 @@ for (const lang of ["en", "zh-CN"]) {
 
 // ---- what the device can afford --------------------------------------
 
-for (const [name, want] of [["linux-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "lighter"]]) {
+for (const [name, want] of [["linux-nvidia", "nvidia"], ["linux-2gb", "cannot"], ["linux-4gb", "tight"], ["linux-4gb-f16", "tight"]]) {
   const w = words("en");
   const server = await modelServer({ rate: 15e6 });
-  const run = await launch("en", server, undefined, deviceBuild(name, DEVICES[name]));
+  const run = await launch("en", server, undefined, partialBuild(name));
   try {
     const setup = run.context.pages().find((p) => p.url().endsWith("/onboarding.html")) ??
       await run.context.waitForEvent("page", { predicate: (p) => p.url().endsWith("/onboarding.html"), timeout: 20000 }).catch(() => null);
@@ -338,19 +351,10 @@ for (const [name, want] of [["linux-nvidia", "nvidia"], ["linux-2gb", "cannot"],
         onlyCatalogRequests(server) && (await engineOf(setup)) === null && !(await shown(setup, ".engine-choice")), said);
     } else if (want === "tight") {
       const note = await until(() => textOf(setup, ".engine-tight"), 20000);
-      check("4 GB: the in-browser engine sets up, with a line that the computer may slow down", note === w("engineTight") &&
-        (await until(async () => server.requests.find((r) => !r.preflight && r.file === "model.onnx"), 20000)), note);
+      check(`${name}: the FP32 engine sets up with the low-memory notice`, note === w("engineTight") &&
+        (await until(async () => server.requests.find((r) => !r.preflight && r.file === WEIGHTS), 20000)), note);
       await engine(setup, "models.delete", { confirm: true });
-    } else if (want === "lighter") {
-      // 4 GB and a card with shader-f16: FP32 does not fit, so the modelkit's FP16 file is what downloads.
-      const line = await until(() => textOf(setup, ".engine-lighter"), 20000);
-      const asked = await until(async () => server.requests.find((r) => !r.preflight && r.file === "model_fp16.onnx"), 20000);
-      const progress = await until(() => textOf(setup, ".engine-progress"), 20000);
-      const status = await engine(setup, "status");
-      check("4 GB with an f16 GPU: the lighter model's line, and no note that the computer may slow down", line === w("engineLighter") && !(await shown(setup, ".engine-tight")), line);
-      check("4 GB with an f16 GPU: model_fp16.onnx downloads, not model.onnx, and the progress counts its 715 MB", !!asked && !server.requests.some((r) => r.file === "model.onnx") &&
-        progress?.includes(size(DOWNLOAD_BYTES_FP16)) && status?.data?.tier === "fp16" && status.data.download.total_bytes === DOWNLOAD_BYTES_FP16, JSON.stringify([asked, progress, status?.data?.tier]));
-      await engine(setup, "models.delete", { confirm: true });
+
     }
   } finally {
     await run.close();
@@ -462,7 +466,7 @@ if (process.env.ANAGRAM_CHROME) await nativeOptional("ANAGRAM_CHROME", process.e
     await settings.click("#engine-switch");
     const downloading = await until(async () => (await statusOf(settings)) === w("engineDownloading"), 20000);
     check("Settings: switching back starts the in-browser engine's setup", downloading && (await engineOf(settings)) === "inbrowser" &&
-      server.requests.slice(before).some((r) => r.file === "model.onnx" && !r.preflight) &&
+      server.requests.slice(before).some((r) => r.file === WEIGHTS && !r.preflight) &&
       (await textOf(settings, "#engineLabel")) === w("engineTitle"), await statusOf(settings));
     await engine(settings, "models.delete", { confirm: true });
     check("Settings: no errors in the pages", problems.length === 0, problems.join(" | "));
@@ -508,8 +512,8 @@ for (const lang of ["en", "zh-CN"]) {
       `${await statusOf(setup)} · ${await textOf(setup, "#component-primary")} · ${await textOf(setup, "#engine-cancel")}`);
     check(`${lang}: its card is the in-browser engine's`, (await setup.evaluate(() => document.querySelector("#componentSettings")?.closest(".card")?.querySelector("h2")?.textContent)) === w("engineTitle"));
     const first = server.requests.find((r) => !r.preflight && !catalogRequest(r));
-    check(`${lang}: the first file requested is the model, without a click`, first?.host === "huggingface.co" && first.file === "model.onnx", JSON.stringify(first));
-    const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === "model.onnx"));
+    check(`${lang}: the first file requested is the model, without a click`, first?.host === "huggingface.co" && first.file === WEIGHTS, JSON.stringify(first));
+    const cdn = await until(async () => server.requests.find((r) => r.host.endsWith(".hf.co") && r.file === WEIGHTS));
     check(`${lang}: Hugging Face's redirect to its CDN is followed`, cdn, JSON.stringify(server.requests.slice(0, 4)));
     check(`${lang}: nothing is asked of any host but Hugging Face's`, server.requests.every((r) => HUGGING_FACE.test(r.host) && r.file !== "lid.176.ftz"),
       JSON.stringify(server.requests.filter((r) => !HUGGING_FACE.test(r.host))));
@@ -597,7 +601,7 @@ for (const lang of ["en", "zh-CN"]) {
     let before = server.requests.length;
     await setup.click("#component-primary");
     await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
-    const resumedAt = await until(async () => server.requests.slice(before).find((r) => r.file === "model.onnx" && !r.preflight)?.range);
+    const resumedAt = await until(async () => server.requests.slice(before).find((r) => r.file === WEIGHTS && !r.preflight)?.range);
     check(`${lang}: Resume asks for the rest of the file`, /^bytes=[1-9]\d*-$/.test(resumedAt ?? ""), resumedAt);
 
     // Cancel: a confirmation, then the parts go and setup starts over.
@@ -738,7 +742,7 @@ for (const lang of ["en", "zh-CN"]) {
     check(`${lang}: an update while the browser asks to save data does not start the download`, onlyCatalogRequests(server, restartAt), JSON.stringify(server.requests.slice(restartAt)));
     await saveData(sw, false);
     await updated(sw);
-    const resumed = await until(async () => server.requests.slice(restartAt).find((r) => r.file === "model.onnx" && !r.preflight && r.range), 20000);
+    const resumed = await until(async () => server.requests.slice(restartAt).find((r) => r.file === WEIGHTS && !r.preflight && r.range), 20000);
     check(`${lang}: an update resumes a download that was under way, from the bytes on disk`,
       bytesOnDisk > 0 && Number(/^bytes=(\d+)-$/.exec(resumed?.range ?? "")?.[1]) > 0, JSON.stringify({bytesOnDisk, resumed, requests: server.requests.slice(restartAt).map(({file,range}) => ({file,range}))}));
     // Cancelled, nothing starts it again: not an update (above), not a relaunch of the browser.
@@ -770,7 +774,7 @@ for (const lang of ["en", "zh-CN"]) {
         primary: (e => e && !e.hidden ? e.textContent : null)(document.getElementById("component-primary")),
         // Settings' line of controls: Delete model files, the idle unload and the engine switch.
         manage: ["engine-delete", "idleUnload"].every((id) => (e => !!e && e.getClientRects().length > 0)(document.getElementById(id))),
-        folds: document.querySelectorAll("details").length,
+        folds: document.querySelectorAll("#componentSettings details").length,
       }));
       await page.close();
       return { ...seen, stage: stageOf(seen.status) };
@@ -862,7 +866,7 @@ for (const lang of ["en", "zh-CN"]) {
       const received = Math.min(data.download.total_bytes, Math.max(data.download.bytes_received, data.storage.models_bytes));
       console.log(`full disk (${refusal}): stopped ${stoppedMs} ms after the disk filled, at ${data.storage.models_bytes} bytes; "${shown}"`);
       check(`full disk (${refusal}): a write that finds the disk full stops the download at once, without a retry`,
-        failed && stoppedMs < 2000 && onlyCatalogRequests(server, requests) && data.download.error === "There is not enough free disk space for model.onnx",
+        failed && stoppedMs < 2000 && onlyCatalogRequests(server, requests) && data.download.error === `There is not enough free disk space for ${WEIGHTS}`,
         JSON.stringify({ stoppedMs, error: data.download.error, after: server.requests.slice(requests) }));
       check(`full disk (${refusal}): the setup page says how much room to make, from what is left to download, with Retry`,
         shown === w("engineDiskFull", size(DOWNLOAD_BYTES - received)) && (await textOf(setup, "#component-primary")) === w("panelRetry"), shown);
@@ -873,7 +877,7 @@ for (const lang of ["en", "zh-CN"]) {
       await worker.evaluate("self.__diskFull = null");
       const before = server.requests.length;
       await setup.click("#component-primary");
-      const resumed = await until(async () => server.requests.slice(before).find((r) => r.file === "model.onnx" && !r.preflight)?.range, 15000);
+      const resumed = await until(async () => server.requests.slice(before).find((r) => r.file === WEIGHTS && !r.preflight)?.range, 15000);
       const running = await until(async () => (await statusOf(setup)) === w("engineDownloading"), 15000);
       check(`full disk (${refusal}): with room again, Retry carries on from the bytes on disk`, resumed === `bytes=${onDisk}-` && running, resumed);
     }
@@ -893,7 +897,7 @@ for (const lang of ["en", "zh-CN"]) {
 if (REAL) {
   const files = realFiles(process.env.ANAGRAM_MODELKIT ?? join(homedir(), "anagram-bench", "bench", "model"));
   if (MEASURE_SCANS && (process.env.CI || !files)) throw new Error("Run the scan benchmark locally with ANAGRAM_MODELKIT pointing to the pinned detector snapshot");
-  if (process.env.CI || !files) console.log("SKIP  the real download — set ANAGRAM_MODELKIT to the pinned modelkit");
+  if (process.env.CI || !files) console.log("SKIP  the real download — run locally with ANAGRAM_MODELKIT pointing to the pinned detector snapshot");
   else await realRun(files);
 }
 
@@ -966,11 +970,17 @@ async function realRun(files) {
     check("real: the language identifier came from the package, not the network", server.requests.every((r) => HUGGING_FACE.test(r.host) && r.file !== "lid.176.ftz"),
       JSON.stringify(server.requests.map((r) => `${r.host}${r.path}`)));
     const where = await textOf(setup, "#componentSettings .engine-where");
-    if (MEASURE_GPU) check("real: the model runs on the GPU", where === w("engineOnGpu"), where);
-    check("real: the storage used is the model's", (await textOf(setup, "#componentSettings .engine-stored")) === w("componentStorage", size(DOWNLOAD_BYTES)));
+
     const status = await engine(setup, "status");
-    if (MEASURE_GPU && !status?.data?.runtime?.active_id?.startsWith("webgpu:")) throw new Error("The detector did not load on hardware WebGPU");
-    const wasm = status?.data?.runtime?.candidates?.find((c) => c.id === "wasm:fp32");
+    const stored = status?.data?.storage?.models_bytes;
+    check("real: the engine accounts for its installed model files", stored >= DOWNLOAD_BYTES && size(stored) === size(DOWNLOAD_BYTES), String(stored));
+    const runtime = status?.data?.runtime;
+    const active = runtime?.active_id ?? runtime?.selected_id;
+    const device = runtime?.candidates?.find((c) => c.id === active)?.device;
+    if (MEASURE_GPU && device !== "gpu") throw new Error("The detector did not load on hardware WebGPU");
+    const deviceLabel = device === "gpu" ? "engineOnGpu" : device === "cpu" ? "engineOnCpu" : null;
+    check("real: setup names the device that actually loaded the detector", deviceLabel && where === w(deviceLabel), JSON.stringify({ active, where }));
+    const wasm = runtime?.candidates?.find((c) => c.id === "wasm:fp32");
     check("real: the offscreen document is cross-origin isolated (WASM threads)", /\b[2-9] threads\b/.test(wasm?.label ?? ""), wasm?.label);
     check("real: the setup page offers to try a paragraph once ready", await setup.evaluate(() => !document.getElementById("tryParagraph").hidden));
     // A score through the ordinary pipeline.
@@ -1001,6 +1011,7 @@ async function realRun(files) {
     await managing.click("#engine-manage");
     await checkFailedPreferenceSave(run, managing);
     await managing.click("#engine-delete");
+    check("real: the delete confirmation shows the installed size", (await textOf(managing, "#component-confirm-text")) === w("engineDeleteConfirm", size(DOWNLOAD_BYTES)));
     await managing.click("#engine-confirm");
     await managing.waitForFunction(() => document.querySelector("#engine-delete").hidden);
     await managing.close();

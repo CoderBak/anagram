@@ -19,7 +19,7 @@ export function workerInit(choice?: TierChoice | null): Omit<WorkerInit, "type">
   // An offscreen document has no getManifest: the background put the version in its address.
   version ??= typeof location === "undefined" ? null : new URLSearchParams(location.search).get("version");
   return {
-    pin: pin(url(LID_PATH)),
+    pin: pin(url(LID_PATH), choice?.tier, choice?.release),
     ...(IS_SAFARI ? { gpuOnly: true } : {}),
     assets: {
       ort: url("/vendor/engine/ort.jspi.min.mjs"),

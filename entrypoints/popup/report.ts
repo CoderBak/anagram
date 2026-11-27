@@ -61,11 +61,12 @@ export function mountReport(host: HTMLElement, hooks: {
   const breakdown = document.createElement("details");
   breakdown.className = "breakdown";
   const summary = document.createElement("summary");
-  summary.textContent = t("scoreBreakdown");
+  const breakdownLabel = document.createElement("span");
+  breakdownLabel.textContent = t("scoreBreakdown");
+  summary.append(breakdownLabel);
   summary.dataset.focus = "breakdown";
   return (report, engineAway = false) => {
-    host.hidden = !report;
-    if (!report) { previous = ""; heading.hidden = true; body.replaceChildren(); return; }
+    if (!report) { host.hidden = true; previous = ""; heading.hidden = true; body.replaceChildren(); return; }
     const key = JSON.stringify([report, engineAway]);
     if (key === previous) return;
     previous = key;

@@ -349,7 +349,7 @@ document.getElementById("copy")!.addEventListener("click", async () => {
   if (report.whole) lines.push(readout(report.whole));
   report.reads.forEach((read, index) => {
     const r = read.verdict?.result;
-    lines.push(`${index + 1}. ${r ? readout(r) : t("pasteTooShortToRead")}${r?.truncated ? `, ${t("reportUnread")}` : ""}${read.paragraphs.length > 1 ? ` (×${read.paragraphs.length})` : ""}`);
+    lines.push(`${index + 1}. ${r ? readout(r) : t("pasteTooShortToRead")}${r?.truncated ? ` (${t("reportUnread")})` : ""}${read.paragraphs.length > 1 ? ` (×${read.paragraphs.length})` : ""}`);
     if (includeText.checked) lines.push(read.text);
   });
   try {

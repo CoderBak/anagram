@@ -124,7 +124,7 @@
     "description": "Card action: copy the paragraph's text."
   },
   "cardFootUnavailable": {
-    "message": "The local engine did not answer. Retried automatically once it is running.",
+    "message": "Anagram will try again when the local engine is running.",
     "description": "Chip card footnote when the local engine is down."
   },
   "cardFootUnsupported": {
@@ -148,7 +148,7 @@
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
   },
   "coverageTooDense": {
-    "message": "Part of it is too dense for one pass of the model and was not read. ",
+    "message": "The model reached its text limit and skipped part of this passage. ",
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
   },
   "coverageOtherLanguages": {
@@ -156,7 +156,7 @@
     "description": "Card footnote sentence; the trailing space joins it to the next sentence."
   },
   "coverageAveraged": {
-    "message": "Longer than the model reads in one pass, so it was read in $1 passes, and each part is judged by the passes that read it. ",
+    "message": "Anagram analyzed this text in $1 overlapping passes and combined their scores. ",
     "description": "Card footnote sentence. $1 = pass count. The trailing space joins it to the next sentence."
   },
   "selTooShort": {
@@ -168,11 +168,11 @@
     "description": "Selection card row label."
   },
   "selNeeded": {
-    "message": "Needed for a reliable read",
+    "message": "Minimum word count",
     "description": "Selection card row label: the evidence floor."
   },
   "selFootTooShort": {
-    "message": "Detection is unreliable below the evidence floor — select a longer passage.",
+    "message": "Select a longer passage for a more reliable score.",
     "description": "Selection card footnote below the evidence floor."
   },
   "selAnalyzing": {
@@ -196,11 +196,11 @@
     "description": "Selection card footnote when the local engine is unavailable or setup is unfinished."
   },
   "selFootNoAnswer": {
-    "message": "The local engine did not answer — try again.",
+    "message": "The local engine didn't respond. Try again.",
     "description": "Selection card footnote when the request failed with the local engine up."
   },
   "selFootUnavailable": {
-    "message": "The local engine did not answer — try again.",
+    "message": "The local engine didn't respond. Try again.",
     "description": "Selection card footnote on a degraded verdict."
   },
   "selFootUnsupported": {
@@ -212,7 +212,7 @@
     "description": "Panel action beside the daemon-down notice."
   },
   "panelCommentsElsewhere": {
-    "message": "Comments here come from $1, which Anagram may not read.",
+    "message": "Anagram needs permission to read comments from $1.",
     "description": "Panel notice when the page shows a comment thread (Disqus, Facebook comments) in a frame of a site that is not granted. $1 = that site's host name, e.g. disqus.com."
   },
   "panelCommentsAllow": {
@@ -244,7 +244,7 @@
     "description": "Panel title while the page's paragraphs are still being read and none of those read is flagged."
   },
   "panelNotEnglishPage": {
-    "message": "This page isn't in English: Anagram reads English text only.",
+    "message": "Anagram can only analyze English text.",
     "description": "Toolbar menu over a page none of whose paragraphs is in English: why nothing was scored."
   },
   "panelCovShort": {
@@ -295,16 +295,12 @@
     "message": "Google Docs document",
     "description": "Reading overlay title for a document with no title of its own."
   },
-  "docsSubtitle": {
-    "message": "Anagram reading mode, every paragraph analyzed, editor untouched behind",
-    "description": "Subtitle in the Docs reading overlay's bar."
-  },
   "docsRefresh": {
     "message": "Refresh",
     "description": "Docs overlay button: read the document again."
   },
   "docsRefreshTitle": {
-    "message": "Read the document again, with the edits made since it opened",
+    "message": "Load the latest edits",
     "description": "Tooltip on the Docs overlay's Refresh."
   },
   "docsOpenAsPage": {
@@ -312,23 +308,19 @@
     "description": "Docs overlay button: open the reading view in its own tab."
   },
   "docsOpenAsPageTitle": {
-    "message": "Open the analyzed reading view as its own page",
+    "message": "Open the reading view in this tab",
     "description": "Tooltip on the Docs overlay's Open as page."
   },
   "docsBack": {
     "message": "Back to editor (Esc)",
     "description": "Docs overlay button: close the overlay. Esc is the key, untranslated."
   },
-  "docsSnapshotNotice": {
-    "message": "Static snapshot of the document — Refresh reads it again.",
-    "description": "Line above the paper in the Docs reading overlay."
-  },
   "reportEstimate": {
     "message": "Shares are measured by character. Score = AI-generated share + half the AI-assisted share.",
     "description": "Report preamble: what the percentages mean."
   },
   "reportUnread": {
-    "message": "; the end of the paragraph was not read",
+    "message": "Ending omitted from score",
     "description": "Report entry detail appended when the text outran the pass cap."
   },
   "reportPrivateTitle": {
@@ -336,7 +328,7 @@
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportCaveat": {
-    "message": "Research estimates. Exclude these scores from disciplinary and other high-stakes decisions.",
+    "message": "These scores are estimates. Do not use them to make disciplinary or other high-stakes decisions.",
     "description": "The fixed caveat every copied report carries."
   },
   "reportCopyFailed": {
@@ -404,19 +396,19 @@
     "description": "PDF source loading and recovery status."
   },
   "readerReading": {
-    "message": "Reading the whole document: $1% so far.",
+    "message": "Analyzing PDF ($1% complete)",
     "description": "Toolbar menu over the PDF reader while it reads the rest of the document in the background: $1 = the share of its paragraphs read, in percent."
   },
   "readerReadingLeft": {
-    "message": "Reading the whole document: $1% so far, about $2 minutes left.",
+    "message": "Analyzing PDF ($1% complete, about $2 minutes left)",
     "description": "Toolbar menu over the PDF reader while it reads the rest in the background: $1 = the share read, in percent; $2 = minutes left, estimated from this computer's pace."
   },
   "readerReadingSoon": {
-    "message": "Reading the whole document: $1% so far, less than a minute left.",
+    "message": "Analyzing PDF ($1% complete, less than a minute left)",
     "description": "Toolbar menu over the PDF reader, the background reading about to finish: $1 = the share read, in percent."
   },
   "readerReadShare": {
-    "message": "$1% of the document read; the rest is read as you scroll to it.",
+    "message": "$1% analyzed. Scroll to analyze more.",
     "description": "Toolbar menu over the PDF reader where only the pages around the one being read are read ahead (a slow computer, or the setting off): $1 = the share of its paragraphs read, in percent."
   },
   "readerReadWhole": {
@@ -531,10 +523,6 @@
     "message": "Choose how Anagram runs",
     "description": "Setup page and Settings: the engine card's title while no engine is chosen yet, above the two ways to run the model."
   },
-  "engineOneClick": {
-    "message": "One click",
-    "description": "Setup page: title of the card for the in-browser engine, the recommended choice."
-  },
   "engineRecommended": {
     "message": "Recommended",
     "description": "Setup page: badge on the in-browser engine's card."
@@ -546,10 +534,6 @@
   "engineOneClickButton": {
     "message": "Download model ($1)",
     "description": "Setup page, in-browser engine card: its button. $1 is the size of the one-time download."
-  },
-  "engineTerminal": {
-    "message": "Terminal",
-    "description": "Setup page: title of the card for the local engine, installed with one command in a terminal."
   },
   "engineTerminalWhat": {
     "message": "Connect the extension to a separate program you install with Terminal.",
@@ -604,7 +588,7 @@
     "description": "Engine state: the local engine has never connected."
   },
   "engineSaveData": {
-    "message": "Data Saver is on in your browser, so the download waits until you start it.",
+    "message": "Data Saver is on. Start the download when you're ready.",
     "description": "Oneclick setup, not set up: why the model download did not start by itself (navigator.connection.saveData)."
   },
   "engineSetUpButton": {
@@ -628,7 +612,7 @@
     "description": "In-browser edition: engine status when the model download stopped on an error."
   },
   "popupSetupStoppedNetwork": {
-    "message": "The model's download lost its connection",
+    "message": "The download was interrupted",
     "description": "Toolbar menu, in-browser engine: the model download stopped because the connection was lost. The button below opens the setup page, which offers Retry."
   },
   "popupSetupStoppedStorage": {
@@ -636,7 +620,7 @@
     "description": "Toolbar menu, in-browser engine: the model download stopped because the disk is full."
   },
   "popupSetupStoppedServer": {
-    "message": "The model's download site isn't answering",
+    "message": "The download server isn't responding",
     "description": "Toolbar menu, in-browser engine: the model download stopped because the server failed."
   },
   "popupSetupStoppedDamaged": {
@@ -692,7 +676,7 @@
     "description": "In-browser edition: confirmation before cancelling the download; $1 is the amount downloaded, e.g. 620 MB."
   },
   "engineDeleteConfirm": {
-    "message": "This frees $1. Anagram can't analyze anything until you set it up again, which downloads the model again.",
+    "message": "Delete $1 of model files? You'll need to download the model again to use the in-browser engine.",
     "description": "In-browser edition: confirmation before deleting the model; $1 is its size, e.g. 1.4 GB."
   },
   "engineOnGpu": {
@@ -704,7 +688,7 @@
     "description": "In-browser edition, engine ready without a usable GPU: where the model runs, and how to get the faster path."
   },
   "engineNetworkLost": {
-    "message": "The download could not reach Hugging Face or its mirror hf-mirror.com. Check your connection or proxy, then click Retry: the download continues where it stopped.",
+    "message": "Couldn't reach Hugging Face or hf-mirror.com. Check your connection or proxy, then click Retry to resume the download.",
     "description": "In-browser edition: the download failed on the network, and how to fix it. Retry is the button's label (panelRetry)."
   },
   "engineSettingDiskFull": {
@@ -728,11 +712,11 @@
     "description": "In-browser edition: the download failed for another reason, or before the browser restarted."
   },
   "engineLoadFailed": {
-    "message": "The model couldn't start in this browser. Click Retry; if it still fails, restart the browser.",
+    "message": "The model couldn't start. Click Retry. If that doesn't work, restart your browser.",
     "description": "In-browser edition: the downloaded model failed to load."
   },
   "engineUnavailable": {
-    "message": "The in-browser engine didn't start. Click Retry; if it still fails, restart the browser.",
+    "message": "The in-browser engine couldn't start. Click Retry. If that doesn't work, restart your browser.",
     "description": "In-browser edition: the engine's hidden page or worker could not be reached at all."
   },
   "engineSetUp": {
@@ -748,7 +732,7 @@
     "description": "In-browser edition, popup and panel: button that opens the setup page when the download is paused or stopped."
   },
   "popupSetupNeeded": {
-    "message": "Anagram isn't set up yet: its model needs a one-time download.",
+    "message": "Set up an engine to start analyzing text.",
     "description": "In-browser edition, popup: the engine is not set up yet."
   },
   "popupSetupDownloading": {
@@ -800,7 +784,7 @@
     "description": "Engine state: an error or lost connection."
   },
   "componentEngineCrashed": {
-    "message": "The engine stopped unexpectedly several times in a row while scoring, so Anagram stopped restarting it. Retry to start it again.",
+    "message": "The engine stopped repeatedly during analysis. Click Retry to start it again.",
     "description": "Engine panel on the setup page and in Settings: the engine died several times in a row while scoring and is no longer restarted automatically."
   },
   "componentInUse": {
@@ -816,7 +800,7 @@
     "description": "Engine state: an update or removal continues in a separate system window."
   },
   "componentCleanupDone": {
-    "message": "Local engine removed; removing the extension…",
+    "message": "Local engine removed. Removing the extension…",
     "description": "Shown after uninstall succeeded, while the extension removes itself."
   },
   "componentRemoveExtension": {
@@ -824,7 +808,7 @@
     "description": "Button to retry removing the extension after the engine was removed."
   },
   "componentExtensionRemovalFailed": {
-    "message": "The extension could not be removed; remove it from the browser's extension manager.",
+    "message": "Remove Anagram from your browser's extensions page to finish uninstalling.",
     "description": "Error after the engine was removed but the extension could not remove itself."
   },
   "componentInstallIntro": {
@@ -920,7 +904,7 @@
     "description": "Button and dialog title for uninstalling."
   },
   "componentDeleteConfirm": {
-    "message": "This deletes $1 of model files from $2; you can download them again later.",
+    "message": "Delete $1 of model files from $2? You can download them again later.",
     "description": "Confirmation text; $1 is the size, $2 the folder."
   },
   "componentUninstallConfirm": {
@@ -1120,7 +1104,7 @@
     "description": "Button that removes every site grant."
   },
   "optCommentsFrom": {
-    "message": "The page you came from shows comments from $1. Anagram reads them only with access to that site.",
+    "message": "The page you were reading uses $1 for comments. Allow access to analyze them.",
     "description": "Settings, Site access: shown when the panel's Allow button opened Settings. $1 = the comment site's host name."
   },
   "optCommentsAllow": {
@@ -1128,7 +1112,7 @@
     "description": "Button that asks the browser for access to the comment site. $1 = its host name."
   },
   "optCommentsAllowed": {
-    "message": "$1 is allowed. Its comments are read on the sites Anagram is on.",
+    "message": "Anagram can now analyze comments from $1 on sites where you've enabled it.",
     "description": "Settings, Site access: the comment site is granted. $1 = its host name."
   },
   "optEnabled": {
@@ -1207,10 +1191,6 @@
     "message": "$1 ($2)",
     "description": "Ready status followed by the processor used (GPU or CPU) in Settings."
   },
-  "onbTagline": {
-    "message": "Highlights likely AI-edited paragraphs.",
-    "description": "Setup page: the one line under the name."
-  },
   "onbWhere": {
     "message": "Automatic site access (optional)",
     "description": "Setup page: heading of the permissions block, first on the page."
@@ -1228,7 +1208,7 @@
     "description": "Setup page: the licence and fair-use notice for the model, in the spirit of Pangram's own."
   },
   "accessHint": {
-    "message": "or switch it on per site from the toolbar icon",
+    "message": "To enable one site, open Anagram from the toolbar while visiting that site.",
     "description": "Setup page: beside Allow all sites."
   },
   "accessAllowed": {
@@ -1324,7 +1304,7 @@
     "description": "Pinning step 2 in Safari: open Customize Toolbar."
   },
   "toolbarSafariDrag": {
-    "message": "Drag the Anagram icon beside the address field, then click Done. If it is already there, you are ready.",
+    "message": "Drag Anagram beside the address bar, then click Done.",
     "description": "Pinning step 3 in Safari: drag Anagram into the toolbar."
   },
   "popupReportRange": {
@@ -1520,7 +1500,7 @@
     "description": "The same dialog: button that deletes the site and page records."
   },
   "statsDropped": {
-    "message": "Deleted. The daily totals stay.",
+    "message": "Details deleted. Daily totals kept.",
     "description": "Settings, Statistics: status after the finer records were deleted."
   },
   "statsSettingsLink": {
@@ -1632,11 +1612,11 @@
     "description": "Statistics page, pages list: nothing in the period."
   },
   "statsMorePages": {
-    "message": "The latest $1 of $2 pages. The export has them all.",
+    "message": "Showing the latest $1 of $2 pages. Export to see the full list.",
     "description": "Statistics page, under the pages list when it is cut short."
   },
   "statsMoreSites": {
-    "message": "And $1 more sites. The export has them all.",
+    "message": "$1 more sites are available in the export.",
     "description": "Statistics page, under the top sites."
   },
   "statsLocalFile": {
@@ -1732,7 +1712,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (struct)."
   },
   "statsDimHint_struct": {
-    "message": "What kind of page and of paragraph, and how the page is built.",
+    "message": "Page layout, page type and paragraph type.",
     "description": "The field-by-field table: what 'Page structure' covers."
   },
   "statsDim_geom": {
@@ -1748,7 +1728,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (expo)."
   },
   "statsDimHint_expo": {
-    "message": "When each paragraph was on screen, and how much of it.",
+    "message": "When a paragraph was visible and how much of it was on screen.",
     "description": "The field-by-field table: what 'Time on screen' covers."
   },
   "statsDim_scroll": {
@@ -1760,7 +1740,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (input)."
   },
   "statsDimHint_input": {
-    "message": "Clicks, keys and the pointer. Never what you type.",
+    "message": "Records clicks, keyboard activity and pointer movement. Typed text is excluded.",
     "description": "The field-by-field table: what 'Input' covers."
   },
   "statsDim_state": {
@@ -1768,7 +1748,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (state)."
   },
   "statsDimHint_state": {
-    "message": "When the page was shown or hidden, and the window focused.",
+    "message": "When the page was visible and when the window had focus.",
     "description": "The field-by-field table: what 'Shown and focused' covers."
   },
   "statsDim_tabs": {
@@ -1800,7 +1780,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (ui)."
   },
   "statsDimHint_ui": {
-    "message": "Cards opened, flagged paragraphs jumped to, the toolbar menu.",
+    "message": "Opening score cards, jumping to flagged paragraphs and using the toolbar menu.",
     "description": "The field-by-field table: what 'Use of Anagram' covers."
   },
   "statsDim_device": {
@@ -1816,7 +1796,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (cover)."
   },
   "statsDimHint_cover": {
-    "message": "What could not be read, and time on pages Anagram can't read.",
+    "message": "Skipped passages and time spent on pages Anagram couldn't analyze.",
     "description": "The field-by-field table: what 'What was missed' covers."
   },
   "statsL_rows_event": {
@@ -2052,7 +2032,7 @@
     "description": "The field-by-field table: one way to keep 'Time on screen' (steps)."
   },
   "statsL_expo_intervals": {
-    "message": "Spells on screen",
+    "message": "Time intervals on screen",
     "description": "The field-by-field table: one way to keep 'Time on screen' (intervals)."
   },
   "statsL_expo_totals": {
@@ -2108,7 +2088,7 @@
     "description": "The field-by-field table: one way to keep 'Input' (minutes)."
   },
   "statsL_input_idle": {
-    "message": "Idle spells",
+    "message": "Periods of inactivity",
     "description": "The field-by-field table: one way to keep 'Input' (idle)."
   },
   "statsL_input_none": {
@@ -2320,11 +2300,11 @@
     "description": "The field-by-field table: column of how each is kept."
   },
   "statsStripTitle": {
-    "message": "Delete what the new setting doesn't keep?",
+    "message": "Delete previously saved details?",
     "description": "Dialog title after choosing to keep less."
   },
   "statsStripText": {
-    "message": "Anagram keeps less from now on, but what it has already kept stays until you delete it. The daily totals stay either way.",
+    "message": "The new setting applies to future activity. You can delete previously saved details that it no longer records. Daily totals will be kept.",
     "description": "Dialog text after choosing to keep less."
   },
   "statsFrom": {
@@ -2336,7 +2316,7 @@
     "description": "Statistics page: label of the last day of a chosen range."
   },
   "statsLens": {
-    "message": "How it counts",
+    "message": "Counting rules",
     "description": "Statistics page: the panel that sets what counts as read and how shares are worked out."
   },
   "statsLensRead": {
@@ -2348,23 +2328,23 @@
     "description": "A number of seconds: $1 is 0.25, 0.5, 1, 2 …"
   },
   "statsLensVisible": {
-    "message": "On screen means",
+    "message": "Visibility threshold",
     "description": "How it counts: what counts as on screen."
   },
   "statsLensBand": {
-    "message": "Some of it in the middle 80% of the window",
+    "message": "Any part in the middle 80% of the window",
     "description": "How it counts: the default rule."
   },
   "statsLensHalf": {
-    "message": "At least half of it shown",
+    "message": "At least half visible",
     "description": "How it counts: half of the paragraph visible."
   },
   "statsLensAny": {
-    "message": "Any of it shown",
+    "message": "Any part visible",
     "description": "How it counts: any part visible."
   },
   "statsLensOnce": {
-    "message": "A paragraph read again counts",
+    "message": "Count repeat readings",
     "description": "How it counts: how often a paragraph read again counts."
   },
   "statsLensOnceVisit": {
@@ -2380,7 +2360,7 @@
     "description": "How it counts: once in the whole period."
   },
   "statsLensEstimator": {
-    "message": "Shares from",
+    "message": "Calculate shares by",
     "description": "How it counts: how the shares are estimated."
   },
   "statsLensExpected": {
@@ -2388,31 +2368,31 @@
     "description": "How it counts: shares as expected words (words times probabilities)."
   },
   "statsLensChip": {
-    "message": "Paragraphs, by their chip's word",
+    "message": "Displayed verdict",
     "description": "How it counts: shares as paragraphs counted under the word their chip showed."
   },
   "statsLensArgmax": {
-    "message": "Paragraphs, by most likely verdict",
+    "message": "Most likely verdict",
     "description": "How it counts: shares as paragraphs counted under their most likely verdict."
   },
   "statsLensWeight": {
-    "message": "Each paragraph weighs",
+    "message": "Weight paragraphs by",
     "description": "How it counts: what one paragraph weighs."
   },
   "statsLensWords": {
-    "message": "Its words",
+    "message": "Word count",
     "description": "How it counts: a paragraph weighs its words."
   },
   "statsLensParagraphs": {
-    "message": "One",
+    "message": "Equal weight",
     "description": "How it counts: every paragraph weighs one."
   },
   "statsLensTime": {
-    "message": "Its seconds on screen",
+    "message": "Time on screen",
     "description": "How it counts: a paragraph weighs its time on screen."
   },
   "statsLensHeadline": {
-    "message": "The headline is",
+    "message": "Main statistic",
     "description": "How it counts: what the big number is."
   },
   "statsLensAi": {
@@ -2424,7 +2404,7 @@
     "description": "How it counts: the headline is the heavily edited and AI-generated share."
   },
   "statsLensMinWords": {
-    "message": "Paragraphs of at least",
+    "message": "Minimum paragraph length",
     "description": "How it counts: shorter paragraphs count as too short."
   },
   "statsWordsN": {
@@ -2432,11 +2412,11 @@
     "description": "A number of words: $1 is 50, 75, 100 or 150."
   },
   "statsLensFocused": {
-    "message": "Only a focused window",
+    "message": "Count only when the window has focus",
     "description": "How it counts: only time in a focused window counts."
   },
   "statsLensFling": {
-    "message": "Leave out what was flung past",
+    "message": "Exclude fast scrolling",
     "description": "How it counts: time while the page was flung past does not count."
   },
   "statsLensReset": {
@@ -2444,7 +2424,7 @@
     "description": "How it counts: back to the default."
   },
   "statsLensDefault": {
-    "message": "Counts a paragraph once per visit after one second in the middle of the viewport. Fast scrolling is excluded.",
+    "message": "Counts a paragraph once per visit if it stays in the middle 80% of the window for at least one second. Excludes fast scrolling.",
     "description": "How it counts: the line while the default is in use."
   },
   "statsLensApplied": {
@@ -2488,7 +2468,7 @@
     "description": "Statistics page: no visits."
   },
   "statsMoreVisits": {
-    "message": "The latest $1 of $2 visits. The export has them all.",
+    "message": "Showing the latest $1 of $2 visits. Export to see the full list.",
     "description": "Statistics page: how many visits are listed."
   },
   "statsColReplay": {
@@ -2747,6 +2727,18 @@
     "message": "Too short",
     "description": "Authorship result label."
   },
+  "setupDefaultUnavailable": {
+    "message": "Couldn’t check the recommended model.",
+    "description": "Setup model catalog status."
+  },
+  "setupOtherModelsUnavailable": {
+    "message": "Couldn’t check for other models.",
+    "description": "Setup model catalog status."
+  },
+  "setupRecommendedModel": {
+    "message": "Recommended ($1)",
+    "description": "The Hugging Face default release in the setup model picker; $1 is its name."
+  },
   "detectorLabel": {
     "message": "Detector",
     "description": "Model release picker in Engine settings."
@@ -2828,11 +2820,11 @@
     "description": "Reading statistics visit details, based on the observations retained for this visit."
   },
   "statsVisitNoFacts": {
-    "message": "No visibility or depth measurements are available for this visit.",
+    "message": "This visit has no recorded visibility or scroll depth data.",
     "description": "Reading statistics visit details, based on the observations retained for this visit."
   },
   "statsVisitNoTimeline": {
-    "message": "No timeline samples were retained for this visit.",
+    "message": "No timeline was recorded for this visit.",
     "description": "Reading statistics visit details, based on the observations retained for this visit."
   },
   "statsVisitLoadFailed": {

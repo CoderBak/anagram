@@ -23,8 +23,7 @@ choose or start the local engine. Temporary extensions offer only the browser en
 **The short version.** Anagram reads the text of pages you allow it to read, scores it on
 your own computer and shows the score next to the paragraph. Page text never leaves your
 machine, and nothing is ever scored on a server. There is no account, sign-in, analytics or
-telemetry. The in-browser engine downloads its model files once and uses the network for
-nothing else; the local engine uses the network only to download model files and updates
+telemetry. The in-browser engine uses the network to check model releases and download model files; the local engine uses the network only to download model files and updates
 you request. Opening an online PDF or a Google Doc re-reads that document from its source.
 
 The full inventory of network calls, address literals and storage keys is in
@@ -181,4 +180,4 @@ The local uninstaller checks its file records and model hashes, including checkp
 
 Open an issue at <https://github.com/CoderBak/anagram/issues>.
 
-Checking for detector updates contacts Hugging Face for release names, commits and file metadata. Selecting a release downloads its verified model files. These requests carry no reading text, page addresses or reading history.
+Opening setup for a new engine or checking for detector updates contacts Hugging Face for release names, commits and file metadata. Selecting a release downloads its verified model files. These requests carry no reading text, page addresses or reading history.

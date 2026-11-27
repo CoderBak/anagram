@@ -4,9 +4,9 @@
 
 ## Install
 
-**Safari on Mac:** the Safari build requires Safari 27+. **One click** uses WebGPU inside
-the browser; keep its pinned Anagram engine tab open while analyzing. A full Safari app
-build also offers the optional **Terminal** engine on Apple Silicon, with the same Settings
+**Safari on Mac:** the Safari build requires Safari 27+. The **In-browser engine** uses WebGPU.
+Keep its pinned Anagram engine tab open during analysis. A full Safari app
+build also offers the optional **Local engine** on Apple Silicon, with the same Settings
 switch as Chrome and Firefox. Temporary extensions offer only the browser engine, which
 requires a compatible GPU and never falls back to CPU inference. Open local PDFs with the
 reader's file picker. This version is awaiting real-Mac verification; see
@@ -27,14 +27,16 @@ three authorship classes with their colours and example scores.
 
 Step 1 decides how Anagram runs its model. Either way the model runs on this computer:
 
-- **On most computers** it runs inside the browser, and its model starts downloading at once:
-  1.58 GB, one time, from Hugging Face into the browser's own storage (from its mirror
-  hf-mirror.com where Hugging Face cannot be reached, as in mainland China). With Data Saver on, or
-  too little disk space, it waits for **Download model (1.58 GB)** instead.
-- **On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card**, the
-  page asks first, and nothing downloads until you pick:
-  **One click** runs in the browser as above. **Terminal** asks the browser to let Anagram
-  talk to a local engine. Open **View command** to see what you would run. **Copy command** copies it to your clipboard.
+Setup selects the recommended Hugging Face release and shows the size of its model files.
+If several releases are available, you can choose another before starting the download.
+
+- **On most computers**, the model runs inside the browser. When there is only one model
+  and one engine available, setup starts the download automatically. With Data Saver on
+  or too little disk space, setup waits for you to choose **Download model**.
+- **On an Apple Silicon Mac or a Linux PC with an NVIDIA graphics card**,
+  choose **In-browser engine** to download the model in your browser. If you choose
+  **Local engine**, allow Anagram to connect to it when your browser asks.
+  Open **View command** to see what you would run. **Copy command** copies it to your clipboard.
   **Read installer source** opens the script that ships with your extension. You can read it offline before granting permission. To install, paste the command into Terminal and press Enter. Setup detects the engine when you return. The command runs the
   installer only if it is the very file this extension was built with. No administrator
   password or system Python is needed. It installs the engine under `~/.anagram`, registers

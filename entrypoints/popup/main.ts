@@ -79,13 +79,22 @@ const paintReport = mountReport(reportEl, {
   },
 });
 
-async function runPageControl(message: ControlMessage): Promise<void> {
+async function finishPageAction(request: Promise<unknown>): Promise<void> {
   pageControlFailed = false;
-  const reply = await sendTabControl(currentTab, message).catch(() => undefined) as { ok?: boolean } | undefined;
+  const reply = await request.catch(() => undefined) as { ok?: boolean } | undefined;
   if (reply?.ok) { window.close(); return; }
   await refreshStatus(currentTab?.id);
   pageControlFailed = true;
   paint();
+}
+
+function runPageControl(message: ControlMessage): Promise<void> {
+  return finishPageAction(sendTabControl(currentTab, message));
+}
+
+function analyzeActiveTab(tabId?: number): Promise<void> {
+  return finishPageAction(tabId == null ? Promise.resolve(undefined)
+    : browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId }));
 }
 
 async function activeTab() {
@@ -206,17 +215,15 @@ function paint(): void {
   }
   // While the in-browser engine's model downloads, the browser has to stay open.
   keepOpenEl.hidden = !(lead.status === "setup" && facts.setup?.state === "downloading");
-  // The main button already opens the reader empty on these tabs.
-  openReaderEl.hidden = lead.action === "openReader";
-
   actionEl.textContent = t(lead.action === "setup" ? setupLabel(facts.setup!) : ACTION_LABEL[lead.action]);
-  if (docsEditor && (lead.action === "analyze" || lead.action === "rescan")) actionEl.textContent = t("actionAnalyzeDocument");
+  const analyzeDocument = docsEditor && (lead.action === "analyze" || lead.action === "rescan");
+  if (analyzeDocument) actionEl.textContent = t("actionAnalyzeDocument");
   const pageAction = facts.tab?.translated ? null : report?.pageAction;
   pageActionEl.hidden = !pageAction;
   pageActionEl.textContent = pageAction?.label ?? "";
   pageActionEl.disabled = !pageAction?.enabled;
-  // Docs actions replace the ordinary rescan; the editor itself paints text on a canvas.
-  actionEl.hidden = !!pageAction && (docsEditor && (lead.action === "analyze" || lead.action === "rescan") || lead.action === "readPdf");
+  // The footer already offers the PDF picker. Docs and PDF tabs can supply their own Analyze button.
+  actionEl.hidden = lead.action === "openReader" || (!!pageAction && (analyzeDocument || lead.action === "readPdf"));
   if (!pageAction || lead.primary && !actionEl.hidden) pageActionEl.dataset.variant = "outline";
   else delete pageActionEl.dataset.variant;
   // While no engine can score, what waits for one or found none is the status line's to say.
@@ -225,18 +232,24 @@ function paint(): void {
   statusEl.hidden = !statusEl.textContent || (lead.status === "counts" && !reportEl.hidden);
   actionEl.disabled = false;
   const inlineRescan = lead.action === "rescan" && !pageAction && !docsEditor && !reportEl.hidden && !reportHeading.hidden;
-  if (pageActionEl.parentElement !== pageActions) pageActions.prepend(pageActionEl);
   if (inlineRescan) {
     if (actionEl.parentElement !== reportHeading) reportHeading.append(actionEl);
   } else if (actionEl.parentElement !== pageActions) {
     pageActions.append(actionEl);
   }
-  if (focusedAction && !focusedAction.hidden && document.activeElement !== focusedAction) focusedAction.focus({ preventScroll: true });
   if (lead.primary) delete actionEl.dataset.variant;
   else actionEl.dataset.variant = inlineRescan ? "ghost" : "outline";
   if (pageControlFailed) {
     statusEl.hidden = false;
     statusEl.textContent = t("popupPageActionFailed");
+  }
+  // On an idle page or PDF, the single Analyze button fits beside the extension name.
+  const inHeader = statusEl.hidden && reportEl.hidden && (pageActionEl.hidden || actionEl.hidden);
+  if (inHeader && pageActions.parentElement !== gearEl.parentElement) gearEl.before(pageActions);
+  if (!inHeader && pageActions.parentElement !== keepOpenEl.parentElement) keepOpenEl.before(pageActions);
+  if (focusedAction && document.activeElement !== focusedAction) {
+    const next = !focusedAction.hidden ? focusedAction : lead.action === "openReader" ? openReaderEl : pageActions.querySelector<HTMLElement>("button:not([hidden]):enabled");
+    next?.focus({ preventScroll: true });
   }
 }
 
@@ -473,8 +486,7 @@ async function init(): Promise<void> {
         // A page Anagram is off for — by a rule, or because nothing was ever granted for
         // its site — is analyzed ONCE, with no setting written and no permission asked:
         // opening this popup gave the extension `activeTab`, which is all the worker needs.
-        if (tab?.id != null) void browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId: tab.id });
-        window.close(); // the answer is on the page, not in here
+        void analyzeActiveTab(tab?.id);
         return;
       case "readPdf":
         // Firefox cannot read the privileged built-in viewer; its loader needs a host grant.
@@ -493,10 +505,6 @@ async function init(): Promise<void> {
           window.close();
         }).catch(() => { statusEl.hidden = false; statusEl.textContent = t("popupPdfOpenFailed"); });
         return;
-      case "openReader":
-        openEmptyReader();
-        window.close();
-        return;
       case "retry":
         void browser.tabs.create({ url: browser.runtime.getURL("/options.html") + "#engineGroup" });
         window.close();
@@ -513,8 +521,8 @@ async function init(): Promise<void> {
         return;
       case "rescan":
         if (docsEditor) {
-          if (tab?.id != null) void browser.runtime.sendMessage({ action: ACTIONS.ANALYZE_TAB, tabId: tab.id });
-          window.close(); return;
+          void analyzeActiveTab(tab?.id);
+          return;
         }
         sendToTab(tab?.id, { action: ACTIONS.RESCAN });
         counts = null; // "Rescanning…" until the page reports again
@@ -524,15 +532,20 @@ async function init(): Promise<void> {
     }
   });
 
-  switchEngineEl.addEventListener("click", () => {
+  switchEngineEl.addEventListener("click", async () => {
     switchEngineEl.disabled = true;
-    // The download starts now, and the setup page shows it; on the model tier this device gets.
-    void readDeviceInputs().then(decide).catch(() => null)
-      .then((d) => chooseEngine("inbrowser", "now", d?.tier ? { tier: d.tier, fallback: d.fallback !== null } : undefined)).then((reply) => {
-      if (!reply.ok) { switchEngineEl.disabled = false; statusEl.textContent = t("engineSwitchFailed"); return; }
-      void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
-      window.close();
-    });
+    try {
+      const device = await readDeviceInputs().then(decide).catch(() => null);
+      const reply = await chooseEngine("inbrowser", "now", device?.tier ? { tier: device.tier, fallback: device.fallback !== null } : undefined);
+      if (reply.ok) {
+        await browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
+        window.close();
+        return;
+      }
+    } catch { /* The worker or the setup tab may be unavailable. */ }
+    switchEngineEl.disabled = false;
+    statusEl.hidden = false;
+    statusEl.textContent = t("engineSwitchFailed");
   });
 
   openReaderEl.addEventListener("click", () => {

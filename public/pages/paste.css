@@ -44,7 +44,6 @@ textarea.textarea {
 }
 @media (max-width: 384px) {
   .editor:has(#clear:not([hidden])) #pick { width: 32px; padding: 0; }
-  .editor:has(#clear:not([hidden])) #pick .action-icon { translate: none; }
   .editor:has(#clear:not([hidden])) #pick span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 #status { margin: 0; font-size: 13px; color: var(--muted-foreground); }
@@ -109,7 +108,7 @@ html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; co
 #reading .marked { text-decoration: underline 1.8px var(--c); text-underline-offset: 4px; text-decoration-skip-ink: auto; }
 #reading .marked.b0 { text-decoration-color: color-mix(in srgb, var(--c) 50%, transparent); }
 #reading .unread > p { color: var(--muted-foreground); }
-#reading .chip { vertical-align: 1px; }
+#reading .chip { vertical-align: middle; }
 #reading .note { display: inline-block; font-size: 12px; color: var(--muted-foreground); margin-inline-start: 4px; }
 
 .export {

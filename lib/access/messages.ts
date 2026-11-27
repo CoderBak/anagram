@@ -1,5 +1,6 @@
 // Validate worker messages before authorization, hashing, cache access or queueing.
 import * as v from "valibot";
+import { validRelease, type DetectorRelease } from "../detectorReleases";
 import { safePdfSource } from "../pdf/source";
 import { isCommentOrigin } from "./commentFrames";
 import { CONTRACT_LIMITS, CONTRACT_VERSION } from "../contract";
@@ -56,7 +57,7 @@ const schema = v.variant("action",[
   v.strictObject({action:v.literal(ACTIONS.GET_BACKEND_STATUS),session,probe:v.optional(v.boolean())}),
   v.strictObject({action:v.literal(ACTIONS.COMMENT_ACCESS),session,origins:v.pipe(v.array(commentOrigin),v.maxLength(8))}),
   v.strictObject({action:v.literal(ACTIONS.GET_ENGINE)}),
-  v.strictObject({action:v.literal(ACTIONS.SET_ENGINE),engine:v.picklist(["native","inbrowser"]),setup:v.optional(v.picklist(["now","auto"])),tier:v.optional(v.picklist(["fp32","fp16"])),fallback:v.optional(v.boolean())}),
+  v.strictObject({action:v.literal(ACTIONS.SET_ENGINE),engine:v.picklist(["native","inbrowser"]),setup:v.optional(v.picklist(["now","auto"])),tier:v.optional(v.picklist(["fp32","fp16"])),fallback:v.optional(v.boolean()),release:v.optional(v.custom<DetectorRelease>(validRelease))}),
   v.strictObject({action:v.literal(ACTIONS.DELETE_INBROWSER_MODEL)}),
   v.strictObject({action:v.literal(ACTIONS.STATS_RECORD),session,wire:StatsWireSchema}),
   v.strictObject({action:v.literal(ACTIONS.STATS_UI),kind:v.picklist(UI_EVENTS),tabId:v.optional(tabId)}),

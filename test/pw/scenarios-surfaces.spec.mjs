@@ -36,13 +36,19 @@ const test = base.extend({
 // account, and nothing here is about Google's own markup.
 test("the Docs reading overlay re-reads the document in place, and a failed re-read leaves the snapshot on screen", async ({ context, page, tell }) => {
   const EDITOR = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refresh fixture - Google Docs</title></head>
-<body><canvas width="600" height="400"></canvas></body></html>`;
+<body><button id="editor-control">Editor</button><canvas width="600" height="400"></canvas></body></html>`;
   const mobilebasic = (v) => docsReadingHtml([PARA(`DOCVERSION${v}ONE`), PARA(`DOCVERSION${v}TWO`)], v);
   let version = 1;
   let broken = false;
   let refused = 0;
+  let holdNextRefresh;
   await context.route("https://docs.google.com/**", (route) => {
     const isStatic = route.request().url().includes("/mobilebasic");
+    if (isStatic && holdNextRefresh) {
+      holdNextRefresh(route);
+      holdNextRefresh = undefined;
+      return;
+    }
     if (isStatic && broken) {
       refused++;
       return route.fulfill({ status: 500, contentType: "text/html", body: "no" });
@@ -57,7 +63,7 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
       return {
         hosts: document.querySelectorAll("#anagram-docs-overlay").length,
         bars: sr ? sr.querySelectorAll(".bar").length : 0,
-        // The bar and the notice carry the marker attribute too: only the paper's own hosts are chips.
+        // Count only the chips in the document body.
         chips: paper ? [...paper.querySelectorAll(sel)].filter((h) => h.shadowRoot?.querySelector(".pill:not(.pending)")).length : 0,
         v1: !!paper?.textContent.includes("DOCVERSION1"),
         v2: !!paper?.textContent.includes("DOCVERSION2"),
@@ -70,10 +76,17 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
   await page.goto("https://docs.google.com/document/d/ANAGRAMREFRESHFIXTURE/edit", { waitUntil: "load" });
   const report = async () => (await tell(page, { action: "getTabState", reportOffset: 0 }))?.report;
   await expect.poll(async () => (await report())?.pageAction?.label).toBe("Analyze document");
+  await page.locator("#editor-control").focus();
   const current = await report();
   expect(await tell(page, { action: "runPageAction", documentId: current.documentId, id: current.pageAction.id })).toEqual({ ok: true });
   const rereads = "the Docs reading overlay re-reads the document in place";
   await expect.poll(overlay, { message: `${rereads} (opened)` }).toMatchObject({ v1: true, chips: 2 });
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toHaveAccessibleName(/v1/);
+  await expect(page.locator("#anagram-ovl-close")).toBeFocused();
+  await page.locator("#editor-control").evaluate((control) => control.focus());
+  await expect(page.locator("#anagram-ovl-close")).toBeFocused();
 
   version = 2;
   await refresh();
@@ -85,6 +98,23 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
   const failed = "a failed re-read leaves the snapshot on screen";
   await expect.poll(() => refused, { message: `${failed} (the re-read was refused)` }).toBeGreaterThan(0);
   await expect.poll(overlay, { message: failed }).toMatchObject({ hosts: 1, chips: 2, v1: false, v2: true, refreshable: true });
+
+  broken = false;
+  const held = Promise.withResolvers();
+  holdNextRefresh = held.resolve;
+  await refresh();
+  const delayed = await held.promise;
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator("#editor-control")).toBeFocused();
+  const reopened = await report();
+  await tell(page, { action: "runPageAction", documentId: reopened.documentId, id: reopened.pageAction.id });
+  await expect(dialog).toHaveAccessibleName(/v2/);
+  const received = page.waitForResponse((response) => response.url().includes("/mobilebasic"));
+  await delayed.fulfill({ contentType: "text/html", body: mobilebasic(1) });
+  await (await received).finished();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(dialog).toHaveAccessibleName(/v2/);
 });
 
 // Page 1 alone is three units: P1, the two short paragraphs read together, and the first half

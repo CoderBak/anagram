@@ -38,6 +38,7 @@ export function vendorPdfViewer(root) {
   // Anagram's scope note below it is the footer.
   replace('<html dir="ltr" mozdisallowselectionprint>', '<html dir="ltr" lang="en" mozdisallowselectionprint>');
   replace('<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />', '<meta name="viewport" content="width=device-width, initial-scale=1" />');
+  replace('<meta charset="utf-8" />', '<meta charset="utf-8" />\n    <meta name="color-scheme" content="light dark" />');
   replace('<div class="toolbar">', '<div class="toolbar" role="banner">');
   replace('<div id="viewerContainer" tabindex="0">', '<div id="viewerContainer" tabindex="0" role="main">');
   replace('href="locale/locale.json"', 'href="/vendor/pdfjs/web/locale/locale.json"');

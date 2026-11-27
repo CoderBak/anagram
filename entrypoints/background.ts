@@ -1,5 +1,6 @@
 import { toolbarBadge, type BadgeApi } from "../lib/ui/toolbarBadge";
-import {listDetectorReleases,resolveDetectorRelease} from "../lib/detectorReleases";
+import { nativeSetupRelease } from "../lib/backend/engineChoice";
+import { defaultRelease, listDetectorReleases, resolveDetectorRelease, setupCatalog } from "../lib/detectorReleases";
 // entrypoints/background.ts — MV3 service worker.
 // Registers a SINGLE runtime.onMessage listener SYNCHRONOUSLY at top level (MV3 wakes the
 // worker by re-running this registration). It routes SCORE_BATCH → router.handle, answers
@@ -110,31 +111,11 @@ export default defineBackground(() => {
     badge.forget(tabId);
     pdfNavigation.forget(tabId);
     setupFeed.forget(tabId);
-    wants.delete(tabId);
     handoff.forget(tabId);
   });
 
-  /**
-   * Firefox only: `clipboardWrite` is declared OPTIONAL (see wxt.config.ts), so it has to
-   * be asked for, and Firefox honours `permissions.request()` only from inside a
-   * user-input handler — a context-menu click is one, but only until the first `await`.
-   * So the answer is remembered here instead: the worker asks the browser once on wake,
-   * and a reader who has already granted it is never prompted again. `null` means "not
-   * known yet", which only costs a request that Firefox resolves without a prompt when
-   * the permission is in fact already there.
-   */
-  const CLIPBOARD_OPTIONAL = (
-    (browser.runtime.getManifest() as { optional_permissions?: string[] }).optional_permissions ?? []
-  ).includes("clipboardWrite");
-  let clipboardGranted: boolean | null = null;
-  if (CLIPBOARD_OPTIONAL) {
-    void browser.permissions?.contains({ permissions: ["clipboardWrite"] }).then(
-      (has) => {
-        clipboardGranted = has;
-      },
-      () => undefined,
-    );
-  }
+  // Firefox requires the optional clipboard grant to be requested within the click.
+  const clipboardOptional = browser.runtime.getManifest().optional_permissions?.includes("clipboardWrite");
 
   /**
    * Where "open this PDF with Anagram" goes: the reading mode, showing THAT PDF. The
@@ -149,7 +130,6 @@ export default defineBackground(() => {
   handoff.serve();
   const pdfNavigation = createPdfNavigation({setting: () => settings.autoOpenPdfs.getValue(), open: handoff.open});
   pdfNavigation.serve();
-  const wants = new Set<number>();
 
   // The in-browser engine's download, pushed to the popup and the panels that show it.
   const setupFeed = createSetupFeed({
@@ -276,7 +256,7 @@ export default defineBackground(() => {
       void browser.tabs.create({ url: browser.runtime.getURL("/onboarding.html") });
     } else if (details.reason === "update") {
       void engineTransport().current().then((engine) => {
-        if (engine === "inbrowser") void engineTierChoice.getValue().catch(() => null).then((choice) => startSetupByItself((op) => transportOf("inbrowser").request(op),{tier:tierOf(choice)}));
+        if (engine === "inbrowser") void engineTierChoice.getValue().catch(() => null).then((choice) => startSetupByItself((op, payload) => transportOf("inbrowser").request(op, payload),{tier:tierOf(choice), release:choice?.release}));
       });
     }
   });
@@ -295,13 +275,15 @@ export default defineBackground(() => {
    * "once" means for it: a running page re-scans, a switched-off one starts without any
    * setting or site rule being written.
    */
-  const analyzePage = (tabId: number): void => {
-    // The menu click carries `activeTab`, so this works on a site the user has granted
-    // nothing for: ensureInjected puts the script there for this one page.
-    void ensureInjected(tabId).then(() =>
-      browser.tabs.sendMessage(tabId, { action: ACTIONS.ANALYZE_PAGE }).catch(() => undefined),
-    );
-  };
+  async function analyzePage(tabId: number): Promise<boolean> {
+    try {
+      await ensureInjected(tabId);
+      const reply = await browser.tabs.sendMessage(tabId, { action: ACTIONS.ANALYZE_PAGE });
+      if (reply?.ok === true) return true;
+    } catch { /* The page may no longer be reachable. */ }
+    badge.feedback(tabId, false);
+    return false;
+  }
 
   /**
    * "Copy page diagnostics". Only the TOP frame is asked: the report is the page's, and
@@ -310,72 +292,48 @@ export default defineBackground(() => {
    * one report if it is not there already — so "nothing shows up" on a switched-off site,
    * or on one nothing was ever granted for, is answered instead of met with silence.
    */
-  const copyDiagnostics = (tabId: number, frameId: number): void => {
-    void ensureInjected(tabId)
-      .then(() =>
-        browser.tabs.sendMessage(tabId, { action: ACTIONS.COPY_DIAGNOSTICS, frameId }, { frameId: 0 }),
-      )
-      .then((reply) => {
-        // The tick is for the clipboard, not for the report: a page that built one and
-        // could not copy it has to say so, or the reader pastes the last thing they cut.
-        const r = reply as CopyDiagnosticsReply | undefined;
-        badge.feedback(tabId, r?.ok === true && r.via !== "none");
-      })
-      .catch(() => badge.feedback(tabId, false));
-  };
+  async function copyDiagnostics(tabId: number, frameId: number): Promise<void> {
+    try {
+      await ensureInjected(tabId);
+      const reply = await browser.tabs.sendMessage(tabId, { action: ACTIONS.COPY_DIAGNOSTICS, frameId }, { frameId: 0 }) as CopyDiagnosticsReply | undefined;
+      badge.feedback(tabId, reply?.ok === true && reply.via !== "none");
+    } catch { badge.feedback(tabId, false); }
+  }
 
-  browser.contextMenus.onClicked.addListener((info, tab) => {
+  browser.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === "anagram-open-pdf") {
-      // A linked PDF opens BESIDE the page it was linked from: the reader replaces a tab
-      // only when that tab was already the PDF. The new tab is sent to the PDF itself,
-      // because that is the only place its bytes can be read from — and it is marked as
-      // wanting the reading mode, so it converts itself the moment it has loaded.
-      if (info.linkUrl) {
-        const src = info.linkUrl;
-        const index = tab ? tab.index + 1 : undefined;
-        void browser.tabs.create({ url: src, index }).then((opened) => {
-          if (opened.id != null) wants.add(opened.id);
-        });
-      }
+      if (!info.linkUrl || !safePdfSource(info.linkUrl)) return;
+      try {
+        // Record the user's choice before a fast response can commit in the new tab.
+        const opened = await browser.tabs.create({ url: "about:blank", windowId: tab?.windowId, index: tab && tab.index + 1 });
+        if (opened.id != null) {
+          try { await pdfNavigation.want(opened.id, info.linkUrl); }
+          finally { await browser.tabs.update(opened.id, { url: info.linkUrl }); }
+        }
+      } catch { if (tab?.id != null) badge.feedback(tab.id, false); }
       return;
     }
+    if (tab?.id == null) return;
     if (info.menuItemId === "anagram-analyze-page") {
-      if (tab?.id != null) analyzePage(tab.id);
+      await analyzePage(tab.id);
       return;
     }
     if (info.menuItemId === "anagram-copy-diagnostics") {
-      if (tab?.id == null) return;
-      const tabId = tab.id;
-      const frameId = info.frameId ?? 0;
-      if (!CLIPBOARD_OPTIONAL || clipboardGranted === true) {
-        copyDiagnostics(tabId, frameId);
-        return;
-      }
-      // FIRST USE ON FIREFOX. The request is made here, synchronously, because this
-      // listener still counts as the user input that opened the menu and nothing after an
-      // await would. Granted once, it sticks, and `clipboardGranted` spares every later
-      // use even the question. Declined, the badge says so and nothing else happens —
-      // there is no second place for this feature to nag from.
-      void browser.permissions.request({ permissions: ["clipboardWrite"] }).then(
-        (granted) => {
-          clipboardGranted = granted;
-          if (granted) copyDiagnostics(tabId, frameId);
-          else badge.feedback(tabId, false);
-        },
-        () => badge.feedback(tabId, false),
-      );
+      try {
+        // An existing grant resolves immediately. A revoked grant can be requested again.
+        if (clipboardOptional && !await browser.permissions.request({ permissions: ["clipboardWrite"] })) {
+          badge.feedback(tab.id, false);
+          return;
+        }
+        await copyDiagnostics(tab.id, info.frameId ?? 0);
+      } catch { badge.feedback(tab.id, false); }
       return;
     }
-    if (info.menuItemId !== "anagram-analyze-selection" || tab?.id == null) return;
-    // Target the frame the selection lives in — after making sure there is a script in
-    // the tab to receive it at all, which on an ungranted site the click itself allows.
-    const tabId = tab.id;
-    const frameId = info.frameId ?? 0;
-    void ensureInjected(tabId).then(() =>
-      browser.tabs
-        .sendMessage(tabId, { action: ACTIONS.ANALYZE_SELECTION }, { frameId })
-        .catch(() => undefined),
-    );
+    if (info.menuItemId !== "anagram-analyze-selection") return;
+    try {
+      await ensureInjected(tab.id);
+      await browser.tabs.sendMessage(tab.id, { action: ACTIONS.ANALYZE_SELECTION }, { frameId: info.frameId ?? 0 });
+    } catch { badge.feedback(tab.id, false); }
   });
 
   // Keyboard commands, forwarded to the active tab. The message reaches every frame;
@@ -386,27 +344,27 @@ export default defineBackground(() => {
     "next-flagged": ACTIONS.NEXT_FLAGGED,
     "prev-flagged": ACTIONS.PREV_FLAGGED,
   };
-  browser.commands?.onCommand.addListener((command) => {
+  browser.commands?.onCommand.addListener(async (command) => {
     const action = COMMAND_ACTIONS[command];
     if (!action) return;
-    void browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (tab?.id == null) return;
-      const tabId = tab.id;
-      // A command grants `activeTab`, so the overlay toggle answers on a page the user
-      // has granted nothing for as well.
-      void ensureInjected(tabId).then(() =>
-        sendTabControl(tab, { action } as ControlMessage).catch(() => undefined),
-      );
-    });
+      await ensureInjected(tab.id);
+      await sendTabControl(tab, { action } as ControlMessage);
+    } catch { /* The active tab can close or navigate during the command. */ }
   });
 
   async function handleMessage(message: unknown, sender: AccessSender): Promise<unknown> {
     const raw=message as {action?:unknown}|null;
     if (raw?.action === "detectorCatalog") {
-      if (callerRole(sender,browser.runtime.id,browser.runtime.getURL("/")) !== "options") return {ok:false};
+      const role = callerRole(sender,browser.runtime.id,browser.runtime.getURL("/"));
+      if (role !== "options" && role !== "onboarding") return {ok:false};
       const ref=(message as {ref?:{release:string;revision:string}}).ref;
       try {
-        const signal=AbortSignal.timeout(30000);
+        const setup = (message as { setup?: boolean }).setup === true;
+        const signal=AbortSignal.timeout(setup ? 6000 : 30000);
+        if (setup) return {ok:true,value:await setupCatalog(signal)};
         return {ok:true,value:ref ? await resolveDetectorRelease(ref,signal) : await listDetectorReleases(signal)};
       } catch {return {ok:false};}
     }
@@ -424,7 +382,7 @@ export default defineBackground(() => {
     if (needsDocument && (!document || document.signal.aborted)) return {ok:false,error:"forbidden"};
     switch(msg.action) {
       case ACTIONS.ANALYZE_TAB:
-        analyzePage(msg.tabId); return {ok:true};
+        return {ok: await analyzePage(msg.tabId)};
       case ACTIONS.OPEN_PDF_READER: {
         const tabId=role === "popup" ? msg.tabId! : sender.tab!.id!;
         const src=role === "popup" ? msg.url! : sender.url!;
@@ -435,13 +393,13 @@ export default defineBackground(() => {
       case ACTIONS.PDF_TAB_OPENED: {
         const tabId=sender.tab!.id!;
         if(document!.signal.aborted)return {ok:false,error:"forbidden"};
-        await pdfNavigation.contentPdf(tabId,sender.url!,msg.navigationType,wants.delete(tabId));
+        await pdfNavigation.contentPdf(tabId,sender.url!,msg.navigationType);
         return {ok:true};
       }
       case ACTIONS.PDF_PASS_ONCE: {
         const src=new URL(sender.url!).searchParams.get("src");
         if(src !== msg.url)return {ok:false} satisfies PdfPassOnceReply;
-        pdfNavigation.pass(sender.tab!.id!,msg.url); return {ok:true} satisfies PdfPassOnceReply;
+        await pdfNavigation.pass(sender.tab!.id!,msg.url); return {ok:true} satisfies PdfPassOnceReply;
       }
       case ACTIONS.PDF_REOPEN: {
         // Only a reader showing that very source, with its ticket already spent, asks again.
@@ -498,15 +456,20 @@ export default defineBackground(() => {
         // The tier the setup page decided for the in-browser engine; a different one than the
         // engine started with means it starts again, on the new pin.
         if(msg.engine === "inbrowser" && msg.tier){
-          const before=tierOf(await engineTierChoice.getValue().catch(() => null));
-          await engineTierChoice.setValue({tier:msg.tier,fallback:msg.fallback === true});
-          if(before !== msg.tier) await closeWebEngine();
+          const before = await engineTierChoice.getValue().catch(() => null);
+          const release = msg.release ?? before?.release;
+          const changed = (before?.release ?? defaultRelease).revision !== (release ?? defaultRelease).revision;
+          await engineTierChoice.setValue({tier: msg.tier, fallback: msg.fallback === true,
+            ...(release && release.revision !== defaultRelease.revision ? {release} : {})});
+          if (tierOf(before) !== msg.tier || changed) await closeWebEngine();
         }
+        if (msg.engine === "native" && msg.release) await nativeSetupRelease.setValue(msg.release);
         await engineChoice.setValue(msg.engine);
         const engine=await engineTransport().refresh();
         getScoreClient().invalidate();
+        const choice = engine === "inbrowser" ? await engineTierChoice.getValue().catch(() => null) : null;
         const setup=engine === "inbrowser" && msg.setup
-          ? await startSetupByItself((op) => transportOf("inbrowser").request(op),{asked:msg.setup === "now",tier:tierOf(await engineTierChoice.getValue().catch(() => null))}) : undefined;
+          ? await startSetupByItself((op, payload) => transportOf("inbrowser").request(op, payload),{asked:msg.setup === "now",tier:tierOf(choice),release:msg.release ?? choice?.release,explicitRelease:!!msg.release && msg.setup === "now"}) : undefined;
         return {ok:engine === msg.engine,engine,setup} satisfies SetEngineReply;
       }
       case ACTIONS.DELETE_INBROWSER_MODEL: {

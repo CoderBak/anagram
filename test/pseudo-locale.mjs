@@ -157,6 +157,24 @@ function layoutFaults(scope) {
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
     const text = cs.display !== "inline" ? textBox(el) : null;
+    if (el.matches(".btn:has(> .action-icon)") && cs.alignItems === "center") {
+      for (const child of el.querySelectorAll(":scope > .action-icon, :scope > span")) {
+        if (!shown(child)) continue;
+        const box = child.getBoundingClientRect();
+        if (Math.abs((box.top + box.bottom - r.top - r.bottom) / 2) > 0.75)
+          faults.push(`${describe(el)}: its ${child.matches("svg") ? "icon" : "label"} is off-center vertically`);
+      }
+    }
+    if (el.matches("select.select") && el.selectedOptions.length && cs.appearance === "base-select") {
+      const selected = el.querySelector(":scope > button > selectedcontent");
+      if (!selected || selected.textContent !== el.selectedOptions[0].textContent) {
+        faults.push(`${describe(el)}: its displayed label does not match the selected option`);
+      } else {
+        const label = selected.getBoundingClientRect();
+        if (Math.abs((label.top + label.bottom - r.top - r.bottom) / 2) > 1)
+          faults.push(`${describe(el)}: its selected label is off-center vertically`);
+      }
+    }
     if (el.matches("button")) {
       for (const sibling of el.parentElement?.children ?? []) {
         if (!sibling.matches("p, label, h1, h2, h3, .count, [role=status]") || !shown(sibling)) continue;

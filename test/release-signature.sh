@@ -115,7 +115,7 @@ cp "$FIX/cosign_checksums.txt.sigstore.json" "$T/www/foreign/anagram.tar.gz.sigs
 # An installed component, whose uv is the real one under the version install.sh pins.
 UVV="$(grep '^UV_VERSION=' "$ROOT/install.sh" | cut -d'"' -f2)"
 H="$T/home"; mkdir -p "$H/bin" "$H/venv/bin" "$H/app" "$H/extension" "$T/user"
-echo "Anagram installation folder." > "$H/.anagram-home"; echo "9.9.9" > "$H/VERSION"
+printf 'Anagram installation: %s\n' "$(cd "$H" && pwd -P)" > "$H/.anagram-home"; echo "9.9.9" > "$H/VERSION"
 echo "old app" > "$H/app/engine.py"; echo "old extension" > "$H/extension/manifest.json"
 printf '#!/bin/sh\necho OLD CLI\n' > "$H/bin/anagram"; chmod +x "$H/bin/anagram"
 printf '#!/bin/sh\nexit 0\n' > "$H/venv/bin/python"; chmod +x "$H/venv/bin/python"

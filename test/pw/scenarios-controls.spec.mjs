@@ -229,16 +229,17 @@ test("analyze this page: an already-off site keeps its run through an unrelated 
 // reloaded, which is when it asks which tab is active. Opened as its own active tab it sees
 // ITSELF, which is the "nothing can run here" state.
 const popupSays = (popup) =>
-  popup.evaluate(() => ({
-    status: document.getElementById("status")?.textContent ?? "",
-    button: document.getElementById("action")?.textContent ?? "",
-    // The one filled button, or an outline one where the action is merely available.
-    primary: !document.getElementById("action")?.hasAttribute("data-variant"),
-    engine: document.getElementById("backend")?.hidden === false ? document.getElementById("backend")?.textContent : null,
-    fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
-    // Never two main events at once: at most one filled button on the whole page.
-    filled: document.querySelectorAll("main .btn:not([data-variant])").length,
-  }));
+  popup.evaluate(() => {
+    const button = document.querySelector("#action:not([hidden]), #pageAction:not([hidden])") ?? document.getElementById("openReader");
+    return {
+      status: document.getElementById("status")?.textContent ?? "",
+      button: button.textContent.trim(),
+      primary: !button.hasAttribute("data-variant"),
+      engine: document.getElementById("backend")?.hidden === false ? document.getElementById("backend")?.textContent : null,
+      fabricatedCommand: /~\/.anagram\/bin\/anagram|curl -fsSL/.test(document.body.innerText),
+      filled: [...document.querySelectorAll(".btn:not([data-variant])")].filter(b => b.checkVisibility()).length,
+    };
+  });
 async function popupOver(context, extension, page) {
   const popup = await context.newPage();
   await popup.goto(extension.url("popup.html"), { waitUntil: "load" });
@@ -276,6 +277,10 @@ test("the popup on a page Anagram is off for offers to analyze it", async ({ con
   await runsHere(page, tell, false);
   const popup = await popupOver(context, extension, page);
   await expect.poll(() => popupSays(popup), { message: `${ONE_ACTION} (off)` }).toMatchObject({ button: "Analyze this page", primary: true, status: "" });
+  const title = await popup.locator("h1").boundingBox();
+  const action = await popup.locator("#action").boundingBox();
+  expect(action.x).toBeGreaterThanOrEqual(title.x + title.width);
+  expect(action.y).toBeLessThan(title.y + title.height);
   expect.soft((await popupSays(popup)).filled, `${ONE_ACTION} (off)`).toBeLessThanOrEqual(1);
 });
 

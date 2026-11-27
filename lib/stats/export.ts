@@ -149,7 +149,7 @@ export function buildExport(source: ExportSource, opts: ExportOptions, key: Uint
   if (L.rows === "event") {
     const scrollEvery = L.scroll === "frames" ? 0 : L.scroll === "tenth" ? 100 : L.scroll === "second" ? 1000 : null;
     const lastScroll = new Map<string, number>();
-    for (const chunk of [...source.events].sort((a, b) => a.visit.localeCompare(b.visit) || a.seq - b.seq)) {
+    for (const chunk of source.events.toSorted((a, b) => a.visit.localeCompare(b.visit) || a.seq - b.seq)) {
       const visit = pseudo(chunk.visit);
       const s = chunk.streams;
       const rowsOf = (stream: Record<string, number[] | undefined> | undefined, keep: (i: number) => boolean, shape: (i: number) => Record<string, unknown>): void => {

@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Anagram</title>
@@ -13,10 +14,7 @@
       <header class="hdr">
         <img class="logo-light" src="/icons/icon-light-96.png" alt="" />
         <img class="logo-dark" src="/icons/icon-96.png" alt="" />
-        <div>
-          <h1>Anagram</h1>
-          <p class="tag" data-i18n="onbTagline">Highlights likely AI-edited paragraphs.</p>
-        </div>
+        <h1>Anagram</h1>
       </header>
       <div class="extension-update" id="extensionUpdate" hidden></div>
 
@@ -30,6 +28,7 @@
           </header>
           <section id="engineBody">
             <div id="componentSettings"></div>
+            <div class="detector-picker" id="installedDetector" hidden></div>
           </section>
         </section>
 

@@ -409,6 +409,7 @@ export default defineContentScript({
             if (openDocument && !translated) {
               if (!enabled) startOnce();
               openDocument();
+              if (isTop) sendResponse({ ok: true });
               return;
             }
             // "Analyze this page with Anagram". A page already being analyzed treats it as
@@ -419,6 +420,7 @@ export default defineContentScript({
             } else {
               startOnce();
             }
+            if (isTop) sendResponse({ ok: !translated });
             return;
 
           case ACTIONS.COPY_DIAGNOSTICS: {

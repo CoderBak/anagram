@@ -1,8 +1,12 @@
 // lib/backend/engineChoice.ts — the two engines by name, for the worker (./engines.ts) and
 // the pages alike; no transport in here.
-import { browser } from "#imports";
+import { browser, storage } from "#imports";
+import type { DetectorRelease } from "../detectorReleases";
+
 import { ACTIONS } from "../messaging/protocol";
 import { IS_SAFARI } from "../surface";
+
+export const nativeSetupRelease = storage.defineItem<DetectorRelease | null>("local:nativeSetupRelease", { fallback: null });
 
 export type Engine = "native" | "inbrowser";
 export const ENGINES: readonly Engine[] = ["native", "inbrowser"];
@@ -34,9 +38,9 @@ export async function readEngine(): Promise<Engine | null> {
  * Messaging granted first, in the click that picked it. `tier`: the model tier lib/device.ts
  * decided for the in-browser engine, kept for it to start with (lib/webengine/tier.ts).
  */
-export async function chooseEngine(engine: Engine, setup?: "now" | "auto", tier?: { tier: "fp32" | "fp16"; fallback: boolean }): Promise<SetEngineReply> {
+export async function chooseEngine(engine: Engine, setup?: "now" | "auto", tier?: { tier: "fp32" | "fp16"; fallback: boolean }, release?: DetectorRelease): Promise<SetEngineReply> {
   try {
-    const reply = await browser.runtime.sendMessage({ action: ACTIONS.SET_ENGINE, engine, ...(setup ? { setup } : {}), ...(tier ? { tier: tier.tier, fallback: tier.fallback } : {}) }) as SetEngineReply | undefined;
+    const reply = await browser.runtime.sendMessage({ action: ACTIONS.SET_ENGINE, engine, ...(setup ? { setup } : {}), ...(tier ? { tier: tier.tier, fallback: tier.fallback } : {}), ...(release ? { release } : {}) }) as SetEngineReply | undefined;
     return reply ?? { ok: false, error: "no_reply" };
   } catch { return { ok: false, error: "no_worker" }; }
 }

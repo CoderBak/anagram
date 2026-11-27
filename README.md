@@ -20,11 +20,10 @@ underline follows each sentence’s label.
 3. Open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**
    and choose that folder.
 4. The setup page opens with three numbered steps, each ticked off once it is done. First
-   the engine: on most computers the model downloads into the browser by itself.
-   On an Apple Silicon Mac, or a Linux PC with an NVIDIA graphics card, it asks
-   first: **One click** runs the model in the browser; **Terminal** installs a faster local
-   engine with one command, which installs a private Python runtime, registers the extension
-   and downloads the model files. Settings switches later.
+   choose a detector if several are available. Setup preselects the recommended model and shows its download size.
+   On an Apple Silicon Mac or a Linux PC with an NVIDIA graphics card, choose **In-browser engine**
+   or **Local engine**. The local engine's install command sets up a private Python runtime,
+   registers the extension and downloads the model files. You can switch engines in Settings.
 5. Then where it reads (**Allow all sites**, or one site at a time from the toolbar menu),
    and pinning Anagram to the toolbar. Without a grant, **Analyze this page** in the toolbar
    menu reads the page in front of you once.
@@ -33,7 +32,7 @@ Apple Silicon Macs are the tested platform. Linux and Windows installers exist b
 not been exercised on real machines. Firefox 153+ has a build but is not the focus.
 
 The Safari version targets **Mac computers with Safari 27+**. It shares the recommended
-**One click** browser setup and optional **Terminal** engine with Chrome and Firefox.
+**In-browser engine** and optional **Local engine** with Chrome and Firefox.
 The browser engine needs a compatible WebGPU adapter and uses a pinned engine tab;
 the separate engine needs a full Safari app build and an Apple Silicon Mac. Build and
 real-Mac verification instructions are in [Development](docs/DEVELOPMENT.md#safari).
@@ -70,7 +69,7 @@ work it ships or adapts keeps its own licences, listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Models are published in [CoderBak/anagram-detectors](https://huggingface.co/CoderBak/anagram-detectors).
-Settings → Engine → Check for models lists dated branches and tags, for example
+Setup reads the recommended detector from the Hugging Face `default` branch. Settings → Engine → Check for models lists dated branches and tags, for example
 `2026-11-14-400m-research`. Choose a release to download it. Each engine verifies its files and runs locally.
 The detector was inspired by Pangram 4. Its reading card shows sentence-level authorship labels.
 The initial release reads English passages of at least 50 words and reports the shares labeled human,

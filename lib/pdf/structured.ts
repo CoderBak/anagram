@@ -852,7 +852,7 @@ function weightedMedian(pairs: readonly [number, number][]): number {
 
 function median(values: number[]): number {
   if (values.length === 0) return NaN;
-  const s = [...values].sort((a, b) => a - b);
+  const s = values.toSorted((a, b) => a - b);
   return s[s.length >> 1]!;
 }
 
@@ -1244,7 +1244,7 @@ function rowsOf(pieces: Piece[], numbers: ReadonlySet<Piece>): Row[] {
 }
 
 function percentile(values: number[], p: number): number {
-  const s = [...values].sort((a, b) => a - b);
+  const s = values.toSorted((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))] ?? 0;
 }
 

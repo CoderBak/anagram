@@ -93,7 +93,7 @@
     "message": "复制原文"
   },
   "cardFootUnavailable": {
-    "message": "本地引擎没有响应。引擎启动后会自动重试。"
+    "message": "本地引擎启动后，Anagram 会自动重试。"
   },
   "cardFootUnsupported": {
     "message": "仅对英文文本评分。"
@@ -111,13 +111,13 @@
     "message": "只对所选文本的开头评了分。"
   },
   "coverageTooDense": {
-    "message": "其中一部分超出模型一次读取的容量，没有读取。"
+    "message": "部分文字超出了模型的长度限制，未计入评分。"
   },
   "coverageOtherLanguages": {
     "message": "其他语言的读取未计入。"
   },
   "coverageAveraged": {
-    "message": "长度超出模型一次能读的范围，因此分 $1 次读取，每一部分由读到它的各次读取综合判断。"
+    "message": "Anagram 分 $1 次分析了这段文字，再合并评分。每次分析的内容有部分重叠。"
   },
   "selTooShort": {
     "message": "太短，无法判断"
@@ -126,10 +126,10 @@
     "message": "选中词数"
   },
   "selNeeded": {
-    "message": "可靠判断所需"
+    "message": "最少词数"
   },
   "selFootTooShort": {
-    "message": "低于证据下限时结果并不可靠，请多选一些文本。"
+    "message": "请选择更长的文字，评分会更可靠。"
   },
   "selAnalyzing": {
     "message": "正在分析…"
@@ -159,7 +159,7 @@
     "message": "重试"
   },
   "panelCommentsElsewhere": {
-    "message": "此页评论来自 $1，Anagram 无权读取。"
+    "message": "Anagram 需要获得权限才能读取来自 $1 的评论。"
   },
   "panelCommentsAllow": {
     "message": "允许…"
@@ -184,7 +184,7 @@
     "description": "Panel title while the page's paragraphs are still being read and none of those read is flagged."
   },
   "panelNotEnglishPage": {
-    "message": "此页面不是英文：Anagram 只分析英文文本。",
+    "message": "Anagram 目前只能分析英文。",
     "description": "Toolbar menu over a page none of whose paragraphs is in English: why nothing was scored."
   },
   "panelCovShort": {
@@ -223,39 +223,33 @@
   "docsUntitled": {
     "message": "Google 文档"
   },
-  "docsSubtitle": {
-    "message": "Anagram 阅读模式，逐段分析，编辑器原封不动"
-  },
   "docsRefresh": {
     "message": "刷新"
   },
   "docsRefreshTitle": {
-    "message": "重新读取文档，包含打开之后的修改"
+    "message": "加载最新修改"
   },
   "docsOpenAsPage": {
     "message": "作为页面打开"
   },
   "docsOpenAsPageTitle": {
-    "message": "把分析后的阅读视图作为独立页面打开"
+    "message": "在当前标签页打开阅读视图"
   },
   "docsBack": {
     "message": "返回编辑器（Esc）"
-  },
-  "docsSnapshotNotice": {
-    "message": "文档的静态快照，点“刷新”可重新读取。"
   },
   "reportEstimate": {
     "message": "按字符统计占比。分数 = AI 生成占比 + AI 辅助占比的一半。"
   },
   "reportUnread": {
-    "message": "；段落末尾未被读取"
+    "message": "评分未包含段落结尾"
   },
   "reportPrivateTitle": {
     "message": "Anagram 分析报告",
     "description": "Report privacy preference, export metadata, or cache status shown in settings."
   },
   "reportCaveat": {
-    "message": "评分为研究估计值，请勿用于纪律处分或其他重大决策。"
+    "message": "这些分数是估算值，请勿据此做出处分或其他重要决定。"
   },
   "reportCopyFailed": {
     "message": "无法复制报告。",
@@ -310,18 +304,18 @@
     "description": "PDF source loading and recovery status."
   },
   "readerReading": {
-    "message": "正在读取全文：已完成 $1%。"
+    "message": "正在分析 PDF（已完成 $1%）"
   },
   "readerReadingLeft": {
-    "message": "正在读取全文：已完成 $1%，大约还需 $2 分钟。",
+    "message": "正在分析 PDF（已完成 $1%，约剩 $2 分钟）",
     "description": "Toolbar menu over the PDF reader while it reads the rest in the background: $1 = the share read, in percent; $2 = minutes left, estimated from this computer's pace."
   },
   "readerReadingSoon": {
-    "message": "正在读取全文：已完成 $1%，不到一分钟即可完成。",
+    "message": "正在分析 PDF（已完成 $1%，剩余不到 1 分钟）",
     "description": "Toolbar menu over the PDF reader, the background reading about to finish: $1 = the share read, in percent."
   },
   "readerReadShare": {
-    "message": "已读取全文的 $1%，其余部分会在你滚动到时读取。"
+    "message": "已分析 $1%。继续滚动可分析更多内容。"
   },
   "readerReadWhole": {
     "message": "读取全文"
@@ -419,9 +413,6 @@
   "engineChooseTitle": {
     "message": "选择 Anagram 的运行方式"
   },
-  "engineOneClick": {
-    "message": "一键"
-  },
   "engineRecommended": {
     "message": "推荐"
   },
@@ -430,9 +421,6 @@
   },
   "engineOneClickButton": {
     "message": "下载模型（$1）"
-  },
-  "engineTerminal": {
-    "message": "终端"
   },
   "engineTerminalWhat": {
     "message": "通过终端安装一个单独的程序，供扩展连接使用。"
@@ -474,7 +462,7 @@
     "message": "未安装"
   },
   "engineSaveData": {
-    "message": "浏览器开启了省流量模式，下载会等你手动开始。"
+    "message": "已开启流量节省模式。你可以手动开始下载。"
   },
   "engineSetUpButton": {
     "message": "下载模型（$1）"
@@ -492,7 +480,7 @@
     "message": "设置未完成"
   },
   "popupSetupStoppedNetwork": {
-    "message": "模型下载时网络连接中断",
+    "message": "下载中断",
     "description": "Toolbar menu, in-browser engine: the model download stopped because the connection was lost. The button below opens the setup page, which offers Retry."
   },
   "popupSetupStoppedStorage": {
@@ -500,7 +488,7 @@
     "description": "Toolbar menu, in-browser engine: the model download stopped because the disk is full."
   },
   "popupSetupStoppedServer": {
-    "message": "模型下载站点暂时没有响应",
+    "message": "下载服务器没有响应",
     "description": "Toolbar menu, in-browser engine: the model download stopped because the server failed."
   },
   "popupSetupStoppedDamaged": {
@@ -544,7 +532,7 @@
     "message": "已下载的 $1 将被删除。"
   },
   "engineDeleteConfirm": {
-    "message": "这将释放 $1。在重新设置（需要再次下载模型）之前，Anagram 无法分析任何内容。"
+    "message": "要删除 $1 的模型文件吗？再次使用浏览器内引擎时，需要重新下载模型。"
   },
   "engineOnGpu": {
     "message": "在显卡上运行。"
@@ -553,7 +541,7 @@
     "message": "在处理器上运行。在浏览器设置中开启硬件加速，Anagram 或许就能使用显卡。"
   },
   "engineNetworkLost": {
-    "message": "下载无法连接 Hugging Face 及其镜像 hf-mirror.com。请检查网络或代理设置，然后点击“重试”，下载会从中断处继续。"
+    "message": "无法连接 Hugging Face 或 hf-mirror.com。请检查网络或代理设置，然后点击“重试”继续下载。"
   },
   "engineSettingDiskFull": {
     "message": "请先释放磁盘空间，再重新选择闲置时长。",
@@ -572,10 +560,10 @@
     "message": "下载已停止。点击“重试”从中断处继续。"
   },
   "engineLoadFailed": {
-    "message": "模型无法在此浏览器中启动。请点击“重试”；如果仍然失败，请重启浏览器。"
+    "message": "模型启动失败。请点击“重试”。如果仍然失败，请重启浏览器。"
   },
   "engineUnavailable": {
-    "message": "浏览器内的引擎未能启动。请点击“重试”；如果仍然失败，请重启浏览器。"
+    "message": "浏览器内引擎启动失败。请点击“重试”。如果仍然失败，请重启浏览器。"
   },
   "engineSetUp": {
     "message": "开始设置"
@@ -587,7 +575,7 @@
     "message": "继续设置"
   },
   "popupSetupNeeded": {
-    "message": "Anagram 尚未设置：需要一次性下载模型。"
+    "message": "设置引擎后即可开始分析文本。"
   },
   "popupSetupDownloading": {
     "message": "正在下载模型，$1%"
@@ -627,7 +615,7 @@
     "message": "需要处理"
   },
   "componentEngineCrashed": {
-    "message": "引擎在分析时接连多次意外停止，Anagram 已不再自动重启它。点击重试可重新启动。"
+    "message": "引擎在分析时多次意外停止。请点击“重试”重新启动。"
   },
   "componentInUse": {
     "message": "正被另一个浏览器使用"
@@ -639,13 +627,13 @@
     "message": "正在系统窗口中完成"
   },
   "componentCleanupDone": {
-    "message": "本地引擎已移除，正在移除扩展…"
+    "message": "已移除本地引擎，正在移除扩展…"
   },
   "componentRemoveExtension": {
     "message": "移除扩展"
   },
   "componentExtensionRemovalFailed": {
-    "message": "无法移除扩展，请在浏览器的扩展管理页中移除。"
+    "message": "请到浏览器的扩展管理页面移除 Anagram，以完成卸载。"
   },
   "componentInstallIntro": {
     "message": "这条终端命令会把引擎安装到 $1，下载模型，并为当前用户在浏览器中注册引擎。"
@@ -717,7 +705,7 @@
     "message": "卸载 Anagram"
   },
   "componentDeleteConfirm": {
-    "message": "这将从 $2 删除 $1 的模型文件，之后可以重新下载。"
+    "message": "要删除 $2 中的模型文件（$1）吗？以后可以重新下载。"
   },
   "componentUninstallConfirm": {
     "message": "这将移除位于 $2 的本地引擎及 $1 的模型文件，然后移除扩展。"
@@ -871,13 +859,13 @@
     "message": "撤销授权"
   },
   "optCommentsFrom": {
-    "message": "你刚才的页面显示来自 $1 的评论。Anagram 需获准访问该网站才能读取。"
+    "message": "你刚才阅读的页面使用 $1 提供评论。允许访问后即可分析这些评论。"
   },
   "optCommentsAllow": {
     "message": "允许 $1"
   },
   "optCommentsAllowed": {
-    "message": "已允许 $1。在 Anagram 运行的网站上，其评论会被读取。"
+    "message": "在已启用 Anagram 的网站上，现在可以分析来自 $1 的评论。"
   },
   "optEnabled": {
     "message": "默认在已授权网站运行"
@@ -937,9 +925,6 @@
     "message": "$1（$2）",
     "description": "Ready status followed by the processor used (GPU or CPU) in Settings."
   },
-  "onbTagline": {
-    "message": "标出可能经 AI 编辑的段落。"
-  },
   "onbWhere": {
     "message": "自动读取网站（可选）"
   },
@@ -953,7 +938,7 @@
     "message": "支持至少 50 个单词的英文段落。"
   },
   "accessHint": {
-    "message": "或点工具栏图标，按网站单独开启"
+    "message": "要只对某个网站启用 Anagram，请在访问该网站时从工具栏打开 Anagram。"
   },
   "accessAllowed": {
     "message": "已允许所有网站"
@@ -1026,7 +1011,7 @@
     "message": "在菜单栏中选择“显示 → 自定工具栏”。"
   },
   "toolbarSafariDrag": {
-    "message": "将 Anagram 图标拖到地址栏旁，然后点击“完成”。如果图标已在那里，就可以直接使用。"
+    "message": "将 Anagram 拖到地址栏旁，然后点击“完成”。"
   },
   "popupReportRange": {
     "message": "第 $1–$2 项，共 $3 项"
@@ -1174,7 +1159,7 @@
     "message": "删除"
   },
   "statsDropped": {
-    "message": "已删除。每日总计仍然保留。"
+    "message": "已删除详细记录，保留了每日汇总。"
   },
   "statsSettingsLink": {
     "message": "统计设置"
@@ -1258,10 +1243,10 @@
     "message": "这段时间没有记录页面。"
   },
   "statsMorePages": {
-    "message": "显示最近的 $1 个页面，共 $2 个。导出文件包含全部页面。"
+    "message": "显示最近 $1 个页面（共 $2 个）。导出可查看完整列表。"
   },
   "statsMoreSites": {
-    "message": "另有 $1 个网站，导出文件包含全部网站。"
+    "message": "导出文件中还包含另外 $1 个网站。"
   },
   "statsLocalFile": {
     "message": "这台电脑上的 PDF"
@@ -1333,7 +1318,7 @@
     "message": "页面结构"
   },
   "statsDimHint_struct": {
-    "message": "页面和段落的类型，以及页面的构成。"
+    "message": "页面布局、页面类型和段落类型。"
   },
   "statsDim_geom": {
     "message": "位置"
@@ -1345,7 +1330,7 @@
     "message": "屏幕停留"
   },
   "statsDimHint_expo": {
-    "message": "每段何时出现在屏幕上，以及显示了多少。"
+    "message": "段落在什么时间可见，以及当时可见的比例。"
   },
   "statsDim_scroll": {
     "message": "滚动"
@@ -1354,13 +1339,13 @@
     "message": "输入"
   },
   "statsDimHint_input": {
-    "message": "点击、按键和指针。从不记录你输入的内容。"
+    "message": "记录点击、键盘活动和指针移动，不保存输入的文字。"
   },
   "statsDim_state": {
     "message": "显示与焦点"
   },
   "statsDimHint_state": {
-    "message": "页面何时显示或隐藏，窗口何时获得焦点。"
+    "message": "页面可见和窗口获得焦点的时间。"
   },
   "statsDim_tabs": {
     "message": "标签页和窗口"
@@ -1384,7 +1369,7 @@
     "message": "Anagram 的使用"
   },
   "statsDimHint_ui": {
-    "message": "打开的卡片、跳转到的存疑段落、工具栏菜单。"
+    "message": "打开评分卡片、跳转到标记段落和使用工具栏菜单的记录。"
   },
   "statsDim_device": {
     "message": "设备"
@@ -1396,7 +1381,7 @@
     "message": "未覆盖的内容"
   },
   "statsDimHint_cover": {
-    "message": "无法读取的内容，以及在 Anagram 无法读取的页面上的时间。"
+    "message": "跳过的段落，以及在无法分析的页面上停留的时间。"
   },
   "statsL_rows_event": {
     "message": "每个事件"
@@ -1573,7 +1558,7 @@
     "message": "每次可见度变化"
   },
   "statsL_expo_intervals": {
-    "message": "每段屏幕停留"
+    "message": "可见时间段"
   },
   "statsL_expo_totals": {
     "message": "每段合计"
@@ -1615,7 +1600,7 @@
     "message": "每分钟计数"
   },
   "statsL_input_idle": {
-    "message": "空闲时段"
+    "message": "无操作时段"
   },
   "statsL_input_none": {
     "message": "不记录"
@@ -1775,10 +1760,10 @@
     "message": "保存方式"
   },
   "statsStripTitle": {
-    "message": "删除新设置不再保存的内容？"
+    "message": "删除之前保存的详细记录？"
   },
   "statsStripText": {
-    "message": "从现在起 Anagram 保存得更少，但已保存的内容会保留，直到你删除。每日合计无论如何都会保留。"
+    "message": "新设置只影响今后的记录。你可以删除以前保存、今后不再记录的详细信息。每日汇总会保留。"
   },
   "statsFrom": {
     "message": "从"
@@ -1787,7 +1772,7 @@
     "message": "到"
   },
   "statsLens": {
-    "message": "计算方式"
+    "message": "统计规则"
   },
   "statsLensRead": {
     "message": "停留多久算读过"
@@ -1796,19 +1781,19 @@
     "message": "$1 秒"
   },
   "statsLensVisible": {
-    "message": "“在屏幕上”指"
+    "message": "可见条件"
   },
   "statsLensBand": {
-    "message": "有部分在窗口中间 80% 的区域"
+    "message": "任意部分位于窗口中间 80% 的区域内"
   },
   "statsLensHalf": {
-    "message": "至少显示一半"
+    "message": "至少一半可见"
   },
   "statsLensAny": {
-    "message": "显示任意部分"
+    "message": "任意部分可见"
   },
   "statsLensOnce": {
-    "message": "重复阅读的段落"
+    "message": "重复阅读的计数方式"
   },
   "statsLensOnceVisit": {
     "message": "每次访问计一次"
@@ -1820,31 +1805,31 @@
     "message": "只计一次"
   },
   "statsLensEstimator": {
-    "message": "占比依据"
+    "message": "占比计算方式"
   },
   "statsLensExpected": {
     "message": "按概率加权的占比"
   },
   "statsLensChip": {
-    "message": "段落，按标签词"
+    "message": "显示的判定结果"
   },
   "statsLensArgmax": {
-    "message": "段落，按最可能的判断"
+    "message": "概率最高的判定结果"
   },
   "statsLensWeight": {
-    "message": "每段的权重"
+    "message": "段落权重"
   },
   "statsLensWords": {
-    "message": "其词数"
+    "message": "词数"
   },
   "statsLensParagraphs": {
-    "message": "一"
+    "message": "每段权重相同"
   },
   "statsLensTime": {
-    "message": "在屏幕上的秒数"
+    "message": "可见时长"
   },
   "statsLensHeadline": {
-    "message": "主数字为"
+    "message": "主要指标"
   },
   "statsLensAi": {
     "message": "AI 生成"
@@ -1853,22 +1838,22 @@
     "message": "重度 AI 编辑和 AI 生成"
   },
   "statsLensMinWords": {
-    "message": "段落至少"
+    "message": "段落最少词数"
   },
   "statsWordsN": {
     "message": "$1 个词"
   },
   "statsLensFocused": {
-    "message": "仅计焦点窗口"
+    "message": "仅在窗口获得焦点时计数"
   },
   "statsLensFling": {
-    "message": "不计快速划过的内容"
+    "message": "排除快速滚动"
   },
   "statsLensReset": {
     "message": "恢复默认值"
   },
   "statsLensDefault": {
-    "message": "每次访问中，段落在窗口中部停留一秒即计数一次。快速滚动时跳过。"
+    "message": "段落在窗口中间 80% 的区域内停留至少 1 秒才会计数。每次访问只计一次，快速滚动时不计。"
   },
   "statsLensApplied": {
     "message": "按已记录的段落计算。"
@@ -1902,7 +1887,7 @@
     "message": "这段时间没有保存访问。"
   },
   "statsMoreVisits": {
-    "message": "共 $2 次访问中最新的 $1 次。导出文件包含全部。"
+    "message": "显示最近 $1 次访问（共 $2 次）。导出可查看完整列表。"
   },
   "statsColReplay": {
     "message": "详情"
@@ -2100,6 +2085,18 @@
   "bandShort": {
     "message": "文本过短"
   },
+  "setupDefaultUnavailable": {
+    "message": "无法查询推荐模型。",
+    "description": "Setup model catalog status."
+  },
+  "setupOtherModelsUnavailable": {
+    "message": "无法查询其他模型。",
+    "description": "Setup model catalog status."
+  },
+  "setupRecommendedModel": {
+    "message": "推荐（$1）",
+    "description": "The Hugging Face default release in the setup model picker; $1 is its name."
+  },
   "detectorLabel": {
     "message": "检测模型"
   },
@@ -2161,10 +2158,10 @@
     "message": "多次出现的段落"
   },
   "statsVisitNoFacts": {
-    "message": "本次访问没有可用的段落显示或页面深度数据。"
+    "message": "此次访问没有记录可见情况或滚动深度。"
   },
   "statsVisitNoTimeline": {
-    "message": "本次访问未保留时间线采样。"
+    "message": "此次访问没有记录时间线。"
   },
   "statsVisitLoadFailed": {
     "message": "无法加载详情。请收起后重新展开。"

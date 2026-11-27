@@ -115,8 +115,6 @@ details.more::details-content, details.table-view::details-content { transition:
 details.more > summary { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 7px; border-radius: var(--radius); font-size: 13px; font-weight: 500; color: var(--muted-foreground); list-style: none; cursor: pointer; }
 details.more > summary:hover { color: var(--foreground); background: var(--accent); }
 details.more > summary::-webkit-details-marker { display: none; }
-details.more > summary::after { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.4px 1.4px 0; transform: translateY(-2px) rotate(45deg); }
-details.more[open] > summary::after { transform: translateY(2px) rotate(225deg); }
 details.more { position: relative; min-width: 0; }
 .bar:has(details.more[open]) { align-items: flex-start; }
 details.more .menu { display: grid; gap: 10px; width: min(310px, calc(100vw - 36px)); margin-top: 4px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
@@ -153,8 +151,6 @@ details.table-view { margin-top: 4px; font-size: 12.5px; }
 details.table-view > summary { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 7px; cursor: pointer; color: var(--muted-foreground); font-weight: 500; min-height: 28px; list-style: none; }
 details.table-view > summary:hover { color: var(--foreground); }
 details.table-view > summary::-webkit-details-marker { display: none; }
-details.table-view > summary::before { content: ""; flex: none; width: 5px; height: 5px; border: solid currentColor; border-width: 1.4px 1.4px 0 0; transform: rotate(45deg); }
-details.table-view[open] > summary::before { transform: rotate(135deg); }
 
 /* Tables. */
 .table-container { margin-top: 4px; overflow-x: auto; }
@@ -182,7 +178,7 @@ table.table .volume { width: 26%; }
 }
 .records .table td.name .site-pick:hover { text-decoration-color: currentColor; }
 @media (max-width: 450px) { .volume-track { display: none; } }
-table.table a { display: inline-block; min-height: 24px; line-height: 24px; color: var(--foreground); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 2px; }
+table.table a { display: inline-block; align-content: center; min-height: 24px; color: var(--foreground); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 2px; }
 table.table a:hover { text-decoration-color: currentColor; }
 .page-host { color: var(--muted-foreground); font-size: 12px; }
 .mobile-label { display: none; }
@@ -259,7 +255,7 @@ dialog.stats-dialog .actions { display: flex; flex-wrap: wrap; justify-content: 
   line-height: 1.6;
   color: var(--muted-foreground);
 }
-.links a { display: inline-block; min-height: 24px; line-height: 24px; }
+.links a { display: inline-flex; align-items: center; min-height: 24px; }
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* How it counts: the lens, with a clear disclosure indicator. */
@@ -281,16 +277,6 @@ details.lens > summary {
   list-style: none;
 }
 details.lens > summary::-webkit-details-marker { display: none; }
-details.lens > summary::before {
-  content: "";
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border: solid currentColor;
-  border-width: 1.4px 1.4px 0 0;
-  transform: rotate(45deg);
-}
-details.lens[open] > summary::before { transform: rotate(135deg); }
 details.lens > summary:hover { color: var(--foreground); }
 details.lens > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 details.lens .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; padding: 8px 0 12px; }

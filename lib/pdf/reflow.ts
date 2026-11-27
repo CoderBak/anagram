@@ -281,7 +281,7 @@ const ITEM_BEFORE = /[:;](["'”’)\]]|\s)*$/u;
 
 function median(values: number[]): number {
   if (values.length === 0) return 0;
-  const s = [...values].sort((a, b) => a - b);
+  const s = values.toSorted((a, b) => a - b);
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
@@ -312,7 +312,7 @@ function medianOfWeights(weights: Map<number, number>): number {
 
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
-  const s = [...values].sort((a, b) => a - b);
+  const s = values.toSorted((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))]!;
 }
 
@@ -590,7 +590,7 @@ function lineNumberRuns(pages: PdfPageText[]): Set<PdfTextItem> {
  * footnote number cannot make a body line look small or start it half a line high.
  */
 function makeLine(page: number, items: PdfTextItem[], index: ItemIndex): Line {
-  const sorted = [...items].sort((a, b) => a.x - b.x);
+  const sorted = items.toSorted((a, b) => a.x - b.x);
   let dominant = sorted[0]!;
   for (const it of sorted) if (it.width > dominant.width) dominant = it;
 

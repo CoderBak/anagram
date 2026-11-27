@@ -82,6 +82,7 @@ function sheet(): CSSStyleSheet {
 let _host: HTMLElement | null = null;
 
 function dismiss(): void {
+  _host?.closest("dialog")?.removeEventListener("close", dismiss);
   _host?.remove();
   _host = null;
   document.removeEventListener("pointerdown", onOutside, true);
@@ -92,7 +93,10 @@ function onOutside(e: Event): void {
   if (_host && !e.composedPath().includes(_host)) dismiss();
 }
 function onKey(e: KeyboardEvent): void {
-  if (e.key === "Escape") dismiss();
+  if (e.key === "Escape") {
+    if (_host?.closest("dialog:modal")) e.preventDefault();
+    dismiss();
+  }
 }
 
 function row(k: string, v: string, cls = ""): string {
@@ -170,7 +174,16 @@ export async function analyzeSelection(): Promise<void> {
     if (target?.closest?.(".close")) dismiss();
   });
   shadow.appendChild(card);
-  (document.body ?? document.documentElement).appendChild(host);
+  // Controls outside a modal are inert. Follow focus through its shadow hosts.
+  let focused = deepActiveElement();
+  let modal = focused?.closest("dialog:modal");
+  while (focused && !modal) {
+    const root = focused.getRootNode();
+    focused = root instanceof ShadowRoot ? root.host : null;
+    modal = focused?.closest("dialog:modal");
+  }
+  (modal ?? document.body ?? document.documentElement).appendChild(host);
+  modal?.addEventListener("close", dismiss);
   document.addEventListener("pointerdown", onOutside, true);
   document.addEventListener("keydown", onKey, true);
 

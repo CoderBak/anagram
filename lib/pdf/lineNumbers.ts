@@ -76,7 +76,7 @@ interface Column {
 
 /** Neighbouring numbers down the column count on, one line at a time. */
 function counts(marks: NumberMark[]): boolean {
-  const down = [...marks].sort((a, b) => a.y - b.y);
+  const down = marks.toSorted((a, b) => a.y - b.y);
   let good = 0;
   for (let i = 1; i < down.length; i++) {
     const step = down[i]!.value - down[i - 1]!.value;
@@ -106,7 +106,7 @@ function clear(marks: NumberMark[], side: "first" | "last", content: readonly Pa
 
 /** Marks of one page, at one side, gathered by one aligned edge within ALIGN heights. */
 function clusters<T extends NumberMark>(marks: T[], edge: "x1" | "x2"): T[][] {
-  const sorted = [...marks].sort((a, b) => a[edge] - b[edge]);
+  const sorted = marks.toSorted((a, b) => a[edge] - b[edge]);
   const out: T[][] = [];
   for (const m of sorted) {
     const open = out.at(-1);
@@ -130,7 +130,7 @@ export function mayHoldColumn(marks: readonly NumberMark[]): boolean {
     for (const edge of ["x1", "x2"] as const) {
       for (const cluster of clusters(list, edge)) {
         if (cluster.length < COLUMN_MIN) continue;
-        const down = [...cluster].sort((a, b) => a.y - b.y);
+        const down = cluster.toSorted((a, b) => a.y - b.y);
         let good = 0;
         for (let i = 1; i < down.length; i++) {
           const step = down[i]!.value - down[i - 1]!.value;

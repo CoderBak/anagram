@@ -1,7 +1,7 @@
 // test/webengine/model-server.mjs — Hugging Face, on this machine.
 //
 // The in-browser engine downloads from the exact addresses it pins (lib/webengine/pin.ts): the
-// modelkit's model and tokenizer on huggingface.co. Its language identifier ships in the
+// detector release files on huggingface.co. Its language identifier ships in the
 // package, so nothing else is fetched. A suite that drives setup cannot hand the engine
 // other addresses, so the browser is pointed here instead: Chromium resolves Hugging Face's
 // names to this HTTPS server (`--host-resolver-rules`, every other name to nothing) and
@@ -18,7 +18,7 @@
 //   status     answer every request with this status instead
 //   cutAfter   drop the connection after this many bytes of a response
 //
-//   const server = await modelServer({ files: { "model.onnx": 1e9 }, rate: 40e6 });
+//   const server = await modelServer({ rate: 40e6 });
 //   chromium.launchPersistentContext(dir, { args: [...server.args] });
 //   server.set({ status: 404 }); server.requests; await server.close();
 import https from "node:https";
@@ -28,24 +28,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROOT } from "./harness.mjs";
 
-const modelkit = JSON.parse(readFileSync(join(ROOT, "anagramd", "modelkit.json"), "utf8"));
-const kitPath = (path) => `/${modelkit.repository}/resolve/${modelkit.revision}/${path.split("/").map(encodeURIComponent).join("/")}`;
-const size = (path) => modelkit.files.find((f) => f.path === path).size_bytes;
+const release = JSON.parse(readFileSync(join(ROOT, "anagramd", "detector-release.json"), "utf8"));
 const HF = "huggingface.co";
 const CDN = "us.aws.cdn.hf.co";
-
-/** The pinned files by the engine's name: where each is asked for, where Hugging Face sends
- *  the request on (`cdn`: a path on its CDN), and its pinned size. */
-export const PINNED = {
-  "model.onnx": { host: HF, path: kitPath("onnx/model.onnx"), cdn: "/xet-bridge-us/anagram-test/model.onnx", size: size("onnx/model.onnx") },
-  // The FP16 model, for the devices FP32 does not fit (lib/device.ts TIERS).
-  "model_fp16.onnx": { host: HF, path: kitPath("onnx/model_fp16.onnx"), cdn: "/xet-bridge-us/anagram-test/model_fp16.onnx", size: size("onnx/model_fp16.onnx") },
-  "tokenizer.json": { host: HF, path: kitPath("tokenizer.json"), size: size("tokenizer.json") },
-};
-/** What a default (FP32) setup downloads. */
-export const DOWNLOAD_BYTES = PINNED["model.onnx"].size + PINNED["tokenizer.json"].size;
-/** What the FP16 tier's setup downloads. */
-export const DOWNLOAD_BYTES_FP16 = PINNED["model_fp16.onnx"].size + PINNED["tokenizer.json"].size;
+export const WEIGHTS = release.files.toSorted((a, b) => b.size_bytes - a.size_bytes)[0].path;
+export const PINNED = Object.fromEntries(release.files.map(({ path, size_bytes }) => [path, {
+  host: HF,
+  path: `/${release.repository}/resolve/${release.revision}/${path.split("/").map(encodeURIComponent).join("/")}`,
+  ...(path === WEIGHTS && { cdn: `/xet-bridge-us/anagram-test/${path}` }),
+  size: size_bytes,
+}]));
+export const DOWNLOAD_BYTES = release.files.reduce((total, file) => total + file.size_bytes, 0);
 
 /**
  * Chromium's switch that sends Hugging Face nowhere. A fresh profile on a device with no
@@ -78,7 +71,8 @@ export async function cancelAutoSetup(context, extId) {
 
 /** The real files where the other suites find them, when they are all there. */
 export function realFiles(kit = process.env.ANAGRAM_MODELKIT) {
-  const files = { "model.onnx": kit && join(kit, "onnx", "model.onnx"), "tokenizer.json": kit && join(kit, "tokenizer.json") };
+  if (!kit) return null;
+  const files = Object.fromEntries(Object.keys(PINNED).map((name) => [name, join(kit, name)]));
   for (const [name, path] of Object.entries(files)) {
     try { if (!path || statSync(path).size !== PINNED[name].size) return null; } catch { return null; }
   }

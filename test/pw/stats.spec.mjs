@@ -670,7 +670,7 @@ test("Settings keeps the permitted hashed page when deleting finer history from 
   await page.goto(extension.url("options.html#statistics"));
   await page.selectOption("#statsPresets", "pages");
   await page.click("#dropStatsConfirm");
-  await expect(page.locator("#statsStatus")).toHaveText("Deleted. The daily totals stay.");
+  await expect(page.locator("#statsStatus")).toHaveText("Details deleted. Daily totals kept.");
   const db = await statsDb(extension);
   expect(db.visits).toEqual([]);
   expect(db.totals.find((t) => t.scope === "page")).toMatchObject({ key: path, siteHash: host, tally: { scored: 200 } });
@@ -770,7 +770,7 @@ test("Settings: keeping less asks whether to delete what the new choice would no
   await page.selectOption("#statsPresets", "daily");
   await page.click("#dropStatsConfirm");
   await expect(dialog).toBeHidden();
-  await expect(page.locator("#statsStatus")).toHaveText("Deleted. The daily totals stay.");
+  await expect(page.locator("#statsStatus")).toHaveText("Details deleted. Daily totals kept.");
   expect(await kept()).toEqual([0, 0, 0, 2]);
   // Keeping more asks nothing.
   await page.selectOption("#statsPresets", "pages");
@@ -891,7 +891,7 @@ test("visit details omit unknown measurements and follow retained events after r
   await page.getByRole("button", {name: "Visit details"}).click();
   await expect(page.locator("#visitFacts dd")).toHaveCount(0);
   await page.locator("#visitTimeline summary").click();
-  await expect(page.locator("#replayChart")).toHaveText("No timeline samples were retained for this visit.");
+  await expect(page.locator("#replayChart")).toHaveText("No timeline was recorded for this visit.");
   await expect(page.locator("#replayChart svg")).toHaveCount(0);
 });
 

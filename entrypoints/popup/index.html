@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Content-Security-Policy" content="connect-src 'self'" />
     <title data-i18n="popupTitle">Anagram</title>
@@ -26,22 +27,20 @@
           <header class="report-heading" hidden><h2 id="reportTitle" tabindex="-1"></h2></header>
           <div class="report-body"></div>
         </section>
-        <p class="keepopen" id="keepOpen" hidden data-i18n="engineKeepOpen">Keep this browser open until the download finishes.</p>
         <div class="page-actions">
-        <button id="pageAction" class="btn" data-size="sm" type="button" hidden></button>
-        <!-- Label, variant and action are the page's state (./state.ts); until the page
-             has answered there is nothing honest to put on it. -->
-        <button id="action" class="btn" data-variant="outline" data-size="sm" type="button" disabled></button>
-        <button id="localFileSettings" class="btn" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
-        <!-- The local engine kept crashing: the in-browser engine, beside Retry (./main.ts). -->
-        <button id="switchEngine" class="btn" data-variant="outline" data-size="sm" type="button" hidden data-i18n="engineSwitchToInBrowser">Use in-browser engine</button>
+          <button id="pageAction" class="btn" data-size="sm" type="button" hidden></button>
+          <!-- The page state determines the label, variant and action (./state.ts). -->
+          <button id="action" class="btn" data-variant="outline" data-size="sm" type="button" disabled></button>
+          <button id="localFileSettings" class="btn" data-variant="ghost" data-size="sm" type="button" hidden data-i18n="popupFileAccessSettings">Local file settings</button>
+          <button id="switchEngine" class="btn" data-variant="outline" data-size="sm" type="button" hidden data-i18n="engineSwitchToInBrowser">Use in-browser engine</button>
         </div>
+        <p class="keepopen" id="keepOpen" hidden data-i18n="engineKeepOpen">Keep this browser open until the download finishes.</p>
       </section>
 
       <section class="grp" id="siteGroup" hidden>
         <div class="field" data-orientation="horizontal">
           <label for="siteEnabled" data-i18n="popupThisSite">Scan this site automatically</label>
-          <input id="siteEnabled" type="checkbox" role="switch" data-size="sm" aria-describedby="siteRuleNote" />
+          <input id="siteEnabled" type="checkbox" switch role="switch" data-size="sm" aria-describedby="siteRuleNote" />
         </div>
         <p id="siteRuleNote" hidden></p>
       </section>

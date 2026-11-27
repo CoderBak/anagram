@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultRelease,
+  setupCatalog,
+  detectorBytes,
   listDetectorReleases,
   releaseName,
   resolveDetectorRelease,
@@ -48,6 +50,24 @@ describe("dated detector releases", () => {
     expect(fetch.mock.calls[0]).toContain(
       "https://huggingface.co/api/models/CoderBak/anagram-detectors/refs",
     );
+  });
+  it.each([true, false])("reads the default size even if the refs list is gated (%s)", async listed => {
+    const other = {name: "2026-12-12-1b", targetCommit: "a".repeat(40)};
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.endsWith("/refs")) return listed ? Response.json({branches: [other]}) : new Response(null, {status: 401});
+      expect(url).toContain("/revision/default?blobs=true");
+      return Response.json({sha: defaultRelease.revision, siblings: [
+        ...defaultRelease.files.map(f => ({rfilename: f.path, size: f.size_bytes})),
+        {rfilename: "README.md", size: 10000000},
+      ]});
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const catalog = await setupCatalog();
+    expect(catalog.listed).toBe(listed);
+    expect(catalog.recommended?.revision).toBe(defaultRelease.revision);
+    expect(detectorBytes(catalog.recommended!)).toBe(1582812701);
+    expect(catalog.choices).toHaveLength(listed ? 2 : 1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it("keeps the bundled revision available offline and restricts selections to the known file layout", async () => {
     vi.stubGlobal(
@@ -129,12 +149,16 @@ it("pins an added branch to its requested commit and obtains a weight digest wit
     "fetch",
     vi.fn(async (url: string) => {
       requests.push(url);
+      if (url.endsWith("/refs")) return Response.json({branches: [
+        {name: release, targetCommit: revision},
+        {name: "2026-12-02-1b", targetCommit: "b".repeat(40)},
+      ]});
       if (url.includes("/api/"))
         return Response.json({
           sha: revision,
           siblings: defaultRelease.files.map((f) => ({
             rfilename: f.path,
-            size: f.size_bytes,
+            size: f.path === "backbone/model.safetensors" ? 700000000 : f.size_bytes,
             lfs: { sha256: f.sha256 },
           })),
         });
@@ -148,6 +172,9 @@ it("pins an added branch to its requested commit and obtains a weight digest wit
   expect(pin.revision).toBe(revision);
   expect(pin.release).toBe(release);
   expect(requests.every((r) => r.includes(revision))).toBe(true);
+  const catalog = await setupCatalog();
+  expect(catalog.recommended).toEqual(pin);
+  expect(detectorBytes(pin)).toBe(703669013);
   expect(requests.some((r) => r.endsWith(".safetensors"))).toBe(false);
 });
 
