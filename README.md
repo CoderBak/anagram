@@ -1,55 +1,20 @@
 # Anagram
 
-Anagram marks English prose in your browser with a local estimate of how much an AI
-edited it: human, lightly edited, heavily edited or AI-generated. Scoring runs on your
-own computer with Pangram's EditLens model, inside the browser or in a local engine.
-Nothing you read leaves your machine.
-
-[User guide](https://github.com/CoderBak/anagram/blob/v0.8.1/docs/user-guide.en.md) · [中文指南](https://github.com/CoderBak/anagram/blob/v0.8.1/docs/user-guide.zh-CN.md) · [Privacy](https://github.com/CoderBak/anagram/blob/v0.8.1/PRIVACY.md)
+Anagram reads English prose in your browser and runs the detector on your computer. In v0.10.0, each paragraph gets a chip showing its main label. Open the chip to see which sentences the detector marked as human, AI-assisted or AI-generated.
 
 ## Install
 
-1. Download the Chrome ZIP from the [latest release](https://github.com/CoderBak/anagram/releases),
-   extract it to a folder you will keep, and load that folder at `chrome://extensions`
-   with Developer mode on and **Load unpacked**. Chrome 137 or later.
-2. The setup page opens. On most computers the model (1.4 GB) downloads into the browser
-   by itself. On an Apple Silicon Mac, or a Windows or Linux PC with an NVIDIA graphics
-   card, it asks first: **One click** runs the model in the browser; **Terminal** installs
-   a faster local engine with one command, which installs a private Python runtime,
-   registers the extension and downloads the model files. Settings switches later.
-3. When it says Ready, grant a site, or use **Analyze this page** from the toolbar icon for
-   one page.
+Download the Chrome ZIP under **Assets** on the latest signed release. Extract it into a folder you will keep. In Chrome 137 or later, open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked** and choose that folder. [GitHub releases](https://github.com/CoderBak/anagram/releases/latest)
 
-Apple Silicon Macs are the tested platform. Linux and Windows installers exist but have
-not been exercised on real machines. Firefox 153+ has a build but is not the focus.
+The v0.10.0 setup page preselects the recommended detector and shows its download size. The in-browser engine downloads and verifies the model inside the browser. On supported computers you can also choose the local engine, inspect its installer in setup and run the version-specific command. Both engines need anonymous download access to the selected model on Hugging Face. [Detector releases](https://huggingface.co/CoderBak/anagram-detectors)
 
-## Use
+## Guides by version
 
-Every analyzed paragraph gets a small chip with a score from .00 (human) to 1.0
-(AI-generated). Hover it for the four-way breakdown. The floating ball counts and
-lists paragraphs that read as AI-generated, and copies a report. PDFs open in a
-built-in reader. Google Docs get a reading view. Settings covers site access, marks,
-cache and the engine.
+| Version | Guides |
+| --- | --- |
+| v0.10.0 | [English](https://github.com/CoderBak/anagram/blob/v0.10.0/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.10.0/docs/user-guide.zh-CN.md) · [Release notes](https://github.com/CoderBak/anagram/blob/v0.10.0/CHANGELOG.md) |
+| v0.9.2 | [English](https://github.com/CoderBak/anagram/blob/v0.9.2/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.9.2/docs/user-guide.zh-CN.md) |
 
-## Develop
+Chrome on Apple Silicon is the primary target. The v0.10.0 release workflow also builds Firefox. Safari on macOS still needs runtime verification. [Build and test instructions](https://github.com/CoderBak/anagram/blob/v0.10.0/docs/DEVELOPMENT.md)
 
-```sh
-npm ci
-npm run build          # output/chrome-mv3
-npm run typecheck
-npm run test:node
-```
-
-See [docs/DEVELOPMENT.md](https://github.com/CoderBak/anagram/blob/v0.8.1/docs/DEVELOPMENT.md) for the code map, the full check list
-and open work.
-
-## Model and license
-
-Anagram's code is licensed under the [GNU AGPL v3.0 or later](https://github.com/CoderBak/anagram/blob/v0.8.1/LICENSE). The third-party
-work it ships or adapts keeps its own licences, listed in
-[THIRD_PARTY_NOTICES.md](https://github.com/CoderBak/anagram/blob/v0.8.1/THIRD_PARTY_NOTICES.md).
-
-Inference uses [Pangram's EditLens RoBERTa-large](https://huggingface.co/pangram/editlens_roberta-large)
-via the [CoderBak/editlens_roberta_modelkit](https://huggingface.co/CoderBak/editlens_roberta_modelkit)
-redistribution, pinned in `anagramd/modelkit.json`. The model is **CC BY-NC-SA 4.0**,
-non-commercial. Scores are estimates, not proof of authorship.
+Page text stays on your computer. Reading statistics are optional. Anagram’s code is licensed under the GNU AGPL v3.0 or later. Each detector’s model page lists its terms. [Privacy](https://github.com/CoderBak/anagram/blob/v0.10.0/PRIVACY.md) · [Source](https://github.com/CoderBak/anagram/tree/v0.10.0) · [License](https://github.com/CoderBak/anagram/blob/v0.10.0/LICENSE) · [Third-party notices](https://github.com/CoderBak/anagram/blob/v0.10.0/THIRD_PARTY_NOTICES.md)
