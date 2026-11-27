@@ -139,6 +139,8 @@ class ReleaseTests(unittest.TestCase):
                     path = component.model_dir / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(data)
+                if component.pin == second[0]:
+                    (component.model_dir / "detector.onnx").write_bytes(b"unrelated document")
                 component.lid_path.write_bytes(b"L")
 
             def settled():
@@ -160,10 +162,12 @@ class ReleaseTests(unittest.TestCase):
                 component.start()
                 settled()
                 self.assertEqual(score(), (first[0]["release"], 0))
+                self.assertFalse((component.model_dir / "detector.onnx").exists())
                 component.handle("models.select", {"release": second[0]})
                 settled()
                 self.assertEqual(score(), (second[0]["release"], 2))
                 self.assertFalse(detector.model_dir(home, first[0]).exists())
+                self.assertEqual((component.model_dir / "detector.onnx").read_bytes(), b"unrelated document")
                 component.handle("models.select", {"release": bad[0]})
                 settled()
                 self.assertEqual(score(), (second[0]["release"], 2))

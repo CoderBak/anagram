@@ -164,17 +164,12 @@ class Detector:
         self.tokenizer = Tokenizer.from_file(str(root / "tokenizer/tokenizer.json"))
         cfg = json.loads((root / "backbone/config.json").read_text())
         self.cls, self.sep = cfg["cls_token_id"], cfg["sep_token_id"]
-        graph = root / "detector.onnx"
-        import tempfile
-
-        data = compile_graph(root, cfg, self.meta)
-        with tempfile.NamedTemporaryFile(dir=root, delete=False) as stream:
-            stream.write(data)
-        os.replace(stream.name, graph)
+        graph = compile_graph(root, cfg, self.meta)
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = min(8, os.cpu_count() or 1)
         opts.add_session_config_entry("session.disable_prepacking", "1")
-        self.session = ort.InferenceSession(str(graph), opts, providers=["CPUExecutionProvider"])
+        opts.add_session_config_entry("session.model_external_initializers_file_folder_path", str(root.resolve()))
+        self.session = ort.InferenceSession(graph, opts, providers=["CPUExecutionProvider"])
         self.passes = PassQueue()
         self.timings = threading.local()
         buckets = np.arange(15) / 14

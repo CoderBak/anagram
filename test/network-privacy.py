@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-INFERENCE = ("detector.py", "detector_graph.py", "engine.py", "runtime_adapters.py", "scoring.py", "mlx_roberta.py",
+INFERENCE = ("detector.py", "detector_graph.py", "inference_passes.py", "engine.py", "runtime_adapters.py", "scoring.py", "mlx_roberta.py",
              "benchmark_worker.py", "model_plan.py")
 
 
