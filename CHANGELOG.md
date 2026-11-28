@@ -5,6 +5,12 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [0.11.0] — 2026-11-28
+
+- Choose Ettin 400M or Qwen3.5 0.8B during setup. Anagram preselects the detector recommended on Hugging Face and shows its download size before you install it.
+- Both the in-browser and optional native engines load the published checkpoints directly and score text locally. Once downloaded, the selected model works offline.
+- Sentence labels and document verdicts follow the selected checkpoint’s scoring rules, including how it counts labeled characters in long passages. [Changes since v0.10.2](https://github.com/CoderBak/anagram/compare/v0.10.2...v0.11.0)
+
 ## [0.10.2] — 2026-11-27
 
 - Upgrading from v0.9.2 adds sentence-level labels for human, AI-assisted and AI-generated text. Setup preselects the recommended detector and shows its download size. The browser engine resumes interrupted downloads, and you can inspect the optional native installer before running it.
