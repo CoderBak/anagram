@@ -2,10 +2,15 @@
 
 This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-28.
 
-Anagram 0.12.1 publishes the Chrome and Firefox extensions for the in-browser engine. The
-two public ZIPs matched their SHA-256 files. The release was published directly without
-GitHub Actions. The README links to it, while GitHub’s Latest pointer stays on 0.12.0
-so the native installers’ default download URLs continue to work.
+Anagram 0.12.2 fixes focus in open annotation cards, Chrome port cleanup on Back navigation
+and repeated Qwen startup warnings. Both browser ZIPs were published directly and matched
+their SHA-256 checksums after anonymous download. The packaged PDF reader opened the reported
+26-page paper in Chromium and a two-page document in Firefox ESR 153.3. The README links
+to these ZIPs. GitHub’s Latest pointer serves v0.12.0 for the signed native installer.
+[Browser release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.12.2)
+
+Anagram 0.12.1 moved reading preferences onto the setup page and aligned the model download
+controls. Both public browser ZIPs matched their SHA-256 files.
 [Browser release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.12.1)
 
 Anagram 0.12.0 is the latest signed GitHub release. It adds Google Docs tab support, reads short
