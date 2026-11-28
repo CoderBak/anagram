@@ -5,6 +5,11 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [0.12.1] — 2026-11-28
+
+- Choose which paragraphs to flag, where score labels appear and which passages get underlined directly on the setup page. Changes appear in Settings as well.
+- The model download button sits beside its engine or download status. Model menus and buttons share a minimum height, and the Hugging Face link opens the selected model revision. [Changes since v0.12.0](https://github.com/CoderBak/anagram/compare/v0.12.0...v0.12.1)
+
 ## [0.12.0] — 2026-11-28
 
 - Anagram can read the selected tab in a Google Doc with multiple tabs. Switching tabs updates the document being analyzed.
