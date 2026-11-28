@@ -16,6 +16,14 @@ describe("slices", () => {
     expect(seen).toHaveLength(100);
   });
 
+  it("stops an abandoned document walk at the next slice", async () => {
+    const seen: number[] = [], controller = new AbortController();
+    const pending = finishInSlices(count(100, seen), 0, undefined, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(seen).toEqual([1]);
+  });
+
   it("runs it to the same end in slices, handing the main thread back whenever a slice has run its time", async () => {
     let now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);

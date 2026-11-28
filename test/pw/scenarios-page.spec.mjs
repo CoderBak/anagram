@@ -304,6 +304,60 @@ test("twenty URL rewrites cost no re-walk and no chip; a pushed entry is refresh
   expect(refreshes, `${rewrites} (once)`).toHaveLength(1);
 });
 
+test.describe("Switching conversations", () => {
+  test.use({ nativeFixtureOptions: { model: { id: "fake-detector", ver: "test", calibration: "anagram-detector/1" } } });
+
+  test("quick route changes retire a pending score and a hidden conversation", async ({ page, pages, nativeHost, tell }) => {
+    nativeHost.setState({ rules: [
+      { contains: "-THREAD", result: { bucket: 2, probs: [0, 0, 1], score: 1, sentenceLabels: [2],
+        tokens: 120, lang: "en", lang_prob: 0.99, truncated: false } },
+      { contains: "PENDING-THREAD", delayMs: 2200 },
+    ] });
+    pages.serve({ "/c/first": PAGE("Conversations", `<main><div id="first">
+      <div data-message-author-role="user"><p>A short question from the person who started this conversation.</p></div>
+      <div data-message-author-role="assistant"><p>${PARA("FIRST-THREAD")}</p></div>
+    </div></main>`) });
+    await page.goto(pages.url("/c/first"));
+    await chipsSettle(page, 1);
+    const state = () => tell(page, { action: "getTabState", reportOffset: 0 });
+    const first = (await state()).report.documentId;
+    expect((await state()).report.counts.short).toBeGreaterThan(0);
+    expect(nativeHost.textsSince()).toContain(PARA("FIRST-THREAD"));
+    await page.evaluate(text => {
+      history.pushState({}, "", "/c/pending");
+      document.getElementById("first").hidden = true;
+      const article = document.createElement("article");
+      article.id = "pending";
+      const p = document.createElement("p");
+      p.textContent = text;
+      article.append(p);
+      document.querySelector("main").append(article);
+    }, PARA("PENDING-THREAD"));
+    await expect.poll(() => nativeHost.textsSince().some(text => text.includes("PENDING-THREAD"))).toBe(true);
+    await page.evaluate(text => {
+      history.pushState({}, "", "/c/intermediate");
+      history.replaceState({}, "", "/c/final");
+      document.getElementById("pending").hidden = true;
+      const p = document.createElement("p");
+      p.id = "final";
+      p.textContent = text;
+      document.querySelector("main").append(p);
+    }, PARA("FINAL-THREAD"));
+    await chipsSettle(page, 1, "#final");
+    await expect.poll(async () => (await state()).scored).toBe(1);
+    await expect.poll(async () => (await state()).report.counts.short).toBe(0);
+    expect((await state()).report.documentId).not.toBe(first);
+    await expect(page.locator(`[hidden] ${BADGE_SEL}`)).toHaveCount(0);
+    await page.evaluate(() => {
+      history.replaceState({}, "", "/c/first");
+      document.getElementById("final").remove();
+      document.getElementById("first").hidden = false;
+    });
+    await chipsSettle(page, 1, "#first");
+    await expect.poll(async () => (await state()).scored).toBe(1);
+  });
+});
+
 // ---- the insertion gate: nothing enters a tree that has still to hydrate ------------------
 // Both pages carry an image the server holds until the host has been asked about the page,
 // so `load` comes after the scoring: without a hydration marker the chips are in the page

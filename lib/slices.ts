@@ -19,7 +19,8 @@ export const SLICE_MS = 8;
 /** Run `steps` to its end, handing the main thread back whenever a slice has run `sliceMs`.
  *  `meter.waited` adds up the time it was handed back, so that what the work itself cost is
  *  the time it took less that (Observers' drain pacing, lib/capture/observers.ts). */
-export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = SLICE_MS, meter?: { waited: number }): Promise<T> {
+export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = SLICE_MS, meter?: { waited: number }, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   let began = performance.now();
   for (;;) {
     const step = steps.next();
@@ -27,6 +28,7 @@ export async function finishInSlices<T>(steps: Generator<void, T>, sliceMs = SLI
     if (performance.now() - began >= sliceMs) {
       const handed = performance.now();
       await yieldToMain();
+      signal?.throwIfAborted();
       began = performance.now();
       if (meter) meter.waited += began - handed;
     }

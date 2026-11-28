@@ -1,6 +1,7 @@
 import { MARK_ATTR } from "../types";
 
-const semantic = "[role],[itemprop],[itemscope],[typeof],[lang],[dir],[data-author],[data-speaker]";
+const speaker = "[data-author],[data-speaker],[data-message-author-role]";
+const semantic = `[role],[itemprop],[itemscope],[typeof],[lang],[dir],${speaker}`;
 const paragraph = "p,li,div:not([role]),span:not([role]),[role=paragraph],[role=listitem]";
 
 /** A paragraph can occupy a layout wrapper or be the sole content of a sibling list item. */
@@ -18,7 +19,7 @@ export function siblingParagraphs(a: Element, b: Element): boolean {
   if (a === b) return true; // consecutive lines of one block, including a plain-text document
   if (!a.matches(paragraph) || !b.matches(paragraph)) return false;
   // Do not unwrap a shared parent, and keep two independently declared speakers apart.
-  const voice = "[data-author],[data-speaker],[itemscope],[role=article],[role=comment]";
+  const voice = `${speaker},[itemscope],[role=article],[role=comment]`;
   if (a.closest(voice) !== b.closest(voice) ||
       a.closest("[lang]")?.getAttribute("lang")?.toLowerCase() !== b.closest("[lang]")?.getAttribute("lang")?.toLowerCase()) return false;
   const left = paragraphBox(a), right = paragraphBox(b);

@@ -47,14 +47,14 @@ interface Refusal {
  * authorize may have reached a worker that restarted before this page's port heard of it,
  * so that one is asked once more, and a second refusal stands.
  */
-export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply> {
+export async function requestScores(req: ScoreBatchRequest, signal?: AbortSignal): Promise<ScoreReply> {
   const message: ScoreBatchMessage = { action: ACTIONS.SCORE_BATCH, req };
   const session = documentSessionId();
   for (let attempt = 0; ; attempt++) {
-    if (session !== documentSessionId()) return { results: [], backend: "unreachable" };
+    if (signal?.aborted || session !== documentSessionId()) return { results: [], backend: "unreachable" };
     let failed: ScoreReply["backend"] = "unreachable";
     try {
-      const reply = (await sendDocumentMessage(message)) as
+      const reply = (await sendDocumentMessage(message, signal)) as
         | ScoreBatchReply
         | Refusal
         | undefined;
@@ -72,7 +72,7 @@ export async function requestScores(req: ScoreBatchRequest): Promise<ScoreReply>
     } catch {
       /* the transport failed: retried below */
     }
-    if (session !== documentSessionId()) return { results: [], backend: "unreachable" };
+    if (signal?.aborted || session !== documentSessionId()) return { results: [], backend: "unreachable" };
     if (attempt >= 1) return { results: [], backend: failed };
     await new Promise((r) => setTimeout(r, 300));
   }
@@ -93,7 +93,7 @@ export interface CountReply {
  * through the worker in requests the worker takes, one after another. Null counts when any
  * of them went unanswered; the text is then Unavailable, like one whose score failed.
  */
-export async function requestTokenCounts(texts: string[], expectedModel?: ModelInfo): Promise<CountReply> {
+export async function requestTokenCounts(texts: string[], expectedModel?: ModelInfo, signal?: AbortSignal): Promise<CountReply> {
   const counts: TokenCounts = { alone: [], following: [] };
   for (let at = 0; at < texts.length; ) {
     let end = at;
@@ -105,7 +105,7 @@ export async function requestTokenCounts(texts: string[], expectedModel?: ModelI
     const slice = texts.slice(at, end);
     const message: CountTokensMessage = { action: ACTIONS.COUNT_TOKENS, texts: slice };
     try {
-      const reply = (await sendDocumentMessage(message)) as CountTokensReply | Refusal | undefined;
+      const reply = (await sendDocumentMessage(message, signal)) as CountTokensReply | Refusal | undefined;
       if (reply && "ok" in reply) return { counts: null, backend: reply.error === "invalid_request" ? "refused" : "unreachable" };
       const got = reply?.counts;
       if (!got || !Array.isArray(got.alone) || !Array.isArray(got.following) ||

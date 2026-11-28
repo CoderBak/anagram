@@ -92,7 +92,7 @@ const DOWN_POLL_MS = 5000;
 const JUMP_WAIT_MS = 5000;
 const JUMP_MATCH_CHARS = 40;
 
-const navigationApi = (): EventTarget => (window as unknown as { navigation: EventTarget }).navigation;
+const navigationApi = (): EventTarget | undefined => (window as unknown as { navigation?: EventTarget }).navigation;
 
 export interface Orchestrator {
   /** Begin capture: initial scan + observers + scheduler. Idempotent. */
@@ -301,6 +301,12 @@ export function createOrchestrator(
   let bootSeq = 0;
   /** Retire page work across awaits too, before it can refill L1 or send old text. */
   let captureGeneration = 0;
+  let capture = new AbortController();
+  function retireCapture(): void {
+    captureGeneration++;
+    capture.abort();
+    capture = new AbortController();
+  }
   let visible = true;
   let highlightsEnabled = true;
   let displayMode: "all" | "flagged" = "all";
@@ -362,8 +368,6 @@ export function createOrchestrator(
   /** The reading log's last message of the visit, said on the session's port as the page goes
    *  (while started). */
   let unwatchLeaving: (() => void) | null = null;
-  /** The address of the page view `reading` counts: a route to another path is another. */
-  let statsView = location.origin + location.pathname;
   /** The daemon stopped answering: dispatch is paused until a probe succeeds
    *  (lib/capture/backendWatch.ts). */
   const backend = createBackendWatch({
@@ -763,8 +767,13 @@ export function createOrchestrator(
     };
     if (opts.collect) return opts.collect(root, claimFilter, options);
     const model = captureModel;
-    if (!siblingContext)
-      return finishInSlices(collectUnitsInSlices(root, options), SLICE_MS, meter);
+    const signal = capture.signal;
+    const walk = (base: ParentNode, rules: CollectOptions): Promise<Unit[]> =>
+      finishInSlices(collectUnitsInSlices(base, rules), SLICE_MS, meter, signal).catch(error => {
+        if (signal.aborted) return [];
+        throw error;
+      });
+    if (!siblingContext) return walk(root, options);
 
     // Plan from the source order, including live paragraphs. Claim only the final
     // group, so an edit can change its context without duplicating its annotations.
@@ -775,9 +784,8 @@ export function createOrchestrator(
     const leaf = root instanceof Element && (root.closest("p,li") ??
       (root.matches("div,span") && !root.querySelector("p,li,div,section,article") ? root : null));
     const walkRoot = leaf ? paragraphBox(leaf).parentElement ?? root : root;
-    const atoms = await finishInSlices(collectUnitsInSlices(walkRoot, {
-      ...options, claimFilter: undefined, minWords: floor, passageStarts,
-    }), SLICE_MS, meter);
+    const atoms = await walk(walkRoot, { ...options, claimFilter: undefined, minWords: floor, passageStarts });
+    if (signal.aborted) return [];
     const blocks = atoms.map(u => {
       const text = detectorText(u.text);
       return { text, sourceChars: u.text.length, words: detectorWordCount(text, floor), breakBefore: passageStarts.has(u) };
@@ -785,7 +793,7 @@ export function createOrchestrator(
     const plan = await groupPassages(blocks, floor, async texts => {
       if (generation !== captureGeneration || !started) return null;
       if (pageHidden) { retryPlanning = true; return null; }
-      const reply = await requestTokenCounts(texts, model?.id === "none" ? undefined : model ?? undefined);
+      const reply = await requestTokenCounts(texts, model?.id === "none" ? undefined : model ?? undefined, capture.signal);
       if (generation === captureGeneration) {
         if (!reply.counts) retryPlanning = true;
         backend.heard(reply.backend);
@@ -898,7 +906,8 @@ export function createOrchestrator(
    *  page down exactly as a score would, so what it leaves Unavailable is queued again when
    *  the engine is back. */
   const countTokensFor = (generation: number) => async (texts: string[]) => {
-    const reply = await requestTokenCounts(texts);
+    if (generation !== captureGeneration) return null;
+    const reply = await requestTokenCounts(texts, undefined, capture.signal);
     if (generation === captureGeneration) {
       backend.heard(reply.backend);
     }
@@ -1072,7 +1081,7 @@ export function createOrchestrator(
           priority: lane,
           blocks: slice.map(([, rep]) => rep),
         };
-        const reply = await requestScores(req);
+        const reply = await requestScores(req, capture.signal);
         if (!current()) return new Map();
         const fresh = reply.results;
         backend.heard(reply.backend);
@@ -1113,7 +1122,7 @@ export function createOrchestrator(
   function freeze(): void {
     if (frozen) return;
     frozen = true;
-    captureGeneration++;
+    retireCapture();
     try {
       observers.stop();
       scheduler.stop();
@@ -1211,7 +1220,7 @@ export function createOrchestrator(
    * when it cleared, before it said so (router.invalidate in lib/backend/router.ts).
    */
   function forgetCached(): void {
-    captureGeneration++;
+    retireCapture();
     cache.clear();
   }
 
@@ -1360,7 +1369,15 @@ export function createOrchestrator(
       scheduler.requeue(unit, "background");
     },
     onDirty(nodes, removed, quiet) {
-      return walkInTurn(() => handleDirty(nodes, removed, quiet)).catch((e) => {
+      // Older browsers expose pushState to isolated scripts only through the
+      // changed URL when the page updates its DOM.
+      if (!navigationApi()) onUrlMaybeChanged("route");
+      const generation = captureGeneration;
+      if (routeRewritePending) {
+        routeRewritePending = false;
+        scheduleUrlRefresh();
+      }
+      return walkInTurn(() => generation === captureGeneration && started ? handleDirty(nodes, removed, quiet) : Promise.resolve(0)).catch((e) => {
         log.warn("dirty re-scan failed", e);
         return 0;
       });
@@ -1432,7 +1449,12 @@ export function createOrchestrator(
       for (const b of bases) for (let at: Node | null = b; at && !overBase.has(at); at = at.parentNode) overBase.add(at);
       for (const unit of [...unitsById.values()]) {
         const touched = unit.parts.some((p) => overBase.has(p.container) || underBase(p.container));
-        if (touched && currentTextOf(unit) !== unit.text) invalidateUnit(unit, seedQueue);
+        if (!touched) continue;
+        if (currentTextOf(unit) !== unit.text) invalidateUnit(unit, seedQueue);
+        else if (!opts.collect && unit.parts.some(p => underBase(p.container) &&
+          (p.container.closest('[aria-hidden="true"],[hidden]') || p.container.checkVisibility?.({ visibilityProperty: true }) === false))) {
+          invalidateUnit(unit, seedQueue);
+        }
       }
     }
 
@@ -1474,33 +1496,25 @@ export function createOrchestrator(
 
   // --- URL / SPA navigation ------------------------------------------------------------
 
-  /**
-   * A same-document URL change. Two of them are not the same thing:
-   *
-   * A REWRITE of the current entry (replaceState; the Navigation API calls it "replace")
-   * is usually not a navigation at all — Discourse rewrites the address with the number of
-   * the post you are looking at on every scroll step, which answered a 90-second session
-   * with 51 whole-document re-walks and 1 058 layouts where the page itself did 725. The
-   * page did not change: the MutationObserver is what covers real DOM changes, and it
-   * never missed one in the survey. So a rewrite that left every live unit connected is
-   * answered by the purge alone: a fresh walk of the page on every scroll step is not worth it.
-   *
-   * Anything else — a pushed entry, a traversal, a popstate, a hash change — is a real route change and gets
-   * the full refresh, debounced so that a burst of them is one walk.
-   */
+  let routeRewritePending = false;
   function onUrlMaybeChanged(kind: "rewrite" | "route"): void {
     if (!started || location.href === lastHref) return;
+    const pathChanged = new URL(lastHref).pathname !== new URL(location.href).pathname;
     lastHref = location.href;
     const live = unitsById.size;
     purgeDisconnected();
-    // Another path is another page view for the statistics: what is still on the page may be
-    // read again in it. A query or a fragment that changes is the same page.
-    const view = location.origin + location.pathname;
-    if (view !== statsView) {
-      statsView = view;
+    if (pathChanged) {
+      // A new view can keep the old thread in the DOM. Retire work issued for it,
+      // while keeping settled units until the new tree tells us which still belong.
+      retireCapture();
+      scheduler.bumpEpoch();
+      for (const unit of unitsById.values()) if (!unit.isScored) invalidateUnit(unit);
       reading.newView(unitsById.values());
+      routeRewritePending = kind === "rewrite";
     }
-    if (kind === "rewrite" && unitsById.size === live) {
+    if (kind === "rewrite" && unitsById.size === live && (!pathChanged || live > 0)) {
+      // Feeds rewrite the URL as they scroll. A DOM change on a rewritten path
+      // also schedules reconciliation, after the new content has arrived.
       updateToolbar();
       return;
     }
@@ -1516,14 +1530,15 @@ export function createOrchestrator(
       if (!started) return;
       // Another route is another document: its share of the engine's time starts again.
       pace?.newDocument();
+      const generation = captureGeneration;
       void walkInTurn(async () => {
-        if (!started) return;
-        purgeDisconnected();
-        const generation = captureGeneration;
-        const units = await collect(document.body, makeClaimFilter());
         if (generation !== captureGeneration || !started) return;
-        ingestUnits(units);
-        updateToolbar();
+        purgeDisconnected();
+        shortTexts.clear(); // recount the visible thread, including text below the model's minimum
+        const seen = new Set<string>();
+        const units = await collect(document.body, makeClaimFilter(undefined, seen));
+        if (generation !== captureGeneration || !started || (pageHidden && siblingContext && !opts.collect)) return;
+        refreshWith(units, seen);
         log.log("url change refresh", location.href);
       });
     }, URL_REFRESH_DEBOUNCE_MS);
@@ -1595,7 +1610,8 @@ export function createOrchestrator(
     watchSettings();
     observers.start();
     booted = true;
-    statsView = location.origin + location.pathname;
+    lastHref = location.href;
+    watchUrl();
     try {
       unwatchStats?.();
       const unwatchConfig = settings.statsConfig.watch(applyStatsConfig);
@@ -1628,7 +1644,6 @@ export function createOrchestrator(
     if (seq !== bootSeq || !started) return;
     refreshCommentOffer();
 
-    watchUrl();
     log.log("started", { session, domain });
   }
 
@@ -1705,13 +1720,14 @@ export function createOrchestrator(
   function watchUrl(): void {
     window.addEventListener("popstate", onRouteChanged);
     window.addEventListener("hashchange", onRouteChanged);
-    navigationApi().addEventListener("currententrychange", onEntryChanged);
+    navigationApi()?.addEventListener("currententrychange", onEntryChanged);
   }
 
   function unwatchUrl(): void {
+    routeRewritePending = false;
     window.removeEventListener("popstate", onRouteChanged);
     window.removeEventListener("hashchange", onRouteChanged);
-    navigationApi().removeEventListener("currententrychange", onEntryChanged);
+    navigationApi()?.removeEventListener("currententrychange", onEntryChanged);
     if (urlRefreshTimer !== null) {
       clearTimeout(urlRefreshTimer);
       urlRefreshTimer = null;
@@ -1755,7 +1771,7 @@ export function createOrchestrator(
     unwatchStats = null;
     unwatchLeaving?.();
     unwatchLeaving = null;
-    captureGeneration++;
+    retireCapture();
     started = false;
     booted = false;
     // Whatever was waiting for the page to be safe to touch is not wanted any more: the
@@ -1806,7 +1822,7 @@ export function createOrchestrator(
     // here would do it under the defaults — which is the very thing boot() avoids. The
     // boot's own collect, moments away, is the rescan.
     if (!booted) return;
-    captureGeneration++;
+    retireCapture();
     scheduler.bumpEpoch();
     for (const unit of [...unitsById.values()]) observers.dropUnit(unit);
     clearAllResults();
@@ -1831,12 +1847,17 @@ export function createOrchestrator(
     });
   }
 
+  let queuedRefresh: number | null = null;
   function refresh(): void {
-    if (!started || !booted) return;
+    if (!started || !booted || queuedRefresh === captureGeneration) return;
+    // Several PDF text layers can arrive before the next walk. Read their latest
+    // state once, and allow one more refresh if a layer changes during the walk.
+    const generation = captureGeneration;
+    queuedRefresh = generation;
     void walkInTurn(async () => {
-      if (!started) return;
+      if (queuedRefresh === generation) queuedRefresh = null;
+      if (generation !== captureGeneration || !started) return;
       purgeDisconnected();
-      const generation = captureGeneration;
       const seen = new Set<string>();
       const fresh = await collect(document.body, makeClaimFilter(undefined, seen));
       if (generation !== captureGeneration || !started) return;

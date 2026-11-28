@@ -95,18 +95,20 @@ export function postDocumentMessage(message: object): boolean {
   return connected?.post(message) ?? false;
 }
 
-export async function sendDocumentMessage(message: object): Promise<unknown> {
+export async function sendDocumentMessage(message: object, signal?: AbortSignal): Promise<unknown> {
+  signal?.throwIfAborted();
   const current = connection();
   const session = await current.promise;
-  if (current.signal.aborted) throw current.signal.reason;
+  const lifetime = signal ? AbortSignal.any([current.signal, signal]) : current.signal;
+  lifetime.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const stopped = () => reject(current.signal.reason);
-    current.signal.addEventListener("abort", stopped, { once: true });
-    const cleanup = () => current.signal.removeEventListener("abort", stopped);
+    const stopped = () => reject(lifetime.reason);
+    lifetime.addEventListener("abort", stopped, { once: true });
+    const cleanup = () => lifetime.removeEventListener("abort", stopped);
     try {
       Promise.resolve(browser.runtime.sendMessage({ ...message, session })).then(
-        (reply) => { cleanup(); if (!current.signal.aborted) resolve(reply); },
-        (error: unknown) => { cleanup(); reject(current.signal.aborted ? current.signal.reason : error); },
+        (reply) => { cleanup(); if (!lifetime.aborted) resolve(reply); },
+        (error: unknown) => { cleanup(); reject(lifetime.aborted ? lifetime.reason : error); },
       );
     } catch (error) { cleanup(); reject(error); }
   });
