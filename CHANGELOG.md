@@ -5,6 +5,13 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [0.12.0] — 2026-11-28
+
+- Anagram can read the selected tab in a Google Doc with multiple tabs. Switching tabs updates the document being analyzed.
+- Short paragraphs in the same section can give each other context. Anagram keeps sentence labels tied to the original paragraphs and respects boundaries between chat messages. Switching conversations clears results from the previous chat.
+- The PDF reader shows a readable source URL and offers a link to the original PDF. Opening another PDF while the first is loading cancels the earlier read.
+- Toolbar results, download progress and text controls have more room on narrow screens. [Changes since v0.11.0](https://github.com/CoderBak/anagram/compare/v0.11.0...v0.12.0)
+
 ## [0.11.0] — 2026-11-28
 
 - Choose Ettin 400M or Qwen3.5 0.8B during setup. Anagram preselects the detector recommended on Hugging Face and shows its download size before you install it.
