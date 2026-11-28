@@ -2,6 +2,12 @@
 
 This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-28.
 
+Anagram 0.12.1 publishes the Chrome and Firefox extensions for the in-browser engine. The
+two public ZIPs matched their SHA-256 files. The release was published directly without
+GitHub Actions. The README links to it, while GitHub’s Latest pointer stays on 0.12.0
+so the native installers’ default download URLs continue to work.
+[Browser release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.12.1)
+
 Anagram 0.12.0 is the latest signed GitHub release. It adds Google Docs tab support, reads short
 paragraphs together within a section, clears stale chat results and makes original PDF links
 easier to open. The requested release skipped the macOS CI suite. All six public downloads
