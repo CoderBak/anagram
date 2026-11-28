@@ -75,7 +75,9 @@ The detector was inspired by Pangram 4. Its reading card shows sentence-level au
 The initial release reads English passages of at least 50 words and reports the shares labeled human,
 AI-assisted and AI-generated.
 
-To publish a compatible model, use `YYYY-MM-DD-SIZE[-tag]` (for example `2026-12-01-400m` or
-`2026-12-01-1.2b-preview`). Keep the release's standard `anagram-detector/1` layout, ModernBERT FP32 backbone,
-byte-level tokenizer, three heads and CRF. The plugin reads the selected commit directly and builds the inference graph locally.
+To publish another checkpoint, use a dated branch or tag such as `2026-11-28-400m-ettin_research` or
+`2026-11-28-0.8b-qwen3.5_research`. Keep the matching release’s `anagram-detector/1` file layout,
+tokenizer, three heads and CRF. Both engines read the original safetensors directly. They support the
+ModernBERT FP32 backbone used by Ettin and the Qwen3.5 0.8B text backbone with BF16 weights and two copies of each window.
+Point the Hugging Face `default` branch at the checkpoint you want setup to recommend.
 Open the model link in Settings to see the files, documentation and terms published for that revision.
