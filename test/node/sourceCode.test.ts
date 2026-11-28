@@ -13,7 +13,7 @@ describe("the source code link", () => {
     expect(sourceCodeUrl("0.7.0")).toBe("https://github.com/CoderBak/anagram/tree/v0.7.0");
   });
 
-  it.each([["options", "footer", "modelLine"], ["onboarding", "nav", "onbOpenSettings"]])("sits in the %s page's links and is pointed at the source when the page starts", (page, tag, other) => {
+  it.each([["options", "footer", "modelLine"], ["onboarding", "nav", "onbUserGuide"]])("sits in the %s page's links and is pointed at the source when the page starts", (page, tag, other) => {
     const html = read("entrypoints", page, "index.html");
     const links = html.slice(html.indexOf(`<${tag} class="links">`), html.indexOf(`</${tag}>`));
     expect(links).toContain(`data-i18n="${other}"`);
