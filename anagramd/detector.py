@@ -260,6 +260,8 @@ class Detector:
                         "input_ids": np.asarray([self.cls, *window_ids, self.sep], dtype=np.int64)
                     })
                     tokens = tokens[1:-1]
+            if not all(np.isfinite(values).all() for values in (tokens, seg, mixed)):
+                raise ValueError("Detector produced invalid logits")
             segment = np.exp(seg[0] - seg.max()) @ self.phi
             features[start:end, :3] += tokens
             features[start:end, 3:] += np.log(np.maximum(1e-6, segment / segment.sum()))

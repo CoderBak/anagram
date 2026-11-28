@@ -386,9 +386,8 @@ export function isScoredWindow(w: WindowVerdict): boolean {
   return !w.result.degraded && !w.result.unsupported && !w.result.insufficient;
 }
 
-/** A probability vector in wire shape: bucket = its argmax, score = Σ pᵢ·i / 3. */
 /**
- * Several texts' verdicts as one: the four probabilities averaged by each text's length, as a
+ * Several texts' verdicts as one: the shares averaged by each text's length, as a
  * long unit's passes are (unitVerdict), and the score from that average. Failures and other
  * languages are left out; null where nothing is left.
  */
@@ -472,7 +471,7 @@ function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
 
 /**
  * One verdict from a unit's passes: the length-weighted mean of its stretches' probability
- * vectors, bucket = argmax of that mean, score = Σ p̄ᵢ·i/3. The mean is linear, so the
+ * vectors. Each detector applies its document verdict rule to those shares. The mean is linear, so the
  * chip's number is also the length-weighted mean of the stretches' numbers and the bar,
  * the rows and the label all describe the same vector. Passes that do not overlap — an
  * engine that cannot count, a pass read again in halves — are their own stretches, and the

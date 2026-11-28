@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -182,6 +183,29 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(score(), (second[0]["release"], 2))
             finally:
                 component.close()
+
+
+class PublishedCheckpointParity(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("ANAGRAM_TEST_DETECTOR_DIR"), "requires a local detector snapshot")
+    def test_published_sentence_and_document_outputs(self):
+        """Reads an existing November 28 snapshot. Expected values come from the published PyTorch detector."""
+        root = Path(os.environ["ANAGRAM_TEST_DETECTOR_DIR"])
+        release = json.loads((root / "model.json").read_text())["release_id"]
+        labels, counts, bucket = {
+            "2026-11-28-400m-ettin_research": ([1, 1, 2, 2], [0, 167, 163], 1),
+            "2026-11-28-0.8b-qwen3.5_research": ([1, 2, 2, 2], [0, 114, 216], 2),
+        }[release]
+        text = (
+            "The specimen from 1927 was recorded under an obsolete name; the second label gives the name used "
+            "by the collector. I checked both names against the handwritten ledger. The entry on page forty "
+            "is faint, but the date and the place are quite clear. This time I am leaving the original label "
+            "alone so the next visitor can read it too."
+        )
+        model = detector.Detector(root, {"release": release, "revision": "test"}, None)
+        result, = model.score([text])
+        self.assertEqual(result["sentenceLabels"], labels)
+        self.assertEqual(result["bucket"], bucket)
+        self.assertEqual(result["probs"], [n / len(text) for n in counts])
 
 
 if __name__ == "__main__":

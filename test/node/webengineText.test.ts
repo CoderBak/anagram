@@ -9,6 +9,24 @@ import { tinyTokenizerJson } from "../fixtures/webengine/tinyTokenizer.mjs";
 const tokenizer = () => new Tokenizer(tinyTokenizerJson() as never);
 const id = (token: string) => (tinyTokenizerJson().model.vocab as Record<string, number>)[token];
 
+it("honors Qwen's isolated digits, contraction boundaries and unwrapped sequences", () => {
+  const tiny = tinyTokenizerJson();
+  const regex = String.raw`(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+`;
+  const stages = [
+    { type: "Split", pattern: { Regex: regex }, behavior: "Isolated", invert: false },
+    { type: "ByteLevel", use_regex: false, add_prefix_space: false },
+  ];
+  const file = { ...tiny, pre_tokenizer: { type: "Sequence", pretokenizers: stages },
+    post_processor: { type: "ByteLevel" }, added_tokens: [{ content: "<|endoftext|>", id: 299, special: true }],
+    model: { ...tiny.model, merges: [["1","2"], ["'","S"]], vocab: { ...tiny.model.vocab, "12": 290, "'S": 291 } } };
+  const tok = new Tokenizer(file as never);
+  expect(tok.padId).toBe(299);
+  expect(tok.encode("12'S", true)).toEqual([id("1"), id("2"), 291]);
+  expect(tok.encodeWithOffsets("12'S").offsets).toEqual([[0, 1], [1, 2], [2, 4]]);
+  stages[0]!.pattern!.Regex = ".*";
+  expect(() => new Tokenizer(file as never)).toThrow(/Unsupported/);
+});
+
 describe("emoji names", () => {
   it("spells emoji out as the emoji package does, joiners and modifiers included", () => {
     expect(demojize("hi 👍🏽 there 👨‍👩‍👧 x 🇺🇸 ☺ ☺️ 1️⃣ #️⃣")).toBe("hi :thumbs_up_medium_skin_tone: there :family_man_woman_girl: x :United_States: :smiling_face: :smiling_face: :keycap_1: :keycap_#:");

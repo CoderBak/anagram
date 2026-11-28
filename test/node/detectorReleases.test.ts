@@ -47,6 +47,12 @@ describe("dated detector releases", () => {
     expect(labeledCharacterBucket([0, 4, 6], 10)).toBe(2);
   });
 
+  it("rejects a non-finite head output before assigning sentence labels", async () => {
+    const input = { clsId: 0, sepId: 1, encodeWithOffsets: () => ({ ids: [2], offsets: [[0, 1] as [number, number]] }) };
+    const run = async () => ({ token: Float32Array.of(NaN), segment: new Float32Array(15), mixed: new Float32Array(2) });
+    await expect(detectorScore("A", input, { min_words: 1, window: 2, stride: 1 }, null!, run)).rejects.toThrow("invalid logits");
+  });
+
   it("validates the Qwen layer shapes and reads the attention order from config", () => {
     const cfg = { model_type: "qwen3_5_text", hidden_size: 1024, num_hidden_layers: 2, vocab_size: 100,
       num_attention_heads: 8, num_key_value_heads: 2, head_dim: 256, linear_num_key_heads: 16,
