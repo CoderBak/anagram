@@ -2,7 +2,13 @@
 
 This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-28.
 
-Anagram 0.11.0 is the latest signed GitHub release. Setup offers Ettin 400M and Qwen3.5 0.8B.
+Anagram 0.12.0 is the latest signed GitHub release. It adds Google Docs tab support, reads short
+paragraphs together within a section, clears stale chat results and makes original PDF links
+easier to open. The requested release skipped the macOS CI suite. All six public downloads
+matched their SHA-256 files and carried signature bundles naming the v0.12.0 tag.
+[Release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.12.0) · [Signing run](https://github.com/CoderBak/anagram/actions/runs/46166350376)
+
+Anagram 0.11.0 introduced the choice of Ettin 400M and Qwen3.5 0.8B.
 The macOS release tests passed. Linux, Windows and Firefox CI also passed for the tagged source.
 All six public downloads passed SHA-256 and tag-bound Sigstore verification. Both browser ZIPs
 passed the packaging checks, and both native archives contain the runtime files from the tag.
