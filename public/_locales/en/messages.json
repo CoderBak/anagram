@@ -303,6 +303,14 @@
     "message": "Load the latest edits",
     "description": "Tooltip on the Docs overlay's Refresh."
   },
+  "docsDocumentTab": {
+    "message": "Document tab",
+    "description": "Name of the tab picker in the Google Docs reader."
+  },
+  "docsReadFailed": {
+    "message": "Couldn’t load the document tab. Try again.",
+    "description": "The Google Docs reader could not refresh or switch tabs."
+  },
   "docsOpenAsPage": {
     "message": "Open as page",
     "description": "Docs overlay button: open the reading view in its own tab."

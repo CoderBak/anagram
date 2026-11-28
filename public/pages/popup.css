@@ -26,9 +26,7 @@ main { padding: 0 12px 8px; }
 .grp .field > label { font-size: 13px; font-weight: 450; color: var(--foreground); }
 #siteRuleNote { margin: 4px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 
-.act { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
-.act > .status { flex: 1 1 128px; }
-.act > :is(.report, .keepopen) { flex: 0 0 100%; min-width: 0; }
+.act { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .act:has(> .status[hidden]):has(> .report[hidden]):has(> .keepopen[hidden]):not(:has(.page-actions > :not([hidden]))) { display: none; }
 .status { font-size: 13px; line-height: 1.45; margin: 0; color: var(--foreground); }
 .status.down { color: var(--destructive); font-weight: 500; }

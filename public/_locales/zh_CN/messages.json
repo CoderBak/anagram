@@ -229,6 +229,12 @@
   "docsRefreshTitle": {
     "message": "加载最新修改"
   },
+  "docsDocumentTab": {
+    "message": "文档标签页"
+  },
+  "docsReadFailed": {
+    "message": "无法加载文档标签页，请重试。"
+  },
   "docsOpenAsPage": {
     "message": "作为页面打开"
   },

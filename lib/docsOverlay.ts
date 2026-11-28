@@ -25,6 +25,7 @@
 // fails, and the "Open as page" button in the bar for users who want a real tab.
 import type { DOMPurify as Purifier } from "dompurify";
 import { loadPurify } from "./lazy";
+import { currentTabParam } from "./docs";
 import { messageLocale, t } from "./i18n";
 import { MARK_ATTR } from "./types";
 import { highlightSheets } from "./render/highlight";
@@ -38,12 +39,10 @@ export type DocsFetch = (url: string) => Promise<Response>;
 export interface DocsOverlayOptions {
   /** Document id (the /d/<id>/ path segment). */
   id: string;
-  /** The editor's ?tab= param — multi-tab docs fetch the matching tab. */
-  tab: string | null;
   /** Called after the overlay is dismissed (restore the FAB action). */
   onClose?: () => void;
   /** "Open as page" pressed — caller runs the classic navigation flow. */
-  onOpenAsPage?: () => void;
+  onOpenAsPage?: (tab: string | null) => void;
   /** Replaces the same-origin fetch of the static view (tests). */
   fetch?: DocsFetch;
 }
@@ -118,7 +117,7 @@ const OVERLAY_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bar button {
+.bar :is(button, select) {
   flex: 0 0 auto;
   font: 600 12px/1 Arial, "Liberation Sans", Helvetica, sans-serif;
   border-radius: 8px;
@@ -129,6 +128,12 @@ const OVERLAY_CSS = `
   color: #252525;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
+.bar select {
+  max-width: min(22rem, 100%);
+  text-overflow: ellipsis;
+}
+.bar [role="status"] { flex-basis: 100%; font-size: 13px; }
+.bar [role="status"]:empty { display: none; }
 .bar button:hover { background: #f5f5f5; }
 .bar button.primary {
   background: #171717;
@@ -232,6 +237,24 @@ export async function loadDocsContent(
   }
 }
 
+/** Use the names in the Docs sidebar, including any nested tabs it exposes. */
+function editorTabPicker(tab: string | null): HTMLSelectElement | null {
+  const picker = document.createElement("select");
+  const containerSelector = '[id^="chapter-container-t."]';
+  for (const container of document.querySelectorAll(containerSelector)) {
+    const item = container.querySelector('[role="treeitem"][aria-label]');
+    const name = item?.getAttribute("aria-label")?.trim();
+    if (name && item?.closest(containerSelector) === container) {
+      picker.add(new Option(name, container.id.slice("chapter-container-".length)));
+    }
+  }
+  if (picker.length < 2) return null;
+  if (tab) picker.value = tab;
+  if (picker.selectedIndex < 0) return null;
+  picker.setAttribute("aria-label", t("docsDocumentTab"));
+  return picker;
+}
+
 export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
   let host: HTMLElement | null = null;
   // The parts a refresh writes into; all of them live inside `host`.
@@ -241,6 +264,10 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
   let docStyle: HTMLStyleElement | null = null;
   let titleEl: HTMLElement | null = null;
   let refreshBtn: HTMLButtonElement | null = null;
+  let tabPicker: HTMLSelectElement | null = null;
+  let notice: HTMLElement | null = null;
+  let readerTab: string | null = null;
+  let readRequest = 0;
 
   function isOpen(): boolean {
     return !!host?.isConnected;
@@ -256,37 +283,50 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     docStyle = null;
     titleEl = null;
     refreshBtn = null;
+    tabPicker = null;
+    notice = null;
     opts.onClose?.();
   }
 
-  /**
-   * Re-read the document and swap the paper's content in place. The page's
-   * MutationObserver sees the old nodes leave — their chips and marks with them — and
-   * the new ones arrive, so the units purge and re-form by themselves; nothing here
-   * touches the overlay's own chrome, so no second bar or host can appear. A failed
-   * read leaves the snapshot that is on screen exactly as it was.
-   */
-  async function refresh(): Promise<boolean> {
-    if (!isOpen() || !paper || refreshBtn?.disabled) return false;
+  /** Replacing the paragraphs lets the page observer remove old chips and score the new text. */
+  async function readTab(tab: string | null): Promise<boolean> {
+    if (!isOpen() || !paper) return false;
+    const request = ++readRequest;
     const snapshot = paper;
     const button = refreshBtn;
     if (button) button.disabled = true;
+    snapshot.setAttribute("aria-busy", "true");
+    if (notice) notice.textContent = tab !== readerTab ? t("actionLoadingDocument") : "";
     try {
-      const fresh = await loadDocsContent(opts.id, opts.tab, opts.fetch);
-      // Closed (or reopened) while the fetch was in flight — that document is not ours.
-      if (!fresh || snapshot !== paper || !paper.isConnected) return false;
+      const fresh = await loadDocsContent(opts.id, tab, opts.fetch);
+      if (request !== readRequest || snapshot !== paper || !paper.isConnected) return false;
+      if (!fresh) {
+        if (tabPicker && readerTab) tabPicker.value = readerTab;
+        if (notice) notice.textContent = t("docsReadFailed");
+        return false;
+      }
       const top = scroller?.scrollTop ?? 0;
       const heightBefore = scroller?.scrollHeight ?? 0;
       paper.replaceChildren(...fresh.content.childNodes);
       if (docStyle) docStyle.textContent = fresh.css;
       if (titleEl && fresh.title) titleEl.textContent = fresh.title;
+      if (notice) notice.textContent = "";
       // Reading back scrollHeight is what makes the swap laid out; a document that lost
       // a page would otherwise be scrolled to a place that no longer exists.
-      if (scroller && scroller.scrollHeight >= heightBefore) scroller.scrollTop = top;
+      if (scroller && tab !== readerTab) scroller.scrollTop = 0;
+      else if (scroller && scroller.scrollHeight >= heightBefore) scroller.scrollTop = top;
+      readerTab = tab;
       return true;
     } finally {
-      if (button) button.disabled = false;
+      if (request === readRequest) {
+        snapshot.removeAttribute("aria-busy");
+        if (button) button.disabled = false;
+      }
     }
+  }
+
+  function refresh(): Promise<boolean> {
+    return refreshBtn?.disabled ? Promise.resolve(false) : readTab(readerTab);
   }
 
   function open(): Promise<boolean> {
@@ -296,7 +336,13 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
   }
 
   async function mount(): Promise<boolean> {
-    const doc = await loadDocsContent(opts.id, opts.tab, opts.fetch);
+    let tab: string | null;
+    let doc: DocsContent | null;
+    // Docs can switch tabs without reloading the editor, even while a request is pending.
+    do {
+      tab = currentTabParam(location);
+      doc = await loadDocsContent(opts.id, tab, opts.fetch);
+    } while (tab !== currentTabParam(location));
     if (!doc) return false;
 
     // Build the overlay. The HOST intentionally has NO data-anagram marker — the
@@ -329,6 +375,14 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     titleEl.className = "t";
     titleEl.id = "anagram-ovl-title";
     titleEl.textContent = doc.title || t("docsUntitled");
+    bar.append(mark, titleEl);
+    tabPicker = editorTabPicker(tab);
+    readerTab = tabPicker?.value ?? tab;
+    if (tabPicker) {
+      const picker = tabPicker;
+      picker.addEventListener("change", () => void readTab(picker.value));
+      bar.append(picker);
+    }
 
     refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
@@ -342,8 +396,9 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     openPage.textContent = t("docsOpenAsPage");
     openPage.title = t("docsOpenAsPageTitle");
     openPage.addEventListener("click", () => {
+      const tab = tabPicker?.value ?? readerTab;
       close();
-      opts.onOpenAsPage?.();
+      opts.onOpenAsPage?.(tab);
     });
 
     const closeBtn = document.createElement("button");
@@ -354,7 +409,9 @@ export function createDocsOverlay(opts: DocsOverlayOptions): DocsOverlay {
     closeBtn.textContent = t("docsBack");
     closeBtn.addEventListener("click", close);
 
-    bar.append(mark, titleEl, refreshBtn, openPage, closeBtn);
+    notice = document.createElement("span");
+    notice.setAttribute("role", "status");
+    bar.append(refreshBtn, openPage, closeBtn, notice);
 
     const paperwrap = document.createElement("div");
     paperwrap.className = "paperwrap";

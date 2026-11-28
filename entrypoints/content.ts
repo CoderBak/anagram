@@ -286,18 +286,17 @@ export default defineContentScript({
     if (docs) {
       if (docs.kind === "editor") {
         // Classic flow — kept as the fallback and as the "Open as page" action.
-        const goToReadingPage = (): void => {
+        const goToReadingPage = (tab = currentTabParam(location)): void => {
           try {
             sessionStorage.setItem(DOCS_RETURN_KEY, location.href);
           } catch {
             /* storage may be blocked — fallback return URL still works */
           }
-          location.href = readingViewUrl(docs.id, currentTabParam(location));
+          location.href = readingViewUrl(docs.id, tab);
         };
 
         const overlay = createDocsOverlay({
           id: docs.id,
-          tab: currentTabParam(location),
           onClose: () => setEditorAction(),
           onOpenAsPage: goToReadingPage,
         });
@@ -328,7 +327,7 @@ export default defineContentScript({
         // offer the way back to the exact editor tab.
         if (isReadingMarked(location)) applyDocsReadingStyle();
         orchestrator.setPageAction(t("actionBackToEditor"), () => {
-          let target = editorUrl(docs.id);
+          let target = editorUrl(docs.id, currentTabParam(location));
           try {
             const saved = sessionStorage.getItem(DOCS_RETURN_KEY);
             if (saved && saved.includes(`/d/${docs.id}/`)) target = saved;

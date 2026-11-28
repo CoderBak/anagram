@@ -7,7 +7,7 @@
 //   npx playwright test scenarios-surfaces
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { test as base, expect, BADGE_SEL, PARA, settledChips } from "./kit.mjs";
+import { test as base, expect, BADGE_SEL, PARA, popupOver, settledChips } from "./kit.mjs";
 import { docsReadingHtml } from "../fixtures/docs-reading.mjs";
 import { DRIVE } from "../unit-surfaces.mjs";
 
@@ -84,6 +84,7 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toHaveAccessibleName(/v1/);
+  await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await expect(page.locator("#anagram-ovl-close")).toBeFocused();
   await page.locator("#editor-control").evaluate((control) => control.focus());
   await expect(page.locator("#anagram-ovl-close")).toBeFocused();
@@ -115,6 +116,104 @@ test("the Docs reading overlay re-reads the document in place, and a failed re-r
   await (await received).finished();
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await expect(dialog).toHaveAccessibleName(/v2/);
+});
+
+test("Analyze document follows the selected Docs tab and shows counts only after reading", async ({ context, page, tell }) => {
+  const baseUrl = "https://docs.google.com/document/d/ANAGRAMTABFIXTURE";
+  const tabs = { "t.0": "FIRSTTAB", "t.second": "SECONDTAB", "t.nested": "NESTEDTAB" };
+  const editor = `<html lang="en"><title>Tabbed document</title><canvas></canvas><div role="tree">
+    <div id="chapter-container-t.0"><div role="treeitem" aria-label="Introduction"></div></div>
+    <div id="chapter-container-t.second"><div role="treeitem" aria-label="Results"></div>
+      <div id="chapter-container-t.nested"><div role="treeitem" aria-label="Appendix"></div></div>
+    </div></div></html>`;
+  const tabHtml = (tab) => docsReadingHtml([PARA(tabs[tab] + "ONE"), PARA(tabs[tab] + "TWO")]);
+  const reads = [];
+  let holdRead;
+  await context.route(baseUrl + "/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/edit")) {
+      await route.fulfill({ contentType: "text/html", body: editor });
+      return;
+    }
+    const tab = url.searchParams.get("tab");
+    reads.push(tab);
+    if (holdRead) {
+      holdRead.resolve(route);
+      holdRead = undefined;
+      return;
+    }
+    await route.fulfill({ contentType: "text/html", body: tabHtml(tab) });
+  });
+
+  const switchTo = (tab) => page.evaluate((id) => history.pushState(null, "", "?tab=" + id), tab);
+  const report = async () => (await tell(page, { action: "getTabState", reportOffset: 0 }))?.report;
+  await page.goto(baseUrl + "/edit?tab=t.0");
+  await expect.poll(async () => (await report())?.pageAction?.label).toBe("Analyze document");
+  await switchTo("t.second");
+  const idle = await popupOver(page);
+  await expect(idle.locator("header.hdr #pageAction")).toHaveText("Analyze document");
+  await expect(idle.locator("#status")).toBeHidden();
+  await idle.locator("#pageAction").click();
+  const paper = page.locator("#anagram-docs-overlay .paper");
+  await expect(paper).toContainText("SECONDTAB");
+  await expect(settledChips(page, ".paper")).toHaveCount(2);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => reads).toEqual(["t.second", "t.second"]);
+  await expect(page.locator("#anagram-ovl-refresh")).toBeEnabled();
+  await expect(settledChips(page, ".paper")).toHaveCount(2);
+
+  const analyzed = await popupOver(page);
+  const results = analyzed.locator("#pageReport");
+  const close = analyzed.getByRole("button", { name: "Close reading mode" });
+  await expect(results).toBeVisible();
+  const resultBox = await results.boundingBox();
+  const buttonBox = await close.boundingBox();
+  expect(buttonBox.y - (resultBox.y + resultBox.height)).toBeGreaterThanOrEqual(9);
+  await close.click();
+  await expect(paper).toHaveCount(0);
+
+  // Switch again while a previous tab's request is pending.
+  await switchTo("t.0");
+  const pending = Promise.withResolvers();
+  holdRead = pending;
+  const current = await report();
+  await tell(page, { action: "runPageAction", documentId: current.documentId, id: current.pageAction.id });
+  const firstTab = await pending.promise;
+  await switchTo("t.second");
+  await firstTab.fulfill({ contentType: "text/html", body: tabHtml("t.0") });
+  await expect(paper).toContainText("SECONDTAB");
+  await expect(paper).not.toContainText("FIRSTTAB");
+
+  const picker = page.getByRole("combobox", { name: "Document tab" });
+  await expect(picker).toHaveValue("t.second");
+  await expect(picker.getByRole("option")).toHaveText(["Introduction", "Results", "Appendix"]);
+  const stalled = Promise.withResolvers();
+  holdRead = stalled;
+  await picker.selectOption("t.0");
+  const oldRequest = await stalled.promise;
+  await picker.selectOption("t.nested");
+  await expect(paper).toContainText("NESTEDTAB");
+  await oldRequest.fulfill({ contentType: "text/html", body: tabHtml("t.0") });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => reads.at(-1)).toBe("t.nested");
+  await expect(page.locator("#anagram-ovl-refresh")).toBeEnabled();
+  await expect(settledChips(page, ".paper")).toHaveCount(2);
+
+  const failed = Promise.withResolvers();
+  holdRead = failed;
+  await picker.selectOption("t.0");
+  await (await failed.promise).fulfill({ status: 503, body: "" });
+  await expect(picker).toHaveValue("t.nested");
+  await expect(paper).toContainText("NESTEDTAB");
+  await expect(page.getByRole("status")).toHaveText(/Try again/);
+  await page.getByRole("button", { name: "Open as page" }).click();
+  await expect(page).toHaveURL(baseUrl + "/mobilebasic?tab=t.nested#anagram-reading");
+  await expect(page.locator(".doc-content")).toContainText("NESTEDTAB");
+  await page.evaluate(() => sessionStorage.removeItem("anagram-docs-return"));
+  await expect.poll(async () => (await report())?.pageAction?.label).toBe("Back to editor");
+  const reading = await report();
+  await tell(page, { action: "runPageAction", documentId: reading.documentId, id: reading.pageAction.id });
+  await expect(page).toHaveURL(baseUrl + "/edit?tab=t.nested");
 });
 
 // Page 1 alone is three units: P1, the two short paragraphs read together, and the first half

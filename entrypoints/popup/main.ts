@@ -172,8 +172,9 @@ function paint(): void {
 
   switch (lead.status) {
     case "counts":
-      // The report says it better, as soon as there is one.
-      statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("selAnalyzing")]));
+      // The Docs canvas has no paragraphs to count until the reader opens.
+      if (docsEditor && counts?.scored === 0) statusEl.replaceChildren();
+      else statusEl.replaceChildren(...(counts ? countsLine(counts) : [t("selAnalyzing")]));
       break;
     case "off":
       statusEl.textContent = siteGroup.hidden ? t("popupOff") : "";

@@ -49,9 +49,10 @@ export function readingViewUrl(id: string, tab?: string | null): string {
   return `https://docs.google.com/document/d/${id}/mobilebasic${q}#${READING_MARKER}`;
 }
 
-/** The canvas editor view of a document (fallback when no saved return URL). */
-export function editorUrl(id: string): string {
-  return `https://docs.google.com/document/d/${id}/edit`;
+/** The editor tab to return to when there is no saved editor URL. */
+export function editorUrl(id: string, tab?: string | null): string {
+  const q = tab ? `?tab=${encodeURIComponent(tab)}` : "";
+  return `https://docs.google.com/document/d/${id}/edit${q}`;
 }
 
 /** The `tab` param of the current URL, if any (Docs tabbed documents). */
