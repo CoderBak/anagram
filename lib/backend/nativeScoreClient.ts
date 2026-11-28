@@ -1,5 +1,5 @@
 import { browser } from "#imports";
-import { CONTRACT_VERSION, type ModelInfo, type ScoreBlock, type ScoreClient, type ScanPriority, type ScoredBatch, type TokenCounts } from "../contract";
+import { CONTRACT_VERSION, modelDim, type ModelInfo, type ScoreBlock, type ScoreClient, type ScanPriority, type ScoredBatch, type TokenCounts } from "../contract";
 import type { BackendStatus } from "../messaging/protocol";
 import { componentIsBehind, parseHealth, parseScoreResponse, parseTokenCounts } from "./scoreProtocol";
 import { type NativeOperation, type NativePayload, type NativeReply } from "./nativeProtocol";
@@ -66,7 +66,7 @@ export class NativeScoreClient implements ScoreClient {
           const h = result.health;
           this.observeModel(h.model);
           this.current = {active:"server",model:{...h.model},
-            server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,interleavesPasses:h.interleaves_passes,
+            server:{ok:true,checkedAt:Date.now(),device:h.device,dtype:h.dtype,interleavesPasses:h.interleaves_passes,minWords:h.min_words,
               outdated:componentIsBehind(h.app_version,extensionVersion())}};
         } else {
           // Idle is unload-for-memory, not an explicit stop. Preserve known provenance;
@@ -76,7 +76,7 @@ export class NativeScoreClient implements ScoreClient {
           const code = reply.error?.code;
           const active = code === "engine_idle" ? "idle" : code === "engine_loading" ? "loading" : "down";
           this.current = {active,model:active === "down" ? null : this.current.model,
-            server:{ok:false,checkedAt:Date.now(),reason:result && !result.ok ? result.reason : "unreachable",
+            server:{ok:false,checkedAt:Date.now(),minWords:active === "down" ? undefined : this.current.server.minWords,reason:result && !result.ok ? result.reason : "unreachable",
               contract:result && !result.ok ? result.contract : undefined,code:reply.error?.code,error:reply.error?.message}};
         }
       } catch (error) {
@@ -116,7 +116,8 @@ export class NativeScoreClient implements ScoreClient {
       const batch = parseScoreResponse(reply.data, blocks);
       if (generation !== this.generation) throw new NativeScoreError(409, "cancelled", "Runtime changed during inference");
       this.observeModel(batch.model);
-      const needsCapabilities = !this.isUp() && batch.model.calibration === "anagram-detector/1";
+      const needsCapabilities = batch.model.calibration === "anagram-detector/1" &&
+        (!this.isUp() || !this.current.model || modelDim(batch.model) !== modelDim(this.current.model));
       this.current = {...this.current, active:"server", model:{...batch.model},
         server:{...this.current.server,ok:true,checkedAt:needsCapabilities ? 0 : Date.now(),reason:undefined,code:undefined,error:undefined}};
       return batch;

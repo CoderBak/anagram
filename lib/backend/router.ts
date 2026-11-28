@@ -3,7 +3,7 @@
 import type { ModelInfo, ScanPriority, ScoreClient, ScoreBlock, ScoreResult, ScoredBatch,
   ScoreBatchRequest, ScoreBatchResponse } from "../contract";
 import { BUCKET_COUNT, DOCUMENT_SHARE, modelDim } from "../contract";
-import { modelText } from "../dom/text";
+import { detectorText } from "../dom/text";
 import type { ScoreCacheMode } from "../cachePolicy";
 import { createSwCache, type SwCache } from "./swCache";
 import { retryWaitMs } from "./retry";
@@ -268,8 +268,8 @@ export function createRouter(client: ScoreClient, cache: SwCache = createSwCache
       model = snapshot(client.model());
       const revision = client.revision?.(), dim = modelDim(model);
       // The cache and the actual payload use precisely the same bytes: the model form, which
-      // a page's blocks are in already (modelText is a fixed point).
-      const sent = req.blocks.map((block) => ({ ...block, text: modelText(block.text) }));
+      // a page's blocks are in already (detectorText is a fixed point).
+      const sent = req.blocks.map((block) => ({ ...block, text: detectorText(block.text) }));
       const keys = sent.map((block) => cache.keyOf(block.text, dim, partition));
       const hits = await Promise.race([cache.getMany(keys, reader.persist), reader.cancelled]);
       if (!alive() || !hits || !revisionMatches(revision)) return unanswered();

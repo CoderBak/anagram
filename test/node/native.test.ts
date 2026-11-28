@@ -496,7 +496,7 @@ describe("token counts come from the engine that scores", () => {
       reply({alone:texts.map((t) => t.length),following:texts.map((t) => t.length + 1),window:510});
     const request = byOp(reply(HEALTH), (texts) => answer(texts));
     const client = new NativeScoreClient(request);
-    expect(await client.countTokens(["one","three"])).toEqual({alone:[3,5],following:[4,6]});
+    expect(await client.countTokens(["one","three"])).toEqual({alone:[3,5],following:[4,6],window:510});
     expect(request).toHaveBeenCalledWith("tokens", {v:"3.0",texts:["one","three"]}, undefined);
     answer = () => reply({alone:[1,2],following:[1],window:510});
     expect(await client.countTokens(["one","three"])).toBeNull();

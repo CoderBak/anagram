@@ -59,6 +59,7 @@ const HealthSchema = v.object({
   model: ModelSchema,
   n_buckets: v.union([v.literal(3),v.literal(BUCKET_COUNT)]),
   buckets: v.array(v.string()),
+  min_words: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(10000))),
   max_tokens: v.pipe(v.number(), v.integer(), v.minValue(1)),
   device: v.string(),
   languages: v.optional(v.array(v.string())),
@@ -142,7 +143,7 @@ const TokenCountsSchema = v.object({
 export function parseTokenCounts(body: unknown, asked: number): TokenCounts | null {
   const parsed = v.safeParse(TokenCountsSchema, body);
   if (!parsed.success || parsed.output.alone.length !== asked || parsed.output.following.length !== asked) return null;
-  return { alone: parsed.output.alone, following: parsed.output.following };
+  return parsed.output;
 }
 
 /** Validate identity, probabilities and requested block IDs. */

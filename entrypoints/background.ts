@@ -501,7 +501,7 @@ export default defineBackground(() => {
       }
       case ACTIONS.COUNT_TOKENS: {
         const counts=await tokenCounter.count(msg.texts,document!.signal,(await placeOf(sender,document!,role === "paste")).partition).catch(()=>null);
-        return {counts,backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
+        return {counts,model:getScoreClient().model(),backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
         try {

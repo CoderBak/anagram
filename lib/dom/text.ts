@@ -179,7 +179,7 @@ const INVISIBLES_RE =
 const RAW_LATEX_RE = /\$[^$\n]*\\[A-Za-z]+[^$\n]*\$/g;
 
 /** Bump when the model form changes; caches from older rules must never match. */
-export const SCORING_NORMALIZATION_VERSION = "7";
+export const SCORING_NORMALIZATION_VERSION = "8";
 
 /** Closing punctuation that ends a word: not the ".5" of a number, not ":-)" in a sentence. */
 const CLOSING_RE = /[.,;:!?)]+(?=\s|$)/y;
@@ -237,6 +237,12 @@ export function skipGap(text: string, at: number): [number, number] | null {
 export function modelText(text: string): string {
   const f = foundOf(text);
   return (f.model ??= modelTextOf(text));
+}
+
+/** Preserve the paragraph breaks that the sentence decoder uses as boundaries. */
+export function detectorText(text: string): string {
+  const gap = /\n[^\S\n]*\n/u;
+  return gap.test(text) ? text.split(gap).map(modelText).filter(Boolean).join("\n\n") : modelText(text);
 }
 
 function modelTextOf(s: string): string {

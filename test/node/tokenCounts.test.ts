@@ -27,6 +27,16 @@ describe("token counts in the worker", () => {
     expect(s.asked).toEqual([["one", "three"], ["sixteen"]]);
   });
 
+  it("retains the producing model's window for hits and partially cached requests", async () => {
+    const model = { id: "detector", ver: "1", calibration: "anagram-detector/1" };
+    const counter = createTokenCounter({ model: () => model,
+      countTokens: async texts => ({ alone: texts.map(t => t.length), following: texts.map(t => t.length + 1), window: model.ver === "1" ? 512 : 768 }) });
+    expect((await counter.count(["one"]))?.window).toBe(512);
+    expect((await counter.count(["one", "two"]))?.window).toBe(512);
+    model.ver = "2";
+    expect((await counter.count(["one"]))?.window).toBe(768);
+  });
+
   it("keys counts by the model that counted them, and keeps none while the model is unknown", async () => {
     const s = source((texts) => texts.map((t) => t.length), "none");
     const counter = createTokenCounter(s);

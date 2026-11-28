@@ -25,7 +25,7 @@ import {normalizeDetector} from "../webengine/detectorScore";
 import type { ScoreBlock, ScoreResult, TokenCounts } from "../contract";
 import { BUCKET_COUNT, CONTRACT_LIMITS, DOCUMENT_SHARE, PAGE_IN_FLIGHT } from "../contract";
 import { foldLookalikes } from "../dom/lookalikes";
-import { modelForm, modelText, sentenceStarts } from "../dom/text";
+import { detectorText, modelForm, modelText, sentenceStarts } from "../dom/text";
 
 // ---- the budget ---------------------------------------------------------------------
 
@@ -410,35 +410,42 @@ function resultOf(id: string, probs: number[], sources: ScoreResult[]): ScoreRes
   return { id, bucket, probs, score: probs.reduce((acc, p, i) => acc + p * i, 0) / (probs.length - 1) };
 }
 
-function sentenceSpans(text:string):TextSpan[] {
-  const spans:TextSpan[]=[];
-  let start=0;
-  const add=(end:number)=>{
-    if (text.slice(start,end).trim()) spans.push({start,end});
-    start=end;
-  };
-  for(const match of text.matchAll(/[.!?…]+["'“”‘’)\]]*(?=\s|$)|\n\s*\n/gu)) add(match.index+match[0].length);
-  add(text.length);
+function sentenceSpans(text: string): TextSpan[] {
+  const spans: TextSpan[] = [];
+  let start = 0;
+  for (const match of text.matchAll(/[.!?…]+["'”’)\]]*(?=\s|$)|\n\s*\n/gu)) {
+    const end = match.index + match[0].length;
+    spans.push({ start, end });
+    start = end;
+  }
+  if (start < text.length) spans.push({ start, end: text.length });
   return spans;
 }
 
-/** Place decoded sentences on the original passage only when the text of every sentence aligns. */
-function sentenceStretches(source:string,pass:WindowVerdict):WindowVerdict[] {
-  const labels=pass.result.sentenceLabels;
-  if(!labels || labels.length<2 || labels.every(l=>l===labels[0])) return [pass];
-  const raw=source.slice(pass.start,pass.end);
-  const analyzed=normalizeDetector(modelText(raw));
-  const spans=sentenceSpans(raw), decoded=sentenceSpans(analyzed);
-  if(spans.length!==labels.length || decoded.length!==labels.length) return [pass];
-  for(let i=0;i<spans.length;i++) {
-    const s=spans[i]!,d=decoded[i]!;
-    if(normalizeDetector(modelText(raw.slice(s.start,s.end)))!==analyzed.slice(d.start,d.end).trim()) return [pass];
+/** Both released tokenizers can give a paragraph separator its own token. The decoder
+ * then returns a label for that whitespace too. Only paint text we can match in full. */
+function sentenceStretches(source: string, pass: WindowVerdict): WindowVerdict[] {
+  const labels = pass.result.sentenceLabels;
+  if (!labels?.length) return [pass];
+  const raw = source.slice(pass.start, pass.end);
+  const analyzed = normalizeDetector(detectorText(raw));
+  const decoded = sentenceSpans(analyzed);
+  const sourceSpans = sentenceSpans(raw).filter(s => raw.slice(s.start, s.end).trim());
+  const labeled = decoded.length === labels.length ? decoded : decoded.filter(s => analyzed.slice(s.start, s.end).trim());
+  if (labeled.length !== labels.length) return [];
+  const matches = labeled.map((span, i) => ({ text: analyzed.slice(span.start, span.end).trim(), bucket: labels[i]! }))
+    .filter(match => match.text);
+  if (matches.length !== sourceSpans.length) return [];
+  const out: WindowVerdict[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const { text, bucket } = matches[i]!, span = sourceSpans[i]!;
+    if (normalizeDetector(detectorText(raw.slice(span.start, span.end))) !== text) return [];
+    const probs = [0, 0, 0];
+    probs[bucket] = 1;
+    out.push({ start: pass.start + span.start, end: pass.start + span.end,
+      result: { id: pass.result.id, bucket, probs, score: bucket / 2, documentFractionBasis: pass.result.documentFractionBasis } });
   }
-  return spans.map((span,i)=>{
-    const bucket=labels[i]!;
-    const probs=[0,0,0];probs[bucket]=1;
-    return {start:pass.start+span.start,end:pass.start+span.end,result:{id:pass.result.id,bucket,probs,score:bucket/2,documentFractionBasis:pass.result.documentFractionBasis}};
-  });
+  return out;
 }
 
 /**
@@ -493,12 +500,23 @@ function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
  *   "Unsupported language".
  */
 export function unitVerdict(id: string, textLength: number, windows: WindowVerdict[], source?:string): UnitVerdict {
+  // Older native components included an extra label for a tokenized blank line.
+  // Remove it from the card and report as well as from the page highlights.
+  if (source?.includes("\n\n")) windows = windows.map(w => {
+    const labels = w.result.sentenceLabels;
+    if (!labels || !source.slice(w.start, w.end).includes("\n\n")) return w;
+    const text = normalizeDetector(detectorText(source.slice(w.start, w.end)));
+    const spans = sentenceSpans(text);
+    if (spans.length !== labels.length) return w;
+    const visible = labels.filter((_, i) => text.slice(spans[i]!.start, spans[i]!.end).trim());
+    return visible.length === labels.length ? w : { ...w, result: { ...w.result, sentenceLabels: visible } };
+  });
   const unreadChars = Math.max(0, textLength - windows.reduce((end, w) => Math.max(end, w.end), 0));
   const done = (result: ScoreResult, stretches: WindowVerdict[] = []): UnitVerdict => {
     if (source && stretches.length && windows.some(w=>w.result.sentenceLabels?.length)) {
       const scored=windows.filter(isScoredWindow);
-      const decoded=scored.flatMap(w=>sentenceStretches(source,w));
-      if(decoded.length>scored.length) stretches=combineStretches(decoded);
+      // Detector transport pieces are disjoint and already in source order.
+      stretches = scored.flatMap(w => sentenceStretches(source, w));
     }
     return {id,result,windows,stretches,unreadChars};
   };
@@ -525,6 +543,9 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
     result.tokens = scored.reduce((n, w) => n + (w.result.tokens ?? 0), 0);
   }
   if (scored.some((w) => w.result.truncated)) result.truncated = true;
+  if (scored.length === windows.length && scored.every(w => w.result.sentenceLabels?.length) &&
+      scored.every((w, i) => i === 0 || w.start === scored[i - 1]!.end))
+    result.sentenceLabels = scored.flatMap(w => w.result.sentenceLabels!);
   return done(result, stretches);
 }
 
@@ -694,9 +715,9 @@ export async function readDetectorPassages(items: Readable[], scoreBlocks: Score
   const limit = CONTRACT_LIMITS.text_chars;
   const slots: Slot[] = [];
   for (const owner of items) {
-    const source = foldLookalikes(owner.text);
+    const source = owner.text;
     const stop = readEnd(source);
-    const whole = modelText(source.slice(0, stop));
+    const whole = detectorText(source.slice(0, stop));
     if (whole.length <= limit) {
       slots.push({ owner, span: { start: 0, end: stop }, block: { id: owner.id, text: whole } });
       continue;
@@ -708,7 +729,7 @@ export async function readDetectorPassages(items: Readable[], scoreBlocks: Score
       for (;;) {
         if (end < stop) end = pickCut(source, starts, end, Math.max(start + 1, end - JOINT_REACH_CHARS), end);
         if (end < stop && /[\uDC00-\uDFFF]/.test(source[end]!)) end--;
-        text = modelText(source.slice(start, end));
+        text = detectorText(source.slice(start, end));
         if (text.length <= limit) break;
         end = start + Math.floor((end - start) * 0.9);
       }

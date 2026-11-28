@@ -292,6 +292,10 @@ class Detector:
             ends, (offsets[:, 0] + np.maximum(offsets[:, 1] - 1, offsets[:, 0])) // 2, side="right"
         )
         cuts = [0, *list(np.flatnonzero(np.diff(sentence)) + 1), n]
+        # The tokenizer can label the blank line between two sentences. Keep its
+        # votes in the document score and leave it out of the reader's sentence list.
+        edges = [0, *ends, len(text)]
+        visible_starts = [a for a in cuts[:-1] if text[edges[sentence[a]]:edges[sentence[a] + 1]].strip()]
         for a, b in zip(cuts, cuts[1:]):
             path[a:b] = np.bincount(path[a:b], minlength=3).argmax()
         if self.crf["l_min"] > 1:
@@ -321,7 +325,7 @@ class Detector:
         bucket = (0 if 10*h >= 9*len(labels) else 2 if 5*(2*g+a) >= 8*len(labels) else 1) if all_chars else int(shares.argmax())
         return dict(
             **({"documentFractionBasis": "all_labeled_characters"} if all_chars else {}),
-            sentenceLabels=[int(path[a]) for a in cuts[:-1]],
+            sentenceLabels=[int(path[a]) for a in visible_starts],
             bucket=bucket,
             probs=shares.tolist(),
             score=float(shares[2] + shares[1] / 2),
@@ -342,6 +346,7 @@ class Detector:
             buckets=LABELS,
             languages=["en"],
             lid=self.lid.name,
+            min_words=self.meta["min_words"],
             max_tokens=self.max_length,
             device="cpu",
             dtype="fp32",

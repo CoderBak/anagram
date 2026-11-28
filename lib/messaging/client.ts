@@ -1,7 +1,7 @@
 import { documentSessionId, sendDocumentMessage } from "../access/session";
 // lib/messaging/client.ts — content→SW client.
 import { browser } from "#imports";
-import { CONTRACT_LIMITS, type ModelInfo, type ScoreBatchRequest, type ScoreResult, type TokenCounts } from "../contract";
+import { CONTRACT_LIMITS, modelDim, type ModelInfo, type ScoreBatchRequest, type ScoreResult, type TokenCounts } from "../contract";
 import { ACTIONS } from "./protocol";
 import type { CountTokensMessage, CountTokensReply, ScoreBatchMessage, ScoreBatchReply } from "./protocol";
 
@@ -93,7 +93,7 @@ export interface CountReply {
  * through the worker in requests the worker takes, one after another. Null counts when any
  * of them went unanswered; the text is then Unavailable, like one whose score failed.
  */
-export async function requestTokenCounts(texts: string[]): Promise<CountReply> {
+export async function requestTokenCounts(texts: string[], expectedModel?: ModelInfo): Promise<CountReply> {
   const counts: TokenCounts = { alone: [], following: [] };
   for (let at = 0; at < texts.length; ) {
     let end = at;
@@ -111,6 +111,9 @@ export async function requestTokenCounts(texts: string[]): Promise<CountReply> {
       if (!got || !Array.isArray(got.alone) || !Array.isArray(got.following) ||
         got.alone.length !== slice.length || got.following.length !== slice.length)
         return { counts: null, backend: reply?.backend === "down" ? "down" : reply ? "up" : "unreachable" };
+      if (expectedModel && (!reply?.model || modelDim(reply.model) !== modelDim(expectedModel))) return { counts: null, backend: "up" };
+      if (at && counts.window !== got.window) return { counts: null, backend: "up" };
+      counts.window = got.window;
       counts.alone.push(...got.alone);
       counts.following.push(...got.following);
     } catch {

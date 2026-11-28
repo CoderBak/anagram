@@ -135,6 +135,7 @@ export interface CountTokensMessage {
 
 /** SW → content: the counts of every text, in order, or null when the engine did not answer. */
 export interface CountTokensReply {
+  model?: ModelInfo;
   counts: TokenCounts | null;
   /** Whether the engine answers, as a score reply says it: a page takes a count that met a
    *  stopped engine exactly as it takes a score that did. */
@@ -163,6 +164,7 @@ export interface BackendStatus {
     ok: boolean;
     checkedAt: number;
     interleavesPasses?: boolean;
+    minWords?: number;
     device?: string;
     dtype?: string;
     error?: string;

@@ -33,6 +33,8 @@ export function validIdleUnload(seconds: unknown): seconds is number {
 export interface TokenCounts {
   alone: number[];
   following: number[];
+  /** Usable text tokens in one model window, when reported by the engine. */
+  window?: number;
 }
 
 /** Bucket count the UI is built for: 0 human · 1 lightly edited · 2 heavily edited · 3 AI-generated. */

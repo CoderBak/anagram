@@ -682,6 +682,7 @@ export class Engine {
       buckets: loaded.detector?.meta.classes ?? BUCKET_LABELS,
       languages: SUPPORTED_LANGUAGES,
       lid: "fasttext-lid.176",
+      ...(loaded.detector ? { min_words: loaded.detector.meta.min_words } : {}),
       max_tokens: loaded.detector ? loaded.detector.meta.window+2 : MAX_LENGTH,
       device: loaded.session.device,
       dtype: this.tier,

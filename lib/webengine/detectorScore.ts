@@ -24,12 +24,17 @@ export function normalizeDetector(s: string): string {
     .trim();
 }
 const maxIndex = (v: ArrayLike<number>) => (v[1]! > v[0]! ? (v[2]! > v[1]! ? 2 : 1) : v[2]! > v[0]! ? 2 : 0);
-/** Stop counting as soon as the passage meets the release's minimum. */
-export function enoughDetectorWords(text: string, minimum: number): boolean {
-  if (!/\p{L}/u.test(text)) return false;
+/** The release's word count. Eligibility checks can stop at the minimum. */
+export function detectorWordCount(text: string, limit = Infinity): number {
+  if (!/\p{L}/u.test(text)) return 0;
   const words = /[\p{L}\p{N}_]+(?:['’][\p{L}\p{N}_]+)*/gu;
-  for (let count = 0; count < minimum; count++) if (!words.test(text)) return false;
-  return true;
+  let count = 0;
+  while (count < limit && words.test(text)) count++;
+  return count;
+}
+
+export function enoughDetectorWords(text: string, minimum: number): boolean {
+  return detectorWordCount(text, minimum) === minimum;
 }
 
 export async function detectorScore(
@@ -114,27 +119,29 @@ export async function detectorScore(
     labels[i] = label;
     label = back[i * 3 + label]!;
   }
-  const ends: number[] = [];
+  const ends: { offset: number; hasText: boolean }[] = [];
   let units = 0,
     scalars = 0;
   for (const m of text.matchAll(/[.!?…]+["'”’)\]]*(?=\s|$)|\n\s*\n/gu)) {
     const end = m.index + m[0].length;
-    scalars += Array.from(text.slice(units, end)).length;
+    const span = text.slice(units, end);
+    scalars += Array.from(span).length;
     units = end;
-    ends.push(scalars);
+    ends.push({ offset: scalars, hasText: !!span.trim() });
   }
   const sentenceStarts: number[] = [];
   let start = 0;
-  for (const end of [...ends, Infinity]) {
+  ends.push({ offset: Infinity, hasText: !!text.slice(units).trim() });
+  for (const end of ends) {
     let i = start;
     const votes = [0, 0, 0];
     while (i < n) {
       const [a, b] = offsets[i]!;
-      if (Math.floor((a + Math.max(a, b - 1)) / 2) >= end) break;
+      if (Math.floor((a + Math.max(a, b - 1)) / 2) >= end.offset) break;
       votes[labels[i]!]!++;
       i++;
     }
-    if (start < i) sentenceStarts.push(start);
+    if (start < i && end.hasText) sentenceStarts.push(start);
     labels.fill(maxIndex(votes), start, i);
     start = i;
   }

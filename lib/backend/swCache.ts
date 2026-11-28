@@ -3,7 +3,7 @@
 //
 // Why persistent: an MV3 service worker is killed after ~30 s idle, so a memory-only
 // cache evaporates constantly and every tab re-scores paragraphs the model already
-// judged. The model is deterministic, so a hash of the text it reads (modelText) plus the
+// judged. The model is deterministic, so a hash of the text it reads (detectorText) plus the
 // model identity and normalization version define the key — stored rows hold buckets and probabilities
 // only, never text. A different model, checkpoint or calibration changes the key dimension, so
 // stale verdicts are never served across models.
@@ -20,7 +20,7 @@
 // somebody has been reading.
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { ScoreResult } from "../contract";
-import { modelText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
+import { detectorText, SCORING_NORMALIZATION_VERSION } from "../dom/text";
 import { digest128 } from "../hash";
 import { SCORE_CACHE_MAX_AGE_MS, type ScoreCacheMode } from "../cachePolicy";
 import { createLogger } from "../log";
@@ -29,7 +29,7 @@ import { scoreCacheSecret } from "../settings/settings";
 const log = createLogger("swcache");
 
 export interface SwCache {
-  /** Sync key: `<normalization version>:<dim>:<digest of the partition>:<digest of modelText(text)>`
+  /** Sync key: `<normalization version>:<dim>:<digest of the partition>:<digest of detectorText(text)>`
    *  — `partition` is where the text was read (lib/backend/router.ts RequestOrigin.partition);
    * `dim` is the complete backend identity snapshotted by router.ts modelDim. */
   keyOf(text: string, dim: string, partition?: string): string;
@@ -320,7 +320,7 @@ export function createSwCache(store: ScoreStore = indexedDbStore()): SwCache {
     return operation;
   }
   const keyOf = (text: string, dim: string, partition = ""): string =>
-    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${digest128(partition)}:${digest128(modelText(text))}`;
+    `n${SCORING_NORMALIZATION_VERSION}:${dim}:${digest128(partition)}:${digest128(detectorText(text))}`;
   const current = (seq: number): boolean => seq === generation;
   const fresh = (at: number): boolean => Number.isFinite(at) && Date.now() - at < MAX_AGE_MS;
 

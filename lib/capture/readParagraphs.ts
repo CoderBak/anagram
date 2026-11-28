@@ -11,7 +11,7 @@ async function activeCalibration(): Promise<string | undefined> {
  * whose identity was lost on restart can identify itself with its first real result. */
 export async function readParagraphs(items: Readable[], score: ScoreBlocks, count: CountTokens,
   calibration: () => Promise<string | undefined> = activeCalibration) {
-  if (items.every(item => fitsWithoutCounting(item.text))) return readInWindows(items, score, count);
+  if (items.every(item => !item.text.includes("\n\n") && fitsWithoutCounting(item.text))) return readInWindows(items, score, count);
   const format = await calibration().catch(() => undefined);
   const detector = !format || format === "none" || format === "anagram-detector/1";
   const read = () => readDetectorPassages(items, score);

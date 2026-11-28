@@ -446,14 +446,17 @@ export function setHighlight(unit: Unit, verdict: UnitVerdict, minLevel = 0, atR
 
   const marks: Array<{ step: number; ranges: Range[]; rest: boolean }> = [];
   const rest = (step: number): boolean => atRest && step >= minLevel;
-  const onePass = verdict.windows.length === 1 && verdict.stretches.length === 1 && verdict.unreadChars === 0;
+  if (!verdict.stretches.length) return;
+  const only = verdict.stretches.length === 1 ? verdict.stretches[0] : undefined;
+  const onePass = verdict.windows.length === 1 && only?.start === 0 && only.end === unit.text.length;
   // The stretches the verdict judged, neighbours on one step of the scale drawn as one.
   const runs = stepRuns(verdict.stretches);
   // With a locator even a ONE-PASS unit is placed span by span: on a surface whose text is
   // not what its nodes say, the whole-parts shortcut would cover more than was read.
   const own = _locator?.(unit, onePass ? [{ start: 0, end: unit.text.length }] : runs);
   const located = own !== undefined ? own : onePass ? null : locateSpans(unit.parts, unit.text, runs);
-  const whole = resultLevel(verdict.result);
+  if (!located && !onePass && verdict.windows.some(w => w.result.sentenceLabels?.length)) return;
+  const whole = resultLevel(only?.result ?? verdict.result);
   if (located && own !== undefined && onePass) {
     marks.push({ step: whole, ranges: located[0] ?? [], rest: rest(whole) });
   } else if (located) {

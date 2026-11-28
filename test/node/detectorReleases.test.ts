@@ -239,5 +239,6 @@ it("places mixed sentence labels on the original passage across punctuation norm
     ['My café is old.',0],['“This is new!”',2],
   ]);
   const ambiguous=unitVerdict("p",text.length,[{start:0,end:text.length,result:{...r,sentenceLabels:[0,2,1]}}],text);
-  expect(ambiguous.stretches).toHaveLength(1);
+  expect(ambiguous.result.probs).toEqual(r.probs);
+  expect(ambiguous.stretches).toHaveLength(0);
 });
