@@ -48,7 +48,7 @@ textarea.textarea {
   .actions:has(#clear:not([hidden])) #pick span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 @container (max-width: 285px) {
-  .actions, .editor-meta { column-gap: 4px; }
+  .actions { column-gap: 4px; }
   .actions #edit { padding-inline: 4px; }
 }
 #status { margin: 0; font-size: 13px; color: var(--muted-foreground); }
