@@ -1,4 +1,5 @@
 import { browser } from "#imports";
+import { onPortDisconnect } from "../../lib/messaging/port";
 import { SOURCE_LOADER_PORT, SOURCE_CAP, SOURCE_TIMEOUT } from "../../lib/pdf/sourceTransfer";
 import { hasPdfSourceAccess } from "../../lib/pdf/sourceAccess";
 import { loaderConnectPolicy, readAuthorizedPdf, readFailure, type AuthorizedPdf } from "../../lib/pdf/loader";
@@ -15,7 +16,7 @@ if (window.parent !== window && /^[a-f0-9]{32}$/.test(ticket)) {
     const port = browser.runtime.connect({name: SOURCE_LOADER_PORT});
     const stopped = new AbortController(); let started = false;
     const stop = () => stopped.abort(), timer = setTimeout(stop, SOURCE_TIMEOUT);
-    port.onDisconnect.addListener(stop);
+    onPortDisconnect(port, stop);
     window.addEventListener("pagehide", () => { clearTimeout(timer); stop(); port.disconnect(); }, {once: true});
     const reply = (result: AuthorizedPdf | HandoffFailure) => {
       if (stopped.signal.aborted) return;

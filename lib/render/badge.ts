@@ -407,7 +407,6 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
   function buildHost(id: string): HTMLElement {
     const host = document.createElement("span");
     host.setAttribute(MARK_ATTR, "host");
-    host.setAttribute("aria-hidden", "true");
     // Inline styles back up the !important :host rules against page CSS.
     host.style.cssText = "display:inline-block;position:relative;margin-inline-start:4px;";
     // A badge can legitimately sit inside an <a>; a click on it must never
@@ -436,11 +435,13 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       setActiveUnit(id);
       options.onCard?.(id, "card");
     });
-    host.addEventListener("mouseleave", () => {
+    const dismissTransient = () => {
       if (_openCardHost === host) return;
       hideCard(host);
-      clearActiveUnit(id);
       options.onCard?.(id, "cardClosed");
+    };
+    host.addEventListener("mouseleave", () => {
+      if (!card.matches(":focus-within")) dismissTransient();
     });
     _hostUnit.set(host, id);
     const shadow = host.attachShadow({ mode: chipShadowMode() });
@@ -449,6 +450,8 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 
     const pill = document.createElement("span");
     pill.className = "pill";
+    // Keep the inline number out of the paragraph's spoken text. The open card is interactive.
+    pill.setAttribute("aria-hidden", "true");
     // The chip and its card are ours, not the page's: they are in the UI's language,
     // whatever the article around them is written in. Screen readers and the CJK font
     // fallback both need that said on the elements themselves.
@@ -462,6 +465,14 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     const card = document.createElement("div");
     card.className = "card";
     card.lang = pill.lang;
+    card.inert = true;
+    card.addEventListener("focusout", (event) => {
+      if (event.relatedTarget instanceof Node && card.contains(event.relatedTarget)) return;
+      if (!host.matches(":hover")) dismissTransient();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !card.inert) hideCard(host);
+    });
     // Inside the closed shadow root we can identify the summary and keep its native toggle.
     card.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -528,11 +539,8 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
       partsRow +
       coverageRows +
       formulaRow +
-      // tabindex="-1": the chip host is aria-hidden on purpose (see the header), so a
-      // focusable button inside it would be a tab stop that announces nothing at all —
-      // one per pinned card. The page's own text remains selectable with the keyboard.
       `<div class="actions">` + row(t("cardWords"), `${unit.wordCount}`) +
-      `<button type="button" tabindex="-1" class="act copy"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g class="sheets"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/></g><path class="check" d="m4 12 5 5L20 6"/></svg><span hidden></span></button></div>` +
+      `<button type="button" class="act copy"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g class="sheets"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/></g><path class="check" d="m4 12 5 5L20 6"/></svg><span hidden></span></button></div>` +
       (foot ? `<div class="foot">${foot}</div>` : "") +
       `<span class="caret"></span>`;
     placeMarkers(card);
@@ -543,15 +551,15 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
     copy.title = label;
     const feedback = copy.querySelector("span")!;
     let reset: ReturnType<typeof setTimeout>;
-    // tabindex="-1" keeps the keyboard out; a press would still focus the button in Chrome,
-    // which then un-hides the host and warns "Blocked aria-hidden on an element…".
+    // A pointer copy leaves the reader's focus where it was.
     copy.addEventListener("mousedown", (e) => e.preventDefault());
     copy.addEventListener("click", async (e) => {
       e.stopPropagation();
+      if (copy.ariaDisabled === "true") return;
       clearTimeout(reset);
-      copy.disabled = true;
+      copy.ariaDisabled = "true";
       const copied = await copyText(unit.text);
-      copy.disabled = false;
+      copy.ariaDisabled = null;
       copy.classList.toggle("done", copied);
       copy.title = copied ? t("copied") : t("reportCopyFailed");
       feedback.textContent = copied ? "" : copy.title;
@@ -571,9 +579,7 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
   function remove(id: string): void {
     const host = hosts.get(id);
     if (!host) return;
-    if (host === _openCardHost) _openCardHost = null;
     hideCard(host);
-    clearActiveUnit(id);
     host.remove();
     hosts.delete(id);
     leaveGroup(id);
@@ -581,7 +587,10 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
 
   function setVisible(v: boolean): void {
     visible = v;
-    for (const [, host] of hosts) host.classList.toggle("pg-hidden", !v);
+    for (const host of hosts.values()) {
+      if (!v && !cardOf(host)?.inert) hideCard(host);
+      host.classList.toggle("pg-hidden", !v);
+    }
   }
 
   function resetTheme(): void {
@@ -606,9 +615,8 @@ export function createBadgeLayer(options: BadgeLayerOptions = {}): BadgeLayer {
   }
 
   function teardownAll(): void {
-    for (const [id, host] of hosts) {
+    for (const host of hosts.values()) {
       hideCard(host);
-      clearActiveUnit(id);
       host.remove();
     }
     hosts.clear();
@@ -657,8 +665,6 @@ function closeOpenCard(): void {
   cardOf(host)?.classList.remove("open");
   if (host.matches(":hover")) return; // still hovered → stays as a hover card, marks and all
   hideCard(host);
-  const id = _hostUnit.get(host);
-  if (id) clearActiveUnit(id);
 }
 
 function installOutsideCloser(): void {
@@ -677,7 +683,7 @@ function installOutsideCloser(): void {
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.key === "Escape" && _openCardHost) closeOpenCard();
+      if (e.key === "Escape" && _openCardHost) hideCard(_openCardHost);
     },
     true,
   );
@@ -707,19 +713,24 @@ function showCard(host: HTMLElement): void {
       try {
         card.showPopover();
       } catch {
-        /* not connected — nothing to show */
+        return; // not connected
       }
     }
   } else {
     card.classList.add("showing");
   }
+  card.inert = false;
   startFloating(host); // after showing: a display:none popover has no size to measure
 }
 
 function hideCard(host: HTMLElement): void {
+  if (_openCardHost === host) _openCardHost = null;
+  const id = _hostUnit.get(host);
+  if (id) clearActiveUnit(id);
   stopFloating(host);
   const card = cardOf(host);
   if (!card) return;
+  card.classList.remove("open");
   if (card.hasAttribute("popover")) {
     if (card.matches(":popover-open")) {
       try {
@@ -731,6 +742,7 @@ function hideCard(host: HTMLElement): void {
   } else {
     card.classList.remove("showing");
   }
+  card.inert = true;
 }
 
 /** Place the card once: above the chip, flipped below when that would leave the

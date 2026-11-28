@@ -6,6 +6,7 @@
 // The document stays across the background's sleeps, so the model stays
 // loaded across the background's own sleeps; the engine lets it go itself when idle.
 import { browser } from "#imports";
+import { onPortDisconnect } from "../../lib/messaging/port";
 import { EngineHost } from "../../lib/webengine/host";
 import { ENGINE_PORT, ENGINE_READY, ENGINE_FAILED, fail, isScoreCancellation } from "../../lib/webengine/protocol";
 import { WORKER_URL, workerInit } from "../../lib/webengine/assets";
@@ -57,7 +58,7 @@ browser.runtime.onConnect.addListener((port) => {
     return;
   }
   let disconnected = false;
-  port.onDisconnect.addListener(() => {
+  onPortDisconnect(port, () => {
     disconnected = true;
     connections.delete(port);
     for (const [id, owner] of owners) {

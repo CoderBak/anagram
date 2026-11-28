@@ -33,7 +33,7 @@
 // that text to `page.evaluate` on every page it visits, extension pages included.
 //
 // DELIBERATE EXEMPTIONS, which are decisions and not debts:
-//   - per-paragraph chips are aria-hidden="true" and unfocusable (lib/render/badge.ts): a
+//   - the inline score pills are aria-hidden="true" and unfocusable (lib/render/badge.ts): a
 //     page can carry hundreds of chips, and exposing them would add hundreds of tab stops
 //     and read ".38" into the middle of every sentence. The toolbar menu's flagged list is
 //     the accessible route to the same verdicts, and it is keyboard-operable.
@@ -547,7 +547,7 @@ async function uiFixtures(open, site) {
   return page;
 }
 
-test("a chip's detail card pinned open, and Copy text leaves focus outside the aria-hidden chip", async ({ open, site, axe }) => {
+test("a chip's open detail card is accessible and a pointer copy preserves the page focus", async ({ open, site, axe }) => {
   const page = await uiFixtures(open, site);
   // A chip's detail card, pinned open (a tap pins what a hover shows).
   const cardHost = await page.evaluate(async (sel) => {
@@ -567,11 +567,9 @@ test("a chip's detail card pinned open, and Copy text leaves focus outside the a
   // shadow root, so a checked node whose target crosses into it is proof.
   const targets = scanned.checkedTargets ?? [];
   expect(targets.some((t) => t.includes(">>>")), `axe descends into the chip's open shadow root: ${targets.length} node targets, e.g. ${targets[0] ?? "—"}`).toBe(true);
-  // Unfocusable includes the pointer: focus inside the aria-hidden host is what Chrome
-  // reports as "Blocked aria-hidden on an element because its descendant retained focus".
   await page.locator(`${cardHost} .act.copy`).click();
   const focused = await page.evaluate((sel) => document.querySelector(sel).shadowRoot.activeElement?.className ?? null, cardHost);
-  expect(focused, "chip card: clicking Copy text leaves focus outside the aria-hidden chip").toBeNull();
+  expect(focused, "clicking Copy text leaves the page focus in place").toBeNull();
 });
 
 // The selection card, triggered exactly as the context menu triggers it.

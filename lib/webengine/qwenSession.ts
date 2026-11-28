@@ -60,7 +60,7 @@ export class QwenSession {
           ? { name: "webgpu", forceCpuNodeNames: graphs.linear_attention.scanNodes }
           : { name: "webgpu" };
         result.layers.push(await ort.InferenceSession.create(bytes, {externalData, executionProviders: gpu ? [gpuProvider] : ["wasm"],
-          graphOptimizationLevel: "all", enableCpuMemArena: false, extra: {session: {disable_prepacking: "1"}}}));
+          graphOptimizationLevel: "all", logSeverityLevel: 3, enableCpuMemArena: false, extra: {session: {disable_prepacking: "1"}}}));
       }
       return result;
     } catch (error) {

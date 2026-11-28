@@ -1,5 +1,6 @@
 // Authorization follows browser-provided sender identity and a live document port.
 import { browser } from "#imports";
+import { onPortDisconnect } from "../messaging/port";
 import * as v from "valibot";
 import { ACTIONS } from "../messaging/protocol";
 import { callerRole, pageAddress, SESSION_HANDSHAKE_MS, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
@@ -62,7 +63,7 @@ export function createDocumentAuthority() {
         if (!sender || !["content","reader","paste"].includes(role ?? "") || (role !== "paste" && (!Number.isInteger(sender.tab?.id) || !Number.isInteger(sender.frameId)))) {port.disconnect();return;}
         let record:Live | undefined;
         const timer=setTimeout(()=>{if(!record)port.disconnect();},SESSION_HANDSHAKE_MS);
-        port.onDisconnect.addListener(()=>{clearTimeout(timer);if(record)retire(record);});
+        onPortDisconnect(port, ()=>{clearTimeout(timer);if(record)retire(record);});
         port.onMessage.addListener((value) => {
           if (record) { onPortMessage?.(record, sender, value); return; }
           const parsed=v.safeParse(v.strictObject({session:SessionSchema}),value);

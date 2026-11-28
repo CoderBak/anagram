@@ -1,4 +1,5 @@
 import { browser } from "#imports";
+import { onPortDisconnect } from "../messaging/port";
 import { safePdfSource, samePdfSource, looksLikePdfUrl } from "./source";
 import { hasPdfSourceAccess } from "./sourceAccess";
 import type { ClaimedPdf, HandoffFailure } from "./handoff";
@@ -114,7 +115,7 @@ export function createSourceBroker(readerUrl: (source: string) => string) {
             (claim ? sender.frameId !== 0 : !sender.frameId || sender.frameId < 1)) { disconnect(port); return; }
         let used = false;
         const idle = setTimeout(() => disconnect(port), 5000);
-        port.onDisconnect.addListener(() => clearTimeout(idle));
+        onPortDisconnect(port, () => clearTimeout(idle));
         port.onMessage.addListener((message) => {
           if (used) { disconnect(port); return; }
           used = true; clearTimeout(idle);
@@ -126,7 +127,7 @@ export function createSourceBroker(readerUrl: (source: string) => string) {
               const entry = held.get(key);
               if (!SOURCE_TICKET.test(key) || !entry || entry.claiming || entry.owner || entry.tabId !== sender.tab!.id || entry.reader !== sender.url || (entry.documentId && sender.documentId && entry.documentId !== sender.documentId)) { disconnect(port); return; }
               entry.claiming = true; entry.owner = port; entry.navigating = false; entry.documentId ??= sender.documentId;
-              port.onDisconnect.addListener(() => drop(key));
+              onPortDisconnect(port, () => drop(key));
               if (!await currentReader(entry) || !await hasPdfSourceAccess(entry.source) || held.get(key) !== entry) { drop(key); return; }
               entry.loaderTicket = ticket(); entry.proof = ticket();
               if (!post(port, {load: entry.loaderTicket, proof: entry.proof})) drop(key);
@@ -136,7 +137,7 @@ export function createSourceBroker(readerUrl: (source: string) => string) {
               const [sourceKey, entry] = found;
               if (!entry.owner || entry.loader || typeof message.proof !== "string" || message.proof !== entry.proof || entry.tabId !== sender.tab!.id || sender.url !== `${browser.runtime.getURL(LOADER_PAGE)}?ticket=${key}`) { disconnect(port); return; }
               entry.loader = port;
-              port.onDisconnect.addListener(() => drop(sourceKey));
+              onPortDisconnect(port, () => drop(sourceKey));
               const frame = await browser.webNavigation.getFrame({tabId: entry.tabId, frameId: sender.frameId!}).catch(() => null);
               const documentId = (frame as {documentId?: string} | null)?.documentId;
               if ((frame && (frame.parentFrameId !== 0 || frame.url !== sender.url)) ||
@@ -214,7 +215,7 @@ export async function claimSourceBytes(key: string, signal?: AbortSignal): Promi
       const bytes = new Uint8Array(buffer); finish(hasPdfMagic(bytes) ? {bytes, ...named} : {failure: "type"});
     };
     signal?.addEventListener("abort", abort, {once: true}); window.addEventListener("message", receive);
-    port.onDisconnect.addListener(abort);
+    onPortDisconnect(port, abort);
     port.onMessage.addListener((value) => {
       if (done || iframe || !value || Object.keys(value).length !== 2 || typeof value.load !== "string" || !LOADER_TICKET.test(value.load) || typeof value.proof !== "string" || !LOADER_TICKET.test(value.proof)) { abort(); return; }
       loaderTicket = value.load; parentProof = value.proof;

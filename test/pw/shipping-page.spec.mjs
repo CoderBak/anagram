@@ -10,6 +10,50 @@ import { PAGE, PARA } from "./kit.mjs";
 
 test.use({ build: shippingWithSites() });
 
+test.describe("Chrome's back/forward cache", () => {
+  test.use({ launch: { ignoreDefaultArgs: ["--disable-back-forward-cache"] }, tracing: false });
+
+  test("a cached page gets a fresh document port without an unchecked disconnect error", async ({ page, pages, extension }) => {
+    const first = pages.url("/first.html");
+    pages.serve({
+      "/first.html": `<a href="/next.html">Next</a><script>addEventListener("pageshow", e => document.body.dataset.persisted = e.persisted)</script>`,
+      "/next.html": "<p>Next page</p>",
+    });
+    const settings = await extension.context.newPage();
+    await settings.goto("chrome://extensions");
+    await settings.evaluate(() => chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true }));
+    await settings.evaluate(id => chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, errorCollection: true }), extension.extId);
+
+    // Hold a real document port across pagehide so Chrome closes the worker's end itself.
+    const connect = () => extension.worker().evaluate(async url => {
+      const [tab] = await chrome.tabs.query({ url });
+      const [frame] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => new Promise(resolve => {
+          const port = chrome.runtime.connect({ name: "anagram-document" });
+          const session = crypto.randomUUID();
+          port.onDisconnect.addListener(() => { void chrome.runtime.lastError; resolve(false); });
+          port.onMessage.addListener(reply => resolve(reply.session === session));
+          port.postMessage({ session });
+        }),
+      });
+      return frame.result;
+    }, first);
+    await page.goto(first);
+    expect(await connect()).toBe(true);
+    await page.getByRole("link", { name: "Next" }).click();
+    await page.waitForURL(pages.url("/next.html"));
+    await page.goBack({ waitUntil: "commit" });
+    await expect(page.locator("body")).toHaveAttribute("data-persisted", "true");
+    expect(await connect()).toBe(true);
+    const errors = await settings.evaluate(async id => {
+      const info = await chrome.developerPrivate.getExtensionInfo(id);
+      return info.runtimeErrors.map(e => e.message).filter(message => /Unchecked runtime\.lastError.*back\/forward cache/i.test(message));
+    }, extension.extId);
+    expect(errors).toEqual([]);
+  });
+});
+
 test("as shipped, a page sees that chips are there and nothing of what they say", async ({ page, pages }) => {
   pages.serve({ "/shipped.html": PAGE("shipped", ["SHIPPEDONE", "SHIPPEDTWO", "SHIPPEDTHREE"].map((tag) => `<p>${PARA(tag)}</p>`).join("\n")) });
   await page.goto(pages.url("/shipped.html"), { waitUntil: "load" });
@@ -72,31 +116,38 @@ test.describe("Sentence-level detector", () => {
   test("Sentence labels opens and closes inside a pinned shipping chip", async ({ page, pages, extension }) => {
     pages.serve({ "/mixed.html": PAGE("Mixed verdict", `<p>${PARA("MIXED")} ${PARA("SECOND")}</p>`) });
     await page.goto(pages.url("/mixed.html"));
-    const readCard = (toggle = false) => extension.worker().evaluate(async ({url, toggle}) => {
+    const readCard = () => extension.worker().evaluate(async (url) => {
       const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
       const [frame] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        args: [toggle],
-        func: toggle => {
+        func: () => {
           const host = document.querySelector('[data-anagram="host"]');
           const root = host && chrome.dom.openOrClosedShadowRoot(host);
           const details = root?.querySelector(".sentence-labels");
           if (!details) return null;
-          // The card repositions when it expands. Activate the summary at its current element.
-          if (toggle) details.querySelector("summary").click();
+          const summary = details.querySelector("summary");
+          const rect = summary.getBoundingClientRect();
           const classes = [...root.querySelectorAll(".drow .dk")].map(label => label.textContent);
-          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open, classes };
+          return { mode: root.mode, pinned: !!root.querySelector(".card.open"), open: details.open, classes,
+            inert: root.querySelector(".card").inert, hiddenAncestor: !!host.closest('[aria-hidden="true"]'),
+            x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, focused: root.activeElement?.localName };
         },
       });
       return frame.result;
-    }, {url: page.url(), toggle});
+    }, page.url());
     await expect.poll(() => readCard(), {timeout: 20_000}).toMatchObject({
-      mode: "closed", open: false, classes: ["Human", "AI-assisted", "AI-generated"],
+      mode: "closed", open: false, inert: true, classes: ["Human", "AI-assisted", "AI-generated"],
     });
     await page.locator('[data-anagram="host"]').click();
-    await expect.poll(() => readCard()).toMatchObject({ pinned: true });
-    for (const open of [true, false]) {
-      expect(await readCard(true)).toMatchObject({ pinned: true, open });
-    }
+    await expect.poll(readCard).toMatchObject({ pinned: true, inert: false, hiddenAncestor: false });
+    const {x, y} = await readCard();
+    await page.mouse.click(x, y);
+    await expect.poll(readCard).toMatchObject({ pinned: true, open: true, focused: "summary" });
+    await page.keyboard.press("Space");
+    await expect.poll(readCard).toMatchObject({ pinned: true, open: false, focused: "summary" });
+    await page.keyboard.press("Tab");
+    await expect.poll(readCard).toMatchObject({ focused: "button" });
+    await page.keyboard.press("Escape");
+    await expect.poll(readCard).toMatchObject({ pinned: false, inert: true });
   });
 });

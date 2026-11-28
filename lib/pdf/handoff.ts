@@ -1,5 +1,6 @@
 // Chromium reads its current PDF tab; Firefox and local files use a private, ticketed loader.
 import { browser } from "#imports";
+import { onPortDisconnect } from "../messaging/port";
 import * as v from "valibot";
 import { SOURCE_CAP, claimSourceBytes, createSourceBroker, hasPdfMagic, type PdfOpenResult, type PdfReopenResult } from "./sourceTransfer";
 import { PDF_TAB_SCRIPTS_RUN } from "../surface";
@@ -163,7 +164,7 @@ export function serveTabPdfBytes(): void {
     if(port.sender?.id !== browser.runtime.id){port.disconnect();return;}
     const stopped=new AbortController();
     let started=false,seq=0,ack:((ok:boolean)=>void)|undefined;
-    port.onDisconnect.addListener(()=>{stopped.abort();ack?.(false);});
+    onPortDisconnect(port, ()=>{stopped.abort();ack?.(false);});
     const post=(message:unknown) => {try{port.postMessage(message);return true;}catch{stopped.abort();return false;}};
     port.onMessage.addListener((message) => {
       if(started) {
@@ -268,7 +269,7 @@ export async function readPdfFromTab(tabId:number,src:string,opts:{cap?:number;t
       if(done.success){finish(done.output.bytes===bytes && bytes>0 ? {ok:true,chunks,bytes,...(done.output.name ? {name:done.output.name} : {})} : {ok:false,failure:"read"});return;}
       const failure=v.safeParse(FailureSchema,value);finish({ok:false,failure:failure.success ? failure.output.failure : "read"});
     });
-    port.onDisconnect.addListener(abort);
+    onPortDisconnect(port, abort);
     try{port.postMessage({want:src,cap});}catch{abort();}
   });
 }
@@ -322,7 +323,7 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
         const endTransfer=budget.start();if(!endTransfer){port.disconnect();return;}
         const finish=()=>{if(finished)return;finished=true;clearTimeout(timer);if(claimedKey){tickets.delete(claimedKey);store.take(claimedKey,tabId)?.release();}entry?.release();endTransfer();try{port.disconnect();}catch{}};
         const timer=setTimeout(finish,CLAIM_TIMEOUT_MS);
-        port.onDisconnect.addListener(finish);
+        onPortDisconnect(port, finish);
         port.onMessage.addListener((value)=>{
           if(finished)return;
           if(checking){finish();return;}
@@ -411,7 +412,7 @@ export async function claimPdfBytes(ticket:string,signal?:AbortSignal):Promise<C
     const finish=(result:ClaimedPdf)=>{if(settled)return;settled=true;clearTimeout(timer);signal?.removeEventListener("abort",abort);try{port.disconnect();}catch{}resolve(result);};
     const timer=setTimeout(abort,CLAIM_TIMEOUT_MS);signal?.addEventListener("abort",abort,{once:true});
     const post=(value:unknown)=>{try{port.postMessage(value);}catch{abort();}};
-    port.onDisconnect.addListener(abort);
+    onPortDisconnect(port, abort);
     port.onMessage.addListener((value)=>{
       if(settled)return;
       if(!out){const header=v.safeParse(v.strictObject({bytes:v.pipe(v.number(),v.integer(),v.minValue(1),v.maxValue(MAX_HANDOFF_BYTES)),name:NameSchema}),value);
