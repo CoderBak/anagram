@@ -156,13 +156,13 @@ describe("t()", () => {
 
   it("answers in English when there is no extension API", () => {
     withoutExtension();
-    expect(t("panelTitle")).toBe("Flagged paragraphs");
+    expect(t("panelTitle")).toBe("Flagged passages");
     expect(messageLocale()).toBe("en");
   });
 
   it("substitutes $1…$9 itself in that fallback", () => {
     withoutExtension();
-    expect(t("panelTitleCount", 6, 79)).toBe("Flagged paragraphs (6/79)");
+    expect(t("panelTitleCount", 6, 79)).toBe("Flagged passages (6/79)");
     expect(t("cardOfCount", 2, 5)).toBe("2 of 5");
     expect(t("panelItemAria", "AI-generated", "0.96", "Delving into…")).toBe(
       "AI-generated, 0.96: Delving into…",
@@ -171,9 +171,9 @@ describe("t()", () => {
 
   it("picks the singular only for one", () => {
     withoutExtension();
-    expect(tn("popupAnalyzed", 1)).toBe("1 paragraph analyzed");
-    expect(tn("popupAnalyzed", 2)).toBe("2 paragraphs analyzed");
-    expect(tn("popupAnalyzed", 0)).toBe("0 paragraphs analyzed");
+    expect(tn("popupAnalyzed", 1)).toBe("1 passage analyzed");
+    expect(tn("popupAnalyzed", 2)).toBe("2 passages analyzed");
+    expect(tn("popupAnalyzed", 0)).toBe("0 passages analyzed");
   });
 
   it("prefers the platform's answer, and falls back when it has none", () => {
@@ -218,9 +218,9 @@ describe("t()", () => {
       throw new Error("Extension context invalidated.");
     };
     Object.assign(host, { browser: undefined, chrome: { i18n: { getMessage: gone } } });
-    expect(t("panelTitle")).toBe("Flagged paragraphs");
+    expect(t("panelTitle")).toBe("Flagged passages");
     expect(t("bandHeavy")).toBe("Heavily edited");
-    expect(tn("popupAnalyzed", 3)).toBe("3 paragraphs analyzed");
+    expect(tn("popupAnalyzed", 3)).toBe("3 passages analyzed");
     Object.assign(host, { browser: undefined, chrome: { i18n: { getMessage: () => "" } } });
     expect(t("cardScored")).toBe(EN.cardScored!.message);
     expect(messageLocale()).toBe("en");

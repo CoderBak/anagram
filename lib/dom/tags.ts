@@ -71,7 +71,8 @@ const PROSE_CONTENT_SELECTOR = "p,li,blockquote,pre,dd,table,article,section,fig
  * walked like the container it really is, and the real headings inside it are still
  * barriers.
  */
-export function isHeadingLabel(el: Element): boolean {
+export function isHeadingLabel(el: Element, declared = false): boolean {
+  if (declared) return el.querySelector(PROSE_CONTENT_SELECTOR) === null;
   const text = (el.textContent ?? "").trim();
   if (text.length > HEADING_SAMPLE_CHARS) return false;
   if (countWords(text) > MAX_HEADING_WORDS) return false;

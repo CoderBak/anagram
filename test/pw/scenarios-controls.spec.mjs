@@ -261,7 +261,7 @@ test("the popup on a page being read offers Rescan next to the result and omits 
   await expect(popup.locator("#siteRuleNote")).toBeHidden();
   await expect(popup.locator("body")).not.toContainText("localhost", { useInnerText: true });
   const seen = await popupSays(popup);
-  expect.soft(seen.status, `${ONE_ACTION} (running)`).toMatch(/paragraphs analyzed/);
+  expect.soft(seen.status, `${ONE_ACTION} (running)`).toMatch(/passages analyzed/);
   expect.soft(seen.filled, `${ONE_ACTION} (running)`).toBeLessThanOrEqual(1);
   const rescan = popup.locator("#action");
   await rescan.focus();

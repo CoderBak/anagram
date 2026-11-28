@@ -75,6 +75,11 @@ The detector was inspired by Pangram 4. Its reading card shows sentence-level au
 The initial release reads English passages of at least 50 words and reports the shares labeled human,
 AI-assisted and AI-generated.
 
+On web pages and in Google Docs, Anagram reads neighboring short paragraphs together when
+they share a section and fit the selected detector's token window. Headings, quotations and
+nested lists separate passages. The original paragraphs stay visible, and highlights show
+where the detector placed each sentence.
+
 To publish another checkpoint, use a dated branch or tag such as `2026-11-28-400m-ettin_research` or
 `2026-11-28-0.8b-qwen3.5_research`. Keep the matching release’s `anagram-detector/1` file layout,
 tokenizer, three heads and CRF. Both engines read the original safetensors directly. They support the

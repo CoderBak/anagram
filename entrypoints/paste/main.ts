@@ -6,15 +6,18 @@ import { localizePage } from "../../lib/ui/localize";
 import { followSystemTheme } from "../../lib/ui/theme";
 import { t, tn } from "../../lib/i18n";
 import { CONTRACT_VERSION, modelDim, type ModelInfo, type ScoreResult } from "../../lib/contract";
-import { countWords, MAX_UNIT_TEXT_CHARS, MIN_WORDS } from "../../lib/dom/text";
+import { detectorWordCount } from "../../lib/webengine/detectorScore";
+import { countWords, detectorText, MAX_UNIT_TEXT_CHARS, MIN_WORDS } from "../../lib/dom/text";
 import { settings } from "../../lib/settings/settings";
 import { shortTextNote } from "../../lib/render/coverage";
 import { hasLookalikes } from "../../lib/dom/lookalikes";
 import { readParagraphs } from "../../lib/capture/readParagraphs";
 import { meanVerdict, unitVerdict, type UnitVerdict } from "../../lib/capture/windows";
+import { groupPassages } from "../../lib/plan/passages";
+import { ACTIONS, type BackendStatus } from "../../lib/messaging/protocol";
 import { groupBlocks } from "../../lib/plan/group";
 import { requestScores, requestTokenCounts } from "../../lib/messaging/client";
-import { cancelDocumentSession } from "../../lib/access/session";
+import { cancelDocumentSession, sendDocumentMessage } from "../../lib/access/session";
 import { resultBands, resultLevel, band, bandLabel, BUCKET_BANDS, flagFromOf, isFlaggedBand, isNoVerdict, type FlagFrom } from "../../lib/render/band";
 import { formatScore } from "../../lib/render/score";
 import { adoptBandColorRules } from "../../lib/render/scale";
@@ -37,6 +40,9 @@ const scoreToggle = document.getElementById("scoreToggle") as HTMLButtonElement;
 const scoreDetails = document.getElementById("scoreDetails")!;
 bindDisclosure(scoreToggle, scoreDetails);
 let generation = 0;
+let minimumWords = MIN_WORDS;
+let sentenceDetector = true;
+const readStatus = async () => await sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS }) as BackendStatus | undefined;
 
 /** A paragraph of the text: blank lines part them, as in CommonMark; a single line break is a
  *  line wrapped inside one (a text pasted from an e-mail or a PDF). */
@@ -63,10 +69,10 @@ function clearResult(): void {
 }
 function countShown(): void {
   clear.hidden = input.value.length === 0 && !status.textContent;
-  const n = countWords(input.value);
-  analyze.disabled = n < MIN_WORDS;
-  wordCount.textContent = n === 0 ? t("pasteMinimum", MIN_WORDS)
-    : n < MIN_WORDS ? t("pasteProgress", n, MIN_WORDS) : tn("pasteWords", n);
+  const n = sentenceDetector ? detectorWordCount(input.value) : countWords(input.value);
+  analyze.disabled = n < minimumWords;
+  wordCount.textContent = n === 0 ? t("pasteMinimum", minimumWords)
+    : n < minimumWords ? t("pasteProgress", n, minimumWords) : tn("pasteWords", n);
 }
 function readout(r: ScoreResult): string {
   const label = bandLabel(band(r));
@@ -117,20 +123,33 @@ analyze.addEventListener("click", async () => {
   const text = input.value.trim();
   const seq = ++generation; clearResult();
   if (text.length > MAX_UNIT_TEXT_CHARS) { status.textContent = t("pasteTooLarge"); return; }
-  const words = countWords(text);
-  const floor = MIN_WORDS;
-  if (words < floor) { status.textContent = t("pasteShort", floor); return; }
   analyze.disabled = true; status.textContent = t("pasteBusy");
-  // The paragraphs are read as a page's are: each that clears the minimum length by itself,
-  // short ones of one stretch together, a short one left over with the paragraph beside it
-  // (lib/plan/group.ts) — the same units, so the same verdicts, as the page would give.
   const paragraphs = paragraphsOf(text);
-  const groups = groupBlocks(paragraphs.map((p) => ({ words: p.words, chars: p.text.length })), floor);
-  const grouped = new Set(groups.flat());
-  const units = groups.map((group, k) => ({ id: `p${k}`, text: group.map((i) => paragraphs[i]!.text).join("\n\n"), order: k }));
   let producing: ModelInfo | null = null;
   let uncounted = false;
   try {
+    const backendStatus = await readStatus();
+    if (seq !== generation) return;
+    const model = backendStatus?.model;
+    const floor = backendStatus?.server?.minWords ?? MIN_WORDS;
+    minimumWords = floor;
+    sentenceDetector = !model || model.id === "none" || model.calibration === "anagram-detector/1";
+    const words = sentenceDetector ? detectorWordCount(text, floor) : countWords(text);
+    if (words < floor) { status.textContent = t("pasteShort", floor); return; }
+    const blocks = sentenceDetector ? paragraphs.map(p => {
+      const text = detectorText(p.text);
+      return { text, sourceChars: p.text.length, words: detectorWordCount(text, floor) };
+    }) : paragraphs;
+    const plan = sentenceDetector
+      ? await groupPassages(blocks, floor, async texts => {
+          if (seq !== generation) throw new Error("cancelled");
+          return (await requestTokenCounts(texts, model?.id === "none" ? undefined : model ?? undefined)).counts;
+        })
+      : groupBlocks(paragraphs.map(p => ({ words: p.words, chars: p.text.length })), floor);
+    if (!plan) throw new Error("unavailable");
+    const groups = plan.filter(group => group.reduce((n, i) => n + blocks[i]!.words, 0) >= floor);
+    const grouped = new Set(groups.flat());
+    const units = groups.map((group, k) => ({ id: `p${k}`, text: group.map(i => paragraphs[i]!.text).join("\n\n"), order: k }));
     const windows = await readParagraphs(units, async (blocks) => {
       const out = new Map<string, ScoreResult>();
       for (let offset = 0; offset < blocks.length; offset += 4) {
@@ -139,6 +158,7 @@ analyze.addEventListener("click", async () => {
         if (seq !== generation || response.backend !== "up" || !response.model) throw new Error("unavailable");
         const model = response.model;
         if (producing && modelDim(model) !== modelDim(producing)) throw new Error("model_changed");
+        if (backendStatus?.model?.calibration === "anagram-detector/1" && modelDim(model) !== modelDim(backendStatus.model)) throw new Error("model_changed");
         producing = model;
         for (const result of response.results) out.set(result.id, result);
       }
@@ -178,7 +198,7 @@ analyze.addEventListener("click", async () => {
     status.textContent = "";
     if (document.activeElement === document.body || document.activeElement === analyze) document.getElementById("summary")!.focus({ preventScroll: true });
   } catch { if (seq === generation) status.textContent = t("pasteFailed"); }
-  finally { if (seq === generation) analyze.disabled = false; }
+  finally { if (seq === generation) countShown(); }
 });
 
 /** How much of the text was read: the paragraphs with a verdict of all of them, and why the
@@ -359,4 +379,11 @@ document.getElementById("copy")!.addEventListener("click", async () => {
     if (report === currentReport) copyStatus.textContent = t("reportCopyFailed");
   }
 });
+void readStatus().then(s => {
+  if (generation === 0 && s?.model) {
+    sentenceDetector = s.model.calibration === "anagram-detector/1";
+    minimumWords = s.server?.minWords ?? MIN_WORDS;
+    countShown();
+  }
+}, () => undefined);
 countShown();

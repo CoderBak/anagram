@@ -12,10 +12,10 @@
     "message": "打开工具栏中的 Anagram"
   },
   "cmdNextFlagged": {
-    "message": "跳到下一个存疑段落"
+    "message": "跳到下一个存疑片段"
   },
   "cmdPrevFlagged": {
-    "message": "跳到上一个存疑段落"
+    "message": "跳到上一个存疑片段"
   },
   "menuAnalyzeSelection": {
     "message": "用 Anagram 分析所选文本"
@@ -168,10 +168,10 @@
     "message": "允许 Anagram 读取来自 $1 的评论"
   },
   "panelTitle": {
-    "message": "存疑段落"
+    "message": "存疑片段"
   },
   "panelTitleCount": {
-    "message": "存疑段落（$1/$2）"
+    "message": "存疑片段（$1/$2）"
   },
   "panelCopyReport": {
     "message": "复制报告"
@@ -769,10 +769,10 @@
     "message": "$1 段存疑"
   },
   "popupAnalyzed_one": {
-    "message": "已分析 $1 段"
+    "message": "已分析 $1 个片段"
   },
   "popupAnalyzed_other": {
-    "message": "已分析 $1 段"
+    "message": "已分析 $1 个片段"
   },
   "popupNotEnglish": {
     "message": "$1 段非英文"
@@ -1042,7 +1042,7 @@
     "message": "仅 AI 生成"
   },
   "optUnderlineFlagged": {
-    "message": "存疑段落"
+    "message": "存疑片段"
   },
   "pasteOneRead": {
     "message": "已分析一个段落"
@@ -1375,7 +1375,7 @@
     "message": "Anagram 的使用"
   },
   "statsDimHint_ui": {
-    "message": "打开评分卡片、跳转到标记段落和使用工具栏菜单的记录。"
+    "message": "打开评分卡片、跳转到标记片段和使用工具栏菜单的记录。"
   },
   "statsDim_device": {
     "message": "设备"

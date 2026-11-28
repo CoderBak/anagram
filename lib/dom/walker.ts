@@ -91,6 +91,7 @@ import { WINDOW_CHARS } from "../capture/windows";
 // a DOM anywhere (lib/plan/group.ts, lib/pdf/units.ts). What stays here is what only a
 // walk can say: which runs stand beside each other, and in whose voice.
 import { clearsFloor, fitsWindow, groupWords, modelSized, orphanHome } from "../plan/group";
+import { siblingParagraphs } from "./siblings";
 import { MARK_ATTR } from "../types";
 import type { LeftOut } from "../stats/model";
 
@@ -227,6 +228,8 @@ interface Found {
 }
 
 export interface CollectOptions {
+  /** Emit source paragraphs in reading order. Mark the start of each sibling sequence. */
+  passageStarts?: WeakSet<Unit>;
   /**
    * Ownership filter for incremental re-scans. "skip" → exactly these nodes are a part
    * of a live unit; "take" → process them (the orchestrator invalidates any stale owner
@@ -555,7 +558,7 @@ export function* collectUnitsInSlices(
     opts.scopesRead.add(el);
     return false;
   };
-  const asm = createAssembler(scopes, opts.minWords ?? MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText, opts.onLeftOut);
+  const asm = createAssembler(scopes, opts.minWords ?? MIN_WORDS, startEl, read, (nodes) => opts.claimFilter?.(nodes) !== "skip", opts.onShortText, opts.onLeftOut, opts.passageStarts);
   /** The words of an element the walk does not go into, for the reading log. */
   const leftOutWhole = (el: Element, why: LeftOutReason): void => {
     if (!opts.onLeftOut) return;
@@ -827,9 +830,14 @@ export function* collectUnitsInSlices(
   };
 
   function* visitChildren(el: Element, ctx: Ctx): Generator<void, void> {
+    // An empty quote or subsection still separates the text on its two sides.
+    // Keep that boundary even if CSS lays the element out as display:contents.
+    const separates = opts.passageStarts && el.matches("blockquote,section,article,aside,ul,ol,dl,figure,table,[role=region],[role=list],[role=blockquote],[data-author],[data-speaker]");
+    if (separates) { closeRun(); asm.barrier(el); }
     level++;
     for (const child of composedChildren(el, onShadowRoot)) yield* visit(child, ctx);
     level--;
+    if (separates) { closeRun(); asm.barrier(el); }
   }
 
   function* visit(node: Node, ctx: Ctx): Generator<void, void> {
@@ -861,6 +869,11 @@ export function* collectUnitsInSlices(
     // display:none takes NO space: the text around it reads as one sentence, so it
     // must never close the run (hidden template spans, lazy content, <script>…).
     if (flow === "hidden") return;
+    if (opts.passageStarts && isHeading(el) && isHeadingLabel(el, true)) {
+      closeRun();
+      asm.barrier(el);
+      return;
+    }
     // A post a re-scan has no business in (CollectOptions.changed): a block, as it would be.
     if (flow !== "inline" && flow !== "contents" && passesBy(el)) {
       closeRun();
@@ -1603,6 +1616,7 @@ function createAssembler(
   onShortText?: (nodes: Text[]) => void,
   /** Runs left out, for the reading log (CollectOptions.onLeftOut). */
   onLeftOut?: CollectOptions["onLeftOut"],
+  passageStarts?: WeakSet<Unit>,
 ): Assembler {
   const leftOut = (runs: readonly Run[], why: LeftOutReason): void => {
     const words = runs.reduce((n, r) => n + r.words, 0);
@@ -1610,7 +1624,7 @@ function createAssembler(
   };
   /** Emitted units with the walk index of their first run — scopes interleave, so
    *  units complete out of document order and are sorted once at the end. */
-  const emitted: { unit: Unit; at: number }[] = [];
+  const emitted: { unit: Unit; at: number; paragraph?: Run }[] = [];
   const stack: Frame[] = [];
   let runIndex = 0;
   const scopeOf = (el: Element): Element | null => scopes.of(el);
@@ -1636,7 +1650,9 @@ function createAssembler(
     return sameScript(a, b) && together(f, a.container, b.container);
   }
 
-  function emit(runs: Run[]): void {
+  let previousParagraph: Run | null = null;
+
+  function emit(runs: Run[]): Unit {
     const parts: UnitPart[] = runs.map((r) => ({ nodes: r.nodes, container: r.container, preserved: r.preserved, ...(r.skips.length > 0 ? { skips: r.skips } : {}) }));
     const { text, wordCount } = unitTextOf(runs.map((r) => r.text), () => groupWords(runs));
     const unit: Unit = {
@@ -1650,7 +1666,8 @@ function createAssembler(
       container: runs[runs.length - 1]!.container,
       isScored: false,
     };
-    emitted.push({ unit, at: runs[0]!.index });
+    emitted.push({ unit, at: runs[0]!.index, paragraph: passageStarts ? runs[0] : undefined });
+    return unit;
   }
 
   /**
@@ -1854,6 +1871,7 @@ function createAssembler(
    * ends.
    */
   function barrier(at?: Element): void {
+    previousParagraph = null;
     if (stack.length === 0) return;
     if (!at) {
       while (stack.length > 0) settle(stack.pop() as Frame);
@@ -2116,6 +2134,21 @@ function createAssembler(
       barrier(r.container);
       return;
     }
+    if (passageStarts) {
+      const explicit = r.container.matches("p,li,[role=paragraph],[role=listitem]");
+      if (r.truncated || (!explicit && r.words < minWords && shortRole(r.text) !== "prose")) {
+        if (r.truncated) leftOut([r], "teaser");
+        previousParagraph = null;
+        return;
+      }
+      const previous = previousParagraph;
+      const unit = emit([r]);
+      if (!previous || r.note || previous.note || previous.index + 1 !== index ||
+          scopeOf(previous.container) !== scopeOf(r.container) || !sameScript(previous, r) ||
+          !siblingParagraphs(previous.container, r.container)) passageStarts.add(unit);
+      previousParagraph = r;
+      return;
+    }
     if (r.words >= minWords) full(r);
     else short(r);
   }
@@ -2141,7 +2174,15 @@ function createAssembler(
     finish(): Unit[] {
       barrier();
       emitted.sort((a, b) => a.at - b.at);
-      return emitted.map(({ unit }) => {
+      let afterPreview = false;
+      const complete = !passageStarts ? emitted : emitted.filter(({ unit, paragraph }) => {
+        // A following "Show more" control can mark the previous run after it was emitted.
+        if (paragraph?.truncated) { afterPreview = true; leftOut([paragraph], "teaser"); return false; }
+        if (afterPreview) passageStarts?.add(unit);
+        afterPreview = false;
+        return true;
+      });
+      return complete.map(({ unit }) => {
         const seq = _unitSeq++;
         unit.id = `u_${seq.toString(36)}`;
         unit.order = seq;

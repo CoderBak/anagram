@@ -44,6 +44,31 @@ test.describe("Sentence-level detector", () => {
     } }],
   } });
 
+  test("sibling paragraphs share context and an inserted heading separates them on the next scan", async ({ page, pages, nativeHost }) => {
+    const a = "MIXED first paragraph describes the morning walk down to the river.", b = PARA("MIXED second");
+    pages.serve({ "/siblings.html": PAGE("Sibling context", `<article><div><p id="a">${a}</p></div><div id="wrap"><p id="b">${b}</p></div></article>`) });
+    await page.goto(pages.url("/siblings.html"));
+    await expect.poll(() => nativeHost.textsSince(), { timeout: 20_000 }).toContain(a + "\n\n" + b);
+    await expect(page.locator('article [data-anagram="host"]')).toHaveCount(1);
+    const mark = nativeHost.textMark();
+    await page.evaluate(() => {
+      const heading = document.createElement("h2");
+      heading.textContent = "Another author";
+      document.getElementById("wrap").before(heading);
+    });
+    await expect.poll(() => nativeHost.textsSince(mark), { timeout: 20_000 }).toContain(b);
+    expect(nativeHost.textsSince(mark)).not.toContain(a);
+    await expect(page.locator('article [data-anagram="host"]')).toHaveCount(1);
+    const secondMarked = () => page.evaluate(() => {
+      const second = document.getElementById("b");
+      return [...CSS.highlights.values()].some(marks => [...marks].some(r => second.contains(r.startContainer)));
+    });
+    await expect.poll(secondMarked).toBe(false);
+    // The previous mixed passage can come from cache when the heading is removed.
+    await page.locator("article h2").evaluate(h => h.remove());
+    await expect.poll(secondMarked, { timeout: 20_000 }).toBe(true);
+  });
+
   test("Sentence labels opens and closes inside a pinned shipping chip", async ({ page, pages, extension }) => {
     pages.serve({ "/mixed.html": PAGE("Mixed verdict", `<p>${PARA("MIXED")} ${PARA("SECOND")}</p>`) });
     await page.goto(pages.url("/mixed.html"));

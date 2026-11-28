@@ -100,6 +100,8 @@ export const WATCHED_ATTRS = ["class", "style", "hidden", "open", "aria-hidden",
 type Zone = "viewport" | "near" | "far";
 
 export function createObservers(opts: {
+  /** Removing a boundary may make surviving paragraphs eligible for shared context. */
+  tracksSiblings?(): boolean;
   onVisible(unit: Unit): void;
   onNear(unit: Unit): void;
   /** A unit reported near or on screen before is beyond the prefetch margin now. */
@@ -153,7 +155,7 @@ export function createObservers(opts: {
     // repairSplits tells the page's own writes from the walker's cuts by the old value.
     characterDataOldValue: true,
     attributes: true,
-    attributeFilter: WATCHED_ATTRS,
+    attributeFilter: [...WATCHED_ATTRS, "lang", "role", "dir", "data-author", "data-speaker", "itemscope", "itemprop", "typeof"],
   };
 
   function flushAttrPending(): void {
@@ -236,6 +238,8 @@ export function createObservers(opts: {
         rec.removedNodes.forEach((n) => {
           if (inSelfHost(n)) return;
           removed.add(n);
+          if (opts.tracksSiblings?.() && (n.nodeType === Node.ELEMENT_NODE || (n.nodeType === Node.TEXT_NODE && n.textContent?.trim())))
+            dirty.add(rec.previousSibling ?? rec.nextSibling ?? rec.target);
         });
       }
     }

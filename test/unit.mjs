@@ -87,6 +87,38 @@ const results = await page.evaluate(() => {
     return units.map((u) => ({ parts: u.parts.length, words: u.wordCount, text: u.text }));
   };
 
+  {
+    const p = (name, n = 12) => `<p data-name="${name}">${words(n)}</p>`;
+    const sections = html => {
+      sandbox.innerHTML = html;
+      const starts = new WeakSet();
+      const groups = [];
+      for (const unit of PW.collectUnits(sandbox, { passageStarts: starts })) {
+        if (starts.has(unit)) groups.push([]);
+        groups.at(-1).push(unit.container.getAttribute("data-name"));
+      }
+      return groups;
+    };
+    for (const [name, html, expected] of [
+      ["adjacent medium paragraphs", p("a",60)+p("b",70)+p("c",55), [["a","b","c"]]],
+      ["layout wrappers", `<div>${p("a")}</div><div><div>${p("b")}</div></div>`, [["a","b"]]],
+      ["empty quote inside a block", `<div data-name="outer">${words(60)}<blockquote></blockquote>${words(55)}</div>`, [["outer"],["outer"]]],
+      ["nested section", p("a")+`<section>${p("b")}${p("c")}</section>`+p("d"), [["a"],["b","c"],["d"]]],
+      ["quotation", p("a")+`<blockquote>${p("quote")}</blockquote>`+p("b"), [["a"],["quote"],["b"]]],
+      ["heading", p("a")+"<h2>A new section</h2>"+p("b"), [["a"],["b"]]],
+      ["inline ARIA heading", p("a")+'<span role="heading">New topic</span>'+p("b"), [["a"],["b"]]],
+      ["long declared heading", p("a")+`<h2>${words(55)}</h2>`+p("b"), [["a"],["b"]]],
+      ["cut preview with a separate control", p("a")+`<p data-name="preview">${words(60)}…</p><div><button>See more</button></div>`+p("b"), [["a"],["b"]]],
+      ["two authors", `<div data-author="A">${p("a")}</div><div data-author="B">${p("b")}</div>`, [["a"],["b"]]],
+      ["paragraphs in sibling items", `<ul><li>${p("a")}</li><li>${p("b")}</li></ul>`, [["a","b"]]],
+      ["nested list", `<ul><li data-name="a">${words(15)}<ul><li data-name="b">${words(14)}</li><li data-name="c">${words(16)}</li></ul></li><li data-name="d">${words(17)}</li></ul>`, [["a"],["b","c"],["d"]]],
+      ["declared languages", p("a").replace("<p ", '<p lang="en" ')+p("b").replace("<p ", '<p lang="fr" '), [["a"],["b"]]],
+    ]) {
+      const actual = sections(`<article>${html}</article>`);
+      check("detector sibling context: "+name, JSON.stringify(actual)===JSON.stringify(expected), JSON.stringify(actual));
+    }
+  }
+
   // ---- walker: unit formation -------------------------------------------------------
   let u = collect(`<p>${words(80)}</p>`);
   check("long paragraph → one 1-part unit", u.length === 1 && u[0].parts === 1, JSON.stringify(u.map(x => [x.parts, x.words])));

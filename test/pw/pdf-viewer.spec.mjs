@@ -105,7 +105,7 @@ test("the structure worker's reading marks the page's own glyphs, and the toolba
   // The menu the reader's Anagram button opens reports the document; with both its pages drawn
   // it counts all of them and says nothing about scope.
   const menu = await popupOver(page);
-  await expect.poll(async () => (await menuReport(menu))?.title, { message: "the toolbar menu's report" }).toMatch(/^Flagged paragraphs|^Nothing flagged/);
+  await expect.poll(async () => (await menuReport(menu))?.title, { message: "the toolbar menu's report" }).toMatch(/^Flagged passages|^Nothing flagged/);
   expect((await menuReport(menu)).notes.join(" "), "no scope note over a document drawn whole").not.toMatch(/Read \d+ of \d+ pages/);
   await menu.close();
   await page.screenshot({ path: testInfo.outputPath("reading.png") });

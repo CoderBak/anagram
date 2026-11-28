@@ -263,7 +263,7 @@ keyboard("the toolbar menu lists the flagged paragraphs as buttons named with th
   const list = "the toolbar menu's flagged list: named buttons under a counting title, the count on the badge, Enter on a row jumps";
   await expect.poll(() => badgeOf(extension, page), { message: `${list} (the toolbar badge)` }).toBe("4");
   const menu = await popupOver(page);
-  await expect.poll(() => menuReport(menu), { message: list }).toMatchObject({ title: "Flagged paragraphs (4/4)" });
+  await expect.poll(() => menuReport(menu), { message: list }).toMatchObject({ title: "Flagged passages (4/4)" });
   const shown = await menuReport(menu);
   expect.soft(shown.rows, list).toHaveLength(4);
   for (const row of shown.rows) expect.soft(row, `${list} (a row's name: verdict, score, text)`).toMatch(/^(Heavily edited|AI-generated), (0\.\d\d|1\.0): \S/);
@@ -274,7 +274,7 @@ keyboard("the toolbar menu lists the flagged paragraphs as buttons named with th
       buttons: [...(list?.querySelectorAll(".report-result") ?? [])].every((b) => b.tagName === "BUTTON" && b.tabIndex === 0),
     };
   });
-  expect.soft(named, `${list} (the list is named by its title, and every row is a button in the tab order)`).toEqual({ by: "Flagged paragraphs (4/4)", buttons: true });
+  expect.soft(named, `${list} (the list is named by its title, and every row is a button in the tab order)`).toEqual({ by: "Flagged passages (4/4)", buttons: true });
   const at = await flaggedAt(page);
   await menu.locator(".report-result").nth(1).focus();
   // The row takes the reader there and the menu closes itself, at times before the key is let
@@ -349,7 +349,7 @@ keyboard("the report's title says flagged out of read, with no coverage line on 
   const title = "the report's title says flagged out of read, with no coverage line on a page read whole, and no Copy report or Turn off button";
   const menu = await popupOver(page);
   // Four flagged, every paragraph of the page read: "(4/4)". Nothing on the page is short.
-  await expect.poll(() => menuReport(menu), { message: title }).toMatchObject({ title: "Flagged paragraphs (4/4)" });
+  await expect.poll(() => menuReport(menu), { message: title }).toMatchObject({ title: "Flagged passages (4/4)" });
   const summary = menu.locator("#pageReport summary");
   const legend = menu.locator("#pageReport .legend");
   await expect(legend).toBeHidden();
@@ -361,7 +361,7 @@ keyboard("the report's title says flagged out of read, with no coverage line on 
   expect.soft(shown.bands.reduce((a, n) => a + n, 0), `${title} (the four counts under the bar are what was read)`).toBe(4);
   expect.soft(await menu.locator("#pageReport").textContent(), title).not.toMatch(/Copy report|Turn off on/);
   await page.locator("#k4").evaluate((p) => p.remove());
-  await expect(menu.locator("#reportTitle")).toHaveText("Flagged paragraphs (3/3)");
+  await expect(menu.locator("#reportTitle")).toHaveText("Flagged passages (3/3)");
   await expect(legend).toBeVisible();
   await expect(summary).toBeFocused();
   await menu.keyboard.press("Space");
@@ -386,7 +386,7 @@ test("the report's coverage line: what was too short to score, and what was scor
   // Read: the 60-word and the 90-word paragraph. The 12-word one was not scored at all.
   await expect.poll(async () => (await menuReport(menu))?.bands.reduce((a, n) => a + n, 0), { message: cov }).toBe(2);
   const shown = await menuReport(menu);
-  expect.soft(shown.title, cov).toMatch(/^(Flagged paragraphs \(\d\/2\)|Nothing flagged on this page\.)$/);
+  expect.soft(shown.title, cov).toMatch(/^(Flagged passages \(\d\/2\)|Nothing flagged on this page\.)$/);
   const coverage = menu.locator("details .report-coverage");
   await expect(coverage).toBeHidden();
   await menu.locator("#pageReport summary").click();

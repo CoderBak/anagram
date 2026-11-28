@@ -150,7 +150,7 @@ test("a PDF in the reader: its paragraphs read as written, drawn with a text lay
   const menu = await popupOver(page);
   await expect(async () => {
     const shown = await menuReport(menu);
-    expect(shown?.title).toMatch(/^Flagged paragraphs \(\d+\/\d+\)$/);
+    expect(shown?.title).toMatch(/^Flagged passages \(\d+\/\d+\)$/);
     expect(shown.rows).toHaveLength(Number(shown.title.match(/\((\d+)\//)?.[1]));
     expect(shown.notes.join(" ")).not.toMatch(/Read \d+ of \d+ pages/);
   }, report).toPass({ timeout: 30_000 });

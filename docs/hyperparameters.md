@@ -86,9 +86,9 @@ The headline "share AI-generated" is the sum over paragraphs read and scored of 
 
 **What moves it, in order:**
 
-1. **The minimum length** (`MIN_WORDS`, 50, fixed since 2026-10-05; short paragraphs of one voice are always grouped). It chooses the population.
+1. **The minimum length** determines which passages enter the statistics. The current detector releases require 50 words. On HTML pages the extension can join short sibling paragraphs up to one tokenizer window. A paragraph that meets the minimum keeps its own result when its neighbor has enough text to score independently.
    - Text under the floor counts as "short" and leaves the denominator. That removes most short feed posts.
-   - Verdicts on 50–74 words enter the share, although that is under the model's 75-word training minimum. Only paragraph rows mark them (`verdict.doubt`).
+   - For historical EditLens readings, 50–74 words fell below its 75-word training minimum. Paragraph rows carried that warning (`verdict.doubt`).
    - A lens can raise the floor to 75, 100 or 150 afterwards, approximately. Nothing can lower it.
 2. **The estimand:** the expected share of the AI-generated band, weighted by words.
    - It equals the true prevalence only where the model's probabilities are calibrated for this reading.

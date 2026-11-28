@@ -16,11 +16,11 @@
     "description": "Keyboard shortcut (chrome://extensions/shortcuts): opens Anagram's toolbar menu."
   },
   "cmdNextFlagged": {
-    "message": "Go to the next flagged paragraph",
+    "message": "Go to the next flagged passage",
     "description": "Keyboard command, Alt+Shift+J."
   },
   "cmdPrevFlagged": {
-    "message": "Go to the previous flagged paragraph",
+    "message": "Go to the previous flagged passage",
     "description": "Keyboard command, Alt+Shift+K."
   },
   "menuAnalyzeSelection": {
@@ -224,12 +224,12 @@
     "description": "Accessible name of that button. $1 = the host name."
   },
   "panelTitle": {
-    "message": "Flagged paragraphs",
+    "message": "Flagged passages",
     "description": "Triage panel heading with nothing flagged."
   },
   "panelTitleCount": {
-    "message": "Flagged paragraphs ($1/$2)",
-    "description": "Triage panel heading. $1 = flagged count, $2 = paragraphs read (given a verdict)."
+    "message": "Flagged passages ($1/$2)",
+    "description": "Triage panel heading. $1 = flagged count, $2 = passages read (given a verdict)."
   },
   "panelCopyReport": {
     "message": "Copy report",
@@ -981,27 +981,27 @@
   },
   "popupFlaggedOnly": {
     "message": "Flagged only",
-    "description": "Settings option to show score labels only on flagged paragraphs."
+    "description": "Settings option to show score labels only on flagged passages."
   },
   "popupFlaggedCount": {
     "message": "$1 flagged",
-    "description": "Count of flagged paragraphs."
+    "description": "Count of flagged passages."
   },
   "popupAnalyzed_one": {
-    "message": "$1 paragraph analyzed",
-    "description": "Count of analyzed paragraphs (singular)."
+    "message": "$1 passage analyzed",
+    "description": "Count of analyzed passages (singular)."
   },
   "popupAnalyzed_other": {
-    "message": "$1 paragraphs analyzed",
-    "description": "Count of analyzed paragraphs (plural)."
+    "message": "$1 passages analyzed",
+    "description": "Count of analyzed passages (plural)."
   },
   "popupNotEnglish": {
     "message": "$1 not English",
-    "description": "Count of paragraphs skipped as non-English."
+    "description": "Count of passages skipped as non-English."
   },
   "popupUnavailable": {
     "message": "$1 unavailable",
-    "description": "Count of paragraphs the engine did not answer."
+    "description": "Count of passages the engine did not answer."
   },
   "popupOff": {
     "message": "Anagram is off for this page.",
@@ -1317,7 +1317,7 @@
   },
   "popupReportRange": {
     "message": "$1–$2 of $3",
-    "description": "Toolbar menu, flagged list paging: $1–$2 of $3 flagged paragraphs."
+    "description": "Toolbar menu, flagged list paging: $1–$2 of $3 flagged passages."
   },
   "popupResultsPrevious": {
     "message": "Previous",
@@ -1344,8 +1344,8 @@
     "description": "Settings, Flag: flag AI-generated paragraphs only."
   },
   "optUnderlineFlagged": {
-    "message": "Flagged paragraphs",
-    "description": "Settings, Underlines: underline the flagged paragraphs (the other choices are Every paragraph and Off)."
+    "message": "Flagged passages",
+    "description": "Settings, Underlines: underline the flagged passages (the other choices are Every paragraph and Off)."
   },
   "pasteOneRead": {
     "message": "One paragraph read",
@@ -1788,7 +1788,7 @@
     "description": "The field-by-field table of the statistics: the name of a kind of thing kept (ui)."
   },
   "statsDimHint_ui": {
-    "message": "Opening score cards, jumping to flagged paragraphs and using the toolbar menu.",
+    "message": "Opening score cards, jumping to flagged passages and using the toolbar menu.",
     "description": "The field-by-field table: what 'Use of Anagram' covers."
   },
   "statsDim_device": {

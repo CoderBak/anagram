@@ -23,7 +23,10 @@ import { CONTRACT_VERSION, PAGE_IN_FLIGHT, modelDim } from "../contract";
 import { collectUnitsInSlices, inPageOrder, type CollectOptions } from "../dom/walker";
 import { SLICE_MS, finishInSlices } from "../slices";
 import { restoreSplits } from "../dom/splits";
-import { partTextOf, isShortText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
+import { paragraphBox, siblingParagraphs } from "../dom/siblings";
+import { detectorWordCount } from "../webengine/detectorScore";
+import { groupPassages } from "../plan/passages";
+import { detectorText, MIN_WORDS, partTextOf, isShortText, MAX_UNIT_TEXT_CHARS } from "../dom/text";
 import { createObservers, PLACE_WAIT_MS, type Observers } from "./observers";
 import { createScheduler, type Scheduler } from "./scheduler";
 import { createScoreCache, type ScoreCache } from "./cache";
@@ -313,6 +316,10 @@ export function createOrchestrator(
   let lastBadgeSent = -1;
   /** Backend identity the L1 cache currently belongs to (from the last reply). */
   let l1Dim: string | null = null;
+  let captureModel: ModelInfo | null = null;
+  let minimumWords = MIN_WORDS;
+  let siblingContext = false;
+  let retryPlanning = false;
   let lastHref = location.href;
   /** A route change's refresh, waiting out the burst it arrived in. */
   let urlRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -697,7 +704,7 @@ export function createOrchestrator(
    * invalidate any stale owners (run grew/shrunk/split) and let the walker re-take.
    */
   function makeClaimFilter(rescanQueue?: Set<Element>, seen?: Set<string>) {
-    return (nodes: Text[]): "take" | "skip" => {
+    return (nodes: Text[], whole = false): "take" | "skip" => {
       const owners = new Set<Unit>();
       for (const n of nodes) {
         const u = nodeOwner.get(n);
@@ -707,11 +714,11 @@ export function createOrchestrator(
       if (owners.size === 1) {
         const u = owners.values().next().value as Unit;
         if (unitsById.has(u.id)) {
-          const part = u.parts.find((p) => p.nodes.includes(nodes[0]!));
+          const part = whole ? { nodes: u.parts.flatMap(p => p.nodes) } : u.parts.find((p) => p.nodes.includes(nodes[0]!));
           if (
             part &&
             part.nodes.length === nodes.length &&
-            part.nodes.every((n, i) => n === nodes[i])
+            part.nodes.every((n, i) => n === nodes[i]) && (!whole || currentTextOf(u) === u.text)
           ) {
             seen?.add(u.id);
             return "skip"; // unchanged — already rendered
@@ -741,7 +748,7 @@ export function createOrchestrator(
 
   /** One walk under `root`: shadow roots it descends into become observer targets. `meter`
    *  adds up the time the walk handed back to the page (finishInSlices). */
-  function collect(root: ParentNode, claimFilter: (nodes: Text[]) => "take" | "skip", changed?: readonly Node[], meter?: { waited: number }): Unit[] | Promise<Unit[]> {
+  async function collect(root: ParentNode, claimFilter: (nodes: Text[], whole?: boolean) => "take" | "skip", changed?: readonly Node[], meter?: { waited: number }): Promise<Unit[]> {
     const options: CollectOptions = {
       claimFilter,
       scopesRead,
@@ -754,9 +761,53 @@ export function createOrchestrator(
       // What the walk left out, for the reading log; only while it records.
       ...(reading.running() ? { onLeftOut: reading.leftOut } : {}),
     };
-    return opts.collect
-      ? opts.collect(root, claimFilter, options)
-      : finishInSlices(collectUnitsInSlices(root, options), SLICE_MS, meter);
+    if (opts.collect) return opts.collect(root, claimFilter, options);
+    const model = captureModel;
+    if (!siblingContext)
+      return finishInSlices(collectUnitsInSlices(root, options), SLICE_MS, meter);
+
+    // Plan from the source order, including live paragraphs. Claim only the final
+    // group, so an edit can change its context without duplicating its annotations.
+    if (pageHidden) { retryPlanning = true; return []; }
+    const generation = captureGeneration;
+    const floor = minimumWords;
+    const passageStarts = new WeakSet<Unit>();
+    const leaf = root instanceof Element && (root.closest("p,li") ??
+      (root.matches("div,span") && !root.querySelector("p,li,div,section,article") ? root : null));
+    const walkRoot = leaf ? paragraphBox(leaf).parentElement ?? root : root;
+    const atoms = await finishInSlices(collectUnitsInSlices(walkRoot, {
+      ...options, claimFilter: undefined, minWords: floor, passageStarts,
+    }), SLICE_MS, meter);
+    const blocks = atoms.map(u => {
+      const text = detectorText(u.text);
+      return { text, sourceChars: u.text.length, words: detectorWordCount(text, floor), breakBefore: passageStarts.has(u) };
+    });
+    const plan = await groupPassages(blocks, floor, async texts => {
+      if (generation !== captureGeneration || !started) return null;
+      if (pageHidden) { retryPlanning = true; return null; }
+      const reply = await requestTokenCounts(texts, model?.id === "none" ? undefined : model ?? undefined);
+      if (generation === captureGeneration) {
+        if (!reply.counts) retryPlanning = true;
+        backend.heard(reply.backend);
+      }
+      return reply.counts;
+    });
+    if (generation !== captureGeneration || !started) return [];
+    if (!plan && !pageHidden && !backend.down) void backend.check(false);
+    const fresh: Unit[] = [];
+    for (const indices of plan ?? atoms.map((_, i) => [i])) {
+      const members = indices.map(i => atoms[i]!);
+      const first = members[0]!, last = members[members.length - 1]!;
+      const parts = members.flatMap(u => u.parts);
+      const nodes = parts.flatMap(p => p.nodes);
+      if (!nodes.every(n => n.isConnected) || members.some(u => currentTextOf(u) !== u.text)) continue;
+      if (members.some((u, i) => i > 0 && !siblingParagraphs(members[i - 1]!.container, u.container))) continue;
+      if (claimFilter(nodes, true) === "skip") continue;
+      if (indices.reduce((n, i) => n + blocks[i]!.words, 0) < floor) { options.onShortText?.(nodes); continue; }
+      fresh.push({ ...first, parts, text: members.map(u => u.text).join("\n\n"), wordCount: members.reduce((n, u) => n + u.wordCount, 0),
+        formulas: members.reduce((n, u) => n + u.formulas, 0), container: last.container });
+    }
+    return fresh;
   }
 
   /** Register freshly collected units: claim their nodes, observe, index. */
@@ -1089,6 +1140,7 @@ export function createOrchestrator(
    *  where it was when it is shown again, as Firefox's full-page translation does. */
   function onVisibilityChange(): void {
     pageHidden = document.visibilityState === "hidden";
+    if (!pageHidden && retryPlanning && !backend.down) retryUnavailable();
     syncDispatch();
   }
 
@@ -1102,18 +1154,22 @@ export function createOrchestrator(
    */
   function adoptBackend(m: ModelInfo | null): void {
     if (!m) return;
+    const changedGrouping = siblingContext !== (m.calibration === "anagram-detector/1");
+    siblingContext = m.calibration === "anagram-detector/1";
+    captureModel = m;
     const dim = modelDim(m);
     if (dim === l1Dim) return;
     const previous = l1Dim;
     l1Dim = dim;
-    if (previous === null) return; // first answer in this frame — nothing to drop
+    if (previous === null && (!changedGrouping || opts.collect || (!unitsById.size && !shortTexts.size))) return; // first answer in this frame — nothing to drop
     log.log("backend changed", previous, "→", dim, "— dropping", cache.size(), "L1 entries");
     forgetCached();
-    if (started) rescan();
+    if (started) rescan(true);
   }
 
   /** Forget every degraded verdict and let the observers re-dispatch those units. */
   function retryUnavailable(): void {
+    if (retryPlanning) { retryPlanning = false; rescan(); return; }
     let n = 0;
     for (const [id, v] of [...verdictsById]) {
       if (!v.result.degraded) continue;
@@ -1265,6 +1321,7 @@ export function createOrchestrator(
   /** The engine scores on the processor (BackendStatus.server.device), as its status last said. */
   let onProcessor = false;
   function learnDevice(s: BackendStatus | undefined): void {
+    if (s?.model) minimumWords = s.server?.minWords ?? MIN_WORDS;
     const kind = deviceKind(s?.server?.device);
     if (kind) onProcessor = kind === "cpu";
     pace?.seed(s?.server?.device);
@@ -1289,6 +1346,7 @@ export function createOrchestrator(
   // The observers follow the reader both ways; the idle prefetch only ever enqueues, so it
   // never pulls down a unit the reader is looking at.
   const observers: Observers = createObservers({
+    tracksSiblings: () => siblingContext && !opts.collect,
     onVisible(unit) {
       scheduler.requeue(unit, "viewport");
     },
@@ -1519,15 +1577,21 @@ export function createOrchestrator(
    */
   async function boot(seq: number): Promise<void> {
     // Where the engine scores decides how much a request carries; the settings don't wait for it.
-    void sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS })
-      .then((s) => { if (seq === bootSeq) learnDevice(s as BackendStatus | undefined); }, () => undefined);
+    const statusRead = sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS })
+      .then(s => s as BackendStatus | undefined, () => undefined);
     // The statistics setting too, read beside the rest: the first walk then reports what it
     // leaves out and leaves short to a reading log that is already listening.
     const statsRead = Promise.resolve().then(() => settings.statsConfig.getValue()).catch(() => undefined);
-    const [snapshot, statsValue] = await Promise.all([readSettings(), statsRead]);
+    const [snapshot, statsValue, status] = await Promise.all([readSettings(), statsRead, statusRead]);
     applySnapshot(snapshot);
     if (seq !== bootSeq || !started) return; // stopped or restarted while we waited
 
+    minimumWords = MIN_WORDS;
+    learnDevice(status);
+    captureModel = status?.model ?? null;
+    siblingContext = captureModel?.calibration === "anagram-detector/1" ||
+      (!captureModel && (status?.active === "idle" || status?.active === "loading"));
+    retryPlanning = false;
     watchSettings();
     observers.start();
     booted = true;
@@ -1733,7 +1797,7 @@ export function createOrchestrator(
     log.log("stopped");
   }
 
-  function rescan(): void {
+  function rescan(learnModel = false): void {
     if (!started) {
       start();
       return;
@@ -1754,6 +1818,11 @@ export function createOrchestrator(
     refreshHighlightTheme();
     const generation = captureGeneration;
     void walkInTurn(async () => {
+      if (learnModel) {
+        const status = await sendDocumentMessage({ action: ACTIONS.GET_BACKEND_STATUS }).catch(() => undefined) as BackendStatus | undefined;
+        if (generation !== captureGeneration || !started) return;
+        minimumWords = status?.model && modelDim(status.model) === l1Dim ? status.server?.minWords ?? MIN_WORDS : MIN_WORDS;
+      }
       const units = await collect(document.body, makeClaimFilter());
       if (generation !== captureGeneration || !started) return;
       ingestUnits(units);

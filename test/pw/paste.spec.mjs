@@ -235,6 +235,22 @@ test("two separately scored short paragraphs carry the training-length warning i
   expect(await copied()).toContain("75");
 });
 
+test.describe("Detector context", () => {
+  test.use({ nativeFixtureOptions: {
+    model: { id: "sentence-detector", ver: "1", calibration: "anagram-detector/1" },
+    rules: [{ contains: "The local library", result: { bucket: 0, probs: [1, 0, 0], score: 0,
+      lang: "en", lang_prob: 0.99, tokens: 90, truncated: false } }],
+  } });
+  test("a pasted short paragraph is scored with its neighbour and both keep their original text", async ({ page, extension, nativeHost }) => {
+    const short = "A volunteer handed me a pencil at the front desk.";
+    await page.goto(extension.url("paste.html"));
+    await analyze(page, short + "\n\n" + TEXT);
+    expect(nativeHost.textsSince()).toContain(short + "\n\n" + TEXT);
+    await expect(page.locator("#reading p")).toHaveCount(2);
+    expect(await page.locator("#reading p").first().textContent()).toBe(short);
+  });
+});
+
 test("mixed sentences keep their own underline across grouped paragraphs", async ({ page, extension, storage }) => {
   const sentences = [
     "The shelves in the old library were still covered with the handwritten labels that my aunt remembered from her first visit.",
