@@ -11,10 +11,54 @@ import {
 import { addRead, emptyTally } from "../../lib/stats/model";
 import { band } from "../../lib/render/band";
 import { detectorScore } from "../../lib/webengine/detectorScore";
-import { unitVerdict } from "../../lib/capture/windows";
+import { checkQwenConfig, type DetectorConfig, labeledCharacterBucket } from "../../lib/detectorFormat";
+import { unitVerdict, meanVerdict } from "../../lib/capture/windows";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("dated detector releases", () => {
+  it("accepts published release names and a 20 MB tokenizer while keeping the other metadata limits", () => {
+    for (const release of ["2026-11-28-400m-ettin_research", "2026-11-28-0.8b-qwen3.5_research"]) {
+      expect(releaseName(release)).toBe(true);
+      const pin = { ...defaultRelease, release, files: defaultRelease.files.map(f =>
+        f.path === "tokenizer/tokenizer.json" ? { ...f, size_bytes: 19989339 } : f) };
+      expect(validRelease(pin)).toBe(true);
+      expect(validRelease({ ...pin, files: pin.files.map(f => f.path === "crf.json" ? { ...f, size_bytes: 19989339 } : f) })).toBe(false);
+    }
+    for (const name of ["0.0b-test", "0b-test", "0.8b-qwen..test", "0.8b-../test", "0.8b-%2f"]) {
+      expect(releaseName("2026-11-28-" + name)).toBe(false);
+    }
+  });
+
+  it("applies the published thresholds to all labeled characters and to combined readings", async () => {
+    const result = await detectorScore("A. four.", {
+      clsId: -1, sepId: -1, encodeWithOffsets: () => ({ ids: [7, 8], offsets: [[0, 2], [3, 8]] }),
+    }, { min_words: 1, window: 512, stride: 256, architecture: "qwen3_5_text", document_fraction_basis: "all_labeled_characters" }, {
+      W: [[1, 0, 0, 0, 0, 0], [0, 1, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0]],
+      alpha: [0, 0, 0], delta: [0, 0, 0], lambda: 0, gamma: 0, l_min: 1,
+    }, async ids => {
+      expect(ids).toEqual([7, 8]);
+      return { token: Float32Array.of(5, 0, 0, 0, 0, 5), segment: new Float32Array(15), mixed: new Float32Array(2) };
+    });
+    expect(result).toMatchObject({ probs: [3/8, 0, 5/8], bucket: 1, sentenceLabels: [0, 2] });
+    const pass = { ...result, id: "p" };
+    expect(meanVerdict("p", [{ result: pass, chars: 8 }])?.bucket).toBe(1);
+    expect(unitVerdict("p", 12, [{ start: 0, end: 8, result: pass }, { start: 4, end: 12, result: pass }]).result.bucket).toBe(1);
+    expect(labeledCharacterBucket([9, 0, 1], 10)).toBe(0);
+    expect(labeledCharacterBucket([0, 4, 6], 10)).toBe(2);
+  });
+
+  it("validates the Qwen layer shapes and reads the attention order from config", () => {
+    const cfg = { model_type: "qwen3_5_text", hidden_size: 1024, num_hidden_layers: 2, vocab_size: 100,
+      num_attention_heads: 8, num_key_value_heads: 2, head_dim: 256, linear_num_key_heads: 16,
+      linear_num_value_heads: 16, linear_key_head_dim: 128, linear_value_head_dim: 128, linear_conv_kernel_dim: 4,
+      intermediate_size: 3584, hidden_act: "silu", rms_norm_eps: 1e-6, attn_output_gate: true, attention_bias: false,
+      rope_parameters: { rope_type: "default", rope_theta: 1e7, partial_rotary_factor: .25 }, layer_types: ["full_attention", "linear_attention"] };
+    const check = (c: typeof cfg) => checkQwenConfig(c as unknown as DetectorConfig, 512);
+    expect(() => check(cfg)).not.toThrow();
+    expect(() => check({ ...cfg, head_dim: 128 })).toThrow();
+    expect(() => check({ ...cfg, layer_types: ["full_attention", "new_attention"] })).toThrow();
+  });
+
   it("weights decoded sentences by non-whitespace Unicode characters", async () => {
     const result = await detectorScore("A. 🍎abc.", {
       clsId: 0, sepId: 1, encodeWithOffsets: () => ({ ids: [2, 3], offsets: [[0, 2], [3, 8]] }),
@@ -110,13 +154,15 @@ describe("dated detector releases", () => {
 });
 
 it("pins an added branch to its requested commit and obtains a weight digest without requesting the weight", async () => {
-  const release = "2026-12-01-200m-test",
+  const release = "2026-12-01-200m-ettin_research",
     revision = "a".repeat(40);
   const meta = {
     format: "anagram-detector/1",
     classes: ["human", "ai_assisted", "ai_generated"],
     heads: ["token", "segment", "mixed"],
-    decoder: "linear_chain_crf",
+    release_id: release,
+    document_fraction_basis: "all_labeled_characters",
+    architecture: "modernbert",
     language: "en",
     release_date: "2026-12-01",
     size: "200m",
@@ -130,7 +176,7 @@ it("pins an added branch to its requested commit and obtains a weight digest wit
     norm_eps: 1e-5,
     hidden_size: 512,
     num_attention_heads: 8,
-    layer_types: ["full_attention"],
+    num_hidden_layers: 12, global_attn_every_n_layers: 3, global_rope_theta: 160000, local_rope_theta: 160000,
   };
   const crf = {
     W: [

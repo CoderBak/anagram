@@ -68,6 +68,7 @@ export interface Stored {
   u?: 1;
   short?: 1;
   sl?: number[];
+  allChars?: 1;
   t: number;
 }
 
@@ -115,6 +116,7 @@ function toStored(key: string, r: ScoreResult, at = Date.now()): Stored {
   if (r.lang) s.l = r.lang;
   if (typeof r.lang_prob === "number") s.lp = r.lang_prob;
   if (r.insufficient) s.short = 1;
+  if (r.documentFractionBasis) s.allChars = 1;
   if (r.sentenceLabels) s.sl = [...r.sentenceLabels];
   if (r.unsupported) s.u = 1;
   return s;
@@ -128,6 +130,7 @@ function fromStored(s: Stored | undefined): ScoreResult | null {
   if (s.l) r.lang = s.l;
   if (typeof s.lp === "number") r.lang_prob = s.lp;
   if (s.short) r.insufficient = true;
+  if (s.allChars) r.documentFractionBasis = "all_labeled_characters";
   if (s.sl) r.sentenceLabels = [...s.sl];
   if (s.u) r.unsupported = true;
   return r;

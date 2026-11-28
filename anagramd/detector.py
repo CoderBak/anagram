@@ -14,7 +14,7 @@ from inference_passes import PassQueue
 SOURCE = "CoderBak/anagram-detectors"
 LABELS = ["human", "ai_assisted", "ai_generated"]
 DEFAULT = Path(__file__).with_name("detector-release.json")
-RELEASE = re.compile(r"(\d{4}-\d{2}-\d{2})-([1-9]\d*(?:\.\d+)?[mb])(?:-[a-z0-9]+)*")
+RELEASE = re.compile(r"(\d{4}-\d{2}-\d{2})-((?:[1-9]\d*|0(?=\.))(?:\.\d+)?[mb])(?:-[a-z0-9]+(?:[._-][a-z0-9]+)*)?")
 SENTENCE = re.compile(r"""[.!?…]+["'”’)\]]*(?=\s|$)|\n\s*\n""")
 WORDS = re.compile(r"\b\w+(?:['’]\w+)*\b")
 FILES = {f["path"] for f in json.loads(DEFAULT.read_text())["files"]}
@@ -27,6 +27,7 @@ def validate_release(pin):
     match = RELEASE.fullmatch(pin.get("release", ""))
     if (
         not match
+        or float(match[2][:-1]) <= 0
         or len(pin["release"]) > 96
         or pin["repository"] != SOURCE
         or {f["path"] for f in pin["files"]} != FILES
@@ -34,7 +35,7 @@ def validate_release(pin):
         raise ValueError("Invalid detector release")
     datetime.date.fromisoformat(match[1])
     for f in pin["files"]:
-        limit = 32 * 2**30 if f["path"] == "backbone/model.safetensors" else 16 * 2**20
+        limit = 32 * 2**30 if f["path"] == "backbone/model.safetensors" else (32 if f["path"] == "tokenizer/tokenizer.json" else 16) * 2**20
         if not 0 < f["size_bytes"] <= limit:
             raise ValueError("Invalid detector file size")
     return pin
@@ -143,7 +144,13 @@ def check_metadata(meta, crf, pin):
         meta.get("format") != "anagram-detector/1"
         or meta.get("classes") != LABELS
         or meta.get("heads") != ["token", "segment", "mixed"]
-        or meta.get("decoder") != "linear_chain_crf"
+        or (meta.get("decoder") != "linear_chain_crf" and not (
+            "decoder" not in meta and meta.get("release_id") == pin["release"] and
+            meta.get("document_fraction_basis") == "all_labeled_characters"))
+        or meta.get("release_id", pin["release"]) != pin["release"]
+        or meta.get("architecture", "modernbert") not in ("modernbert", "qwen3_5_text")
+        or (meta.get("architecture") == "qwen3_5_text" and meta.get("copies") != 2)
+        or meta.get("document_fraction_basis") not in (None, "all_labeled_characters")
         or meta.get("language") != "en"
         or (meta.get("release_date"), meta.get("size")) != match.groups()
         or not 0 < meta["stride"] <= meta["window"] <= 2048
@@ -182,13 +189,21 @@ class Detector:
         self.version = pin["revision"] + "-ort-cpu-crf3"
         self.tokenizer = Tokenizer.from_file(str(root / "tokenizer/tokenizer.json"))
         cfg = json.loads((root / "backbone/config.json").read_text())
-        self.cls, self.sep = cfg["cls_token_id"], cfg["sep_token_id"]
-        graph = compile_graph(root, cfg, self.meta)
-        opts = ort.SessionOptions()
-        opts.intra_op_num_threads = min(8, os.cpu_count() or 1)
-        opts.add_session_config_entry("session.disable_prepacking", "1")
-        opts.add_session_config_entry("session.model_external_initializers_file_folder_path", str(root.resolve()))
-        self.session = ort.InferenceSession(graph, opts, providers=["CPUExecutionProvider"])
+        architecture = self.meta.get("architecture", "modernbert")
+        if cfg["model_type"] != architecture:
+            raise ValueError("Detector architecture does not match its backbone")
+        self.qwen = architecture == "qwen3_5_text"
+        if self.qwen:
+            from qwen_detector import QwenDetectorSession
+            self.session = QwenDetectorSession(root, cfg, self.meta["window"], ort)
+        else:
+            self.cls, self.sep = cfg["cls_token_id"], cfg["sep_token_id"]
+            graph = compile_graph(root, cfg, self.meta)
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = min(8, os.cpu_count() or 1)
+            opts.add_session_config_entry("session.disable_prepacking", "1")
+            opts.add_session_config_entry("session.model_external_initializers_file_folder_path", str(root.resolve()))
+            self.session = ort.InferenceSession(graph, opts, providers=["CPUExecutionProvider"])
         self.passes = PassQueue()
         self.timings = threading.local()
         buckets = np.arange(15) / 14
@@ -237,11 +252,16 @@ class Detector:
             queued = time.perf_counter()
             with self.passes.acquire():
                 self.timings.wait += (time.perf_counter() - queued) * 1000
-                tokens, seg, mixed = self.session.run(
-                    None, {"input_ids": np.asarray([self.cls, *ids[start:end], self.sep], dtype=np.int64)}
-                )
+                window_ids = ids[start:end]
+                if self.qwen:
+                    tokens, seg, mixed = self.session.heads(window_ids)
+                else:
+                    tokens, seg, mixed = self.session.run(None, {
+                        "input_ids": np.asarray([self.cls, *window_ids, self.sep], dtype=np.int64)
+                    })
+                    tokens = tokens[1:-1]
             segment = np.exp(seg[0] - seg.max()) @ self.phi
-            features[start:end, :3] += tokens[1:-1]
+            features[start:end, :3] += tokens
             features[start:end, 3:] += np.log(np.maximum(1e-6, segment / segment.sum()))
             count[start:end] += 1
             length = end - start
@@ -290,11 +310,17 @@ class Detector:
                     runs.pop(i)
             path = np.repeat([k for k, _ in runs], [length for _, length in runs])
         owner = np.maximum(0, np.searchsorted(offsets[:, 0], np.arange(len(text)), side="right") - 1)
+        all_chars = self.meta.get("document_fraction_basis") == "all_labeled_characters"
         solid = np.fromiter((not c.isspace() for c in text), dtype=bool, count=len(text))
-        shares = np.bincount(path[owner[solid]], minlength=3) / max(1, int(solid.sum()))
+        labels = path[owner if all_chars else owner[solid]]
+        counts = np.bincount(labels, minlength=3)
+        shares = counts / max(1, len(labels))
+        h, a, g = counts
+        bucket = (0 if 10*h >= 9*len(labels) else 2 if 5*(2*g+a) >= 8*len(labels) else 1) if all_chars else int(shares.argmax())
         return dict(
+            **({"documentFractionBasis": "all_labeled_characters"} if all_chars else {}),
             sentenceLabels=[int(path[a]) for a in cuts[:-1]],
-            bucket=int(shares.argmax()),
+            bucket=bucket,
             probs=shares.tolist(),
             score=float(shares[2] + shares[1] / 2),
             tokens=n,

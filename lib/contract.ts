@@ -60,7 +60,9 @@ export interface ScoreBlock {
 /** Per-block detection result. EXACTLY the detector's IO contract. */
 export interface ScoreResult {
   id: string;
-  /** Predicted editing bucket (argmax): 0 = fully human … BUCKET_COUNT-1 = fully AI-generated. */
+  /** Checkpoints that classify the document from labeled character shares. */
+  documentFractionBasis?: "all_labeled_characters";
+  /** Predicted editing bucket: 0 = fully human … BUCKET_COUNT-1 = fully AI-generated. */
   bucket: number;
   /** Softmax probability per bucket, length BUCKET_COUNT, sums to 1. */
   probs: number[];

@@ -1,3 +1,4 @@
+import { labeledCharacterBucket } from "../detectorFormat";
 import type { Tokenizer } from "./tokenizer";
 import type { DetectorMeta, Crf } from "../detectorFormat";
 export { checkDetector, type DetectorMeta, type Crf } from "../detectorFormat";
@@ -34,7 +35,7 @@ export function enoughDetectorWords(text: string, minimum: number): boolean {
 export async function detectorScore(
   raw: string,
   tok: Pick<Tokenizer, "clsId" | "sepId" | "encodeWithOffsets">,
-  meta: Pick<DetectorMeta, "min_words" | "window" | "stride">,
+  meta: Pick<DetectorMeta, "min_words" | "window" | "stride" | "architecture" | "document_fraction_basis">,
   crf: Crf,
   run: (ids: number[]) => Promise<Heads>,
 ) {
@@ -58,7 +59,11 @@ export async function detectorScore(
   for (let start = 0; ; start = Math.min(last, start + meta.stride)) {
     const end = Math.min(n, start + meta.window),
       len = end - start;
-    const { token, segment, mixed } = await run([tok.clsId, ...ids.slice(start, end), tok.sepId]);
+    const input = ids.slice(start, end);
+    const qwen = meta.architecture === "qwen3_5_text";
+    const { token, segment, mixed } = await run(qwen ? input : [tok.clsId, ...input, tok.sepId]);
+    if (!token.every(Number.isFinite) || !segment.every(Number.isFinite) || !mixed.every(Number.isFinite))
+      throw new Error("Detector produced invalid logits");
     const prior = [0, 0, 0],
       max = Math.max(...segment);
     segment.forEach((value, i) => {
@@ -71,7 +76,7 @@ export async function detectorScore(
     const mixedDelta = mixed[1]! - mixed[0]!;
     for (let i = start; i < end; i++) {
       for (let k = 0; k < 3; k++) {
-        features[i * 6 + k]! += token[(i - start + 1) * 3 + k]!;
+        features[i * 6 + k]! += token[(i - start + (qwen ? 0 : 1)) * 3 + k]!;
         features[i * 6 + 3 + k]! += logPrior[k]!;
       }
       const centre = 1 - Math.abs(i - start - (len - 1) / 2) / ((len + 1) / 2);
@@ -161,16 +166,17 @@ export async function detectorScore(
     }
   }
   const countsByLabel = [0, 0, 0];
-  // Published document fractions exclude whitespace. Token offsets count Unicode scalars.
+  const allChars = meta.document_fraction_basis === "all_labeled_characters";
   let tokenIndex = 0, position = 0, total = 0;
   for (const character of text) {
     while (tokenIndex + 1 < n && offsets[tokenIndex + 1]![0] <= position) tokenIndex++;
-    if (!/[\p{White_Space}\u001c-\u001f]/u.test(character)) {
+    if (allChars || !/[\p{White_Space}\u001c-\u001f]/u.test(character)) {
       countsByLabel[labels[tokenIndex]!]!++;
       total++;
     }
     position++;
   }
   const probs = countsByLabel.map(v => v / Math.max(1, total));
-  return { sentenceLabels:sentenceStarts.map(start=>labels[start]!), bucket: maxIndex(probs), probs, score: probs[2]! + probs[1]! / 2, tokens: n, truncated: false };
+  const bucket = allChars ? labeledCharacterBucket(countsByLabel, total) : maxIndex(probs);
+  return { documentFractionBasis: meta.document_fraction_basis, sentenceLabels:sentenceStarts.map(start=>labels[start]!), bucket, probs, score: probs[2]! + probs[1]! / 2, tokens: n, truncated: false };
 }

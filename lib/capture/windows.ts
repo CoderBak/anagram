@@ -1,3 +1,4 @@
+import { labeledCharacterBucket } from "../detectorFormat";
 import {normalizeDetector} from "../webengine/detectorScore";
 // lib/capture/windows.ts — reading a long text completely, in passes that overlap by half.
 //
@@ -397,10 +398,14 @@ export function meanVerdict(id: string, parts: readonly { result: ScoreResult; c
   if (weight === 0) return null;
   const probs = new Array<number>(scored[0]!.result.probs.length).fill(0);
   for (const p of scored) for (let i = 0; i < probs.length; i++) probs[i]! += (p.result.probs[i] ?? 0) * p.chars / weight;
-  return resultOf(id, probs);
+  return resultOf(id, probs, scored.map(p => p.result));
 }
 
-function resultOf(id: string, probs: number[]): ScoreResult {
+function resultOf(id: string, probs: number[], sources: ScoreResult[]): ScoreResult {
+  if (sources.every(r => r.documentFractionBasis === "all_labeled_characters")) {
+    return { id, probs, bucket: labeledCharacterBucket(probs, 1), score: probs[2]! + probs[1]! / 2,
+      documentFractionBasis: "all_labeled_characters" };
+  }
   let bucket = 0;
   for (let i = 1; i < probs.length; i++) if (probs[i]! > probs[bucket]!) bucket = i;
   return { id, bucket, probs, score: probs.reduce((acc, p, i) => acc + p * i, 0) / (probs.length - 1) };
@@ -433,7 +438,7 @@ function sentenceStretches(source:string,pass:WindowVerdict):WindowVerdict[] {
   return spans.map((span,i)=>{
     const bucket=labels[i]!;
     const probs=[0,0,0];probs[bucket]=1;
-    return {start:pass.start+span.start,end:pass.start+span.end,result:{id:pass.result.id,bucket,probs,score:bucket/2}};
+    return {start:pass.start+span.start,end:pass.start+span.end,result:{id:pass.result.id,bucket,probs,score:bucket/2,documentFractionBasis:pass.result.documentFractionBasis}};
   });
 }
 
@@ -458,7 +463,7 @@ function combineStretches(passes: readonly WindowVerdict[]): WindowVerdict[] {
     }
     const probs = new Array<number>(over[0]!.result.probs.length).fill(0);
     for (const p of over) for (let j = 0; j < probs.length; j++) probs[j]! += (p.result.probs[j] ?? 0) / over.length;
-    const result = resultOf(`${start}-${end}`, probs);
+    const result = resultOf(`${start}-${end}`, probs, over.map(p => p.result));
     if (over.some((p) => p.result.truncated)) result.truncated = true;
     out.push({ start, end, result });
   }
@@ -516,7 +521,7 @@ export function unitVerdict(id: string, textLength: number, windows: WindowVerdi
     for (let i = 0; i < probs.length; i++) probs[i]! += (st.result.probs[i] ?? 0) * len;
   }
   for (let i = 0; i < probs.length; i++) probs[i]! /= weight;
-  const result = resultOf(id, probs);
+  const result = resultOf(id, probs, scored.map(p => p.result));
   if (scored.every((w) => typeof w.result.tokens === "number")) {
     result.tokens = scored.reduce((n, w) => n + (w.result.tokens ?? 0), 0);
   }

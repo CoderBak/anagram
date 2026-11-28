@@ -1,6 +1,6 @@
 import recipe from "../../anagramd/detector-graph.json";
 
-import { checkBackbone, type DetectorConfig } from "../detectorFormat";
+import { checkBackbone, modernBertConfig, type DetectorConfig } from "../detectorFormat";
 export type { DetectorConfig } from "../detectorFormat";
 function join(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const data = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
@@ -70,6 +70,7 @@ export async function detectorGraph(
   window: number,
   weights: { path: string; data: Blob }[],
 ): Promise<Uint8Array<ArrayBuffer>> {
+  cfg = modernBertConfig(cfg);
   const dim = cfg.hidden_size / cfg.num_attention_heads,
     width = window + 2;
   checkBackbone(cfg, window);

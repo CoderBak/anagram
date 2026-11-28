@@ -40,6 +40,7 @@ const ResultSchema = v.object({
   truncated: v.optional(v.boolean()),
   lang: v.optional(v.pipe(v.string(), v.regex(LANG_CODE, "must be a language code"))),
   lang_prob: v.optional(Prob),
+  documentFractionBasis: v.optional(v.literal("all_labeled_characters")),
   sentenceLabels:v.optional(v.pipe(v.array(v.picklist([0,1,2])),v.minLength(1),v.maxLength(16000))),
   insufficient: v.optional(v.boolean()),
   unsupported: v.optional(v.boolean()),
@@ -124,6 +125,7 @@ function toResult(r: v.InferOutput<typeof ResultSchema>): ScoreResult {
   if (r.lang) out.lang = r.lang;
   if (typeof r.lang_prob === "number") out.lang_prob = r.lang_prob;
   if (r.insufficient) out.insufficient = true;
+  if (r.documentFractionBasis) out.documentFractionBasis = r.documentFractionBasis;
   if (r.sentenceLabels) out.sentenceLabels = r.sentenceLabels;
   if (r.unsupported) out.unsupported = true;
   return out;

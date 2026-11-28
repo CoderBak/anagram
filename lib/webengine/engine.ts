@@ -475,7 +475,7 @@ export class Engine {
           // The file itself, which the runtime reads from disk a tensor at a time.
           const model = await this.store.file(entry.name);
           try {
-            session = meta && !this.init.createSession ? await Session.detector(this.init.assets,candidate,await this.modelJson(this.pin, "backbone/config.json"),meta.window,[
+            session = meta && !this.init.createSession ? await Session.detector(this.init.assets,candidate,await this.modelJson(this.pin, "backbone/config.json"),meta,[
               {path:"backbone/model.safetensors",data:model}, {path:"head.safetensors",data:await this.store.file(entryFor("head.safetensors").name)}
             ],abort.signal) : await (this.init.createSession ? this.init.createSession(candidate, model, abort.signal) : Session.create(this.init.assets, candidate, model, abort.signal));
             break;

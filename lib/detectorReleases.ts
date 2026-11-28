@@ -9,13 +9,18 @@ export function detectorRevisionUrl(revision: string): string {
 }
 const api = `https://huggingface.co/api/models/${detectorRepo}`;
 const commit = /^[0-9a-f]{40}$/;
-const name = /^(\d{4}-\d{2}-\d{2})-([1-9]\d*(?:\.\d+)?)([mb])(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$/;
+const name = /^(\d{4}-\d{2}-\d{2})-((?:[1-9]\d*|0(?=\.))(?:\.\d+)?)([mb])(?:-[a-z0-9]+(?:[._-][a-z0-9]+)*)?$/;
 export function releaseName(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 96) return false;
-  const date = name.exec(value)?.[1];
+  const match = name.exec(value);
+  const date = match?.[1];
+  if (!match || Number(match[2]) <= 0) return false;
   if (!date) return false;
   const timestamp = Date.parse(date);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date;
+}
+function auxiliaryLimit(path: string) {
+  return (path === "tokenizer/tokenizer.json" ? 32 : 16) * 2 ** 20;
 }
 export function validRelease(r: unknown): r is DetectorRelease {
   if (!r || typeof r !== "object") return false;
@@ -36,7 +41,7 @@ export function validRelease(r: unknown): r is DetectorRelease {
           /^[a-f0-9]{64}$/.test(f.sha256) &&
           Number.isSafeInteger(f.size_bytes) &&
           f.size_bytes > 0 &&
-          f.size_bytes <= (path === "backbone/model.safetensors" ? 32 * 2 ** 30 : 16 * 2 ** 20),
+          f.size_bytes <= (path === "backbone/model.safetensors" ? 32 * 2 ** 30 : auxiliaryLimit(path)),
       ),
     )
   );
@@ -122,7 +127,7 @@ export async function setupCatalog(signal?: AbortSignal): Promise<SetupCatalog> 
       try {
         const bytes = await read(`${root}/resolve/${info.sha}/model.json`, 65536, signal);
         const meta = JSON.parse(new TextDecoder().decode(bytes));
-        const release = `${meta.release_date}-${meta.size}`;
+        const release = meta.release_id ?? `${meta.release_date}-${meta.size}`;
         if (releaseName(release)) ref = {release, revision:info.sha};
       } catch { /* The Hub may restrict access to this revision's files. */ }
     }
@@ -163,7 +168,7 @@ export async function resolveDetectorRelease(
     ["model.json", "backbone/config.json", "crf.json"].map(metadata),
   );
   checkDetector(meta, crf, ref.release);
-  checkBackbone(config, meta.window);
+  checkBackbone(config, meta.window, meta.architecture);
   const files = await Promise.all(
     initial.files.map(async ({ path }) => {
       const item = data.siblings?.find((s: { rfilename: string }) => s.rfilename === path);
@@ -171,7 +176,7 @@ export async function resolveDetectorRelease(
         throw new Error("Incomplete detector release");
       let sha256 = item.lfs?.sha256;
       if (!sha256) {
-        if (item.size > 16 * 2 ** 20) throw new Error("Missing weight checksum");
+        if (item.size > auxiliaryLimit(path)) throw new Error("Missing weight checksum");
         const bytes =
           smallFiles.get(path) ?? (await read(`${root}/resolve/${ref.revision}/${path}`, item.size, signal));
         if (bytes.length !== item.size) throw new Error("Incomplete metadata");

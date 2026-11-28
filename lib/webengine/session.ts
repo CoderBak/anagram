@@ -26,6 +26,8 @@
 // the CPU provider, with as many threads as wasmThreads allows (one, unless the page is
 // cross-origin isolated and SharedArrayBuffer exists). A session that fails to build on
 // the GPU falls back to the CPU provider on its own.
+import type { DetectorMeta } from "../detectorFormat";
+import { QwenSession } from "./qwenSession";
 import {detectorGraph, type DetectorConfig} from "./detectorGraph";
 import type {Heads} from "./detectorScore";
 import { weightlessGraph } from "./onnx";
@@ -84,14 +86,14 @@ export const EMBEDDING_BYTES_FP16 = EMBEDDING_BYTES / 2;
 const MODEL_FILE = "model.onnx";
 export const WASM_ID = "wasm:fp32";
 
-interface OrtTensor { data: ArrayLike<number> | BigInt64Array; dims: readonly number[]; dispose?(): void }
-interface OrtSession {
+export interface OrtTensor { data: ArrayLike<number> | BigInt64Array; dims: readonly number[]; dispose?(): void }
+export interface OrtSession {
   run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
   release(): Promise<void>;
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
 }
-interface OrtModule {
+export interface OrtModule {
   env: {
     logLevel?: string;
     wasm: { wasmPaths?: string | { mjs?: string; wasm?: string }; numThreads?: number; proxy?: boolean; simd?: boolean };
@@ -178,7 +180,7 @@ export interface SessionInfo { candidate: Candidate; createMs: number; firstRunM
 
 /** One loaded model on one execution provider. */
 export class Session implements Backend {
-  private constructor(private readonly ort: OrtModule, private session: OrtSession | null, readonly info: SessionInfo) {}
+  private constructor(private readonly ort: OrtModule, private session: OrtSession | null, readonly info: SessionInfo, private qwen?: QwenSession) {}
 
   /**
    * Build the session from the model file, which the runtime reads as it needs it and
@@ -219,21 +221,29 @@ export class Session implements Backend {
     return out;
   }
 
-  static async detector(assets:RuntimeAssets,candidate:Candidate,cfg:DetectorConfig,window:number,weights:{path:string;data:Blob}[],signal:AbortSignal) {
-    const graph = await detectorGraph(cfg,window,weights);
-    if (signal.aborted) throw new Error("cancelled");
+  static async detector(assets:RuntimeAssets,candidate:Candidate,cfg:DetectorConfig,meta:DetectorMeta,weights:{path:string;data:Blob}[],signal:AbortSignal) {
     const ort = await loadRuntime(assets);
     ort.env.wasm.numThreads = wasmThreads();
     const start = performance.now();
-    const session = await ort.InferenceSession.create(graph,{
-      executionProviders:candidate.device === "gpu" ? [{name:"webgpu"}] : ["wasm"],
-      externalData:weights, graphOptimizationLevel:"all", logSeverityLevel:3,
-      extra:{session:{disable_prepacking:"1"}},
-    });
-    const loaded = new Session(ort,session,{candidate,createMs:performance.now()-start,firstRunMs:0});
+    const providers = candidate.device === "gpu" ? [{name:"webgpu"}] : ["wasm"];
+    if (cfg.model_type !== (meta.architecture ?? "modernbert")) throw new Error("Detector architecture does not match its backbone");
+    const window = meta.window;
+    let session: OrtSession | null = null, qwen: QwenSession | undefined;
+    if (cfg.model_type === "qwen3_5_text") {
+      qwen = await QwenSession.create(ort, providers, cfg, window, weights[0]!.data, weights[1]!.data, signal);
+    } else {
+      const graph = await detectorGraph(cfg,window,weights);
+      signal.throwIfAborted();
+      session = await ort.InferenceSession.create(graph,{
+        executionProviders:providers, externalData:weights, graphOptimizationLevel:"all", logSeverityLevel:3,
+        extra:{session:{disable_prepacking:"1"}},
+      });
+    }
+    const loaded = new Session(ort,session,{candidate,createMs:performance.now()-start,firstRunMs:0},qwen);
     const began = performance.now();
     try {
-      await loaded.heads([0,1,2]);
+      const heads = await loaded.heads([0,1,2]);
+      if (!Object.values(heads).every(values => values.every(Number.isFinite))) throw new Error("Detector warmup produced invalid logits");
       if (signal.aborted) throw new Error("cancelled");
     } catch (error) {await loaded.release();throw error;}
     loaded.info.firstRunMs = performance.now()-began;
@@ -241,6 +251,7 @@ export class Session implements Backend {
   }
 
   async heads(ids:number[]):Promise<Heads> {
+    if (this.qwen) return this.qwen.heads(ids);
     if (!this.session) throw new Error("session released");
     const tensor = new this.ort.Tensor("int64",BigInt64Array.from(ids,BigInt),[ids.length]);
     try {
@@ -279,6 +290,7 @@ export class Session implements Backend {
   }
 
   async release(): Promise<void> {
+    if (this.qwen) { await this.qwen.release(); this.qwen = undefined; }
     const session = this.session;
     this.session = null;
     if (session) await session.release();

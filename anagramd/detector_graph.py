@@ -62,7 +62,12 @@ def compile_graph(root, cfg, meta):
     graph = json.loads(Path(__file__).with_name("detector-graph.json").read_text())
     hidden, heads, width = cfg["hidden_size"], cfg["num_attention_heads"], meta["window"] + 2
     dim = hidden // heads
-    kinds = cfg["layer_types"]
+    kinds = cfg.get("layer_types")
+    if kinds is None:
+        layers, every = cfg.get("num_hidden_layers", 0), cfg.get("global_attn_every_n_layers", 0)
+        if not (1 <= layers <= 128 and every > 0):
+            raise ValueError("Missing ModernBERT attention configuration")
+        kinds = ["sliding_attention" if i % every else "full_attention" for i in range(layers)]
     if (
         cfg["model_type"] != "modernbert"
         or cfg["hidden_activation"] != "gelu"
@@ -116,8 +121,10 @@ def compile_graph(root, cfg, meta):
         constant(f"index{i}", i, "<i8")
     constant("cls_index", [0], "<i8")
     for kind in ("full_attention", "sliding_attention"):
-        params = cfg["rope_parameters"][kind]
-        if params["rope_type"] != "default":
+        params = cfg.get("rope_parameters", {}).get(kind, {
+            "rope_type": "default", "rope_theta": cfg.get("global_rope_theta" if kind == "full_attention" else "local_rope_theta", 0),
+        })
+        if params["rope_type"] != "default" or not np.isfinite(params["rope_theta"]) or params["rope_theta"] <= 0:
             raise ValueError("Unsupported rotary embedding")
         angles = np.outer(np.arange(width), params["rope_theta"] ** (-np.arange(0, dim, 2) / dim))
         angles = np.concatenate([angles, angles], axis=1)

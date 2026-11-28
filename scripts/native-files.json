@@ -15,6 +15,8 @@
   "modelkit.json",
   "detector.py",
   "detector_graph.py",
+  "qwen_detector.py",
+  "qwen-graphs.json",
   "inference_passes.py",
   "detector-graph.json",
   "detector-release.json",

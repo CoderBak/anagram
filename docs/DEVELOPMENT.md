@@ -56,7 +56,7 @@ anything is chosen the setup page decides (`lib/device.ts`, `lib/ui/engineCard.t
 choice on Apple Silicon and on Linux beside an NVIDIA GPU, the in-browser engine by itself elsewhere
 (Windows beside an NVIDIA GPU included: PyPI's Windows Torch has no CUDA),
 nothing where the model does
-not fit (the local engine alone where it installs). The dated detector currently offers FP32 only. The setup checks available memory and disk space
+not fit (the local engine alone where it installs). Dated detectors run in FP32. Ettin uses FP32 weights. Qwen3.5 loads its BF16 weights one layer at a time and rounds backbone activations to the trained precision. The setup checks available memory and disk space
 against that tier (`TIERS`, `affordable()`). Native Messaging is optional and asked for when the local engine is picked; where
 it is granted and nothing was chosen (an update from 0.7.0, which required it) the local
 engine is the one in use. The test build requires it, so the fake-host suites drive the

@@ -16,6 +16,11 @@ const PRETOKENIZE = new RegExp(
   `'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^${WS}\\p{L}\\p{N}]+|[${WS}]+(?![^${WS}])|[${WS}]+`,
   "gu",
 );
+// Qwen isolates contractions, individual digits and Unicode combining marks before BPE.
+const QWEN_SPLIT = String.raw`(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+`;
+const QWEN_PRETOKENIZE = new RegExp(QWEN_SPLIT.replace("(?i:", "(?:")
+  .replace(String.raw`[^\s`, "[^" + WS).replaceAll(String.raw`\s`, "[" + WS + "]")
+  .replace(String.raw`\S`, "[^" + WS + "]"), "giu");
 const WHITESPACE = new RegExp(`[${WS}]`, "u");
 
 /** GPT-2's bytes_to_unicode: every byte as one printable character. */
@@ -34,7 +39,7 @@ interface AddedToken { id: number; content: string; lstrip: boolean; rstrip: boo
 export interface TokenizerFile {
   normalizer?: {type:string} | null;
   added_tokens: AddedToken[];
-  pre_tokenizer: { type: string; add_prefix_space: boolean; use_regex?: boolean } | null;
+  pre_tokenizer: { type: string; add_prefix_space: boolean; use_regex?: boolean; pretokenizers?: {type:string; pattern?:{Regex?:string}; behavior?:string; invert?:boolean; use_regex?:boolean; add_prefix_space?:boolean}[] } | null;
   post_processor: { type: string; sep: [string, number]; cls: [string, number] } | null;
   model: { type: string; vocab: Record<string, number>; merges: Array<[string, string] | string> };
 }
@@ -58,6 +63,7 @@ export class Tokenizer {
   private readonly addedMatchers: AddedMatcher[];
   private readonly cache = new Map<string, number[]>();
   private readonly widths = new Map<number,number>();
+  private readonly split: RegExp;
   private readonly nfc: boolean;
   readonly clsId: number;
   readonly sepId: number;
@@ -65,9 +71,15 @@ export class Tokenizer {
 
   constructor(file: TokenizerFile) {
     if (file.model.type !== "BPE") throw new Error(`tokenizer model ${file.model.type} is not BPE`);
-    if (file.pre_tokenizer?.type !== "ByteLevel" || file.pre_tokenizer.add_prefix_space) throw new Error("tokenizer is not byte-level without a prefix space");
+    const pre = file.pre_tokenizer, stages = pre?.pretokenizers;
+    const qwen = pre?.type === "Sequence" && stages?.length === 2 && stages[0]?.type === "Split" &&
+      stages[0].pattern?.Regex === QWEN_SPLIT && stages[0].behavior === "Isolated" && !stages[0].invert &&
+      stages[1]?.type === "ByteLevel" && stages[1].use_regex === false && !stages[1].add_prefix_space &&
+      file.post_processor?.type === "ByteLevel";
+    if (!qwen && (pre?.type !== "ByteLevel" || pre.add_prefix_space)) throw new Error("Unsupported byte-level tokenizer");
+    this.split = qwen ? QWEN_PRETOKENIZE : PRETOKENIZE;
     this.nfc = file.normalizer?.type === "NFC";
-    if (!["RobertaProcessing","TemplateProcessing"].includes(file.post_processor?.type ?? "")) throw new Error("tokenizer has no RoBERTa post-processor");
+    if (!qwen && !["RobertaProcessing","TemplateProcessing"].includes(file.post_processor?.type ?? "")) throw new Error("tokenizer has no RoBERTa post-processor");
     this.vocab = new Map(Object.entries(file.model.vocab));
     file.model.merges.forEach((merge, rank) => {
       const [a, b] = Array.isArray(merge) ? merge : merge.split(" ");
@@ -83,10 +95,10 @@ export class Tokenizer {
     const special = (name:string) => file.added_tokens.find(t=>t.content===name);
     this.clsId = file.post_processor?.cls?.[1] ?? special("[CLS]")?.id ?? -1;
     this.sepId = file.post_processor?.sep?.[1] ?? special("[SEP]")?.id ?? -1;
-    if (this.clsId < 0 || this.sepId < 0) throw new Error("Missing sequence tokens");
+    if (!qwen && (this.clsId < 0 || this.sepId < 0)) throw new Error("Missing sequence tokens");
     for (const [token,id] of this.vocab) this.widths.set(id,Array.from(token).length);
     for (const token of file.added_tokens) this.widths.set(token.id,this.encoder.encode(token.content).length);
-    const pad = special("<pad>") ?? special("[PAD]");
+    const pad = qwen ? special("<|endoftext|>") : special("<pad>") ?? special("[PAD]");
     if (!pad) throw new Error("tokenizer has no <pad> token");
     this.padId = pad.id;
   }
@@ -106,9 +118,9 @@ export class Tokenizer {
 
   private encodeIds(text: string, addSpecialTokens: boolean, consumed?: Map<number, number>): number[] {
     const ids: number[] = [];
-    if (addSpecialTokens) ids.push(this.clsId);
+    if (addSpecialTokens && this.clsId >= 0) ids.push(this.clsId);
     this.encodeSpan(text, ids, 0, consumed);
-    if (addSpecialTokens) ids.push(this.sepId);
+    if (addSpecialTokens && this.sepId >= 0) ids.push(this.sepId);
     return ids;
   }
 
@@ -170,7 +182,7 @@ export class Tokenizer {
 
   private encodeText(text: string, ids: number[]): void {
     if (!text) return;
-    for (const piece of text.match(PRETOKENIZE) ?? []) {
+    for (const piece of text.match(this.split) ?? []) {
       const cached = this.cache.get(piece);
       if (cached) { ids.push(...cached); continue; }
       let word = "";
