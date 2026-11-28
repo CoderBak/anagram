@@ -1,14 +1,16 @@
 # Handoff
 
-This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-27.
+This file records where `dev` stands, what waits on a maintainer, and what is still open, in priority order. It was last updated 2026-11-28.
 
-Anagram 0.10.2 is the latest signed GitHub release. It includes Chrome and Firefox extension ZIPs,
-both native archives, and the shell and PowerShell installers. All six published files were downloaded
-anonymously and verified against their SHA-256 checksums and Sigstore signatures for the tag.
-Both extension packages passed the permissions and executable-assets checks.
-[Release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.10.2) · [Signing run](https://github.com/CoderBak/anagram/actions/runs/46007499322)
+Anagram 0.11.0 is the latest signed GitHub release. Setup offers Ettin 400M and Qwen3.5 0.8B.
+The macOS release tests passed. Linux, Windows and Firefox CI also passed for the tagged source.
+All six public downloads passed SHA-256 and tag-bound Sigstore verification. Both browser ZIPs
+passed the packaging checks, and both native archives contain the runtime files from the tag.
+In a temporary Chromium profile, the published Chrome ZIP downloaded the recommended Ettin checkpoint,
+scored pasted text, then scored fresh text after an offline restart.
+[Release and downloads](https://github.com/CoderBak/anagram/releases/tag/v0.11.0) · [Signing run](https://github.com/CoderBak/anagram/actions/runs/46138531538) · [Desktop and Firefox CI](https://github.com/CoderBak/anagram/actions/runs/46135570597)
 
-The tagged source passed the full Chromium job on macOS, Linux and Windows. Each runner passed
+For 0.10.2, the tagged source passed the full Chromium job on macOS, Linux and Windows. Each runner passed
 320 browser tests and 119 checks across 17 device profiles. Windows passed on its second attempt
 after one browser startup timed out. The published Firefox ZIP opened a two-page PDF offline on
 Firefox 160.0.1. Firefox test automation now supports the current browser's launch setting and
