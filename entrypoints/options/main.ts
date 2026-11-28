@@ -28,7 +28,8 @@ import { mountDetectorPicker } from "../../lib/ui/detectorPicker";
 import { mountEngineCard } from "../../lib/ui/engineCard";
 import { mountSiteAccess } from "../../lib/ui/siteAccess";
 import { mountPdfRows } from "../../lib/ui/pdfRows";
-import { bindSelect, bindToggle } from "../../lib/ui/boundSetting";
+import { bindToggle } from "../../lib/ui/boundSetting";
+import { mountReadingPreferences } from "../../lib/ui/readingPreferences";
 import { createLogger } from "../../lib/log";
 import { rank, configOf, normalize, presetConfig, presetOf, retained, RETENTION, type Preset, type RecordingConfig, type Retention } from "../../lib/stats/config";
 import { openStatsStore } from "../../lib/stats/store";
@@ -40,9 +41,6 @@ import { formatWords } from "../../lib/stats/format";
 const log = createLogger("options");
 
 const enabledEl = document.getElementById("enabled") as HTMLInputElement;
-const underlineEl = document.getElementById("underline") as HTMLSelectElement;
-const flagFromEl = document.getElementById("flagFrom") as HTMLSelectElement;
-const displayModeEl = document.getElementById("displayMode") as HTMLSelectElement;
 const sitesEl = document.getElementById("sites") as HTMLElement;
 const versionEl = document.getElementById("version") as HTMLElement;
 const addRuleEl = document.getElementById("addRule") as HTMLFormElement;
@@ -179,18 +177,7 @@ bindToggle(enabledEl, settings.enabled);
   document.getElementById("siteRows")!.prepend(...holder.children);
 }
 mountPdfRows(document.getElementById("pdfRows")!, { readAhead: true });
-bindSelect(displayModeEl, settings.displayMode);
-bindSelect(flagFromEl, {
-  getValue: async () => {const value=await settings.flagFrom.getValue();return value==="heavy" ? "ai" : value;},
-  setValue: (value:"light"|"ai") => settings.flagFrom.setValue(value),
-});
-bindSelect<"flagged" | "all" | "off">(underlineEl, {
-  getValue: async () => (await settings.showHighlights.getValue()) ? await settings.underlineScope.getValue() : "off",
-  setValue: async (v) => {
-    if (v !== "off") await settings.underlineScope.setValue(v);
-    await settings.showHighlights.setValue(v !== "off");
-  },
-});
+mountReadingPreferences(document.getElementById("readingPreferences")!);
 
 showSites();
 settings.siteOverrides.watch(showSites);

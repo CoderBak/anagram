@@ -35,7 +35,7 @@
 .component-settings .engine-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .component-settings .engine-bar-row:has(.pbar:not([hidden])) .component-version { flex-basis: 100%; }
 .component-settings .engine-percent { min-width: 3.2ch; font-size: 13px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; color: var(--foreground); }
-.component-settings .engine-progress { margin-top: -2px; font-variant-numeric: tabular-nums; }
+.component-settings .engine-progress { font-variant-numeric: tabular-nums; }
 .component-settings .component-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .component-settings .component-inline:not(:has(> :not([hidden]))) { display: none; }
 /* A setting under the engine's buttons is a row of its own, label left and control right. */

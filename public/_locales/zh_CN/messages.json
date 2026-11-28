@@ -404,6 +404,9 @@
   "cmdToggleOverlay": {
     "message": "显示或隐藏本页的标记"
   },
+  "onbReadingPreferences": {
+    "message": "阅读偏好"
+  },
   "onbOpenSettings": {
     "message": "打开设置"
   },
@@ -933,9 +936,6 @@
   },
   "onbWhere": {
     "message": "自动读取网站（可选）"
-  },
-  "onbVerdictTitle": {
-    "message": "怎么看标记"
   },
   "onbScoreLine": {
     "message": "将鼠标悬停在分数上可查看各句的标签。"
@@ -2194,6 +2194,6 @@
     "message": "AI 辅助或 AI 生成占比最高"
   },
   "detectorFiles": {
-    "message": "模型文件与条款"
+    "message": "在 Hugging Face 上查看"
   }
 }

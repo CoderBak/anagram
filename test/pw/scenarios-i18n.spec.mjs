@@ -84,7 +84,7 @@ test.describe("a zh-CN browser", () => {
     const menu = await popupOver(page);
     // The title is flagged out of read, each row is named in Chinese, and there are no Copy
     // report and Turn off buttons; with every paragraph read, there is no coverage line.
-    await expect.poll(() => menuReport(menu), { message: `${zh} (report)` }).toMatchObject({ title: "存疑段落（4/4）", notes: [] });
+    await expect.poll(() => menuReport(menu), { message: `${zh} (report)` }).toMatchObject({ title: "存疑片段（4/4）", notes: [] });
     const report = await menuReport(menu);
     expect.soft(report.rows, `${zh} (report rows)`).toHaveLength(4);
     for (const row of report.rows) expect.soft(row, `${zh} (report rows)`).toMatch(/^(重度 AI 编辑|AI 生成)，(0\.\d\d|1\.0)：\S/);

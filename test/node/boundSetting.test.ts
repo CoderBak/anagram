@@ -41,6 +41,18 @@ describe("settings controls bound to storage", () => {
     expect(select.value).toBe("all");
   });
 
+  it("keeps the newer value when a read from another tab finishes first", async () => {
+    let finishInitial!: (value: string) => void;
+    const initial = new Promise<string>(resolve => { finishInitial = resolve; });
+    const getValue = vi.fn().mockReturnValueOnce(initial).mockResolvedValue("flagged");
+    const select = new Select();
+    const refresh = bindSelect(select, { getValue, setValue: vi.fn() });
+    await refresh();
+    finishInitial("all");
+    await settle();
+    expect(select.value).toBe("flagged");
+  });
+
   it("says so when the stored value cannot be read", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const toggle = new Toggle();

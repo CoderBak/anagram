@@ -12,22 +12,32 @@ const log = createLogger("options");
 type Stored<T> = { getValue(): Promise<T>; setValue(value: T): Promise<void> };
 type Control = { addEventListener(type: "change", listener: () => void): void };
 
-function bind<T>(el: Control, item: Stored<T>, read: () => T, show: (value: T) => void): void {
-  const restore = (): Promise<void> =>
-    item.getValue().then(show, (error) => log.error("could not read a setting", error));
+function bind<T>(el: Control, item: Stored<T>, read: () => T, show: (value: T) => void): () => Promise<void> {
+  let revision = 0;
+  const restore = async (): Promise<void> => {
+    const requested = ++revision;
+    try {
+      const value = await item.getValue();
+      if (requested === revision) show(value);
+    } catch (error) {
+      log.error("could not read a setting", error);
+    }
+  };
   void restore();
   el.addEventListener("change", () => {
+    ++revision;
     void item.setValue(read()).catch((error) => {
       log.error("could not save a setting", error);
       return restore();
     });
   });
+  return restore;
 }
 
 export function bindToggle(el: Control & { checked: boolean }, item: Stored<boolean>): void {
   bind(el, item, () => el.checked, (v) => { el.checked = v; });
 }
 
-export function bindSelect<T extends string>(el: Control & { value: string }, item: Stored<T>): void {
-  bind(el, item, () => el.value as T, (v) => { el.value = v; });
+export function bindSelect<T extends string>(el: Control & { value: string }, item: Stored<T>): () => Promise<void> {
+  return bind(el, item, () => el.value as T, (v) => { el.value = v; });
 }

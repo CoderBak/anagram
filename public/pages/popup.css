@@ -167,7 +167,7 @@ html.dark .chip { border-color: rgb(255 255 255 / 0.08); background: #26282d; co
 .tools .btn {
   max-width: 100%;
   min-width: 0;
-  min-height: var(--button-height);
+  min-height: var(--control-height);
   height: auto;
   padding: 2px 4px;
   white-space: nowrap;

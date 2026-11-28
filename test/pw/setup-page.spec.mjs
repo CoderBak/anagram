@@ -47,6 +47,48 @@ test.describe("the setup page", () => {
   });
   test.use({ build: device("apple-silicon"), launch: { args: [NO_MODEL_HOSTS] } });
 
+  test("reading preferences stay visible during setup and follow edits in either tab", async ({ extension, storage }) => {
+    await storage.set({ flagFrom: "heavy", displayMode: "flagged", showHighlights: false, underlineScope: "all" });
+    const setup = await openScripted(extension, "onboarding.html", "needed");
+    const settings = await openScripted(extension, "options.html", "needed");
+    const flag = setup.getByLabel("Flag paragraphs", { exact: true });
+    await expect(flag).toBeVisible();
+    await expect(flag).toHaveValue("ai");
+    await expect(setup.getByLabel("Score labels")).toHaveValue("flagged");
+    await expect(setup.getByLabel("Underlines")).toHaveValue("off");
+    await flag.selectOption("light");
+    await expect(settings.getByLabel("Flag paragraphs", { exact: true })).toHaveValue("light");
+    await settings.getByLabel("Score labels").selectOption("all");
+    await expect(setup.getByLabel("Score labels")).toHaveValue("all");
+    await setup.getByLabel("Underlines").selectOption("flagged");
+    await expect(settings.getByLabel("Underlines")).toHaveValue("flagged");
+    await settings.getByLabel("Underlines").selectOption("off");
+    await setup.reload();
+    await expect(setup.getByLabel("Underlines")).toHaveValue("off");
+    await expect(flag).toHaveValue("light");
+    await expect(setup.getByRole("link", { name: "Open Settings" })).toHaveAttribute("href", "/options.html");
+  });
+
+  test("the download action shares the status row and the reading controls reflow", async ({ extension }) => {
+    const setup = await openScripted(extension, "onboarding.html", "needed");
+    const button = setup.locator("#component-primary");
+    await expect(button).toBeVisible();
+    for (const width of [960, 640, 390, 320]) {
+      await setup.setViewportSize({ width, height: 900 });
+      const status = await setup.locator(".component-status").boundingBox();
+      const download = await button.boundingBox();
+      expect(download.y).toBeLessThan(status.y + status.height);
+      expect(download.x).toBeGreaterThan(status.x + status.width);
+      const selects = await setup.locator("#readingPreferences select").evaluateAll(elements =>
+        elements.map(el => el.getBoundingClientRect().toJSON()));
+      for (const rect of selects) {
+        expect(rect.height).toBe(download.height);
+        expect(rect.right).toBeLessThanOrEqual(width);
+      }
+      expect(await setup.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  });
+
   test("the detector link follows the selected revision before installation", async ({ extension }) => {
     const page = await openScripted(extension, "options.html", "ready");
     const current = page.locator("#detectorPicker .detector-name");
@@ -405,9 +447,12 @@ test.describe("first download with several detector releases", () => {
     const select = page.getByLabel("Detector", {exact:true}).filter({visible:true});
     await expect(select).toHaveValue(release.revision);
     await expect(select.locator("selectedcontent")).toHaveText(`Recommended (${release.release})`);
+    const files = page.locator(".setup-model").getByRole("link", { name: "View on Hugging Face" });
+    await expect(files).toHaveAttribute("href", `https://huggingface.co/${release.repository}/tree/${release.revision}`);
     await expect(page.locator("#engine-pick-inbrowser")).toContainText("1.6 GB");
     await select.selectOption(smaller.revision);
     await expect(select.locator("selectedcontent")).toHaveText(smaller.release);
+    await expect(files).toHaveAttribute("href", `https://huggingface.co/${smaller.repository}/tree/${smaller.revision}`);
     await expect(page.locator("#engine-pick-inbrowser")).toContainText("704 MB");
     expect(await page.evaluate(() => window.chosenRelease)).toBeUndefined();
     await page.locator("#engine-pick-inbrowser").click();

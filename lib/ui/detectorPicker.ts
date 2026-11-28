@@ -10,6 +10,16 @@ async function catalog<T>(ref?: ReleaseRef): Promise<T> {
   if (!reply?.ok) throw new Error("Catalog unavailable");
   return reply.value as T;
 }
+
+function modelFilesLink(): HTMLAnchorElement {
+  const link = document.createElement("a");
+  link.className = "detector-name";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = t("detectorFiles");
+  return link;
+}
+
 export function mountDetectorPicker(host: HTMLElement) {
   const label = document.createElement("label");
   label.htmlFor = "detector-release";
@@ -19,10 +29,8 @@ export function mountDetectorPicker(host: HTMLElement) {
   select.className = "select";
   const choice = document.createElement("div");
   choice.className = "detector-choice";
-  const currentName = document.createElement("a");
-  currentName.target = "_blank";
-  currentName.rel = "noopener noreferrer";
-  currentName.className = "detector-name";
+  const currentName = document.createElement("span");
+  const files = modelFilesLink();
   const refresh = document.createElement("button");
   refresh.type = "button";
   refresh.className="btn";
@@ -35,10 +43,14 @@ export function mountDetectorPicker(host: HTMLElement) {
   const install = document.createElement("button");
   install.type = "button";
   install.className="btn";
+  install.dataset.size = "sm";
   const note = document.createElement("span");
   note.setAttribute("role", "status");
-  choice.append(select, currentName);
-  host.append(label, choice, refresh, install, note);
+  choice.append(label, select, currentName, refresh);
+  const actions = document.createElement("div");
+  actions.className = "detector-actions";
+  actions.append(install, files);
+  host.append(choice, actions, note);
   let active: ReleaseRef = defaultRelease,
     refs: ReleaseRef[] = [active],
     resolved: DetectorRelease | null = null;
@@ -67,9 +79,9 @@ export function mountDetectorPicker(host: HTMLElement) {
     select.hidden = single;
     select.disabled = loading || single;
     const selected = refs.find(r => key(r) === select.value) ?? active;
-    currentName.href = detectorRevisionUrl(selected.revision);
-    currentName.textContent = single ? selected.release : t("detectorFiles");
-    currentName.title = t("detectorFiles");
+    files.href = detectorRevisionUrl(selected.revision);
+    currentName.hidden = !single;
+    currentName.textContent = selected.release;
     install.hidden = !resolved || key(resolved) === key(active);
     install.disabled = !connected || busy || loading;
     if (resolved)
@@ -175,7 +187,8 @@ export function mountSetupDetector(host: HTMLElement, changed: (pin: DetectorRel
   retry.dataset.size = "sm";
   retry.textContent = t("panelRetry");
   retry.hidden = true;
-  host.append(label, select, note, retry);
+  const files = modelFilesLink();
+  host.append(label, select, files, note, retry);
 
   let choices: ReleaseRef[] = [];
   let recommended: DetectorRelease | null = null;
@@ -183,6 +196,7 @@ export function mountSetupDetector(host: HTMLElement, changed: (pin: DetectorRel
   async function choose() {
     const ref = choices.find(choice => choice.revision === select.value);
     if (!ref) return;
+    files.href = detectorRevisionUrl(ref.revision);
     const request = ++generation;
     retry.hidden = true;
     changed(null);
@@ -206,7 +220,7 @@ export function mountSetupDetector(host: HTMLElement, changed: (pin: DetectorRel
 
   async function load() {
     host.hidden = false;
-    label.hidden = select.hidden = choices.length === 0;
+    label.hidden = select.hidden = files.hidden = choices.length === 0;
     select.disabled = true;
     retry.hidden = true;
     note.textContent = t("detectorChecking");
@@ -223,7 +237,8 @@ export function mountSetupDetector(host: HTMLElement, changed: (pin: DetectorRel
     )));
     note.textContent = !recommended ? t("setupDefaultUnavailable")
       : !result?.listed ? t("setupOtherModelsUnavailable") : "";
-    label.hidden = select.hidden = select.disabled = false;
+    files.href = detectorRevisionUrl(first.revision);
+    label.hidden = select.hidden = files.hidden = select.disabled = false;
     retry.hidden = !!recommended && !!result?.listed;
     retry.onclick = async () => {
       note.focus();

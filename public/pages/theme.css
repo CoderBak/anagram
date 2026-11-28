@@ -39,8 +39,7 @@ html:root {
   --radius-lg: 6px;
   --page-title-size: 1.1875rem;
   --section-title-size: .875rem;
-  --control-height: 28px;
-  --button-height: 26px;
+  --control-height: 2rem;
   --shadow-card: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.28));
   --shadow-popover: 0 6px 20px light-dark(rgb(0 0 0 / 0.09), rgb(0 0 0 / 0.48)), 0 1px 3px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3));
 }
@@ -115,7 +114,7 @@ html.native-switch input[type="checkbox"][switch]:focus-visible {
   /* Switch the text and its background together when the system theme changes. */
   transition-property: border-color, box-shadow;
 }
-.btn[data-size="sm"] { min-height: var(--button-height); height: auto; padding: 2px 8px; font-size: .78125rem; }
+.btn[data-size="sm"] { min-height: var(--control-height); height: auto; padding: 2px 8px; font-size: .78125rem; }
 .btn:has(> .action-icon) { align-items: center; column-gap: 6px; }
 .btn > span, .disclosure-action > span, #install-preview > span, :is(details.breakdown, details.more, details.lens, details.table-view) > summary > span:not(.vh) {
   text-box: trim-both cap alphabetic;
@@ -219,8 +218,8 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: var(--button-height);
-  height: var(--button-height);
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 0;
   color: var(--muted-foreground);
 }
@@ -231,7 +230,7 @@ details.breakdown > summary:focus-visible { outline: 2px solid var(--ring); outl
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: var(--button-height);
+  min-height: var(--control-height);
   padding: 2px 5px;
   border: 0;
   border-radius: var(--radius);

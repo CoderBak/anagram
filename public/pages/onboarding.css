@@ -59,8 +59,8 @@ html.dark .step.done .num {
 .step-toggle {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  inline-size: var(--control-height);
+  block-size: var(--control-height);
   flex: none;
   border: 0;
   border-radius: 6px;
@@ -75,8 +75,13 @@ html.dark .step.done .num {
 @media (prefers-reduced-motion: reduce) { .step-toggle svg { transition: none; } }
 
 /* The reference card: quiet pills matching the in-page chips. */
-#verdictCard { gap: 6px; margin-top: 12px; padding-block: 12px; }
-.marks-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; }
+#verdictCard { gap: .75rem; margin-block-start: .75rem; padding-block: .75rem; }
+.marks-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; }
+#readingPreferences { display: flex; flex-wrap: wrap; gap: .75rem 1rem; }
+#readingPreferences .field { display: grid; align-content: end; gap: .5rem; flex: 1 1 max-content; min-inline-size: 0; }
+#readingPreferences label { color: var(--muted-foreground); font-weight: 500; }
+#readingPreferences select { inline-size: 100%; min-inline-size: 0; }
+.marks-guide { border-block-start: 1px solid var(--border); padding-block-start: .75rem; }
 .words { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
 .word { display: inline-flex; align-items: center; gap: 6px; color: var(--foreground); }
 .chip {

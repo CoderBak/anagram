@@ -53,6 +53,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
 function button(key: MessageKey, variant?: string, ...subs: string[]): HTMLButtonElement {
   const b = element("button", t(key, ...subs), "btn");
   b.type = "button";
+  b.dataset.size = "sm";
   if (variant) b.dataset.variant = variant;
   return b;
 }
@@ -85,7 +86,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   oneClickButton.id = "engine-pick-inbrowser";
   oneClickButton.setAttribute("aria-describedby", "engine-choice-inbrowser");
   oneClick.setAttribute("aria-labelledby", oneClickTitle.id);
-  oneClick.append(oneClickHead, element("p", t("engineOneClickWhat")), oneClickTight, oneClickButton);
+  const oneClickRow = element("div", undefined, "engine-choice-row");
+  oneClickRow.append(oneClickHead, oneClickButton);
+  oneClick.append(oneClickRow, element("p", t("engineOneClickWhat")), oneClickTight);
   const terminal = element("section", undefined, "engine-choice-card"); terminal.dataset.engine = "native";
   const terminalTitle = element("h3", t("componentTitle")); terminalTitle.id = "engine-choice-native";
   const terminalWhat = element("p");
@@ -97,7 +100,9 @@ export function mountEngineCard(options: EngineCardOptions): { refresh(): void }
   terminalButton.id = "engine-pick-native";
   terminalButton.setAttribute("aria-describedby", "engine-choice-native");
   terminal.setAttribute("aria-labelledby", terminalTitle.id);
-  terminal.append(terminalTitle, terminalWhat, terminalButton);
+  const terminalRow = element("div", undefined, "engine-choice-row");
+  terminalRow.append(terminalTitle, terminalButton);
+  terminal.append(terminalRow, terminalWhat);
   cards.append(oneClick, terminal);
   const refused = element("p", "", "engine-error"); refused.setAttribute("role", "alert"); refused.hidden = true;
   choice.append(cards, refused);

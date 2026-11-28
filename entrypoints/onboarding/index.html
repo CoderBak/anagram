@@ -54,21 +54,22 @@
 
         <section class="card" data-size="sm" id="verdictCard" aria-labelledby="verdictTitle">
           <header class="marks-heading">
-            <h2 id="verdictTitle" data-i18n="onbVerdictTitle">Reading the marks</h2>
+            <h2 id="verdictTitle" data-i18n="onbReadingPreferences">Reading preferences</h2>
+            <a class="text-action" href="/options.html" data-i18n="onbOpenSettings">Open Settings</a>
+          </header>
+          <div id="readingPreferences"></div>
+          <section class="marks-guide">
             <div class="words">
               <span class="word"><span class="chip b0"><span class="dot"></span>.05</span><span data-i18n="bandHuman">Human</span></span>
               <span class="word"><span class="chip b1"><span class="dot"></span>.50</span><span data-i18n="bandAssisted">AI-assisted</span></span>
               <span class="word"><span class="chip b3"><span class="dot"></span>.95</span><span data-i18n="bandAi">AI-generated</span></span>
             </div>
-          </header>
-          <section>
             <p class="step-note" data-i18n="onbScoreLine">Hover over a score to see its sentence labels.</p>
             <p class="note" data-i18n="onbModelNotice">English passages of 50 words or more.</p>
           </section>
         </section>
 
         <nav class="links">
-          <a href="/options.html" data-i18n="onbOpenSettings">Open Settings</a>
           <a id="guide" href="https://github.com/CoderBak/anagram/blob/dev/docs/user-guide.en.md" target="_blank" rel="noopener noreferrer" data-i18n="onbUserGuide">User guide</a>
           <a id="sourceCode" target="_blank" rel="noopener noreferrer" data-i18n="sourceCodeLink">Source code (AGPL-3.0)</a>
           <span class="ver" id="version"></span>

@@ -63,30 +63,7 @@
             </section>
             <section class="panel" id="reading" tabindex="-1" aria-labelledby="marksLabel">
               <span class="panel-title"><svg class="section-icon" aria-hidden="true" focusable="false"><use href="/icons/actions.svg#marks"></use></svg><h2 id="marksLabel" data-i18n="optMarks">Paragraph marks</h2></span>
-              <div class="fields">
-                <div class="field">
-                  <label for="flagFrom" data-i18n="optFlagFrom">Flag paragraphs</label>
-                  <select id="flagFrom" class="select">
-                    <option value="light" data-i18n="optFlagLight">AI-assisted or AI-generated</option>
-                    <option value="ai" data-i18n="optFlagAi">AI-generated only</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="displayMode" data-i18n="optChips">Score labels</label>
-                  <select id="displayMode" class="select">
-                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                    <option value="flagged" data-i18n="popupFlaggedOnly">Flagged only</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="underline" data-i18n="optUnderline">Underlines</label>
-                  <select id="underline" class="select">
-                    <option value="flagged" data-i18n="optUnderlineFlagged">Flagged passages</option>
-                    <option value="all" data-i18n="optEveryParagraph">Every paragraph</option>
-                    <option value="off" data-i18n="optUnderlineOff">Off</option>
-                  </select>
-                </div>
-              </div>
+              <div class="fields" id="readingPreferences"></div>
             </section>
           </div>
         </div>

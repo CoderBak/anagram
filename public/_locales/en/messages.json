@@ -511,6 +511,10 @@
     "message": "Show or hide marks on this page",
     "description": "Keyboard shortcut description; also listed on the settings page."
   },
+  "onbReadingPreferences": {
+    "message": "Reading preferences",
+    "description": "Heading over the flag, score label and underline controls on the setup page."
+  },
   "onbOpenSettings": {
     "message": "Open Settings",
     "description": "Link or button that opens the settings page."
@@ -1202,10 +1206,6 @@
   "onbWhere": {
     "message": "Automatic site access (optional)",
     "description": "Setup page: heading of the permissions block, first on the page."
-  },
-  "onbVerdictTitle": {
-    "message": "Reading the marks",
-    "description": "Setup page: heading of the block that explains the words, the colours and the dot."
   },
   "onbScoreLine": {
     "message": "Hover over a score to see its sentence labels.",
@@ -2868,7 +2868,7 @@
     "description": "Reading statistics for the combined AI-assisted and AI-generated classes."
   },
   "detectorFiles": {
-    "message": "Model files and terms",
+    "message": "View on Hugging Face",
     "description": "Link to the selected detector revision on Hugging Face."
   }
 }

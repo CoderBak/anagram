@@ -131,7 +131,9 @@ export function mountComponentSettings(host: HTMLElement, onUpdate?: (reply: Com
   const statusRow = element("div", undefined, "component-status-row");
   statusRow.append(summary);
   const management = engineManagement(statusRow, controls, inSettings);
-  host.replaceChildren(statusRow, note, lighter, barRow, progressText, keepOpen, where, error, details, management, dialog);
+  const summaryRow = element("div", undefined, "engine-summary");
+  summaryRow.append(statusRow, barRow);
+  host.replaceChildren(summaryRow, note, lighter, progressText, keepOpen, where, error, details, management, dialog);
 
   let snapshot: ComponentSnapshot | undefined;
   let stage: SetupStage | undefined;
