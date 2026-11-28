@@ -13,9 +13,10 @@ underline follows each sentence’s label.
 
 ## Install
 
-1. From the [latest release](https://github.com/CoderBak/anagram/releases/latest), download
-   **anagram-chrome-&lt;version&gt;.zip** (Chrome 137 or later). If you choose the optional
-   local engine during setup, its installer fetches the matching engine package.
+1. For the in-browser engine on Chrome 137 or later, download **anagram-chrome-0.12.2.zip**
+   from the [browser release](https://github.com/CoderBak/anagram/releases/tag/v0.12.2).
+   For the optional local engine, use the extension and installer from the
+   [signed v0.12.0 release](https://github.com/CoderBak/anagram/releases/tag/v0.12.0).
 2. Unzip it into a folder you will keep: Chrome runs the extension from there.
 3. Open `chrome://extensions`, turn on **Developer mode** (top right), click **Load unpacked**
    and choose that folder.

@@ -1,6 +1,6 @@
 [project]
 name = "anagramd"
-version = "0.12.1"
+version = "0.12.2"
 description = "Local authorship detector for the Anagram browser extension"
 requires-python = ">=3.12,<3.14"
 license = "AGPL-3.0-or-later"

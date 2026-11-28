@@ -5,6 +5,12 @@ Notable changes to Anagram, newest first. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html). The extension, the
 local component and the installer all carry the same version.
 
+## [0.12.2] — 2026-11-28
+
+- The open annotation card exposes Sentence labels and Copy to screen readers. Space toggles the sentence list, Tab reaches Copy, and Escape dismisses the card.
+- Returning to a cached page in Chrome reconnects the extension without logging an unchecked port error.
+- The Qwen browser engine stops repeating routine CPU and WebGPU placement warnings during startup. Inference errors still appear in the console. [Changes since v0.12.1](https://github.com/CoderBak/anagram/compare/v0.12.1...v0.12.2)
+
 ## [0.12.1] — 2026-11-28
 
 - Choose which paragraphs to flag, where score labels appear and which passages get underlined directly on the setup page. Changes appear in Settings as well.
