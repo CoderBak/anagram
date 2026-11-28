@@ -230,7 +230,7 @@ export class Session implements Backend {
     const window = meta.window;
     let session: OrtSession | null = null, qwen: QwenSession | undefined;
     if (cfg.model_type === "qwen3_5_text") {
-      qwen = await QwenSession.create(ort, providers, cfg, window, weights[0]!.data, weights[1]!.data, signal);
+      qwen = await QwenSession.create(ort, candidate.device === "gpu", cfg, window, weights[0]!.data, weights[1]!.data, signal);
     } else {
       const graph = await detectorGraph(cfg,window,weights);
       signal.throwIfAborted();

@@ -27,7 +27,7 @@ class Graph:
 
     def op(self, op, *inputs, **attrs):
         out = f"{self.prefix}v{len(self.nodes)}"
-        self.nodes.append(helper.make_node(op, inputs, [out], **attrs))
+        self.nodes.append(helper.make_node(op, inputs, [out], name=out if self.prefix else "", **attrs))
         return out
 
     def const(self, data, dtype=np.int64):
@@ -195,5 +195,8 @@ if __name__ == "__main__":
     rope = dict(rope_type="default", rope_theta=10_000_000, partial_rotary_factor=0.25)
     graphs = {"config": config, "rope": rope, "linear_attention": decoder_layer("linear_attention", linear_attention),
               "full_attention": decoder_layer("full_attention", full_attention), "heads": classification_heads()}
+    # Scan's CPU kernel iterates one token at a time. Keep its small state updates on
+    # that provider so each iteration can reuse the state without a GPU round trip.
+    graphs["linear_attention"]["scanNodes"] = [node.name for node in delta_scan_body().node]
     dest = Path(__file__).resolve().parents[1] / "anagramd" / "qwen-graphs.json"
     dest.write_text(json.dumps(graphs, separators=(",", ":")) + "\n")

@@ -39,7 +39,7 @@ export class QwenSession {
   private layers: OrtSession[] = [];
   private constructor(private ort: OrtModule, private embedding: Blob, private vocab: number) {}
 
-  static async create(ort: OrtModule, providers: unknown[], cfg: DetectorConfig, window: number,
+  static async create(ort: OrtModule, gpu: boolean, cfg: DetectorConfig, window: number,
                       backboneFile: Blob, headFile: Blob, signal: AbortSignal) {
     checkQwenConfig(cfg, window);
     const vocab = cfg.vocab_size!;
@@ -56,7 +56,10 @@ export class QwenSession {
           externalData.push({path: name, data: isHead ? tensor : new Blob([(await widenBF16(tensor)).buffer])});
         }
         const bytes = Uint8Array.from(atob(spec.model), c => c.charCodeAt(0));
-        result.layers.push(await ort.InferenceSession.create(bytes, {externalData, executionProviders: providers,
+        const gpuProvider = kind === "linear_attention"
+          ? { name: "webgpu", forceCpuNodeNames: graphs.linear_attention.scanNodes }
+          : { name: "webgpu" };
+        result.layers.push(await ort.InferenceSession.create(bytes, {externalData, executionProviders: gpu ? [gpuProvider] : ["wasm"],
           graphOptimizationLevel: "all", enableCpuMemArena: false, extra: {session: {disable_prepacking: "1"}}}));
       }
       return result;
