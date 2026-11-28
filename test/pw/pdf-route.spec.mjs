@@ -426,17 +426,18 @@ test.describe("the handoff", () => {
     expect(notice).toBe("This file could not be read as a PDF.");
   });
 
-  test("handoff: a pasted source does not navigate or read anything automatically", async ({ context, extension, files, traffic }) => {
-    const src = files.url("/pasted.pdf");
+  test("a pasted legacy reader link displays the publisher URL without fetching the paper", async ({ context, extension, traffic }) => {
+    const src = "https://aclanthology.org/2025.findings-acl.754.pdf";
     const page = await context.newPage();
     const visits = [];
     page.on("framenavigated", (f) => {
       if (f === page.mainFrame()) visits.push(f.url());
     });
-    await page.goto(`${READER(extension)}?src=${encodeURIComponent(src)}`, { waitUntil: "load" }).catch(() => {});
+    await page.goto(`${READER(extension)}?src=${encodeURIComponent(src)}#page=2`, { waitUntil: "load" }).catch(() => {});
     await pickerShown(page);
     await page.waitForTimeout(ABSENCE_MS);
-    expect(page.url().startsWith(READER(extension))).toBe(true);
+    expect(page.url()).toBe(`${READER(extension)}?src=${src}#page=2`);
+    await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute("href", src);
     expect(visits.every((url) => url.startsWith(READER(extension))), JSON.stringify(visits)).toBe(true);
     expect(traffic.requested.filter((url) => url === src)).toHaveLength(0);
     await expect(page.locator("#drop:not([hidden])")).toBeVisible();

@@ -834,8 +834,20 @@ async function main(): Promise<void> {
     refreshQueued = true;
     queueMicrotask(() => { refreshQueued = false; if (started) orchestrator?.refresh(); });
   });
-  const params = new URL(location.href).searchParams;
+  const address = new URL(location.href);
+  const params = address.searchParams;
   const src = documentAddress(params.get("src")), ticket = params.get("ticket");
+  // An existing bookmark can still use the old percent-encoded address. A live
+  // handoff is bound to its exact URL until openTicket has claimed its bytes.
+  if (src && !params.has("ticket")) {
+    const rest = new URLSearchParams(params);
+    rest.delete("src");
+    const query = readerQuery(src) + (rest.size ? `&${rest}` : "");
+    if (address.search !== query) {
+      address.search = query;
+      history.replaceState(history.state, "", address);
+    }
+  }
   showOriginal(src);
   // Only a reload, a step back, or a tab Chrome discarded to save memory and is loading again
   // (the reader looked empty on returning to it) reads this very source again.
