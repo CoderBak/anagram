@@ -500,16 +500,18 @@ export default defineBackground(() => {
         return {ok:true};
       }
       case ACTIONS.COUNT_TOKENS: {
-        const counts=await tokenCounter.count(msg.texts,document!.signal,(await placeOf(sender,document!,role === "paste")).partition).catch(()=>null);
+        const signal = document!.scoringSignal(msg.scoringView);
+        const counts=await tokenCounter.count(msg.texts,signal,(await placeOf(sender,document!,role === "paste")).partition).catch(()=>null);
         return {counts,model:getScoreClient().model(),backend:counts || getScoreClient().isUp() ? "up" : "down"} satisfies CountTokensReply;
       }
       case ACTIONS.SCORE_BATCH: {
+        const signal = document!.scoringSignal(msg.scoringView);
         try {
           await cacheModeReady.catch(()=>undefined);
           const paste = role === "paste";
           const place=await placeOf(sender,document!,paste);
-          const resp=await router.handle(msg.req,{private:paste || sender.tab?.incognito===true,partition:place.partition,site:place.site,documentKey:document!.documentKey,tab:sender.tab?.id,signal:document!.signal});
-          if(document!.signal.aborted)return {ok:false,error:"forbidden"};
+          const resp=await router.handle(msg.req,{private:paste || sender.tab?.incognito===true,partition:place.partition,site:place.site,documentKey:document!.documentKey,tab:sender.tab?.id,signal});
+          if(signal.aborted)return {ok:false,error:"forbidden"};
           const hasModel=resp.model.id !== "none";
           // Known cached verdicts remain usable while the native model is unloaded.
           const up=getScoreClient().isUp() || (hasModel && resp.results.some((result)=>!result.degraded));

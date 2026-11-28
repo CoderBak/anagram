@@ -3,11 +3,11 @@ import { browser } from "#imports";
 import { onPortDisconnect } from "../messaging/port";
 import * as v from "valibot";
 import { ACTIONS } from "../messaging/protocol";
-import { callerRole, pageAddress, SESSION_HANDSHAKE_MS, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
+import { callerRole, pageAddress, ScoringViewUpdate, SESSION_HANDSHAKE_MS, SESSION_PORT, SessionSchema, type AccessSender } from "./messages";
 import { matcher, matchesAny } from "./patterns";
 
 interface Identity {tabId:number;frameId:number;url:string;origin:string;documentId?:string;session:string}
-export interface DocumentAccess extends Identity { documentKey:string; signal:AbortSignal }
+export interface DocumentAccess extends Identity { documentKey:string; signal:AbortSignal; scoringSignal(view?: number): AbortSignal }
 interface Live extends DocumentAccess {key:string;controller:AbortController;port:ReturnType<typeof browser.runtime.connect>;revoked?:boolean}
 /** A message a document sent on its session port after the handshake (the reading log's last
  *  message of a visit, posted as the page goes): ordered before the port's disconnect, as a
@@ -17,6 +17,25 @@ const frameKey = (tabId:number,frameId:number) => `${tabId}:${frameId}`;
 /** The most documents of one tab served at once: a page with more frames than this has the
  *  rest of them unread, and no tab can take the other tabs' places. */
 const PER_TAB_SESSIONS = 128;
+
+/** Port updates and runtime requests can arrive in either order. Only a newer view can
+ * retire automatic scoring, and the document's authorization still bounds every view. */
+function scoringLifetime(document: AbortSignal): DocumentAccess["scoringSignal"] {
+  let view = 0;
+  let controller = new AbortController();
+  let signal = AbortSignal.any([document, controller.signal]);
+  return requested => {
+    if (requested === undefined) return document;
+    if (requested < view) return AbortSignal.abort();
+    if (requested > view) {
+      view = requested;
+      controller.abort();
+      controller = new AbortController();
+      signal = AbortSignal.any([document, controller.signal]);
+    }
+    return signal;
+  };
+}
 /** What a sender is checked against: the page a content script speaks for (for a srcdoc or
  *  about:blank frame, the origin it took from its page), an extension page's own URL. */
 const addressOf = (sender: AccessSender): string | undefined => pageAddress(sender) ?? sender.url;
@@ -65,7 +84,13 @@ export function createDocumentAuthority() {
         const timer=setTimeout(()=>{if(!record)port.disconnect();},SESSION_HANDSHAKE_MS);
         onPortDisconnect(port, ()=>{clearTimeout(timer);if(record)retire(record);});
         port.onMessage.addListener((value) => {
-          if (record) { onPortMessage?.(record, sender, value); return; }
+          if (record) {
+            if (value && typeof value === "object" && "scoringView" in value) {
+              const update = v.safeParse(ScoringViewUpdate, value);
+              if (update.success && update.output.session === record.session) record.scoringSignal(update.output.scoringView);
+            } else onPortMessage?.(record, sender, value);
+            return;
+          }
           const parsed=v.safeParse(v.strictObject({session:SessionSchema}),value);
           // No tab may take every document's place: a page of a thousand tiny frames would
           // otherwise leave every other tab with none (PER_TAB_SESSIONS).
@@ -78,7 +103,8 @@ export function createDocumentAuthority() {
           const controller=new AbortController();
           const address=addressOf(sender)!;
           record={key,tabId:sender.tab?.id ?? -1,frameId:sender.frameId ?? 0,url:address,origin:new URL(address).origin,
-            documentId:sender.documentId,session:parsed.output.session,documentKey:crypto.randomUUID(),controller,signal:controller.signal,port};
+            documentId:sender.documentId,session:parsed.output.session,documentKey:crypto.randomUUID(),controller,signal:controller.signal,
+            scoringSignal:scoringLifetime(controller.signal),port};
           live.set(key,record); port.postMessage({session:record.session});
         });
       });

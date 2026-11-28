@@ -37,6 +37,7 @@ export interface Observers {
   observeUnit(unit: Unit): void;
   /** Watch mutations inside an open shadow root the walker descended into. Idempotent. */
   observeRoot(root: ShadowRoot): void;
+  watchReveal(el: Element): void;
   /** Stop tracking one unit (scored, invalidated, or purged). */
   dropUnit(unit: Unit): void;
   /** Place a unit again as if it had just been found: its batch was abandoned, and the one
@@ -129,6 +130,7 @@ export function createObservers(opts: {
   const observedAt = new WeakMap<Element, number>();
 
   const dirty = new Set<Node>();
+  let reveals = new WeakSet<Promise<Animation>>();
   const removed = new Set<Node>();
   const quiet = new Map<Text, Element>();
   const attrPending = new Set<Element>();
@@ -157,6 +159,24 @@ export function createObservers(opts: {
     attributes: true,
     attributeFilter: [...WATCHED_ATTRS, "lang", "role", "dir", "data-author", "data-speaker", "itemscope", "itemprop", "typeof"],
   };
+
+  function watchReveal(el: Element): void {
+    // CSS and Web Animations can finish after the route and mutation scans. Only follow
+    // finite animations on containers the walker actually skipped, once per animation.
+    for (const animation of el.getAnimations?.() ?? []) {
+      if (animation.playState === "finished" || animation.playState === "idle" ||
+          !Number.isFinite(animation.effect?.getComputedTiming().endTime)) continue;
+      const finished = animation.finished;
+      if (reveals.has(finished)) continue;
+      reveals.add(finished);
+      const reconsider = () => {
+        if (!reveals.delete(finished) || !started || !el.isConnected || getComputedStyle(el).opacity === "0") return;
+        dirty.add(el);
+        scheduleDrain();
+      };
+      void finished.then(reconsider, reconsider);
+    }
+  }
 
   function flushAttrPending(): void {
     attrTimer = null;
@@ -456,6 +476,7 @@ export function createObservers(opts: {
 
   function stop(): void {
     started = false;
+    reveals = new WeakSet();
     const attached = shadowAttachedEvent();
     if (attached) document.removeEventListener(attached, onShadowAttached, true);
     ioNear.disconnect();
@@ -490,7 +511,7 @@ export function createObservers(opts: {
     return seen.get(el)?.known === 3 || performance.now() - (observedAt.get(el) ?? 0) > PLACE_WAIT_MS;
   }
 
-  return { observeUnit, observeRoot, dropUnit, reobserve, placed, start, stop };
+  return { observeUnit, observeRoot, watchReveal, dropUnit, reobserve, placed, start, stop };
 }
 
 /**

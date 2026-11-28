@@ -22,6 +22,7 @@ vi.mock("../../lib/messaging/client", () => ({
   requestTokenCounts: async (texts: string[]) => ({ backend: "up", counts: { alone: texts.map((t) => Math.ceil(t.length / 4)), following: texts.map((t) => Math.ceil((t.length + 1) / 4)) } }),
 }));
 vi.mock("../../lib/access/session", () => ({
+  advanceScoringView: vi.fn(),
   sendDocumentMessage: calls.message, cancelDocumentSession: calls.cancel, documentSessionId: () => calls.session,
 }));
 vi.mock("../../lib/capture/cache", async (original) => {

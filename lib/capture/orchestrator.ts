@@ -1,4 +1,4 @@
-import { beforeDocumentLeaves, cancelDocumentSession, documentSessionId, postDocumentMessage, sendDocumentMessage } from "../access/session";
+import { advanceScoringView, beforeDocumentLeaves, cancelDocumentSession, documentSessionId, postDocumentMessage, sendDocumentMessage } from "../access/session";
 // lib/capture/orchestrator.ts — ties walker + observers + scheduler + cache +
 // messaging + renderer + toolbar reporting into the live capture→annotate loop.
 //
@@ -744,8 +744,10 @@ export function createOrchestrator(
    * surface's own collect (OrchestratorOptions.collect) answers at once, as before.
    */
   let walks: Promise<unknown> = Promise.resolve();
+  let pendingWalks = 0;
   function walkInTurn<T>(job: () => Promise<T>): Promise<T> {
-    const run = walks.then(job);
+    pendingWalks++;
+    const run = walks.then(job).finally(() => { pendingWalks--; });
     walks = run.catch((e) => log.warn("walk failed", e));
     return run;
   }
@@ -762,6 +764,7 @@ export function createOrchestrator(
         reading.trackShort(nodes);
       },
       onShadowRoot: observers.observeRoot,
+      onTransparent: observers.watchReveal,
       // What the walk left out, for the reading log; only while it records.
       ...(reading.running() ? { onLeftOut: reading.leftOut } : {}),
     };
@@ -1507,14 +1510,15 @@ export function createOrchestrator(
       // A new view can keep the old thread in the DOM. Retire work issued for it,
       // while keeping settled units until the new tree tells us which still belong.
       retireCapture();
+      advanceScoringView();
       scheduler.bumpEpoch();
       for (const unit of unitsById.values()) if (!unit.isScored) invalidateUnit(unit);
       reading.newView(unitsById.values());
       routeRewritePending = kind === "rewrite";
     }
-    if (kind === "rewrite" && unitsById.size === live && (!pathChanged || live > 0)) {
-      // Feeds rewrite the URL as they scroll. A DOM change on a rewritten path
-      // also schedules reconciliation, after the new content has arrived.
+    if (kind === "rewrite" && unitsById.size === live && (!pathChanged || (live > 0 && pendingWalks === 0))) {
+      // Feeds rewrite the URL as they scroll. A rewrite that interrupted a walk must
+      // read again even if the app already mounted the new content before changing the URL.
       updateToolbar();
       return;
     }

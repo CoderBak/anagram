@@ -23,6 +23,28 @@ function sender(frameId=0,url="https://top.test/article",documentId:string|undef
   return {id:fakeBrowser.runtime.id,url,origin:new URL(url).origin,frameId,documentId,tab:{id:7,url:"https://top.test/article"}};
 }
 describe("document-scoped authorization",()=>{
+  it("cancels superseded views in either message order while keeping a one-off document grant", async () => {
+    const env = environment([]);
+    const source = sender();
+    const port = env.open(source);
+    env.authority.grantOnce({tabId: 7, frameId: 0, documentId: source.documentId, url: source.url!, session: port.session});
+    const access = (await env.authority.authorize(source, port.session))!;
+    const old = access.scoringSignal(0);
+    port.say({session: crypto.randomUUID(), scoringView: 1});
+    expect(old.aborted).toBe(false);
+    port.say({session: port.session, scoringView: 1});
+    expect(old.aborted).toBe(true);
+    const next = access.scoringSignal(1);
+    const current = access.scoringSignal(2);
+    expect(next.aborted).toBe(true);
+    port.say({session: port.session, scoringView: 1});
+    expect(access.scoringSignal(1).aborted).toBe(true);
+    expect(current.aborted).toBe(false);
+    expect(access.scoringSignal()).toBe(access.signal);
+    expect(await env.authority.authorize(source, port.session)).toBe(access);
+    port.close();
+    expect(current.aborted).toBe(true);
+  });
   it("withdraws a cross-origin iframe immediately while retaining its granted parent",async()=>{
     const env=environment(),top=sender(),child=sender(3,"https://frame.test/embed","doc-child");
     const a=env.open(top),b=env.open(child);

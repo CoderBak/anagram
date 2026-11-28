@@ -254,6 +254,8 @@ export interface CollectOptions {
    * would mean reading the page a second time.
    */
   onShortText?: (nodes: Text[]) => void;
+  /** A container temporarily hidden by opacity may become readable without a DOM mutation. */
+  onTransparent?: (el: Element) => void;
   /**
    * Text the walk left out, by why and how many words, where it decides to (the reading log's
    * `leftOut`): runs mostly of links, of symbols or of names, code, a teaser the site cut,
@@ -898,6 +900,7 @@ export function* collectUnitsInSlices(
       return;
     }
     if (isCitationMarker(el, tag) || (cs && isVisuallyHidden(cs))) {
+      if (cs?.opacity === "0") opts.onTransparent?.(el);
       leaveOut();
       return;
     }

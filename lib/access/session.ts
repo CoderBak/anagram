@@ -12,6 +12,17 @@ interface Connection {
   post(message: object): boolean;
 }
 let connected: Connection | undefined;
+let scoringView = 0;
+
+/** Release the previous view's engine work even when the new conversation has no text yet. */
+export function advanceScoringView(): void {
+  postDocumentMessage({ scoringView: ++scoringView });
+}
+
+export function sendScoringMessage(message: object, signal?: AbortSignal): Promise<unknown> {
+  // A selection or pasted text has its own lifetime, independent of automatic page scans.
+  return sendDocumentMessage(signal ? { ...message, scoringView } : message, signal);
+}
 /** What the document says as it goes, said on its port before the port closes. */
 const lastWords = new Set<() => void>();
 

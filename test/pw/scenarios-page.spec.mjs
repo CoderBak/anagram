@@ -305,14 +305,17 @@ test("twenty URL rewrites cost no re-walk and no chip; a pushed entry is refresh
 });
 
 test.describe("Switching conversations", () => {
-  test.use({ nativeFixtureOptions: { model: { id: "fake-detector", ver: "test", calibration: "anagram-detector/1" } } });
-
-  test("quick route changes retire a pending score and a hidden conversation", async ({ page, pages, nativeHost, tell }) => {
-    nativeHost.setState({ rules: [
+  test.use({ nativeFixtureOptions: {
+    interleavesPasses: true,
+    model: { id: "fake-detector", ver: "test", calibration: "anagram-detector/1" },
+    rules: [
       { contains: "-THREAD", result: { bucket: 2, probs: [0, 0, 1], score: 1, sentenceLabels: [2],
         tokens: 120, lang: "en", lang_prob: 0.99, truncated: false } },
-      { contains: "PENDING-THREAD", delayMs: 2200 },
-    ] });
+      { contains: "PENDING-THREAD", delayMs: 30000 },
+    ],
+  } });
+
+  test("quick route changes retire a pending score and a hidden conversation", async ({ page, pages, nativeHost, tell }) => {
     pages.serve({ "/c/first": PAGE("Conversations", `<main><div id="first">
       <div data-message-author-role="user"><p>A short question from the person who started this conversation.</p></div>
       <div data-message-author-role="assistant"><p>${PARA("FIRST-THREAD")}</p></div>
@@ -334,6 +337,7 @@ test.describe("Switching conversations", () => {
       document.querySelector("main").append(article);
     }, PARA("PENDING-THREAD"));
     await expect.poll(() => nativeHost.textsSince().some(text => text.includes("PENDING-THREAD"))).toBe(true);
+    const pending = nativeHost.requests().find(r => r.op === "score" && r.payload.blocks.some(b => b.text.includes("PENDING-THREAD")));
     await page.evaluate(text => {
       history.pushState({}, "", "/c/intermediate");
       history.replaceState({}, "", "/c/final");
@@ -343,6 +347,7 @@ test.describe("Switching conversations", () => {
       p.textContent = text;
       document.querySelector("main").append(p);
     }, PARA("FINAL-THREAD"));
+    await expect.poll(() => nativeHost.requests().some(r => r.op === "score.cancel" && r.payload.id === pending.id)).toBe(true);
     await chipsSettle(page, 1, "#final");
     await expect.poll(async () => (await state()).scored).toBe(1);
     await expect.poll(async () => (await state()).report.counts.short).toBe(0);
@@ -355,6 +360,42 @@ test.describe("Switching conversations", () => {
     });
     await chipsSettle(page, 1, "#first");
     await expect.poll(async () => (await state()).scored).toBe(1);
+  });
+
+  test("replacing the URL after the new turns mount resumes their interrupted token count", async ({ page, pages, nativeHost }) => {
+    pages.serve({ "/c/draft": PAGE("Chats", `<main><article><p>${PARA("FIRST-THREAD")}</p></article></main>`) });
+    await page.goto(pages.url("/c/draft"));
+    await chipsSettle(page, 1, "article");
+    nativeHost.setState({tokenDelayMs: 1500});
+    await page.evaluate(text => {
+      const turn = document.createElement("section");
+      turn.id = "reply";
+      turn.innerHTML = "<p></p><p></p>";
+      turn.firstChild.textContent = "REPLY-THREAD " + text;
+      turn.lastChild.textContent = text;
+      document.querySelector("main").append(turn);
+    }, PARA("WORDS").split(" ").slice(0, 45).join(" "));
+    await expect.poll(() => nativeHost.requests().some(r => r.op === "tokens" &&
+      r.payload.texts.some(text => text.includes("REPLY-THREAD")))).toBe(true);
+    await page.evaluate(() => history.replaceState({}, "", "/c/saved"));
+    await chipsSettle(page, 1, "#reply");
+  });
+
+  test("a conversation revealed after the route scan gets annotations", async ({ page, pages }) => {
+    pages.serve({ "/c/before": PAGE("Chats", `<style>@keyframes show-turns { from {opacity:0} to {opacity:1} }
+      .entering { animation: show-turns 1s steps(1,end) both; }</style><main><article><p>${PARA("BEFORE-THREAD")}</p></article></main>`) });
+    await page.goto(pages.url("/c/before"));
+    await chipsSettle(page, 1, "main");
+    await page.evaluate(text => {
+      history.pushState({}, "", "/c/after");
+      const article = document.createElement("article");
+      article.className = "entering";
+      article.innerHTML = "<div data-message-author-role='assistant'><p></p></div>";
+      article.querySelector("p").textContent = text;
+      document.querySelector("main").replaceChildren(article);
+    }, PARA("AFTER-THREAD"));
+    await expect(page.locator("main article")).toHaveCSS("opacity", "1");
+    await chipsSettle(page, 1, "main");
   });
 });
 

@@ -199,6 +199,7 @@ async function serveNative(stateFile, logFile) {
   const ok = (request, data) => send(request, { ok: true, status: 200, data });
   const failed = (request, status, code, message) => send(request, { ok: false, status, error: { code, message } });
   // A closed fixture breaks the native pipe, including an otherwise idle connection.
+  const cancelScores = new Map();
   const monitor = setInterval(() => { try { if (!readState().enabled) process.exit(0); } catch { process.exit(0); } }, 50);
   process.stdin.on("end", () => { clearInterval(monitor); process.exit(0); });
   async function handle(request) {
@@ -215,12 +216,18 @@ async function serveNative(stateFile, logFile) {
       if (component.state !== "ready" || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");
       const buckets = s.model.calibration === "anagram-detector/1" ? ["human", "ai_assisted", "ai_generated"] : BUCKETS;
       return ok(request, { ok: true, contract: s.contract, model: s.model, n_buckets: buckets.length, buckets,
-        languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion });
+        languages: ["en"], lid: "fake-script-heuristic", max_tokens: 512, device: "fake", dtype: "none", app_version: s.appVersion,
+        interleaves_passes: s.interleavesPasses === true });
+    }
+    if (request.op === "score.cancel") {
+      cancelScores.get(request.payload.id)?.();
+      return ok(request, {});
     }
     if (request.op === "tokens") {
       if ((component.state !== "ready" && component.state !== "idle") || loading(s)) return failed(request, 503, "not_ready", "Fixture engine not ready");
       // The scoring below's own measure, which a space in front does not change.
       const texts = request.payload?.texts ?? [];
+      if (s.tokenDelayMs) await new Promise(resolve => setTimeout(resolve, s.tokenDelayMs));
       return ok(request, { alone: texts.map((t) => fakeTokens(t)), following: texts.map((t) => fakeTokens(t)), window: 510 });
     }
     if (request.op === "score") {
@@ -240,7 +247,12 @@ async function serveNative(stateFile, logFile) {
         const result = rules.find((r) => r.result)?.result ?? fakeScore(b.text, tokens?.tokens);
         return { id: b.id, ...result };
       });
-      await new Promise((r) => setTimeout(r, delay));
+      const completed = await new Promise(resolve => {
+        const timer = setTimeout(() => resolve(true), delay);
+        if (s.interleavesPasses) cancelScores.set(request.id, () => { clearTimeout(timer); resolve(false); });
+      });
+      cancelScores.delete(request.id);
+      if (!completed) return failed(request, 499, "cancelled", "Score cancelled");
       if (!readState().enabled) process.exit(0);
       return ok(request, { v: CONTRACT, model: s.model, partial: false, results });
     }

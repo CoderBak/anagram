@@ -1,4 +1,4 @@
-import { documentSessionId, sendDocumentMessage } from "../access/session";
+import { documentSessionId, sendScoringMessage } from "../access/session";
 // lib/messaging/client.ts — content→SW client.
 import { browser } from "#imports";
 import { CONTRACT_LIMITS, modelDim, type ModelInfo, type ScoreBatchRequest, type ScoreResult, type TokenCounts } from "../contract";
@@ -54,7 +54,7 @@ export async function requestScores(req: ScoreBatchRequest, signal?: AbortSignal
     if (signal?.aborted || session !== documentSessionId()) return { results: [], backend: "unreachable" };
     let failed: ScoreReply["backend"] = "unreachable";
     try {
-      const reply = (await sendDocumentMessage(message, signal)) as
+      const reply = (await sendScoringMessage(message, signal)) as
         | ScoreBatchReply
         | Refusal
         | undefined;
@@ -105,7 +105,7 @@ export async function requestTokenCounts(texts: string[], expectedModel?: ModelI
     const slice = texts.slice(at, end);
     const message: CountTokensMessage = { action: ACTIONS.COUNT_TOKENS, texts: slice };
     try {
-      const reply = (await sendDocumentMessage(message, signal)) as CountTokensReply | Refusal | undefined;
+      const reply = (await sendScoringMessage(message, signal)) as CountTokensReply | Refusal | undefined;
       if (reply && "ok" in reply) return { counts: null, backend: reply.error === "invalid_request" ? "refused" : "unreachable" };
       const got = reply?.counts;
       if (!got || !Array.isArray(got.alone) || !Array.isArray(got.following) ||

@@ -19,6 +19,8 @@ export const SESSION_PORT = "anagram-document";
 export const SESSION_HANDSHAKE_MS = 2000;
 export const SESSION_KEY = "__anagramDocumentSession";
 export const SessionSchema = v.pipe(v.string(), v.regex(/^[a-f0-9-]{36}$/));
+const viewNumber = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
+export const ScoringViewUpdate = v.strictObject({session: SessionSchema, scoringView: viewNumber});
 const session = v.optional(SessionSchema);
 const tabId = v.pipe(v.number(), v.integer(), v.minValue(0));
 const url = v.pipe(v.string(), v.maxLength(8192), v.check((s) => {
@@ -40,8 +42,8 @@ export const ScoreRequestSchema = v.pipe(v.strictObject({
 const TokenTexts = v.pipe(v.array(v.pipe(v.string(),v.maxLength(MOST_TEXT))),v.minLength(1),v.maxLength(MOST_TOKEN_TEXTS),
   v.check((texts) => texts.reduce((n,t)=>n+t.length,0) <= MOST_CHARS,"request too large"));
 const schema = v.variant("action",[
-  v.strictObject({action:v.literal(ACTIONS.SCORE_BATCH),session,req:ScoreRequestSchema}),
-  v.strictObject({action:v.literal(ACTIONS.COUNT_TOKENS),session,texts:TokenTexts}),
+  v.strictObject({action:v.literal(ACTIONS.SCORE_BATCH),session,scoringView:v.optional(viewNumber),req:ScoreRequestSchema}),
+  v.strictObject({action:v.literal(ACTIONS.COUNT_TOKENS),session,scoringView:v.optional(viewNumber),texts:TokenTexts}),
   v.strictObject({action:v.literal(ACTIONS.ANALYZE_TAB),tabId}),
   v.strictObject({action:v.literal(ACTIONS.OPEN_PDF_READER),session,tabId:v.optional(tabId),url:v.optional(pdfUrl)}),
   v.strictObject({action:v.literal(ACTIONS.GET_PDF_STATUS),tabId}),
