@@ -290,6 +290,7 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
       });
       browser.webNavigation.onBeforeNavigate.addListener((details)=>{
         if(details.frameId!==0)return;
+        reading.get(details.tabId)?.abort();
         for(const [key,meta]of tickets)if(meta.tabId===details.tabId){
           if(!meta.navigating || details.url!==meta.reader)discard(key);
         }
@@ -353,8 +354,9 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
     },
     async open(tabId,src,{auto}){
       if(src.startsWith("file:") || !PDF_TAB_SCRIPTS_RUN){return sourceBroker.open(tabId,src);}
-      if(reading.has(tabId))return {ok:false,error:"busy"};
-      const endTransfer=budget.start();if(!endTransfer)return {ok:false,error:"busy"};
+      const previous = reading.get(tabId);
+      if (previous && !previous.signal.aborted) return {ok:false,error:"busy"};
+      let endTransfer: (() => void) | null = null;
       const abort=new AbortController(),lease=budget.lease();reading.set(tabId,abort);sources.set(tabId,src);
       const epoch=epochs.get(tabId)??0;
       const stillHere=async()=>{
@@ -366,6 +368,8 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
         if(!await stillHere())return {ok:false,error:"forbidden"};
         if(deps.ensureInjected)await deps.ensureInjected(tabId).catch(()=>false);
         if(!await stillHere())return {ok:false,error:"forbidden"};
+        endTransfer = budget.start();
+        if (!endTransfer) return {ok:false,error:"busy"};
         const got=await readPdfFromTab(tabId,src,{signal:abort.signal,lease});
         if(!await stillHere())return {ok:false,error:"forbidden"};
         if(!got.ok){if(!auto)await browser.tabs.update(tabId,{url:`${deps.readerUrl(src)}&err=${got.failure}`}).catch(()=>undefined);return {ok:false,error:"read"};}
@@ -378,7 +382,14 @@ export function createPdfHandoff(deps:HandoffDeps):PdfHandoff {
         setTimeout(()=>discard(ticket),TICKET_TTL_MS);
         try{await browser.tabs.update(tabId,{url:reader});return {ok:true};}
         catch{discard(ticket);return {ok:false,error:"read"};}
-      }finally{if(!transferred)lease.release();reading.delete(tabId);sources.delete(tabId);endTransfer();}
+      } finally {
+        if (!transferred) lease.release();
+        if (reading.get(tabId) === abort) {
+          reading.delete(tabId);
+          sources.delete(tabId);
+        }
+        endTransfer?.();
+      }
     },
     // A refreshed reader has no tab showing the PDF to stream from: its document is read
     // again the private way every other route reads a source (lib/pdf/sourceTransfer.ts).

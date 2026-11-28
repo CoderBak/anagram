@@ -76,8 +76,10 @@ export async function startViewer(): Promise<PdfApplication> {
   describeViewer(lang);
   const url = new URL(location.href);
   // Generic PDF.js accepts ?file=. Only verified tickets and user-picked bytes may open here.
-  url.searchParams.delete("file");
-  history.replaceState(null, "", url);
+  if (url.searchParams.has("file")) {
+    url.searchParams.delete("file");
+    history.replaceState(null, "", url);
+  }
   await loadPdfjs();
   document.addEventListener("webviewerloaded", () => {
     const globals = window as unknown as ViewerModule;

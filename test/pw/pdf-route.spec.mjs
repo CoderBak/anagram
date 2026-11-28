@@ -204,10 +204,52 @@ test.describe("reading mode on", () => {
     const reading = await page
       .evaluate(() => ({ pages: document.querySelectorAll(".page").length, spans: document.querySelectorAll(".textLayer span").length, title: document.title }))
       .catch(() => ({ pages: 0, spans: 0, title: null }));
-    expect(page.url()).toBe(`${READER(extension)}?src=${encodeURIComponent(files.url("/doc.pdf"))}`);
+    expect(page.url()).toBe(`${READER(extension)}?src=${files.url("/doc.pdf")}`);
+    await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute("href", files.url("/doc.pdf"));
     expect(reading.pages, JSON.stringify(reading)).toBe(2);
     expect(reading.spans).toBeGreaterThan(5);
     expect(chips).toBeGreaterThan(0);
+  });
+
+  test("leaving a slow PDF handoff opens the last paper with its original link", async ({ context, extension, files }) => {
+    const first = files.url("/slow-switch.pdf"), last = files.url("/doc.pdf?latest");
+    let fetching = false;
+    const release = Promise.withResolvers();
+    await context.route(first, async route => {
+      if (route.request().resourceType() === "fetch") {
+        fetching = true;
+        await release.promise;
+      }
+      await route.fulfill({ contentType: "application/pdf", body: TEST_PDF }).catch(() => {});
+    });
+    try {
+      const page = await visit(context, first);
+      await expect.poll(() => fetching).toBe(true);
+      await page.goto(last, { waitUntil: "commit" }).catch(() => {});
+      release.resolve();
+      expect(await inReader(page, extension, last)).toBe(true);
+      await readerReady(page);
+      await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute("href", last);
+    } finally { release.resolve(); }
+  });
+
+  test("Back and reload restore the earlier of two analyzed papers in one tab", async ({ context, extension, files }) => {
+    const first = files.url("/doc.pdf?first"), second = files.url("/doc.pdf?second");
+    const page = await visit(context, first);
+    expect(await inReader(page, extension, first)).toBe(true);
+    await readerReady(page);
+    await page.goto(second, { waitUntil: "commit" }).catch(() => {});
+    expect(await inReader(page, extension, second)).toBe(true);
+    await readerReady(page);
+    // The publisher's second PDF is between its reader and the first reader in history.
+    await page.goBack({ waitUntil: "commit" });
+    await page.waitForURL(second);
+    await page.goBack({ waitUntil: "commit" });
+    expect(await inReader(page, extension, first)).toBe(true);
+    await readerReady(page);
+    await page.reload({ waitUntil: "commit" });
+    await readerReady(page);
+    await expect(page.getByRole("link", { name: "Open original" })).toHaveAttribute("href", first);
   });
 
   test("on + Back: the tab stays on the PDF and the toolbar menu offers Analyze PDF again", async ({ context, extension, files }) => {
@@ -363,7 +405,7 @@ test.describe("the handoff", () => {
   test("handoff: the ticket is spent — the address keeps only the document's own name", async ({ context, extension, files }) => {
     const page = await openPdfInReader(context, files.url("/exact.pdf"));
     await readerReady(page);
-    expect(page.url()).toBe(`${READER(extension)}?src=${encodeURIComponent(files.url("/exact.pdf"))}`);
+    expect(page.url()).toBe(`${READER(extension)}?src=${files.url("/exact.pdf")}`);
   });
 
   test("handoff: an oversized document is stopped at the cap, not after it", async ({ context, files }) => {

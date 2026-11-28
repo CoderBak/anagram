@@ -1395,9 +1395,15 @@ describe("recognising a PDF and naming it", () => {
     expect(pdfNameFromUrl("file:///tmp/x.pdf")).toBe("x.pdf");
   });
 
+  it("keeps a signed or encoded source intact as one reader parameter", () => {
+    const src = "https://x.test/a%2Fb+c.pdf?sign=a+b%2F&ticket=inner#page=2";
+    const params = new URLSearchParams(readerQuery(src));
+    expect([...params.entries()]).toEqual([["src", src]]);
+  });
+
   it("escapes the source into the reader's query", () => {
     expect(readerQuery("https://x.test/a b.pdf?v=1&w=2")).toBe(
-      "?src=https%3A%2F%2Fx.test%2Fa%20b.pdf%3Fv%3D1%26w%3D2",
+      "?src=https://x.test/a%20b.pdf?v=1%26w=2",
     );
   });
 });

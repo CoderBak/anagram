@@ -268,6 +268,39 @@ describe("asking a tab with no content script in it", () => {
     expect(updated).toEqual([]);
   });
 
+  it("a new PDF can start while the old document is still waiting for injection", async () => {
+    const first = "https://example.test/a.pdf", last = "https://example.test/b.pdf";
+    let current = first;
+    const waiting = Promise.withResolvers<boolean>();
+    const injecting = Promise.withResolvers<void>();
+    const handoff = createPdfHandoff({
+      readerUrl: src => `chrome-extension://x/reader.html?src=${src}`,
+      ensureInjected: async () => {
+        if (current === last) return true;
+        injecting.resolve();
+        return waiting.promise;
+      },
+    });
+    type Navigate = (event: { tabId: number; frameId: number; url: string }) => void;
+    const navigations: Navigate[] = [];
+    vi.spyOn(fakeBrowser.webNavigation.onBeforeNavigate, "addListener").mockImplementation(fn => { navigations.push(fn as Navigate); });
+    vi.spyOn(fakeBrowser.permissions.onRemoved, "addListener").mockImplementation(() => {});
+    vi.spyOn(fakeBrowser.runtime.onConnect, "addListener").mockImplementation(() => {});
+    vi.spyOn(fakeBrowser.tabs, "get").mockImplementation((async () => ({ id: 7, url: current })) as never);
+    const connect = vi.spyOn(fakeBrowser.tabs, "connect").mockImplementation(() => { throw new Error("read failed"); });
+    const update = vi.spyOn(fakeBrowser.tabs, "update").mockResolvedValue({} as never);
+    handoff.serve();
+    const abandoned = handoff.open(7, first, { auto: false });
+    await injecting.promise;
+    current = last;
+    for (const navigate of navigations) navigate({ tabId: 7, frameId: 0, url: last });
+    await expect(handoff.open(7, last, { auto: false })).resolves.toEqual({ ok: false, error: "read" });
+    waiting.resolve(true);
+    await expect(abandoned).resolves.toEqual({ ok: false, error: "forbidden" });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls.map(call => call[1]?.url)).toEqual([`chrome-extension://x/reader.html?src=${last}&err=read`]);
+  });
+
   it("reads a tab once, however many things ask at the same moment", async () => {
     const calls: number[] = [];
     const handoff = createPdfHandoff({

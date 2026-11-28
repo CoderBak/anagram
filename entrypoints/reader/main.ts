@@ -15,7 +15,7 @@ import { createPdfUnitSource, documentParagraphs, planInSlices, type DocumentPar
 import { createPacer, inScope, readingDistance, seedFor, takeBatch, type Pacer } from "../../lib/pdf/readAhead";
 import { LOW_BATTERY, READER_INPUT } from "../../lib/capture/pace";
 import { MIN_WORDS } from "../../lib/dom/text";
-import { pdfFileName, pdfNameFromUrl, safePdfSource } from "../../lib/pdf/source";
+import { pdfFileName, pdfNameFromUrl, readerQuery, safePdfSource } from "../../lib/pdf/source";
 import { claimPdfBytes } from "../../lib/pdf/handoff";
 import { hasPdfMagic, PDF_HEADER_BYTES, type PdfReopenResult } from "../../lib/pdf/sourceTransfer";
 import { startViewer, pageView, type PageView, type PdfApplication, type UpstreamPage } from "./viewer";
@@ -43,19 +43,20 @@ function autoStructurePages(): number {
 function testCaps(): { autoPages?: number; rangePages?: number } | undefined {
   return import.meta.env.ANAGRAM_TEST_BUILD === "1" ? (globalThis as { __anagramReaderCaps?: { autoPages?: number; rangePages?: number } }).__anagramReaderCaps : undefined;
 }
-/** sessionStorage: the source this tab's reader opened, so that a refresh or Back can show it
- *  again. An address that only names a source — pasted, or opened by anything else — reads
- *  nothing (lib/pdf/sourceTransfer.ts). */
+/** A verified opening belongs to its history entry. Returning to an earlier paper
+ *  in the same tab can then restore it even after a different paper was opened. */
 const HELD_SOURCE_KEY = "anagram-reader-source";
-function holdSource(src: string | null): void {
-  try { if (src) sessionStorage.setItem(HELD_SOURCE_KEY, src); else sessionStorage.removeItem(HELD_SOURCE_KEY); } catch {}
+function holdSource(src: string): void {
+  history.replaceState({ ...history.state, [HELD_SOURCE_KEY]: src }, "");
 }
 function heldSource(): string | null {
+  if (history.state?.[HELD_SOURCE_KEY]) return history.state[HELD_SOURCE_KEY];
+  // Readers opened by an earlier version kept their most recent source here.
   try { return sessionStorage.getItem(HELD_SOURCE_KEY); } catch { return null; }
 }
 const notice = document.getElementById("notice")!;
 const drop = document.getElementById("drop")!;
-const original = document.getElementById("original") as HTMLButtonElement;
+const original = document.getElementById("original") as HTMLAnchorElement;
 const fileInput = document.getElementById("file") as HTMLInputElement;
 const analyze = document.getElementById("anagramAnalyze") as HTMLButtonElement;
 let app: PdfApplication;
@@ -64,7 +65,11 @@ let structureFailed = false;
 let orchestrator: Orchestrator | null = null;
 let source: PdfUnitSource | null = null;
 
-let originalUrl: string | null = null;
+function showOriginal(url: string | null): void {
+  if (url) original.href = url;
+  else original.removeAttribute("href");
+  original.hidden = !url;
+}
 let site: string | null = null;
 let generation = 0;
 let controller: AbortController | null = null;
@@ -611,7 +616,7 @@ async function rendered(page: UpstreamPage | undefined): Promise<void> {
     else if (started) orchestrator?.refresh();
   } catch {
     // A malformed page does not prevent the upstream viewer showing other pages.
-    if (owned === generation && !pages.size) say(t("readerPageReadFailed"));
+    if (owned === generation && view.layer.isConnected && page.textLayer?.div === view.layer && !pages.size) say(t("readerPageReadFailed"));
   } finally { extracting.delete(view.layer); }
 }
 function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void>} {
@@ -628,7 +633,7 @@ function beginLoad(): {owned: number; signal: AbortSignal; closing: Promise<void
   pages.clear(); source = null; structure = null; scan = null; deferredStructure = false; textless = false; foundText = false;
   texts.clear(); unread.clear(); retryPages.length = 0; pagesBeingRead.clear(); keepTexts = true; plan = null; planTexts = null; whole = false; offered = false; askable = false; asking = false; askedWhole = false; shownPercent = 0; tried.clear(); wake?.();
   pacer.newDocument();
-  originalUrl = null; original.hidden = true;
+  showOriginal(null);
   site = null;
   document.body.classList.remove("document-open");
   say(t("readerLoading")); drop.hidden = true;
@@ -641,7 +646,7 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   await load.closing;
   if (load.owned !== generation) return;
   source = createPdfUnitSource();
-  originalUrl = url; original.hidden = !url;
+  showOriginal(url);
   site = siteOf(url);
   // Upstream controls the password dialog, rendering, navigation, find and printing.
   try {
@@ -658,8 +663,29 @@ async function openBytes(bytes: Uint8Array, name: string, url: string | null, lo
   }
 }
 let fileChoice = 0;
+let fileReader: FileReader | null = null;
+function nextFileChoice(): number {
+  ++fileChoice;
+  fileReader?.abort();
+  return fileChoice;
+}
+async function readFileBytes(file: File): Promise<Uint8Array> {
+  const reader = new FileReader();
+  fileReader = reader;
+  try {
+    return await new Promise<Uint8Array>((resolve, reject) => {
+      reader.onloadend = () => {
+        if (reader.result instanceof ArrayBuffer) resolve(new Uint8Array(reader.result));
+        else reject(reader.error ?? new DOMException("File read cancelled", "AbortError"));
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  } finally {
+    if (fileReader === reader) fileReader = null;
+  }
+}
 async function openFile(file: File): Promise<void> {
-  const choice = ++fileChoice;
+  const choice = nextFileChoice();
   rejectedFile = "";
   if (file.size > MAX_BYTES) { rejectFile(t("readerTooLarge")); return; }
   // The extension and MIME type can be missing or wrong. Check the bytes before replacing the open PDF.
@@ -668,11 +694,11 @@ async function openFile(file: File): Promise<void> {
     if (choice !== fileChoice) return;
     if (!hasPdfMagic(head)) { rejectFile(t("readerBadFile")); return; }
     say(t("readerLoading"));
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const bytes = await readFileBytes(file);
     if (choice !== fileChoice) return;
     const load = beginLoad();
-    holdSource(null);
     history.replaceState(null, "", location.pathname);
+    try { sessionStorage.removeItem(HELD_SOURCE_KEY); } catch {}
     await openBytes(bytes, pdfFileName(file.name) ?? "document.pdf", null, load);
   } catch { if (choice === fileChoice) rejectFile(t("readerBadFile")); }
 }
@@ -681,9 +707,9 @@ async function openTicket(ticket: string, src: string): Promise<void> {
   const held = await claimPdfBytes(ticket, load.signal);
   performance.measure("anagram-handoff", {start: began});
   if (load.owned !== generation) return;
-  const url = new URL(location.href); url.searchParams.delete("ticket");
+  const url = new URL(location.href); url.search = readerQuery(src);
   history.replaceState(null, "", url);
-  originalUrl = src; original.hidden = false;
+  showOriginal(src);
   if ("failure" in held) { failure(held.failure); return; }
   // The name the server gave the file, else the address's: what Download saves it as.
   await openBytes(held.bytes, (held.name && pdfFileName(held.name)) || pdfNameFromUrl(src), src, load);
@@ -750,17 +776,20 @@ async function main(): Promise<void> {
     endDrag();
     const files = event.dataTransfer?.files;
     if (!app || !files?.length) return;
-    if (files.length > 1) { ++fileChoice; rejectFile(t("readerDropOne")); return; }
+    if (files.length > 1) { nextFileChoice(); rejectFile(t("readerDropOne")); return; }
     void openFile(files[0]!);
   }, true);
-  original.addEventListener("click", async () => {
-    const url = originalUrl;
+  original.addEventListener("click", async (event) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const url = original.getAttribute("href"), owned = generation;
     if (!url) return;
     try {
       const reply = await sendDocumentMessage({action: ACTIONS.PDF_PASS_ONCE, url});
-      if (reply && typeof reply === "object" && "ok" in reply && reply.ok === true && originalUrl === url) location.href = url;
+      if (generation !== owned || original.getAttribute("href") !== url) return;
+      if (reply && typeof reply === "object" && "ok" in reply && reply.ok === true) location.href = url;
       else failure("read");
-    } catch { failure("read"); }
+    } catch { if (generation === owned) failure("read"); }
   });
   // The reader's Anagram button is the toolbar's: it opens the same menu, with this document's
   // results and controls. Where the browser cannot open that menu from a page, it reads the
@@ -807,7 +836,7 @@ async function main(): Promise<void> {
   });
   const params = new URL(location.href).searchParams;
   const src = documentAddress(params.get("src")), ticket = params.get("ticket");
-  originalUrl = src; original.hidden = !src;
+  showOriginal(src);
   // Only a reload, a step back, or a tab Chrome discarded to save memory and is loading again
   // (the reader looked empty on returning to it) reads this very source again.
   const arrival = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type;
@@ -825,7 +854,7 @@ async function main(): Promise<void> {
 void main().catch(() => { say(t("readerBadFile")); drop.hidden = false; });
 let resumeAfterPageShow = false;
 window.addEventListener("pagehide", (event) => {
-  ++fileChoice; ++generation; controller?.abort(); stopScanWorker(); wake?.(); orchestrator?.stop(); cancelDocumentSession();
+  nextFileChoice(); ++generation; controller?.abort(); stopScanWorker(); wake?.(); orchestrator?.stop(); cancelDocumentSession();
   resumeAfterPageShow = event.persisted && started;
   if (!event.persisted) void app?.close();
 });

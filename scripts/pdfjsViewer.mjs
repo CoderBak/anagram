@@ -51,7 +51,7 @@ export function vendorPdfViewer(root) {
     '<input id="viewsManagerAddFilePicker" type="file" accept="application/pdf,image/*" multiple hidden />');
   replace('<div id="toolbarViewerRight" class="toolbarHorizontalGroup">', `<div id="toolbarViewerRight" class="toolbarHorizontalGroup">
                 <button id="anagramAnalyze" class="toolbarButton labeled" type="button" data-anagram="host"><img class="logo logo-light" src="/icons/icon-light-48.png" alt="" /><img class="logo logo-dark" src="/icons/icon-48.png" alt="" /><span>Anagram</span></button>
-                <button id="original" class="toolbarButton labeled" type="button" data-anagram="host" hidden><svg aria-hidden="true" focusable="false"><use href="/icons/actions.svg#external"></use></svg><span></span></button>`);
+                <a id="original" class="toolbarButton labeled" rel="noreferrer" data-anagram="host" hidden><svg aria-hidden="true" focusable="false"><use href="/icons/actions.svg#external"></use></svg><span></span></a>`);
   replace('<div class="toolbarHorizontalGroup hiddenMediumView">\n                  <button id="printButton" class="toolbarButton"', `<div id="fileTools" class="toolbarHorizontalGroup">
                   <button id="printButton" class="toolbarButton hiddenMediumView"`);
   replace('<button id="downloadButton" class="toolbarButton"', `<button id="anagramOpenFile" class="toolbarButton labeled" type="button" data-l10n-id="pdfjs-open-file-button">

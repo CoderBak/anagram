@@ -132,10 +132,10 @@ test.describe("with the browser's file access on", () => {
       await testInfo.attach("file-debug.json", { body: JSON.stringify(debug, null, 2), contentType: "application/json" });
       throw error;
     });
-    expect(page.url()).toContain(encodeURIComponent(localPdf));
+    expect(new URL(page.url()).searchParams.get("src")).toBe(localPdf);
     expect(await page.locator("#original").isVisible()).toBe(true);
     await page.setViewportSize({ width: 320, height: 720 });
-    const original = page.getByRole("button", { name: "Open original", exact: true });
+    const original = page.getByRole("link", { name: "Open original", exact: true });
     await expect(original.locator("span")).toBeHidden();
     await expect(original.locator("svg")).toBeVisible();
     const iconOffset = await original.evaluate(button => {

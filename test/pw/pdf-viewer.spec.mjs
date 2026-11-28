@@ -234,6 +234,24 @@ test("a long document builds only the text layers near the view, and rebuilds re
   }
 });
 
+test("rapid page jumps leave the last visible PDF page annotated", async ({ page, extension }) => {
+  await openReader(page, extension.extId, input("jump.pdf", TALL_PDF));
+  await page.evaluate(async () => {
+    const viewer = window.PDFViewerApplication.pdfViewer;
+    for (const n of [30, 2, 29, 1, 20]) {
+      viewer.currentPageNumber = n;
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  const settled = () => page.evaluate(sel => {
+    const current = window.PDFViewerApplication.pdfViewer.currentPageNumber;
+    const layer = document.querySelector(`.page[data-page-number="${current}"]`);
+    const marked = [...(layer?.querySelectorAll(sel) ?? [])].some(host => host.shadowRoot?.querySelector(".pill:not(.pending)"));
+    return { current, marked };
+  }, PDF_CHIP);
+  await expect.poll(settled, { timeout: 20000 }).toEqual({ current: 20, marked: true });
+});
+
 test("a document past the structure's page cap is read on every page, by the reflow", async ({ page, extension }) => {
   await openReader(page, extension.extId, input("book.pdf", buildTwoColumnPdf(305)));
   const onPage = (n) => page.evaluate(([n, sel]) => [...document.querySelectorAll(`.page[data-page-number="${n}"] ${sel}`)].filter((el) => el.shadowRoot?.querySelector(".pill")).length, [n, PDF_CHIP]);

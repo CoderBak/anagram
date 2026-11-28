@@ -36,7 +36,11 @@ export function samePdfSource(a: string | undefined, b: string): boolean {
 
 /** The reader's query string for a source document. */
 export function readerQuery(src: string): string {
-  return `?src=${encodeURIComponent(src)}`;
+  // These characters are literal inside a query value. Keep the publisher and
+  // path legible while encoding delimiters such as &, +, # and literal %.
+  const value = encodeURIComponent(src).replaceAll("%3A", ":").replaceAll("%2F", "/")
+    .replaceAll("%3F", "?").replaceAll("%3D", "=");
+  return `?src=${value}`;
 }
 
 /**
