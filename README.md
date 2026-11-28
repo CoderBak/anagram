@@ -4,7 +4,7 @@ Anagram reads English prose in your browser and runs the detector on your comput
 
 ## Install
 
-Download `anagram-chrome-0.12.1.zip` from the browser release and extract it into a folder you will keep. In Chrome 137 or later, open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked** and choose that folder. [Download for Chrome](https://github.com/CoderBak/anagram/releases/download/v0.12.1/anagram-chrome-0.12.1.zip) · [All release files](https://github.com/CoderBak/anagram/releases/tag/v0.12.1)
+Download `anagram-chrome-0.12.2.zip` from the browser release and extract it into a folder you will keep. In Chrome 137 or later, open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked** and choose that folder. [Download for Chrome](https://github.com/CoderBak/anagram/releases/download/v0.12.2/anagram-chrome-0.12.2.zip) · [All release files](https://github.com/CoderBak/anagram/releases/tag/v0.12.2)
 
 Setup recommends a detector, shows its download size and lets you choose how to flag and underline passages. The in-browser engine downloads and verifies the model in your browser. [Detector releases](https://huggingface.co/CoderBak/anagram-detectors)
 
@@ -14,12 +14,13 @@ For the optional native engine, use the extension and installer from v0.12.0. [S
 
 | Version | Guides |
 | --- | --- |
+| v0.12.2 | [English](https://github.com/CoderBak/anagram/blob/v0.12.2/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.12.2/docs/user-guide.zh-CN.md) · [Release notes](https://github.com/CoderBak/anagram/blob/v0.12.2/CHANGELOG.md) |
 | v0.12.1 | [English](https://github.com/CoderBak/anagram/blob/v0.12.1/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.12.1/docs/user-guide.zh-CN.md) · [Release notes](https://github.com/CoderBak/anagram/blob/v0.12.1/CHANGELOG.md) |
 | v0.12.0 | [English](https://github.com/CoderBak/anagram/blob/v0.12.0/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.12.0/docs/user-guide.zh-CN.md) · [Release notes](https://github.com/CoderBak/anagram/blob/v0.12.0/CHANGELOG.md) |
 | v0.11.0 | [English](https://github.com/CoderBak/anagram/blob/v0.11.0/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.11.0/docs/user-guide.zh-CN.md) · [Release notes](https://github.com/CoderBak/anagram/blob/v0.11.0/CHANGELOG.md) |
 | v0.10.2 | [English](https://github.com/CoderBak/anagram/blob/v0.10.2/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.10.2/docs/user-guide.zh-CN.md) · [Release notes](https://github.com/CoderBak/anagram/blob/v0.10.2/CHANGELOG.md) |
 | v0.9.2 | [English](https://github.com/CoderBak/anagram/blob/v0.9.2/docs/user-guide.en.md) · [中文](https://github.com/CoderBak/anagram/blob/v0.9.2/docs/user-guide.zh-CN.md) |
 
-Chrome on Apple Silicon is the primary target. For Firefox 153 or later, download the Firefox ZIP and follow the versioned guide above. Safari on macOS still needs runtime verification. [Download for Firefox](https://github.com/CoderBak/anagram/releases/download/v0.12.1/anagram-firefox-0.12.1.zip) · [Build and test instructions](https://github.com/CoderBak/anagram/blob/v0.12.1/docs/DEVELOPMENT.md)
+Chrome on Apple Silicon is the primary target. For Firefox 153 or later, download the Firefox ZIP and follow the versioned guide above. Safari on macOS still needs runtime verification. [Download for Firefox](https://github.com/CoderBak/anagram/releases/download/v0.12.2/anagram-firefox-0.12.2.zip) · [Build and test instructions](https://github.com/CoderBak/anagram/blob/v0.12.2/docs/DEVELOPMENT.md)
 
-Page text stays on your computer. Reading statistics are optional. Anagram’s code is licensed under the GNU AGPL v3.0 or later. Each detector’s model page lists its terms. [Privacy](https://github.com/CoderBak/anagram/blob/v0.12.1/PRIVACY.md) · [Source](https://github.com/CoderBak/anagram/tree/v0.12.1) · [License](https://github.com/CoderBak/anagram/blob/v0.12.1/LICENSE) · [Third-party notices](https://github.com/CoderBak/anagram/blob/v0.12.1/THIRD_PARTY_NOTICES.md)
+Page text stays on your computer. Reading statistics are optional. Anagram’s code is licensed under the GNU AGPL v3.0 or later. Each detector’s model page lists its terms. [Privacy](https://github.com/CoderBak/anagram/blob/v0.12.2/PRIVACY.md) · [Source](https://github.com/CoderBak/anagram/tree/v0.12.2) · [License](https://github.com/CoderBak/anagram/blob/v0.12.2/LICENSE) · [Third-party notices](https://github.com/CoderBak/anagram/blob/v0.12.2/THIRD_PARTY_NOTICES.md)
